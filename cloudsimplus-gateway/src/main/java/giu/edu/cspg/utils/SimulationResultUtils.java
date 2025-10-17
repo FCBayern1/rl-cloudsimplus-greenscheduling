@@ -26,6 +26,8 @@ import giu.edu.cspg.tables.CloudletsTableBuilderWithDetails;
 import giu.edu.cspg.tables.HostHistoryTableBuilderCsv;
 import giu.edu.cspg.tables.TableLogger;
 import giu.edu.cspg.tables.VmsTableBuilderWithDetails;
+import giu.edu.cspg.utils.EnergyConsumptionUtils;
+import giu.edu.cspg.utils.EnergyConsumptionUtils.DatacenterEnergyStats;
 
 public class SimulationResultUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(SimulationResultUtils.class.getSimpleName());
@@ -115,6 +117,16 @@ public class SimulationResultUtils {
         // --- Overall Cost/Stats ---
         showOverallStats(arrivalTimeMap, vmList, finishedList);
 
+        // --- Energy Consumption Stats ---
+        LOGGER.info("Calculating energy consumption statistics...");
+        DatacenterEnergyStats energyStats = EnergyConsumptionUtils.calculateDatacenterEnergy(datacenter, clock);
+        EnergyConsumptionUtils.printEnergySummary(energyStats);
+
+        // Save energy stats to CSV
+        String energyPath = String.format("results/%s/energy_consumption.csv", baseFileName);
+        saveEnergyStatsToCsv(energyStats, energyPath);
+        LOGGER.info("Energy consumption stats saved to {}", energyPath);
+
         LOGGER.info("Total simulation time: {} seconds", clock);
         LOGGER.info("Result processing finished for {}.", baseFileName);
     }
@@ -134,6 +146,46 @@ public class SimulationResultUtils {
             TableLogger.logAndSaveTable((AbstractTable) hostTableBuilder.getTable(), hostPath);
         } else {
             LOGGER.info("\tHost {} was not utilized, skipping history table.", host.getId());
+        }
+    }
+
+    /** Saves energy consumption statistics to CSV file. */
+    private static void saveEnergyStatsToCsv(DatacenterEnergyStats stats, String filePath) {
+        try {
+            java.io.File file = new java.io.File(filePath);
+            file.getParentFile().mkdirs(); // Create directories if they don't exist
+
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(file)) {
+                // Write summary section
+                writer.println("=== DATACENTER ENERGY CONSUMPTION SUMMARY ===");
+                writer.println(String.format("Simulation Duration (s),%.2f", stats.simulationDurationSeconds));
+                writer.println(String.format("Simulation Duration (h),%.4f", stats.simulationDurationSeconds / 3600.0));
+                writer.println(String.format("Number of Hosts,%d", stats.numberOfHosts));
+                writer.println(String.format("Total Energy Consumption (Wh),%.2f", stats.totalEnergyConsumptionWh));
+                writer.println(String.format("Total Energy Consumption (kWh),%.4f", stats.totalEnergyConsumptionKWh));
+                writer.println(String.format("Average Power (W),%.2f", stats.averagePowerW));
+                writer.println(String.format("Peak Power (W),%.2f", stats.peakPowerW));
+                writer.println(String.format("Estimated CO2 Emissions (kg),%.4f", stats.totalEnergyConsumptionKWh * 0.5));
+                writer.println();
+
+                // Write per-host details
+                writer.println("=== PER-HOST ENERGY CONSUMPTION ===");
+                writer.println("Host ID,Energy (Wh),Average Power (W),Max Power (W),CPU Utilization (%)");
+
+                stats.hostStats.values().stream()
+                    .sorted((a, b) -> Long.compare(a.hostId, b.hostId))
+                    .forEach(hostStat -> {
+                        writer.println(String.format("%d,%.2f,%.2f,%.2f,%.2f",
+                            hostStat.hostId,
+                            hostStat.energyConsumptionWh,
+                            hostStat.averagePowerW,
+                            hostStat.maxPowerW,
+                            hostStat.utilizationPercent));
+                    });
+            }
+            LOGGER.debug("Energy stats CSV saved successfully to {}", filePath);
+        } catch (java.io.IOException e) {
+            LOGGER.error("Failed to save energy stats to CSV: {}", e.getMessage(), e);
         }
     }
 

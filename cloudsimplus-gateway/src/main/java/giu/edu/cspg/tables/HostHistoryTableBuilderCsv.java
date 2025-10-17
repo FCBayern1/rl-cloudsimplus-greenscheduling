@@ -70,5 +70,27 @@ public class HostHistoryTableBuilderCsv extends TableBuilderAbstract<HostStateHi
 
         final var col6 = getTable().newColumn("Host Total Usage", "", "%5.1f%%");
         addColumn(col6, history -> history.allocatedMips() / host.getTotalMipsCapacity() * 100);
+
+        // Add power consumption column (new)
+        final var col7 = getTable().newColumn("Power (W)", "", "%6.2f");
+        addColumn(col7, history -> {
+            if (host.getPowerModel() != null) {
+                return host.getPowerModel().getPower(history.percentUsage());
+            }
+            return 0.0;
+        });
+
+        // Add instantaneous energy consumption (power * time delta)
+        final var col8 = getTable().newColumn("Energy (Wh)", "", "%8.4f");
+        addColumn(col8, history -> {
+            if (host.getPowerModel() != null) {
+                // Energy = Power * Time
+                // Get time delta from previous entry (1 second typically)
+                double power = host.getPowerModel().getPower(history.percentUsage());
+                // Assuming 1 second interval, convert to hours: 1/3600
+                return power / 3600.0;
+            }
+            return 0.0;
+        });
     }
 }

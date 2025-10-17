@@ -9,6 +9,7 @@ import org.cloudsimplus.datacenters.Datacenter;
 import org.cloudsimplus.datacenters.DatacenterCharacteristicsSimple;
 import org.cloudsimplus.datacenters.DatacenterSimple;
 import org.cloudsimplus.hosts.Host;
+import org.cloudsimplus.power.models.PowerModelHostSimple;
 import org.cloudsimplus.provisioners.PeProvisionerSimple;
 import org.cloudsimplus.provisioners.ResourceProvisionerSimple;
 import org.cloudsimplus.resources.Pe;
@@ -63,12 +64,20 @@ public class DatacenterSetup {
 
         // Use HostWithoutCreatedList for potential memory optimization
         // If HostWithoutCreatedList is not defined, use HostSimple
-        return new HostWithoutCreatedList(settings.getHostRam(),
+        Host host = new HostWithoutCreatedList(settings.getHostRam(),
                 settings.getHostBw(), settings.getHostStorage(), peList)
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
                 .setVmScheduler(new VmSchedulerTimeShared()) // Simple time-shared scheduler for Host PEs
                 .setStateHistoryEnabled(true);
+
+        // Set power model for energy consumption tracking
+        // PowerModelHostSimple: linear power model
+        // maxPower: 250W (typical server), staticPowerPercent: 70% (idle power is 70% of max)
+        host.setPowerModel(new PowerModelHostSimple(250, 70));
+        host.setStateHistoryEnabled(true); // Enable for energy consumption tracking
+
+        return host;
     }
 
     /**
@@ -112,7 +121,7 @@ public class DatacenterSetup {
      */
     public static Vm createVm(SimulationSettings settings, String type) {
         int multiplier = settings.getSizeMultiplier(type);
-        int vmPes = settings.getSmallVmPes() * multiplier;
+        int vmPes = settings.getSmallVmPes() * multiplier; // decides it is a S/M/L VM
         long vmRam = settings.getSmallVmRam() * multiplier;
         long vmBw = settings.getSmallVmBw(); // Keep BW same for simplicity, or scale: * multiplier;
         long vmStorage = settings.getSmallVmStorage(); // Keep Storage same, or scale: * multiplier;
@@ -141,8 +150,4 @@ public class DatacenterSetup {
     public int getLastCreatedVmId() {
         return vmIdCounter - 1;
     }
-
-    // Removed: createVmPoolForCloudlets - Replaced by createInitialVmFleet
-    // Removed: createHostListForVms - Replaced by fixed host count logic in
-    // createDatacenter
 }

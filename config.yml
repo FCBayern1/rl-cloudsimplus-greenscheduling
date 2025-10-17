@@ -70,7 +70,7 @@ common:
   mode: "train" # Default execution mode: "train", "test"
   algorithm: "PPO" # RL algorithm ("MaskablePPO", "PPO", "A2C", etc.)
   policy: "MultiInputPolicy" # Network policy for Dict observation space
-  timesteps: 100000 # Total training timesteps
+  timesteps: 1000 # Total training timesteps
   learning_rate: 0.0003 # Optimizer learning rate
   n_steps: 2048 # (PPO/A2C) Steps per policy update
   batch_size: 64 # (PPO/Others) Minibatch size for training
@@ -102,4 +102,269 @@ experiment_1:
   experiment_type_dir: "CSV_Train"
   workload_mode: "CSV"
   cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-# Add experiment_2, experiment_3 etc. as needed
+
+# ===================================================================
+# Experiment 2: Large-Scale LLNL Workload with Optimized Parameters
+# ===================================================================
+experiment_2:
+  simulation_name: "Exp2_LLNL_Large_Optimized"
+  experiment_name: "exp2_llnl_large"
+  experiment_type_dir: "LargeScale_Experiments"
+  
+  # Workload Configuration
+  workload_mode: "SWF"
+  cloudlet_trace_file: "traces/LLNL-Atlas-2006-2.1-cln.swf"
+  max_cloudlets_to_create_from_workload_file: 500  # Start with 500 tasks (full dataset: 43810)
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+  
+  # RL Algorithm Configuration (Optimized)
+  mode: "train"
+  algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
+  timesteps: 50000  # Longer training
+  learning_rate: 0.0001  # Lower LR for stability
+  
+  # PPO Hyperparameters
+  n_steps: 512  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+  
+  # Infrastructure Configuration (Optimized)
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536
+  
+  # Reduce initial VMs to force RL to learn efficient scaling
+  initial_s_vm_count: 10  # Reduced from 20
+  initial_m_vm_count: 5   # Reduced from 10
+  initial_l_vm_count: 2   # Reduced from 5
+  
+  # Reward Weights (Optimized)
+  reward_wait_time_coef: 1.0        # Increase wait time penalty
+  reward_throughput_coef: 0.85
+  reward_unutilization_coef: 0.5    # Double utilization weight (from 0.25)
+  reward_cost_coef: 0.5             # Increase cost weight (from 0.35)
+  reward_queue_penalty_coef: 0.55
+  reward_invalid_action_coef: 2.0   # Harshly penalize invalid actions (from 1.0)
+  
+  # Experiment Control
+  max_episode_length: 500
+  seed: 42  # Fixed seed for reproducibility
+  save_experiment: true
+  device: "auto"
+  verbose: 1  # Show detailed training info
+  log_interval: 1
+
+# ===================================================================
+# Experiment 3: Quick Test with CSV Workload (Fixed)
+# ===================================================================
+experiment_3:
+  simulation_name: "Exp3_CSV_QuickTest_Fixed"
+  experiment_name: "exp3_csv_quick"
+  experiment_type_dir: "QuickTests"
+  
+  # Quick Test Configuration - Using CSV instead of SWF
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"  # CSV with reasonable arrival times
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 10000  # Increase for better learning
+  
+  # Use optimized parameters
+  initial_s_vm_count: 10
+  initial_m_vm_count: 5
+  initial_l_vm_count: 2
+  
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  seed: 42
+  save_experiment: true
+  max_episode_length: 100  # Shorter for CSV workload (165 tasks)
+  
+# ===================================================================
+# Experiment 4: Medium-Scale with Better Workload
+# ===================================================================
+experiment_4:
+  simulation_name: "Exp4_MultiCSV_Optimized"
+  experiment_name: "exp4_multi_csv"
+  experiment_type_dir: "CSV_Optimized"
+  
+  # Use CSV workload for predictable arrival times
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+  
+  # Optimized RL configuration
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 50000
+  learning_rate: 0.0001
+  
+  # PPO parameters
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.02
+  
+  # Optimized infrastructure
+  initial_s_vm_count: 10
+  initial_m_vm_count: 5
+  initial_l_vm_count: 2
+  
+  # Optimized rewards
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  max_episode_length: 100
+  seed: 42
+  save_experiment: true
+  verbose: 1
+
+# ===================================================================
+# Experiment 5: Poisson Workload - Small Scale (112 tasks)
+# ===================================================================
+experiment_5:
+  simulation_name: "Exp5_Poisson_Dense"
+  experiment_name: "exp5_poisson_dense"
+  experiment_type_dir: "Synthetic_Workloads"
+  
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/synthetic_dense_200s.csv"  # 396 tasks, dense arrivals (2.0/s)
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 30000
+  learning_rate: 0.0001
+  
+  # Optimized configuration
+  initial_s_vm_count: 12  # More VMs for higher load
+  initial_m_vm_count: 6
+  initial_l_vm_count: 3
+  
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  max_episode_length: 400  # Enough for 200s workload + execution time
+  seed: 42
+  save_experiment: true
+  verbose: 1
+
+# ===================================================================
+# Experiment 6: Uniform Workload - Medium Scale (150 tasks)
+# ===================================================================
+experiment_6:
+  simulation_name: "Exp6_Uniform_Medium"
+  experiment_name: "exp6_uniform_medium"
+  experiment_type_dir: "Synthetic_Workloads"
+  
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/synthetic_uniform_300s.csv"  # 150 tasks, 300s
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 30000
+  learning_rate: 0.0001
+  
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  
+  initial_s_vm_count: 10
+  initial_m_vm_count: 5
+  initial_l_vm_count: 2
+  
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  max_episode_length: 320
+  seed: 42
+  save_experiment: true
+  verbose: 1
+
+# ===================================================================
+# Experiment 7: Large Scale Poisson (605 tasks) - RECOMMENDED
+# ===================================================================
+experiment_7:
+  simulation_name: "Exp7_Poisson_Large"
+  experiment_name: "exp7_poisson_large"
+  experiment_type_dir: "Synthetic_Workloads"
+  
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/synthetic_large_600s.csv"  # 605 tasks, 600s
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 100000  # Longer training for complex workload
+  learning_rate: 0.0001
+  
+  # PPO hyperparameters
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02
+  
+  # Infrastructure
+  initial_s_vm_count: 12
+  initial_m_vm_count: 6
+  initial_l_vm_count: 3
+  
+  # Reward weights
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  max_episode_length: 620
+  seed: 42
+  save_experiment: true
+  verbose: 1
+
+# ===================================================================
+# Experiment 8: Bursty Workload - Stress Test (200 tasks in bursts)
+# ===================================================================
+experiment_8:
+  simulation_name: "Exp8_Bursty_StressTest"
+  experiment_name: "exp8_bursty"
+  experiment_type_dir: "Synthetic_Workloads"
+  
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/synthetic_bursty_400s.csv"  # 200 tasks, bursty
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 50000
+  learning_rate: 0.0001
+  
+  # Handle burst load
+  initial_s_vm_count: 15  # More VMs for burst handling
+  initial_m_vm_count: 8
+  initial_l_vm_count: 4
+  
+  reward_wait_time_coef: 1.5  # Higher penalty for wait time in bursts
+  reward_unutilization_coef: 0.4  # Lower during bursts (acceptable to over-provision)
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+  
+  max_episode_length: 420
+  seed: 42
+  save_experiment: true
+  verbose: 1

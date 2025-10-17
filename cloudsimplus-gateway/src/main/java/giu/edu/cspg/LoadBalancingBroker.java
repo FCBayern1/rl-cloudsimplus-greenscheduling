@@ -58,8 +58,7 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
 
     /**
      * Adds an event listener to the specified Cloudlet that triggers when the
-     * Cloudlet starts
-     * running. The listener logs a debug message with the Cloudlet ID, VM ID, and
+     * Cloudlet starts      running. The listener logs a debug message with the Cloudlet ID, VM ID, and
      * the current
      * simulation time.
      *
@@ -78,10 +77,9 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
 
     /**
      * Adds an on-finish listener to the specified Cloudlet. The listener logs
-     * detailed information
-     * about the Cloudlet's execution and calculates the wait time for the Cloudlet
-     * upon its
-     * completion.
+     * detailed information about the Cloudlet's
+     * execution and calculates the wait time for the Cloudlet
+     * upon its completion.
      *
      * @param cloudlet the Cloudlet to which the on-finish listener will be added
      */

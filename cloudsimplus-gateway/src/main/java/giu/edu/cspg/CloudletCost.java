@@ -29,6 +29,7 @@ import org.cloudsimplus.vms.Vm;
  * longer directly supported by the Cloudlet's internal state.
  * </p>
  */
+
 public class CloudletCost {
 
     /**
@@ -38,6 +39,7 @@ public class CloudletCost {
 
     /**
      * The Cloudlet's arrival time map, used to calculate the start wait time.
+     * ip -> arrival time
      */
     private final Map<Long, Double> cloudletArrivalTimeMap;
 

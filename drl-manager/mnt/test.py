@@ -138,6 +138,32 @@ def test(params: dict):
             'reward': episode_rewards,
             'length': episode_lengths
         })
+
+        # Try to read energy consumption from Java results
+        simulation_name = params.get('simulation_name', 'Unknown')
+        energy_csv_path = os.path.join('cloudsimplus-gateway', 'results', simulation_name, 'energy_consumption.csv')
+
+        if os.path.exists(energy_csv_path):
+            try:
+                # Read energy summary from CSV (first 8 lines are summary)
+                with open(energy_csv_path, 'r') as f:
+                    lines = f.readlines()
+                    # Extract total energy (line 5: "Total Energy Consumption (kWh),X.XXXX")
+                    for line in lines[:10]:
+                        if 'Total Energy Consumption (kWh)' in line:
+                            energy_kwh = float(line.split(',')[1].strip())
+                            results_df['energy_kwh'] = energy_kwh
+                            logger.info(f"Energy consumption: {energy_kwh:.4f} kWh")
+                            break
+                        if 'Total Energy Consumption (Wh)' in line:
+                            energy_wh = float(line.split(',')[1].strip())
+                            results_df['energy_wh'] = energy_wh
+                            logger.info(f"Energy consumption: {energy_wh:.2f} Wh")
+            except Exception as e:
+                logger.warning(f"Could not read energy consumption from {energy_csv_path}: {e}")
+        else:
+            logger.warning(f"Energy consumption file not found at {energy_csv_path}")
+
         results_path = os.path.join(log_dir, "evaluation_summary.csv")
         results_df.to_csv(results_path, index=False)
         logger.info(f"Evaluation summary saved to {results_path}")

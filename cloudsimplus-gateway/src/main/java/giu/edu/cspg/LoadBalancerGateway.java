@@ -81,7 +81,7 @@ public class LoadBalancerGateway {
     }
 
     /**
-     * Resets the simulation environment.
+     * Resets the simulation environment. Will create a new simulation.
      * 
      * @param seed Random seed for reproducibility.
      * @return A SimulationResetResult containing the initial state and info.
