@@ -245,7 +245,7 @@ experiment_5:
   
   mode: "train"
   algorithm: "MaskablePPO"
-  timesteps: 30000
+  timesteps: 50000
   learning_rate: 0.0001
   
   # Optimized configuration
@@ -368,3 +368,80 @@ experiment_8:
   seed: 42
   save_experiment: true
   verbose: 1
+
+# ===================================================================
+# Experiment 5 Improved: Based on Experiment 4 Analysis
+# ===================================================================
+# Key improvements:
+# 1. Reduced small/medium VMs, increased large VMs (better resource efficiency)
+# 2. Increased utilization and cost penalties (address main weakness)
+# 3. Increased learning rate and exploration (escape local optimum)
+# 4. Longer training and episodes (more learning time)
+# 5. Same workload as Exp4 for direct comparison
+# ===================================================================
+
+experiment_5_improved:
+  # --- Identification ---
+  simulation_name: "Exp5_CSV_ResourceOptimized"
+  experiment_name: "exp5_resource_optimized"
+  experiment_type_dir: "CSV_Optimized_V2"
+  
+  # --- Workload (Same as Exp4 for comparison) ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+  
+  # --- Algorithm & Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 100000              # 50000 → 100000 (2x longer training)
+  learning_rate: 0.0003          # 0.0001 → 0.0003 (3x higher, escape local optimum)
+  
+  # --- PPO Hyperparameters ---
+  n_steps: 512                   # Keep from Exp4
+  batch_size: 128                # Keep from Exp4
+  n_epochs: 15                   # Keep from Exp4
+  gamma: 0.995                   # Keep from Exp4
+  gae_lambda: 0.98               # Keep from Exp4
+  clip_range: 0.2
+  ent_coef: 0.05                 # 0.02 → 0.05 (more exploration)
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  
+  # --- VM Fleet (KEY IMPROVEMENT: More Large VMs, Fewer Small VMs) ---
+  initial_s_vm_count: 5          # 10 → 5 (reduce idle resources)
+  initial_m_vm_count: 3          # 5 → 3 (reduce idle resources)
+  initial_l_vm_count: 4          # 2 → 4 (increase high-capacity VMs)
+  
+  # --- Reward Weights (KEY IMPROVEMENT: Penalize waste) ---
+  reward_wait_time_coef: 0.8               # Slightly reduce (was dominating)
+  reward_unutilization_coef: 1.0           # 0.5 → 1.0 (2x penalty for low utilization)
+  reward_cost_coef: 0.8                    # NEW: Strong cost penalty
+  reward_queue_penalty_coef: 0.55          # Keep from common
+  reward_invalid_action_coef: 1.5          # Slightly increase
+  
+  # --- Episode Configuration ---
+  max_episode_length: 200        # 100 → 200 (give more time for tasks to complete)
+  
+  # --- Infrastructure (Keep from Exp4) ---
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536
+  host_bw: 50000
+  host_storage: 100000
+  
+  # --- VM Specs (Keep from common) ---
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_bw: 1000
+  small_vm_storage: 4000
+  medium_vm_multiplier: 2
+  large_vm_multiplier: 4
+  
+  # --- Other Settings ---
+  seed: 42                       # Change seed for different initialization
+  save_experiment: true
+  verbose: 1                     # Show training progress
+  log_interval: 1
+  device: "auto"                 # Use GPU if available
+

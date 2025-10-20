@@ -30,6 +30,7 @@ public class LoadBalancerGateway {
     private long currentSeed = 0; // Store seed for resets
     private int currentStep = 0;
     private int maxPotentialVms = 0; // Calculated based on max capacity and Size of the observation arrays for VMs
+    private int episodeCounter = 0; // Track episode number for saving results
 
     // To store reward components calculated in step for SimulationStepInfo
     private double rewardWaitTimeComponent = 0;
@@ -97,6 +98,16 @@ public class LoadBalancerGateway {
 
         // Create/Reset core components
         if (this.simulationCore != null) {
+            // Save results from previous episode BEFORE stopping simulation
+            try {
+                String episodeResultName = String.format("%s_episode_%d", settings.getSimulationName(), episodeCounter);
+                LOGGER.info("Saving results from previous episode as: {}", episodeResultName);
+                SimulationResultUtils.printAndSaveResults(this.simulationCore, episodeResultName);
+                episodeCounter++; // Increment episode counter
+            } catch (Exception e) {
+                LOGGER.error("Failed to save previous episode results: {}", e.getMessage(), e);
+            }
+
             this.simulationCore.stopSimulation(); // Ensure previous run is fully stopped
         }
         this.simulationCore = new SimulationCore(this.settings); // Calls internal reset
