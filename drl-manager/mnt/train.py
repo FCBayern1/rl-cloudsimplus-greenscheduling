@@ -58,6 +58,8 @@ def train(params: dict):
         info_keywords_to_log = (
             "reward_wait_time", "reward_unutilization",
             "reward_queue_penalty", "reward_invalid_action",
+            "reward_energy",  # Energy consumption reward component
+            "current_power_w", "cumulative_energy_wh", "average_host_utilization",  # Energy metrics
             "assignment_success",
             "invalid_action_taken",
             "actual_vm_count", "current_clock"

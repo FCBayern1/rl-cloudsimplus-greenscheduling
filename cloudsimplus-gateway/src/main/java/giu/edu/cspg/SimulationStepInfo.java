@@ -33,7 +33,13 @@ public class SimulationStepInfo {
     private final double rewardUnutilizationComponent;
     private final double rewardQueuePenaltyComponent;
     private final double rewardInvalidActionComponent;
+    private final double rewardEnergyComponent; // Energy consumption penalty
     private final List<Double> completedCloudletWaitTimes;
+
+    // Energy Metrics
+    private final double currentPowerW;          // Current power consumption in Watts
+    private final double cumulativeEnergyWh;     // Cumulative energy consumption in Watt-hours
+    private final double averageHostUtilization; // Average CPU utilization across all hosts
 
     // Constructor with all fields
     public SimulationStepInfo(boolean assignmentSuccess, boolean createVmAttempted, boolean createVmSuccess,
@@ -42,7 +48,9 @@ public class SimulationStepInfo {
             double currentClock, double rewardWaitTimeComponent,
             double rewardUnutilizationComponent,
             double rewardQueuePenaltyComponent, double rewardInvalidActionComponent,
-            int[] observationTreeArray, List<Double> completedCloudletWaitTimes) {
+            double rewardEnergyComponent,
+            int[] observationTreeArray, List<Double> completedCloudletWaitTimes,
+            double currentPowerW, double cumulativeEnergyWh, double averageHostUtilization) {
         this.assignmentSuccess = assignmentSuccess;
         this.createVmAttempted = createVmAttempted;
         this.createVmSuccess = createVmSuccess;
@@ -56,15 +64,19 @@ public class SimulationStepInfo {
         this.rewardUnutilizationComponent = rewardUnutilizationComponent;
         this.rewardQueuePenaltyComponent = rewardQueuePenaltyComponent;
         this.rewardInvalidActionComponent = rewardInvalidActionComponent;
+        this.rewardEnergyComponent = rewardEnergyComponent;
         this.observationTreeArray = observationTreeArray;
         this.completedCloudletWaitTimes = completedCloudletWaitTimes;
+        this.currentPowerW = currentPowerW;
+        this.cumulativeEnergyWh = cumulativeEnergyWh;
+        this.averageHostUtilization = averageHostUtilization;
     }
 
     // Simplified constructor for SimulationResetResult where action outcomes aren't
     // relevant
     public SimulationStepInfo(double currentClock) {
-        this(false, false, false, false, false, false, -1, 0, currentClock, 0, 0, 0, 0, new int[1],
-                new ArrayList<>());
+        this(false, false, false, false, false, false, -1, 0, currentClock, 0, 0, 0, 0, 0, new int[1],
+                new ArrayList<>(), 0, 0, 0);
     }
 
     // --- Getters ---
@@ -120,6 +132,22 @@ public class SimulationStepInfo {
         return rewardInvalidActionComponent;
     }
 
+    public double getRewardEnergyComponent() {
+        return rewardEnergyComponent;
+    }
+
+    public double getCurrentPowerW() {
+        return currentPowerW;
+    }
+
+    public double getCumulativeEnergyWh() {
+        return cumulativeEnergyWh;
+    }
+
+    public double getAverageHostUtilization() {
+        return averageHostUtilization;
+    }
+
     public String getObservationTreeArrayAsJson() {
         return gson.toJson(observationTreeArray);
     }
@@ -149,6 +177,10 @@ public class SimulationStepInfo {
         map.put("reward_unutilization", this.rewardUnutilizationComponent);
         map.put("reward_queue_penalty", this.rewardQueuePenaltyComponent);
         map.put("reward_invalid_action", this.rewardInvalidActionComponent);
+        map.put("reward_energy", this.rewardEnergyComponent);
+        map.put("current_power_w", this.currentPowerW);
+        map.put("cumulative_energy_wh", this.cumulativeEnergyWh);
+        map.put("average_host_utilization", this.averageHostUtilization);
         return map;
     }
 

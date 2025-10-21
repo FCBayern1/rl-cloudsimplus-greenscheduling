@@ -37,6 +37,14 @@ public class LoadBalancerGateway {
     private double rewardUnutilizationComponent = 0;
     private double rewardQueuePenaltyComponent = 0;
     private double rewardInvalidActionComponent = 0;
+    private double rewardEnergyComponent = 0;
+
+    // Energy tracking
+    private double cumulativeEnergyWh = 0;  // Cumulative energy consumption in Watt-hours
+    private double previousClock = 0;        // Track previous clock time for energy calculation
+    private double currentPowerW = 0;        // Current power consumption in Watts
+    private double averageHostUtilization = 0; // Average host CPU utilization
+    private double maxTotalPowerW = 0;       // Cached maximum total power of all hosts (calculated in reset)
 
     public LoadBalancerGateway() {
         // Settings will be properly initialized by configureSimulation
@@ -94,13 +102,15 @@ public class LoadBalancerGateway {
         LOGGER.info("Received reset request from Python with seed {}.", seed);
         this.currentSeed = seed; // Store seed if needed later
         this.currentStep = 0;
+        this.cumulativeEnergyWh = 0;  // Reset energy tracking
+        this.previousClock = 0;        // Reset clock tracking
         // resetEpisodeStats(); // Reset any episode-specific stats if added later
 
         // Create/Reset core components
         if (this.simulationCore != null) {
             // Save results from previous episode BEFORE stopping simulation
             try {
-                String episodeResultName = String.format("%s_episode_%d", settings.getSimulationName(), episodeCounter);
+                String episodeResultName = String.format("%s/episode_%d", settings.getSimulationName(), episodeCounter);
                 LOGGER.info("Saving results from previous episode as: {}", episodeResultName);
                 SimulationResultUtils.printAndSaveResults(this.simulationCore, episodeResultName);
                 episodeCounter++; // Increment episode counter
@@ -111,6 +121,11 @@ public class LoadBalancerGateway {
             this.simulationCore.stopSimulation(); // Ensure previous run is fully stopped
         }
         this.simulationCore = new SimulationCore(this.settings); // Calls internal reset
+
+        // Calculate actual maximum total power from all hosts (for accurate energy normalization)
+        this.maxTotalPowerW = calculateMaxTotalPower();
+        LOGGER.info("Calculated max total power: {:.2f}W from {} hosts", this.maxTotalPowerW,
+                    simulationCore.getDatacenter().getHostList().size());
 
         // Calculate max potential VMs for padding observation arrays
         this.maxPotentialVms = calculateMaxPotentialVms(settings);
@@ -203,9 +218,11 @@ public class LoadBalancerGateway {
                 this.rewardWaitTimeComponent,
                 this.rewardUnutilizationComponent,
                 this.rewardQueuePenaltyComponent, this.rewardInvalidActionComponent,
+                this.rewardEnergyComponent,
                 getInfrastructureObservation(),
                 simulationCore.getBroker()
-                        .getFinishedWaitTimesLastStep(simulationCore.getClock()));
+                        .getFinishedWaitTimesLastStep(simulationCore.getClock()),
+                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -360,9 +377,11 @@ public class LoadBalancerGateway {
                 this.rewardWaitTimeComponent,
                 this.rewardUnutilizationComponent,
                 this.rewardQueuePenaltyComponent, this.rewardInvalidActionComponent,
+                this.rewardEnergyComponent,
                 getInfrastructureObservation(),
                 simulationCore.getBroker()
-                        .getFinishedWaitTimesLastStep(simulationCore.getClock()));
+                        .getFinishedWaitTimesLastStep(simulationCore.getClock()),
+                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -420,18 +439,52 @@ public class LoadBalancerGateway {
         // 4. Invalid Action Penalty
         this.rewardInvalidActionComponent = -settings.getRewardInvalidActionCoef() * (wasInvalidAction ? 1.0 : 0.0);
 
+        // 5. Energy Consumption Penalty
+        // Goal: Minimize total energy consumption (Wh) over the entire episode, not just instantaneous power (W)
+        double currentClock = simulationCore.getClock();
+
+        // Calculate time interval BEFORE calling calculateAndUpdateEnergy (which updates previousClock)
+        double timeDeltaHours = (currentClock - previousClock) / 3600.0;
+
+        // Record cumulative energy before update
+        double previousEnergyWh = this.cumulativeEnergyWh;
+
+        // Update power and cumulative energy
+        this.currentPowerW = calculateAndUpdateEnergy(currentClock);
+        this.averageHostUtilization = calculateAverageHostUtilization();
+
+        // Calculate energy consumed in this step (Wh)
+        double stepEnergyWh = this.cumulativeEnergyWh - previousEnergyWh;
+
+        // Calculate maximum possible step energy (if all hosts were at full utilization)
+        double maxStepEnergyWh = this.maxTotalPowerW * timeDeltaHours;
+
+        // Normalize step energy consumption (0 to 1 range)
+        // This penalizes actual energy consumed (Wh), considering both power level AND duration
+        double normalizedStepEnergy = maxStepEnergyWh > 0 ? stepEnergyWh / maxStepEnergyWh : 0;
+
+        // Energy penalty based on actual energy consumed, not just instantaneous power
+        this.rewardEnergyComponent = -settings.getRewardEnergyCoef() * normalizedStepEnergy;
+
+        LOGGER.debug("Energy - Step: {:.4f}Wh, Power: {:.2f}W, Cumulative: {:.2f}Wh, " +
+                    "TimeDelta: {:.4f}h, Normalized: {:.4f}, Reward: {:.4f}",
+                    stepEnergyWh, this.currentPowerW, this.cumulativeEnergyWh,
+                    timeDeltaHours, normalizedStepEnergy, this.rewardEnergyComponent);
+
         // --- Total Reward ---
         // Note: No direct positive reward, agent optimizes by *minimizing penalties*.
         double totalReward = this.rewardWaitTimeComponent +
                 this.rewardUnutilizationComponent +
                 this.rewardQueuePenaltyComponent +
-                this.rewardInvalidActionComponent;
+                this.rewardInvalidActionComponent +
+                this.rewardEnergyComponent;
 
-        LOGGER.debug("Reward Calc LB: Wait={}, UtilBal={}, Queue={}, Invalid={}, Total={}",
+        LOGGER.debug("Reward Calc LB: Wait={}, UtilBal={}, Queue={}, Invalid={}, Energy={}, Total={}",
                 String.format("%.3f", this.rewardWaitTimeComponent),
                 String.format("%.3f", this.rewardUnutilizationComponent),
                 String.format("%.3f", this.rewardQueuePenaltyComponent),
                 String.format("%.3f", this.rewardInvalidActionComponent),
+                String.format("%.3f", this.rewardEnergyComponent),
                 String.format("%.3f", totalReward));
 
         return totalReward;
@@ -730,8 +783,9 @@ public class LoadBalancerGateway {
     public void close() {
         LOGGER.info("Received close request from Python.");
         if (simulationCore != null) {
-            // Print results before stopping
-            SimulationResultUtils.printAndSaveResults(simulationCore, settings.getSimulationName());
+            // Print results before stopping (save final episode)
+            String finalEpisodeResultName = String.format("%s/episode_%d", settings.getSimulationName(), episodeCounter);
+            SimulationResultUtils.printAndSaveResults(simulationCore, finalEpisodeResultName);
             simulationCore.stopSimulation();
         }
         // Trigger JVM shutdown
@@ -752,5 +806,99 @@ public class LoadBalancerGateway {
 
     public void setCurrentSeed(long currentSeed) {
         this.currentSeed = currentSeed;
+    }
+
+    /**
+     * Calculates current power consumption and updates cumulative energy.
+     *
+     * @param currentClock Current simulation time in seconds
+     * @return Current total power consumption in Watts
+     */
+    private double calculateAndUpdateEnergy(double currentClock) {
+        double currentPowerW = 0;
+        double timeDeltaHours = (currentClock - previousClock) / 3600.0;
+
+        var datacenter = simulationCore.getDatacenter();
+        if (datacenter == null) {
+            return 0;
+        }
+
+        var hostList = datacenter.getHostList();
+        for (var host : hostList) {
+            if (host.getPowerModel() != null) {
+                double utilization = host.getCpuPercentUtilization();
+                double power = host.getPowerModel().getPower(utilization);
+                currentPowerW += power;
+            }
+        }
+
+        // Update cumulative energy: E = P * t
+        if (timeDeltaHours > 0) {
+            cumulativeEnergyWh += currentPowerW * timeDeltaHours;
+        }
+
+        previousClock = currentClock;
+        return currentPowerW;
+    }
+
+    /**
+     * Calculates average host CPU utilization across all hosts.
+     *
+     * @return Average utilization (0.0 to 1.0)
+     */
+    private double calculateAverageHostUtilization() {
+        var datacenter = simulationCore.getDatacenter();
+        if (datacenter == null) {
+            return 0;
+        }
+
+        var hostList = datacenter.getHostList();
+        if (hostList.isEmpty()) {
+            return 0;
+        }
+
+        double totalUtilization = 0;
+        for (var host : hostList) {
+            totalUtilization += host.getCpuPercentUtilization();
+        }
+
+        return totalUtilization / hostList.size();
+    }
+
+    /**
+     * Calculates the actual maximum total power consumption of all hosts.
+     * This accounts for heterogeneous hosts with different power characteristics.
+     * Called once during reset() and cached for accurate energy normalization.
+     *
+     * @return Maximum total power in Watts when all hosts are at 100% utilization
+     */
+    private double calculateMaxTotalPower() {
+        var datacenter = simulationCore.getDatacenter();
+        if (datacenter == null) {
+            LOGGER.warn("Datacenter is null, cannot calculate max power. Using fallback.");
+            return settings.getHostsCount() * 250.0; // Fallback to old behavior
+        }
+
+        var hostList = datacenter.getHostList();
+        if (hostList.isEmpty()) {
+            LOGGER.warn("Host list is empty, cannot calculate max power. Using fallback.");
+            return settings.getHostsCount() * 250.0; // Fallback
+        }
+
+        double totalMaxPower = 0;
+        for (var host : hostList) {
+            if (host.getPowerModel() != null) {
+                // Get max power at 100% utilization
+                double maxPower = host.getPowerModel().getPower(1.0);
+                totalMaxPower += maxPower;
+                LOGGER.debug("Host {}: max power = {:.2f}W", host.getId(), maxPower);
+            } else {
+                LOGGER.warn("Host {} has no power model, using default 250W", host.getId());
+                totalMaxPower += 250.0; // Default fallback for hosts without power model
+            }
+        }
+
+        LOGGER.info("Total maximum power across {} hosts: {:.2f}W", hostList.size(), totalMaxPower);
+        return totalMaxPower;
     }
 }
