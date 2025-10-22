@@ -126,3 +126,17 @@ results/
 results/*
 rl-manager-legacy/
 rl-manager-legacy/*
+
+# Wind Power Data (Large files - exclude from git)
+**/windProduction/*.csv
+**/windProduction/*.npz
+**/windProduction/*.pkl
+**/windProduction/*.txt
+
+# SWF Prediction Models and Data
+SWF_Prediction/saved_models/
+SWF_Prediction/**/*.pth
+SWF_Prediction/**/*.pt
+SWF_Prediction/**/*.ckpt
+SWF_Prediction/**/*.npz
+SWF_Prediction/**/*.pkl
