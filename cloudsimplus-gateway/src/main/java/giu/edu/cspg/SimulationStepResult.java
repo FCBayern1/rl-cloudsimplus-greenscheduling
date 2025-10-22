@@ -1,10 +1,13 @@
 package giu.edu.cspg;
 
+import lombok.Getter;
+
 /**
  * Represents the result of executing one simulation step, conforming to the
  * Gymnasium API's expected return tuple (observation, reward, terminated,
  * truncated, info).
  */
+@Getter
 public class SimulationStepResult {
     private final ObservationState observation;
     private final double reward;
@@ -22,23 +25,14 @@ public class SimulationStepResult {
     }
 
     // --- Getters ---
-    public ObservationState getObservation() {
-        return observation;
-    }
-
-    public double getReward() {
-        return reward;
-    }
 
     public boolean isTerminated() {
         return terminated;
     }
-
     public boolean isTruncated() {
         return truncated;
     }
-
-    public SimulationStepInfo getInfo() {
+    public SimulationStepInfo getInfo() {a
         return info;
     }
 

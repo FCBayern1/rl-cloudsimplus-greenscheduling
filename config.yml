@@ -57,6 +57,18 @@ common:
   reward_queue_penalty_coef: 0.55 # Penalty for number of WAITING cloudlets (normalized)
   reward_invalid_action_coef: 1.0 # Flat penalty for attempting an invalid action
 
+  # --- Green Energy Configuration ---
+  # Enable wind turbine power integration for green datacenter scheduling
+  green_energy:
+    enabled: false                                      # Enable/disable green energy provider
+    turbine_id: 57                                      # Wind turbine ID to load from dataset
+    wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
+    prediction:
+      enabled: false                                    # Enable/disable power prediction
+      model_path: "../SWF_Prediction/saved_models/best_model.pth"  # Path to trained prediction model
+      cache_duration_seconds: 600                       # Cache prediction results for 10 minutes
+      horizon: 8                                        # Predict 8 timesteps ahead (80 minutes)
+
   # --- Observation Normalization ---
   max_queue_norm: 100.0 # Expected max queue length for normalizing observation
   max_pes_norm: 8.0 # Expected max PEs for normalizing next_cloudlet_pes obs (e.g., largest VM size)

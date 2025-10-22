@@ -1,5 +1,6 @@
 package giu.edu.cspg;
 
+import lombok.Getter;
 import org.cloudsimplus.allocationpolicies.VmAllocationPolicyRoundRobin;
 import org.cloudsimplus.datacenters.Datacenter;
 import org.cloudsimplus.hosts.Host;

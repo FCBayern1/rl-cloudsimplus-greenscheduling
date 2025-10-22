@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.gson.Gson;
+import lombok.Getter;
 
 /**
  * Contains auxiliary information about the outcome of a simulation step.
  */
+@Getter
 public class SimulationStepInfo {
     private final Gson gson = new Gson();
     // Action Outcome Flags
@@ -80,73 +82,6 @@ public class SimulationStepInfo {
     }
 
     // --- Getters ---
-    public boolean isAssignmentSuccess() {
-        return assignmentSuccess;
-    }
-
-    public boolean isCreateVmAttempted() {
-        return createVmAttempted;
-    }
-
-    public boolean isCreateVmSuccess() {
-        return createVmSuccess;
-    }
-
-    public boolean isDestroyVmAttempted() {
-        return destroyVmAttempted;
-    }
-
-    public boolean isDestroyVmSuccess() {
-        return destroyVmSuccess;
-    }
-
-    public boolean isInvalidActionTaken() {
-        return invalidActionTaken;
-    }
-
-    public int getHostAffectedId() {
-        return hostAffectedId;
-    }
-
-    public int getCoresChanged() {
-        return coresChanged;
-    }
-
-    public double getCurrentClock() {
-        return currentClock;
-    }
-
-    public double getRewardWaitTimeComponent() {
-        return rewardWaitTimeComponent;
-    }
-
-    public double getRewardUntilizationComponent() {
-        return rewardUnutilizationComponent;
-    }
-
-    public double getRewardQueuePenaltyComponent() {
-        return rewardQueuePenaltyComponent;
-    }
-
-    public double getRewardInvalidActionComponent() {
-        return rewardInvalidActionComponent;
-    }
-
-    public double getRewardEnergyComponent() {
-        return rewardEnergyComponent;
-    }
-
-    public double getCurrentPowerW() {
-        return currentPowerW;
-    }
-
-    public double getCumulativeEnergyWh() {
-        return cumulativeEnergyWh;
-    }
-
-    public double getAverageHostUtilization() {
-        return averageHostUtilization;
-    }
 
     public String getObservationTreeArrayAsJson() {
         return gson.toJson(observationTreeArray);

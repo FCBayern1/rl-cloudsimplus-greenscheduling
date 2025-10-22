@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.hosts.Host;
 import org.cloudsimplus.vms.Vm;
@@ -15,9 +17,13 @@ import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 
+import giu.edu.cspg.energy.EnergyAllocation;
+import giu.edu.cspg.energy.GreenEnergyProvider;
 import giu.edu.cspg.utils.SimulationResultUtils;
 import py4j.GatewayServer;
 
+@Getter
+@Setter
 public class LoadBalancerGateway {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadBalancerGateway.class.getSimpleName());
     private static final DecimalFormat df = new DecimalFormat("#.###");
@@ -45,6 +51,16 @@ public class LoadBalancerGateway {
     private double currentPowerW = 0;        // Current power consumption in Watts
     private double averageHostUtilization = 0; // Average host CPU utilization
     private double maxTotalPowerW = 0;       // Cached maximum total power of all hosts (calculated in reset)
+
+    // Green Energy Provider and tracking
+    private GreenEnergyProvider greenEnergyProvider = null;
+    private double cumulativeGreenEnergyWh = 0;
+    private double cumulativeBrownEnergyWh = 0;
+    private double totalWastedGreenWh = 0;
+    private double currentGreenPowerW = 0;
+
+    // Wind power predictor (Py4J interface for optional prediction service)
+    private Object windPowerPredictor = null;
 
     public LoadBalancerGateway() {
         // Settings will be properly initialized by configureSimulation
@@ -104,6 +120,10 @@ public class LoadBalancerGateway {
         this.currentStep = 0;
         this.cumulativeEnergyWh = 0;  // Reset energy tracking
         this.previousClock = 0;        // Reset clock tracking
+        this.cumulativeGreenEnergyWh = 0;  // Reset green energy tracking
+        this.cumulativeBrownEnergyWh = 0;   // Reset brown energy tracking
+        this.totalWastedGreenWh = 0;         // Reset wasted green energy tracking
+        this.currentGreenPowerW = 0;         // Reset current green power
         // resetEpisodeStats(); // Reset any episode-specific stats if added later
 
         // Create/Reset core components
@@ -124,7 +144,7 @@ public class LoadBalancerGateway {
 
         // Calculate actual maximum total power from all hosts (for accurate energy normalization)
         this.maxTotalPowerW = calculateMaxTotalPower();
-        LOGGER.info("Calculated max total power: {:.2f}W from {} hosts", this.maxTotalPowerW,
+        LOGGER.info("Calculated max total power: {}W from {} hosts", this.maxTotalPowerW,
                     simulationCore.getDatacenter().getHostList().size());
 
         // Calculate max potential VMs for padding observation arrays
@@ -138,6 +158,23 @@ public class LoadBalancerGateway {
         }
 
         LOGGER.info("Max potential VMs calculated: {}", this.maxPotentialVms);
+
+        // Initialize Green Energy Provider if enabled
+        if (settings.isGreenEnergyEnabled()) {
+            try {
+                this.greenEnergyProvider = new GreenEnergyProvider(
+                    settings.getTurbineId(),
+                    settings.getWindDataFile()
+                );
+                LOGGER.info("Green Energy Provider initialized for turbine {}", settings.getTurbineId());
+            } catch (Exception e) {
+                LOGGER.error("Failed to initialize Green Energy Provider: {}", e.getMessage(), e);
+                this.greenEnergyProvider = null;
+            }
+        } else {
+            this.greenEnergyProvider = null;
+            LOGGER.info("Green Energy Provider disabled");
+        }
 
         ObservationState initialState = getCurrentState();
         // Info at reset: clock is 0, no actions taken yet
@@ -221,11 +258,11 @@ public class LoadBalancerGateway {
                          simulationCore.getBroker().getWaitingCloudletCount() : 0;
             int finished = simulationCore.getBroker() != null ?
                           simulationCore.getBroker().getCloudletFinishedList().size() : 0;
-            LOGGER.warn("Episode TRUNCATED at step {}, clock={:.2f}s, waiting={}, finished={}",
+            LOGGER.warn("Episode TRUNCATED at step {}, clock={}s, waiting={}, finished={}",
                        currentStep, currentClock, waiting, finished);
         }
         if (terminated) {
-            LOGGER.info("Episode TERMINATED naturally at step {}, clock={:.2f}s, all_cloudlets_completed",
+            LOGGER.info("Episode TERMINATED naturally at step {}, clock={}s, all_cloudlets_completed",
                        currentStep, currentClock);
         }
 
@@ -400,11 +437,11 @@ public class LoadBalancerGateway {
                          simulationCore.getBroker().getWaitingCloudletCount() : 0;
             int finished = simulationCore.getBroker() != null ?
                           simulationCore.getBroker().getCloudletFinishedList().size() : 0;
-            LOGGER.warn("Episode TRUNCATED at step {}, clock={:.2f}s, waiting={}, finished={}",
+            LOGGER.warn("Episode TRUNCATED at step {}, clock={}s, waiting={}, finished={}",
                        currentStep, currentClock, waiting, finished);
         }
         if (terminated) {
-            LOGGER.info("Episode TERMINATED naturally at step {}, clock={:.2f}s, all_cloudlets_completed",
+            LOGGER.info("Episode TERMINATED naturally at step {}, clock={}s, all_cloudlets_completed",
                        currentStep, currentClock);
         }
 
@@ -833,34 +870,24 @@ public class LoadBalancerGateway {
         }
     }
 
-    /** Called by Main to set the server instance if shutdown is needed. */
-    public void setGatewayServer(GatewayServer server) {
-        this.gatewayServer = server;
-    }
-
-    public long getCurrentSeed() {
-        return currentSeed;
-    }
-
-    public void setCurrentSeed(long currentSeed) {
-        this.currentSeed = currentSeed;
-    }
-
     /**
      * Calculates current power consumption and updates cumulative energy.
+     * Integrates green energy allocation if enabled.
      *
      * @param currentClock Current simulation time in seconds
      * @return Current total power consumption in Watts
      */
     private double calculateAndUpdateEnergy(double currentClock) {
         double currentPowerW = 0;
-        double timeDeltaHours = (currentClock - previousClock) / 3600.0;
+        double timeDelta = currentClock - previousClock;
+        double timeDeltaHours = timeDelta / 3600.0;
 
         var datacenter = simulationCore.getDatacenter();
         if (datacenter == null) {
             return 0;
         }
 
+        // Calculate total power demand from all hosts
         var hostList = datacenter.getHostList();
         for (var host : hostList) {
             if (host.getPowerModel() != null) {
@@ -870,9 +897,32 @@ public class LoadBalancerGateway {
             }
         }
 
-        // Update cumulative energy: E = P * t
+        // Update cumulative energy
         if (timeDeltaHours > 0) {
-            cumulativeEnergyWh += currentPowerW * timeDeltaHours;
+            if (greenEnergyProvider != null) {
+                // Use green energy allocation
+                EnergyAllocation allocation = greenEnergyProvider.allocateEnergy(
+                    currentPowerW, currentClock, timeDelta
+                );
+
+                // Update green/brown energy tracking
+                cumulativeGreenEnergyWh += allocation.getGreenEnergyWh();
+                cumulativeBrownEnergyWh += allocation.getBrownEnergyWh();
+                totalWastedGreenWh += allocation.getWastedGreenWh();
+                currentGreenPowerW = allocation.getGreenPowerW();
+
+                // Total cumulative energy (green + brown)
+                cumulativeEnergyWh += allocation.getTotalEnergyWh();
+
+                LOGGER.debug("Green Energy - Green: {:.2f}Wh({:.1f}%), Brown: {:.2f}Wh, Wasted: {:.2f}Wh, GreenPower: {:.1f}W",
+                    allocation.getGreenEnergyWh(), allocation.getGreenRatio() * 100,
+                    allocation.getBrownEnergyWh(), allocation.getWastedGreenWh(),
+                    allocation.getGreenPowerW());
+            } else {
+                // Traditional brown energy only
+                cumulativeEnergyWh += currentPowerW * timeDeltaHours;
+                cumulativeBrownEnergyWh += currentPowerW * timeDeltaHours;
+            }
         }
 
         previousClock = currentClock;
@@ -938,5 +988,37 @@ public class LoadBalancerGateway {
 
         LOGGER.info("Total maximum power across {} hosts: {:.2f}W", hostList.size(), totalMaxPower);
         return totalMaxPower;
+    }
+
+    /**
+     * Register a wind power predictor service (via Py4J).
+     * This allows the GreenEnergyProvider to call the prediction model for future power forecasting.
+     *
+     * @param predictor Python predictor object accessible via Py4J
+     */
+    public void registerWindPowerPredictor(Object predictor) {
+        this.windPowerPredictor = predictor;
+        LOGGER.info("Wind power predictor registered: {}", predictor != null ? "enabled" : "disabled");
+    }
+
+    /**
+     * Get green energy statistics.
+     * Returns cumulative green/brown energy consumption and waste.
+     *
+     * @return Map containing green energy statistics
+     */
+    public Map<String, Double> getGreenEnergyStats() {
+        Map<String, Double> stats = new HashMap<>();
+        stats.put("cumulative_green_wh", cumulativeGreenEnergyWh);
+        stats.put("cumulative_brown_wh", cumulativeBrownEnergyWh);
+        stats.put("total_wasted_green_wh", totalWastedGreenWh);
+        stats.put("current_green_power_w", currentGreenPowerW);
+        stats.put("green_ratio", cumulativeEnergyWh > 0 ? cumulativeGreenEnergyWh / cumulativeEnergyWh : 0.0);
+
+        if (greenEnergyProvider != null) {
+            stats.put("overall_green_ratio", greenEnergyProvider.getOverallGreenRatio());
+        }
+
+        return stats;
     }
 }

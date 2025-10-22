@@ -88,6 +88,15 @@ public class SimulationSettings {
     private final double rewardInvalidActionCoef;
     private final double rewardEnergyCoef;
 
+    // Green Energy Configuration
+    private final boolean greenEnergyEnabled;
+    private final int turbineId;
+    private final String windDataFile;
+    private final boolean greenPredictionEnabled;
+    private final String predictionModelPath;
+    private final double predictionCacheDuration;
+    private final int predictionHorizon;
+
     /**
      * Constructor that populates settings from a Map, providing defaults.
      * 
@@ -202,6 +211,36 @@ public class SimulationSettings {
         this.rewardInvalidActionCoef = getDoubleParam(params, "reward_invalid_action_coef", 1.0);
         this.rewardEnergyCoef = getDoubleParam(params, "reward_energy_coef", 0.0); // Default 0 = disabled
 
+        // Green Energy Configuration
+        @SuppressWarnings("unchecked")
+        Map<String, Object> greenEnergyConfig = (Map<String, Object>) params.getOrDefault("green_energy", Map.of());
+        this.greenEnergyEnabled = getBoolParam(greenEnergyConfig, "enabled", false);
+        this.turbineId = getIntParam(greenEnergyConfig, "turbine_id", 1);
+        this.windDataFile = getStringParam(greenEnergyConfig, "wind_data_file",
+            "windProduction/sdwpf_2001_2112_full.csv");
+
+        // Prediction sub-configuration
+        @SuppressWarnings("unchecked")
+        Map<String, Object> predictionConfig = (Map<String, Object>) greenEnergyConfig.getOrDefault("prediction", Map.of());
+        this.greenPredictionEnabled = getBoolParam(predictionConfig, "enabled", false);
+        this.predictionModelPath = getStringParam(predictionConfig, "model_path", "");
+        this.predictionCacheDuration = getDoubleParam(predictionConfig, "cache_duration_seconds", 600.0);
+        this.predictionHorizon = getIntParam(predictionConfig, "horizon", 8);
+
+        if (this.greenEnergyEnabled) {
+            LOGGER.info("Green Energy: enabled, turbine_id={}, data_file={}",
+                this.turbineId, this.windDataFile);
+            if (this.greenPredictionEnabled) {
+                LOGGER.info("Green Prediction: enabled, horizon={}, cache={}s, model={}",
+                    this.predictionHorizon, this.predictionCacheDuration,
+                    this.predictionModelPath.isEmpty() ? "(not specified)" : this.predictionModelPath);
+            } else {
+                LOGGER.info("Green Prediction: disabled");
+            }
+        } else {
+            LOGGER.info("Green Energy: disabled");
+        }
+
         LOGGER.info("SimulationSettings loaded successfully.");
     }
 
@@ -243,7 +282,15 @@ public class SimulationSettings {
                 "rewardCostCoef=" + rewardCostCoef + ",\n" +
                 "rewardQueuePenaltyCoef=" + rewardQueuePenaltyCoef + ",\n" +
                 "rewardAssignmentCoef=" + rewardAssignmentCoef + ",\n" +
-                "rewardInvalidActionCoef=" + rewardInvalidActionCoef + "\n" +
+                "rewardInvalidActionCoef=" + rewardInvalidActionCoef + ",\n" +
+                "rewardEnergyCoef=" + rewardEnergyCoef + ",\n" +
+                "greenEnergyEnabled=" + greenEnergyEnabled + ",\n" +
+                "turbineId=" + turbineId + ",\n" +
+                "windDataFile='" + windDataFile + '\'' + ",\n" +
+                "greenPredictionEnabled=" + greenPredictionEnabled + ",\n" +
+                "predictionModelPath='" + predictionModelPath + '\'' + ",\n" +
+                "predictionCacheDuration=" + predictionCacheDuration + ",\n" +
+                "predictionHorizon=" + predictionHorizon + "\n" +
                 "}";
     }
 
