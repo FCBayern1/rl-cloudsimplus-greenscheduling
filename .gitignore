@@ -133,10 +133,14 @@ rl-manager-legacy/*
 **/windProduction/*.pkl
 **/windProduction/*.txt
 
-# SWF Prediction Models and Data
+# SWF Prediction - Large Data Files
+SWF_Prediction/Data/*.csv
+SWF_Prediction/Data/*.npz
+SWF_Prediction/Data/*.pkl
+SWF_Prediction/Data/*.txt
+
+# SWF Prediction - Models and Checkpoints
 SWF_Prediction/saved_models/
 SWF_Prediction/**/*.pth
 SWF_Prediction/**/*.pt
 SWF_Prediction/**/*.ckpt
-SWF_Prediction/**/*.npz
-SWF_Prediction/**/*.pkl
