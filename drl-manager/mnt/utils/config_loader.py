@@ -20,7 +20,7 @@ def load_config(config_file="config.yml", experiment_id="experiment_1"):
         return None
 
     try:
-        with open(config_file, "r") as file:
+        with open(config_file, "r", encoding="utf-8") as file:
             full_config = yaml.safe_load(file)
 
         if full_config is None:

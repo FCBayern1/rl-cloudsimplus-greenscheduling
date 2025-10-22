@@ -33,11 +33,19 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.7.5'
     implementation 'org.hamcrest:hamcrest:3.0'
 
+    // Lombok - Reduces boilerplate code
+    compileOnly 'org.projectlombok:lombok:1.18.36'
+    annotationProcessor 'org.projectlombok:lombok:1.18.36'
+
     testImplementation 'junit:junit:4.13.2'
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation 'org.junit.vintage:junit-vintage-engine'
     testImplementation 'com.github.stefanbirkner:system-lambda:1.2.1'
+
+    // Lombok for tests too
+    testCompileOnly 'org.projectlombok:lombok:1.18.36'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.36'
 }
 
 java {

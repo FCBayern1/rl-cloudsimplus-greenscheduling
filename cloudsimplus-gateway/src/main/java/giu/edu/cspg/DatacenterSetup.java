@@ -39,10 +39,78 @@ public class DatacenterSetup {
     public static Datacenter createDatacenter(CloudSimPlus simulation, SimulationSettings settings, List<Host> hostList,
             VmAllocationPolicy vmAllocationPolicy) {
         hostList.clear(); // Ensure list is empty
-        int numHosts = settings.getHostsCount();
-        LOGGER.info("Creating {} hosts...", numHosts);
-        for (int i = 0; i < numHosts; i++) {
-            hostList.add(createHost(settings));
+
+        if (settings.isEnableHeterogeneousHosts()) {
+            // Create heterogeneous hosts based on real server profiles (SPEC power_ssj2008)
+            LOGGER.info("Creating heterogeneous datacenter with mixed server types...");
+
+            // Create Low-Power hosts (HP ProLiant DL360 G7: 58W idle, 208W peak)
+            for (int i = 0; i < settings.getHostCountLowPower(); i++) {
+                hostList.add(createHost(HostProfile.LOW_POWER()));
+            }
+
+            // Create Medium hosts (Dell PowerEdge R720: 98W idle, 345W peak)
+            for (int i = 0; i < settings.getHostCountMedium(); i++) {
+                hostList.add(createHost(HostProfile.MEDIUM()));
+            }
+
+            // Create High-Performance hosts (Cisco UCS C240 M4: 142W idle, 476W peak)
+            for (int i = 0; i < settings.getHostCountHighPerf(); i++) {
+                hostList.add(createHost(HostProfile.HIGH_PERFORMANCE()));
+            }
+
+            // Create Ultra hosts (HPE ProLiant DL380 Gen10: 194W idle, 634W peak)
+            for (int i = 0; i < settings.getHostCountUltra(); i++) {
+                hostList.add(createHost(HostProfile.ULTRA_HIGH()));
+            }
+
+            // SPEC power_ssj2008 Real Server Profiles
+            // Create Acer Altos R520 hosts (Legacy: 155W idle, 269W peak - 57.6% idle)
+            for (int i = 0; i < settings.getHostCountSpecAcerR520(); i++) {
+                hostList.add(createHost(HostProfile.SPEC_ACER_R520()));
+            }
+
+            // Create Acer AR360 F2 hosts (Medium: 69.4W idle, 315W peak - 22.0% idle)
+            for (int i = 0; i < settings.getHostCountSpecAcerAR360(); i++) {
+                hostList.add(createHost(HostProfile.SPEC_ACER_AR360()));
+            }
+
+            // Create ASUSTeK RS720-E9/RS8 hosts (Modern efficient: 48.2W idle, 385W peak - 12.5% idle)
+            for (int i = 0; i < settings.getHostCountSpecAsusRS720E9(); i++) {
+                hostList.add(createHost(HostProfile.SPEC_ASUS_RS720_E9()));
+            }
+
+            // Create ASUSTeK RS500A-E10-PS4 hosts (Large AMD EPYC: 51.4W idle, 214W peak - 24.0% idle)
+            for (int i = 0; i < settings.getHostCountSpecAsusRS500A(); i++) {
+                hostList.add(createHost(HostProfile.SPEC_ASUS_RS500A()));
+            }
+
+            // Create ASUSTeK RS700A-E9-RS4V2 hosts (Ultra dual-socket: 106W idle, 430W peak - 24.7% idle)
+            for (int i = 0; i < settings.getHostCountSpecAsusRS700A(); i++) {
+                hostList.add(createHost(HostProfile.SPEC_ASUS_RS700A()));
+            }
+
+            LOGGER.info("Created heterogeneous datacenter: {} LowPower, {} Medium, {} HighPerf, {} Ultra = {} total hosts",
+                settings.getHostCountLowPower(), settings.getHostCountMedium(),
+                settings.getHostCountHighPerf(), settings.getHostCountUltra(), hostList.size());
+
+            // Log SPEC servers if any are configured
+            int specServerCount = settings.getHostCountSpecAcerR520() + settings.getHostCountSpecAcerAR360() +
+                                  settings.getHostCountSpecAsusRS720E9() + settings.getHostCountSpecAsusRS500A() +
+                                  settings.getHostCountSpecAsusRS700A();
+            if (specServerCount > 0) {
+                LOGGER.info("SPEC Servers: {} AcerR520, {} AcerAR360, {} AsusRS720, {} AsusRS500A, {} AsusRS700A",
+                    settings.getHostCountSpecAcerR520(), settings.getHostCountSpecAcerAR360(),
+                    settings.getHostCountSpecAsusRS720E9(), settings.getHostCountSpecAsusRS500A(),
+                    settings.getHostCountSpecAsusRS700A());
+            }
+        } else {
+            // Create homogeneous hosts (legacy mode)
+            int numHosts = settings.getHostsCount();
+            LOGGER.info("Creating {} homogeneous hosts...", numHosts);
+            for (int i = 0; i < numHosts; i++) {
+                hostList.add(createHost(settings));
+            }
         }
 
         LOGGER.info("Creating Datacenter with {} hosts and {} allocation policy.",
@@ -53,7 +121,7 @@ public class DatacenterSetup {
     }
 
     /**
-     * Creates a single Host instance based on settings.
+     * Creates a single Host instance based on settings (homogeneous mode).
      */
     private static Host createHost(SimulationSettings settings) {
         final List<Pe> peList = new ArrayList<>();
@@ -76,6 +144,36 @@ public class DatacenterSetup {
         // maxPower: 250W (typical server), staticPowerPercent: 70% (idle power is 70% of max)
         host.setPowerModel(new PowerModelHostSimple(250, 70));
         host.setStateHistoryEnabled(true); // Enable for energy consumption tracking
+
+        return host;
+    }
+
+    /**
+     * Creates a single Host instance based on a specific server profile (heterogeneous mode).
+     * Power consumption characteristics based on SPEC power_ssj2008 real server data.
+     *
+     * @param profile The server hardware profile to use
+     * @return The created Host with profile-specific power model
+     */
+    private static Host createHost(HostProfile profile) {
+        final List<Pe> peList = new ArrayList<>();
+        for (int i = 0; i < profile.getPes(); i++) {
+            peList.add(new PeSimple(profile.getPeMips(), new PeProvisionerSimple()));
+        }
+
+        Host host = new HostWithoutCreatedList(profile.getRam(),
+                profile.getBw(), profile.getStorage(), peList)
+                .setRamProvisioner(new ResourceProvisionerSimple())
+                .setBwProvisioner(new ResourceProvisionerSimple())
+                .setVmScheduler(new VmSchedulerTimeShared())
+                .setStateHistoryEnabled(true);
+
+        // Set power model based on real server characteristics
+        // PowerModelHostSimple(maxPowerW, staticPowerPercent)
+        host.setPowerModel(new PowerModelHostSimple(profile.getMaxPowerW(), profile.getStaticPowerPercent()));
+        host.setStateHistoryEnabled(true);
+
+        LOGGER.debug("Created host with profile: {}", profile);
 
         return host;
     }

@@ -195,19 +195,39 @@ public class LoadBalancerGateway {
         simulationCore.runOneTimestep(); // Run one timestep (default: 1 second)
         double currentClock = simulationCore.getClock();
 
-        // --- 3. Calculate Reward ---
-        double totalReward = calculateReward(wasInvalidAction); // Pass invalid flag
+        // 🔍 DIAGNOSTIC: Log progress every 50 steps to understand why episodes don't finish
+        if (currentStep % 50 == 0 || currentStep == 1) {
+            int waiting = simulationCore.getBroker() != null ?
+                         simulationCore.getBroker().getWaitingCloudletCount() : 0;
+            int finished = simulationCore.getBroker() != null ?
+                          simulationCore.getBroker().getCloudletFinishedList().size() : 0;
+            boolean running = simulationCore.isRunning();
 
-        // --- 4. Get New State ---
+            LOGGER.info("Step {}: Clock={}s, Waiting={}, Finished={}, SimRunning={}",
+                       currentStep, String.format("%.2f", currentClock), waiting, finished, running);
+        }
+
+        // --- 3. Get New State ---
         ObservationState newState = getCurrentState();
+
+        // --- 4. Calculate Reward ---
+        double totalReward = calculateReward(wasInvalidAction);
 
         // --- 5. Check Termination/Truncation ---
         boolean terminated = !simulationCore.isRunning();
         boolean truncated = !terminated && (currentStep >= settings.getMaxEpisodeLength());
-        if (truncated)
-            LOGGER.info("Episode truncated at step {}", currentStep);
-        if (terminated)
-            LOGGER.info("Episode terminated naturally at step {} (clock {})", currentStep, currentClock);
+        if (truncated) {
+            int waiting = simulationCore.getBroker() != null ?
+                         simulationCore.getBroker().getWaitingCloudletCount() : 0;
+            int finished = simulationCore.getBroker() != null ?
+                          simulationCore.getBroker().getCloudletFinishedList().size() : 0;
+            LOGGER.warn("Episode TRUNCATED at step {}, clock={:.2f}s, waiting={}, finished={}",
+                       currentStep, currentClock, waiting, finished);
+        }
+        if (terminated) {
+            LOGGER.info("Episode TERMINATED naturally at step {}, clock={:.2f}s, all_cloudlets_completed",
+                       currentStep, currentClock);
+        }
 
         // --- 6. Create Info Object ---
         SimulationStepInfo stepInfo = new SimulationStepInfo(
@@ -354,19 +374,39 @@ public class LoadBalancerGateway {
         simulationCore.runOneTimestep(); // Run one timestep (default: 1 second)
         double currentClock = simulationCore.getClock();
 
-        // --- 3. Calculate Reward ---
-        double totalReward = calculateReward(wasInvalidAction); // Pass invalid flag
+        // 🔍 DIAGNOSTIC: Log progress every 50 steps to understand why episodes don't finish
+        if (currentStep % 50 == 0 || currentStep == 1) {
+            int waiting = simulationCore.getBroker() != null ?
+                         simulationCore.getBroker().getWaitingCloudletCount() : 0;
+            int finished = simulationCore.getBroker() != null ?
+                          simulationCore.getBroker().getCloudletFinishedList().size() : 0;
+            boolean running = simulationCore.isRunning();
 
-        // --- 4. Get New State ---
+            LOGGER.info("Step {}: Clock={}s, Waiting={}, Finished={}, SimRunning={}",
+                       currentStep, String.format("%.2f", currentClock), waiting, finished, running);
+        }
+
+        // --- 3. Get New State ---
         ObservationState newState = getCurrentState();
+
+        // --- 4. Calculate Reward ---
+        double totalReward = calculateReward(wasInvalidAction);
 
         // --- 5. Check Termination/Truncation ---
         boolean terminated = !simulationCore.isRunning();
         boolean truncated = !terminated && (currentStep >= settings.getMaxEpisodeLength());
-        if (truncated)
-            LOGGER.info("Episode truncated at step {}", currentStep);
-        if (terminated)
-            LOGGER.info("Episode terminated naturally at step {} (clock {})", currentStep, currentClock);
+        if (truncated) {
+            int waiting = simulationCore.getBroker() != null ?
+                         simulationCore.getBroker().getWaitingCloudletCount() : 0;
+            int finished = simulationCore.getBroker() != null ?
+                          simulationCore.getBroker().getCloudletFinishedList().size() : 0;
+            LOGGER.warn("Episode TRUNCATED at step {}, clock={:.2f}s, waiting={}, finished={}",
+                       currentStep, currentClock, waiting, finished);
+        }
+        if (terminated) {
+            LOGGER.info("Episode TERMINATED naturally at step {}, clock={:.2f}s, all_cloudlets_completed",
+                       currentStep, currentClock);
+        }
 
         // --- 6. Create Info Object ---
         SimulationStepInfo stepInfo = new SimulationStepInfo(
@@ -393,9 +433,8 @@ public class LoadBalancerGateway {
     /**
      * Calculates the reward for the current state and action outcome.
      * Also stores individual components for the SimulationStepInfo object.
-     * 
-     * @param wasInvalidAction true if the action taken in this step was logically
-     *                         invalid.
+     *
+     * @param wasInvalidAction true if the action taken in this step was logically invalid.
      * @return The total calculated reward.
      */
     private double calculateReward(boolean wasInvalidAction) {
@@ -466,20 +505,19 @@ public class LoadBalancerGateway {
         // Energy penalty based on actual energy consumed, not just instantaneous power
         this.rewardEnergyComponent = -settings.getRewardEnergyCoef() * normalizedStepEnergy;
 
-        LOGGER.debug("Energy - Step: {:.4f}Wh, Power: {:.2f}W, Cumulative: {:.2f}Wh, " +
-                    "TimeDelta: {:.4f}h, Normalized: {:.4f}, Reward: {:.4f}",
+        LOGGER.debug("Energy - Step: {}Wh, Power: {}W, Cumulative: {}Wh, " +
+                    "TimeDelta: {}h, Normalized: {}, Reward: {}",
                     stepEnergyWh, this.currentPowerW, this.cumulativeEnergyWh,
                     timeDeltaHours, normalizedStepEnergy, this.rewardEnergyComponent);
 
         // --- Total Reward ---
-        // Note: No direct positive reward, agent optimizes by *minimizing penalties*.
         double totalReward = this.rewardWaitTimeComponent +
                 this.rewardUnutilizationComponent +
                 this.rewardQueuePenaltyComponent +
                 this.rewardInvalidActionComponent +
                 this.rewardEnergyComponent;
 
-        LOGGER.debug("Reward Calc LB: Wait={}, UtilBal={}, Queue={}, Invalid={}, Energy={}, Total={}",
+        LOGGER.debug("Reward Calc: Wait={}, UtilBal={}, Queue={}, Invalid={}, Energy={}, Total={}",
                 String.format("%.3f", this.rewardWaitTimeComponent),
                 String.format("%.3f", this.rewardUnutilizationComponent),
                 String.format("%.3f", this.rewardQueuePenaltyComponent),

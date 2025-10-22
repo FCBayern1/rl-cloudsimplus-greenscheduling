@@ -3,6 +3,7 @@ package giu.edu.cspg;
 import java.util.Map;
 import java.util.Objects;
 
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,8 +11,10 @@ import org.slf4j.LoggerFactory;
  * Holds simulation configuration parameters, loaded from a Map
  * (typically originating from a YAML config file via Python).
  */
+@Getter
 public class SimulationSettings {
     private static final Logger LOGGER = LoggerFactory.getLogger(SimulationSettings.class.getSimpleName());
+
 
     public final String simulationName;
 
@@ -28,6 +31,20 @@ public class SimulationSettings {
     private final long hostRam;
     private final long hostBw;
     private final long hostStorage;
+
+    // Heterogeneous Hosts Configuration
+    private final boolean enableHeterogeneousHosts;
+    private final int hostCountLowPower;
+    private final int hostCountMedium;
+    private final int hostCountHighPerf;
+    private final int hostCountUltra;
+
+    // SPEC power_ssj2008 Real Server Profiles
+    private final int hostCountSpecAcerR520;      // Legacy inefficient (8 cores, 57.6% idle)
+    private final int hostCountSpecAcerAR360;     // Medium older generation (16 cores, 22.0% idle)
+    private final int hostCountSpecAsusRS720E9;   // Modern efficient (56 cores, 12.5% idle)
+    private final int hostCountSpecAsusRS500A;    // Large AMD EPYC (64 cores, 24.0% idle)
+    private final int hostCountSpecAsusRS700A;    // Ultra dual-socket (128 cores, 24.7% idle)
 
     private final int smallVmPes;
     private final long smallVmRam;
@@ -69,6 +86,7 @@ public class SimulationSettings {
     private final double rewardQueuePenaltyCoef;
     private final double rewardAssignmentCoef;
     private final double rewardInvalidActionCoef;
+    private final double rewardEnergyCoef;
 
     /**
      * Constructor that populates settings from a Map, providing defaults.
@@ -88,6 +106,43 @@ public class SimulationSettings {
         this.hostRam = getLongParam(params, "host_ram", 65536); // 64 GB
         this.hostBw = getLongParam(params, "host_bw", 10000); // 10 Gbps
         this.hostStorage = getLongParam(params, "host_storage", 1000000); // 1 TB
+
+        // Heterogeneous Hosts Configuration (based on SPEC power_ssj2008 real servers)
+        this.enableHeterogeneousHosts = getBoolParam(params, "enable_heterogeneous_hosts", false);
+        this.hostCountLowPower = getIntParam(params, "host_count_low_power", 0);
+        this.hostCountMedium = getIntParam(params, "host_count_medium", 0);
+        this.hostCountHighPerf = getIntParam(params, "host_count_high_perf", 0);
+        this.hostCountUltra = getIntParam(params, "host_count_ultra", 0);
+
+        // SPEC power_ssj2008 Real Server Profiles Configuration
+        this.hostCountSpecAcerR520 = getIntParam(params, "host_count_spec_acer_r520", 0);
+        this.hostCountSpecAcerAR360 = getIntParam(params, "host_count_spec_acer_ar360", 0);
+        this.hostCountSpecAsusRS720E9 = getIntParam(params, "host_count_spec_asus_rs720_e9", 0);
+        this.hostCountSpecAsusRS500A = getIntParam(params, "host_count_spec_asus_rs500a", 0);
+        this.hostCountSpecAsusRS700A = getIntParam(params, "host_count_spec_asus_rs700a", 0);
+
+        // If heterogeneous hosts enabled, validate that counts match total
+        if (this.enableHeterogeneousHosts) {
+            int heterogeneousTotal = this.hostCountLowPower + this.hostCountMedium +
+                                      this.hostCountHighPerf + this.hostCountUltra +
+                                      this.hostCountSpecAcerR520 + this.hostCountSpecAcerAR360 +
+                                      this.hostCountSpecAsusRS720E9 + this.hostCountSpecAsusRS500A +
+                                      this.hostCountSpecAsusRS700A;
+            if (heterogeneousTotal > 0 && heterogeneousTotal != this.hostsCount) {
+                LOGGER.warn("Heterogeneous host counts ({}) don't match hosts_count ({}). Using heterogeneous total.",
+                    heterogeneousTotal, this.hostsCount);
+            }
+            LOGGER.info("Heterogeneous Hosts: LowPower={}, Medium={}, HighPerf={}, Ultra={}",
+                this.hostCountLowPower, this.hostCountMedium, this.hostCountHighPerf, this.hostCountUltra);
+            if (this.hostCountSpecAcerR520 + this.hostCountSpecAcerAR360 +
+                this.hostCountSpecAsusRS720E9 + this.hostCountSpecAsusRS500A +
+                this.hostCountSpecAsusRS700A > 0) {
+                LOGGER.info("SPEC Servers: AcerR520={}, AcerAR360={}, AsusRS720={}, AsusRS500A={}, AsusRS700A={}",
+                    this.hostCountSpecAcerR520, this.hostCountSpecAcerAR360,
+                    this.hostCountSpecAsusRS720E9, this.hostCountSpecAsusRS500A,
+                    this.hostCountSpecAsusRS700A);
+            }
+        }
 
         // Base (Small) VM Configuration
         this.smallVmPes = getIntParam(params, "small_vm_pes", 2); // e.g., AWS m5a.large
@@ -145,6 +200,7 @@ public class SimulationSettings {
         this.rewardQueuePenaltyCoef = getDoubleParam(params, "reward_queue_penalty_coef", 0.05);
         this.rewardAssignmentCoef = getDoubleParam(params, "reward_assignment_coef", 0.05);
         this.rewardInvalidActionCoef = getDoubleParam(params, "reward_invalid_action_coef", 1.0);
+        this.rewardEnergyCoef = getDoubleParam(params, "reward_energy_coef", 0.0); // Default 0 = disabled
 
         LOGGER.info("SimulationSettings loaded successfully.");
     }
@@ -246,160 +302,12 @@ public class SimulationSettings {
 
     // --- Getters for all parameters ---
 
-    public String getSimulationName() {
-        return simulationName;
-    }
-
-    public int getHostsCount() {
-        return hostsCount;
-    }
-
-    public int getHostPes() {
-        return hostPes;
-    }
-
-    public long getHostPeMips() {
-        return hostPeMips;
-    }
-
-    public long getHostRam() {
-        return hostRam;
-    }
-
-    public long getHostBw() {
-        return hostBw;
-    }
-
-    public long getHostStorage() {
-        return hostStorage;
-    }
-
-    public int getSmallVmPes() {
-        return smallVmPes;
-    }
-
-    public long getSmallVmRam() {
-        return smallVmRam;
-    }
-
-    public long getSmallVmBw() {
-        return smallVmBw;
-    }
-
-    public long getSmallVmStorage() {
-        return smallVmStorage;
-    }
-
-    public int getMediumVmMultiplier() {
-        return mediumVmMultiplier;
-    }
-
-    public int getLargeVmMultiplier() {
-        return largeVmMultiplier;
-    }
-
-    public int getInitialSVmCount() {
-        return initialSVmCount;
-    }
-
-    public int getInitialMVmCount() {
-        return initialMVmCount;
-    }
-
-    public int getInitialLVmCount() {
-        return initialLVmCount;
-    }
-
     public int[] getInitialVmCounts() {
         return initialVmCounts.clone();
     } // Return copy
 
-    public String getWorkloadMode() {
-        return workloadMode;
-    }
-
-    public String getCloudletTraceFile() {
-        return cloudletTraceFile;
-    }
-
-    public int getWorkloadReaderMips() {
-        return workloadReaderMips;
-    }
-
-    public int getMaxCloudletsToCreateFromWorkloadFile() {
-        return maxCloudletsToCreateFromWorkloadFile;
-    }
-
-    public boolean isSplitLargeCloudlets() {
-        return splitLargeCloudlets;
-    }
-
-    public int getMaxCloudletPes() {
-        return maxCloudletPes;
-    }
-
-    public double getSimulationTimestep() {
-        return simulationTimestep;
-    }
-
-    public double getMinTimeBetweenEvents() {
-        return minTimeBetweenEvents;
-    }
-
-    public double getVmStartupDelay() {
-        return vmStartupDelay;
-    }
-
-    public double getVmShutdownDelay() {
-        return vmShutdownDelay;
-    }
-
-    public double getSmallVmHourlyCost() {
-        return smallVmHourlyCost;
-    }
-
-    public boolean isPayingForTheFullHour() {
-        return payingForTheFullHour;
-    }
-
-    public int getMaxEpisodeLength() {
-        return maxEpisodeLength;
-    }
-
-    public double getRewardWaitTimeCoef() {
-        return rewardWaitTimeCoef;
-    }
-
-    public double getRewardThroughputCoef() {
-        return rewardThroughputCoef;
-    }
-
-    public double getRewardUnutilizationCoef() {
-        return rewardUnutilizationCoef;
-    }
-
-    public double getRewardCostCoef() {
-        return rewardCostCoef;
-    }
-
-    public double getRewardQueuePenaltyCoef() {
-        return rewardQueuePenaltyCoef;
-    }
-
-    public double getRewardInvalidActionCoef() {
-        return rewardInvalidActionCoef;
-    }
-
-    public boolean isClearCreatedLists() {
-        return clearCreatedLists;
-    }
-
     public long getTotalHostCores() {
         return hostsCount * hostPes;
-    }
-
-    public int getMaxVms() {
-        return maxVms;
     }
 
     /**

@@ -445,3 +445,430 @@ experiment_5_improved:
   log_interval: 1
   device: "auto"                 # Use GPU if available
 
+# ===================================================================
+# Experiment 6: Energy-Aware Green Scheduling
+# ===================================================================
+# Focus: Minimize energy consumption while maintaining performance
+# Key innovation: Add energy penalty to reward function
+# Trade-off: Balance between task completion time and energy efficiency
+# ===================================================================
+
+experiment_6_green:
+  # --- Identification ---
+  simulation_name: "Exp6_Green_EnergyAware"
+  experiment_name: "exp6_green_energy"
+  experiment_type_dir: "Green_Scheduling"
+
+  # --- Workload (Same as Exp5 for comparison) ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Algorithm & Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 100000              # Sufficient training
+  learning_rate: 0.0003          # Same as Exp5
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.05                 # Encourage exploration
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+  # --- VM Fleet (Balanced configuration) ---
+  initial_s_vm_count: 15         # More VMs to reduce wait time
+  initial_m_vm_count: 10
+  initial_l_vm_count: 5
+  # Total: 30 VMs, 180 cores
+
+  # --- Reward Weights (Green Scheduling Focus) ---
+  reward_wait_time_coef: 1.0           # Maintain performance
+  reward_unutilization_coef: 0.5       # Encourage efficient resource use
+  reward_cost_coef: 0.3                # Lower priority (cost secondary to energy)
+  reward_queue_penalty_coef: 0.8       # Keep tasks moving
+  reward_invalid_action_coef: 2.0      # Penalize invalid actions
+  reward_energy_coef: 1.5              # 🌱 KEY: High energy penalty for green scheduling
+
+  # --- Episode Configuration ---
+  max_episode_length: 300              # Enough time to complete all tasks
+
+  # --- Infrastructure (Standard) ---
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536
+  host_bw: 50000
+  host_storage: 100000
+
+  # --- VM Specs ---
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_bw: 1000
+  small_vm_storage: 4000
+  medium_vm_multiplier: 2
+  large_vm_multiplier: 4
+
+  # --- Other Settings ---
+  seed: 123                      # Different seed for variety
+  save_experiment: true
+  verbose: 1
+  log_interval: 1
+  device: "auto"
+
+# ===================================================================
+# Experiment 7: Extreme Green - Maximum Energy Savings
+# ===================================================================
+# Ultra-aggressive energy optimization, accepting longer wait times
+# ===================================================================
+
+experiment_7_ultra_green:
+  # --- Identification ---
+  simulation_name: "Exp7_UltraGreen_MaxSavings"
+  experiment_name: "exp7_ultra_green"
+  experiment_type_dir: "Green_Scheduling"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Algorithm & Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 150000              # Longer training for complex trade-off
+  learning_rate: 0.0003
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.08                 # More exploration for energy-saving strategies
+
+  # --- VM Fleet (Minimal for energy savings) ---
+  initial_s_vm_count: 8          # Fewer VMs = lower baseline power
+  initial_m_vm_count: 5
+  initial_l_vm_count: 3
+  # Total: 16 VMs, 96 cores
+
+  # --- Reward Weights (Extreme Green) ---
+  reward_wait_time_coef: 0.3           # 🔽 Lower: Accept longer waits
+  reward_unutilization_coef: 1.0       # High: Maximize VM usage
+  reward_cost_coef: 0.2                # Low priority
+  reward_queue_penalty_coef: 0.3       # Lower: Accept some queuing
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 3.0              # 🌱🌱🌱 EXTREME: Maximize energy savings
+
+  # --- Episode Configuration ---
+  max_episode_length: 500              # Much longer to accommodate slower execution
+
+  # --- Infrastructure ---
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+
+  # --- Other Settings ---
+  seed: 456
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+# ===================================================================
+# Experiment 8: Heterogeneous Datacenter - Real Server Profiles
+# ===================================================================
+# Features:
+# - Mixed server types based on SPEC power_ssj2008 real data
+# - Different power consumption characteristics per host type
+# - Energy-aware scheduling learns to utilize efficient servers
+# ===================================================================
+
+experiment_8_heterogeneous:
+  # --- Identification ---
+  simulation_name: "Exp8_Heterogeneous_RealServers"
+  experiment_name: "exp8_heterogeneous"
+  experiment_type_dir: "Heterogeneous_Green"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Algorithm & Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 100000
+  learning_rate: 0.0003
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.05
+
+  # 🌟 HETEROGENEOUS HOSTS CONFIGURATION 🌟
+  # Enable heterogeneous datacenter with real server profiles
+  enable_heterogeneous_hosts: true
+
+  # Server distribution (total: 32 hosts)
+  # Based on SPEC power_ssj2008 real server data:
+
+  host_count_low_power: 10      # HP ProLiant DL360 G7
+                                 # - 8 cores, 32GB RAM
+                                 # - Idle: 58W, Peak: 208W
+                                 # - Energy efficient for light workloads
+
+  host_count_medium: 12          # Dell PowerEdge R720
+                                 # - 16 cores, 64GB RAM
+                                 # - Idle: 98W, Peak: 345W
+                                 # - Balanced performance
+
+  host_count_high_perf: 8        # Cisco UCS C240 M4
+                                 # - 24 cores, 128GB RAM
+                                 # - Idle: 142W, Peak: 476W
+                                 # - High performance for heavy tasks
+
+  host_count_ultra: 2            # HPE ProLiant DL380 Gen10
+                                 # - 32 cores, 256GB RAM
+                                 # - Idle: 194W, Peak: 634W
+                                 # - Reserved for peak loads
+
+  hosts_count: 32                # Total (should match sum above)
+
+  # --- VM Fleet ---
+  initial_s_vm_count: 15
+  initial_m_vm_count: 10
+  initial_l_vm_count: 5
+
+  # --- Reward Weights (Green + Heterogeneous Aware) ---
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 0.8     # Encourage high utilization
+  reward_cost_coef: 0.3
+  reward_queue_penalty_coef: 0.7
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 2.0            # 🔋 High energy penalty to learn efficient server selection
+
+  # --- Episode Configuration ---
+  max_episode_length: 300
+
+  # --- Other Settings ---
+  seed: 789
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+# ===================================================================
+# Experiment 9: Extreme Heterogeneous - Maximize Energy Diversity
+# ===================================================================
+# Testing agent's ability to exploit server diversity for energy savings
+# ===================================================================
+
+experiment_9_extreme_hetero:
+  # --- Identification ---
+  simulation_name: "Exp9_ExtremeHetero_MaxDiversity"
+  experiment_name: "exp9_extreme_hetero"
+  experiment_type_dir: "Heterogeneous_Green"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 150000              # Longer training for complex optimization
+  learning_rate: 0.0003
+
+  # 🌟 EXTREME HETEROGENEITY 🌟
+  enable_heterogeneous_hosts: true
+
+  # Highly diverse server mix
+  host_count_low_power: 16       # Majority low-power for efficiency
+  host_count_medium: 8           # Some balanced servers
+  host_count_high_perf: 6        # Limited high-perf
+  host_count_ultra: 2            # Minimal ultra for emergencies
+
+  hosts_count: 32
+
+  # --- VM Fleet (Smaller to force smart placement) ---
+  initial_s_vm_count: 10
+  initial_m_vm_count: 6
+  initial_l_vm_count: 4
+
+  # --- Reward Weights (Extreme Green) ---
+  reward_wait_time_coef: 0.5          # 🔽 Lower: accept delays for energy savings
+  reward_unutilization_coef: 1.5      # 🔼 High: maximize usage of active servers
+  reward_cost_coef: 0.2
+  reward_queue_penalty_coef: 0.4
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 4.0             # 🔋🔋🔋 EXTREME: Learn to prefer low-power servers
+
+  # --- Episode Configuration ---
+  max_episode_length: 400
+
+  # --- Other Settings ---
+  seed: 999
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+# ===================================================================
+# Experiment 10: Real SPEC Servers - Authentic Power Profiles
+# ===================================================================
+# Uses exact server configurations from SPEC power_ssj2008 benchmark data
+# Includes legacy inefficient servers and modern efficient AMD EPYC systems
+# Realistic heterogeneous datacenter with wide efficiency range (12.5% to 57.6% idle power)
+# ===================================================================
+
+experiment_10_spec_real:
+  # --- Identification ---
+  simulation_name: "Exp10_SPEC_RealServers"
+  experiment_name: "exp10_spec_real"
+  experiment_type_dir: "SPEC_Authentic"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/synthetic_dense_200s.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 150000              # Extended training for complex server selection
+  learning_rate: 0.0003
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.05
+
+  # 🌟 SPEC POWER_SSJ2008 REAL SERVERS 🌟
+  # Enable heterogeneous datacenter with exact benchmark data
+  enable_heterogeneous_hosts: true
+
+  # Real server distribution (total: 28 hosts)
+  # Using actual SPEC power_ssj2008 benchmark data from ASUSTeK and Acer:
+
+  host_count_spec_acer_r520: 4        # Acer Altos R520 (Legacy)
+                                       # - Intel Xeon E5450, 8 cores, 16GB RAM
+                                       # - Idle: 155W, Peak: 269W (57.6% idle!)
+                                       # - Very inefficient, legacy workloads only
+                                       # - Realistic: old servers still in production
+
+  host_count_spec_acer_ar360: 6       # Acer AR360 F2 (Medium Older)
+                                       # - Intel Xeon E5-2660, 16 cores, 32GB RAM
+                                       # - Idle: 69.4W, Peak: 315W (22.0% idle)
+                                       # - Transition-era efficiency
+
+  host_count_spec_asus_rs720_e9: 8    # ASUSTeK RS720-E9/RS8 (Modern Efficient)
+                                       # - Intel Xeon Platinum 8180, 56 cores, 128GB RAM
+                                       # - Idle: 48.2W, Peak: 385W (12.5% idle) ⚡
+                                       # - HIGHLY EFFICIENT: Best idle power ratio
+                                       # - Primary workhorse servers
+
+  host_count_spec_asus_rs500a: 8      # ASUSTeK RS500A-E10-PS4 (Large AMD EPYC)
+                                       # - AMD EPYC 7742, 64 cores, 256GB RAM
+                                       # - Idle: 51.4W, Peak: 214W (24.0% idle)
+                                       # - EXTREMELY POWER EFFICIENT: Lowest peak power
+                                       # - 64 cores with only 214W peak!
+
+  host_count_spec_asus_rs700a: 2      # ASUSTeK RS700A-E9-RS4V2 (Ultra Dual-Socket)
+                                       # - AMD EPYC 7742 x2, 128 cores, 512GB RAM
+                                       # - Idle: 106W, Peak: 430W (24.7% idle)
+                                       # - Massive capacity for peak loads
+
+  hosts_count: 28                      # Total (4+6+8+8+2 = 28 hosts)
+
+  # --- VM Fleet (Optimized for SPEC server capacities) ---
+  initial_s_vm_count: 30              # Small VMs for light tasks
+  initial_m_vm_count: 15               # Medium VMs for balanced workloads
+  initial_l_vm_count: 10               # Large VMs for heavy computation
+
+  # --- Reward Weights (Green Optimization with Real Server Data) ---
+  reward_wait_time_coef: 1.0          # Maintain performance
+  reward_unutilization_coef: 1.0      # High utilization to minimize active servers
+  reward_cost_coef: 0.5
+  reward_queue_penalty_coef: 0.8
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 1.5             # 🔋 Strong energy optimization
+                                       # Agent should learn:
+                                       # - Avoid Acer R520 (57.6% idle - terrible!)
+                                       # - Prefer ASUS RS720 (12.5% idle - excellent!)
+                                       # - Use ASUS RS500A for efficiency (214W peak!)
+                                       # - Reserve RS700A for true peak demands
+
+  # --- Episode Configuration ---
+  max_episode_length: 1200              # Increased to allow natural episode completion
+
+  # --- Other Settings ---
+  seed: 1010
+  save_experiment: true
+  verbose: 1
+  device: "cuda"  # Force CPU (RTX 5080 not supported yet)
+
+
+# ===================================================================
+# DEBUG: Single Episode Test
+# ===================================================================
+experiment_10_spec_real_debug:
+  # --- Identification ---
+  simulation_name: "Exp10_SPEC_DEBUG"
+  experiment_name: "exp10_spec_real_debug"
+  experiment_type_dir: "DEBUG"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training: ONLY 1 EPISODE ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 400              # Just enough for 1 episode
+  learning_rate: 0.0003
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.05
+
+  # SPEC Servers
+  enable_heterogeneous_hosts: true
+  host_count_spec_acer_r520: 4
+  host_count_spec_acer_ar360: 6
+  host_count_spec_asus_rs720_e9: 8
+  host_count_spec_asus_rs500a: 8
+  host_count_spec_asus_rs700a: 2
+  hosts_count: 28
+
+  # VM Fleet
+  initial_s_vm_count: 12
+  initial_m_vm_count: 8
+  initial_l_vm_count: 6
+
+  # Reward Weights
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_cost_coef: 0.5
+  reward_queue_penalty_coef: 0.8
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 2.5
+
+  # Episode Configuration
+  max_episode_length: 600  # Increased to allow natural episode completion
+
+  # Other Settings
+  seed: 1010
+  save_experiment: true
+  verbose: 2               # VERBOSE logging!
+  device: "cuda"

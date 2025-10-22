@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import lombok.Getter;
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.core.CloudSimPlus;
 import org.cloudsimplus.core.CloudSimTag;
@@ -18,6 +19,8 @@ import org.slf4j.LoggerFactory;
 
 import giu.edu.cspg.utils.WorkloadFileReader;
 
+
+@Getter
 public final class SimulationCore {
     private static final Logger LOGGER = LoggerFactory.getLogger(SimulationCore.class.getSimpleName());
 
@@ -367,19 +370,6 @@ public final class SimulationCore {
         }
         boolean waiting = broker != null && broker.hasUnfinishedCloudlets();
         return waiting && simulation.isRunning();
-    }
-
-    // --- Getters ---
-    public CloudSimPlus getSimulation() {
-        return simulation;
-    }
-
-    public Datacenter getDatacenter() {
-        return datacenter;
-    }
-
-    public LoadBalancingBroker getBroker() {
-        return broker;
     }
 
     // This now returns the potentially dynamic list of VMs known to the broker
