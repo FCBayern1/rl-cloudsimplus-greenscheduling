@@ -128,6 +128,26 @@ experiment_1:
   workload_mode: "CSV"
   cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
 
+  mode: "train"
+  algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
+  timesteps: 50000  # Longer training
+  learning_rate: 0.0001  # Lower LR for stability
+
+  n_steps: 512  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+
+  reward_wait_time_coef: 0.1        # Increase wait time penalty
+  reward_throughput_coef: 0.085
+  reward_unutilization_coef: 0.05    # Double utilization weight (from 0.25)
+  reward_cost_coef: 0.05             # Increase cost weight (from 0.35)
+  reward_queue_penalty_coef: 0.055
+  reward_invalid_action_coef: 0.2   # Harshly penalize invalid actions (from 1.0)
+
 # ===================================================================
 # Experiment 2: Large-Scale LLNL Workload with Optimized Parameters
 # ===================================================================
@@ -976,8 +996,8 @@ experiment_4_maskable_lstm:
   algorithm: "RecurrentPPO"
   policy: "MultiInputLstmPolicy"   # Dict observation → use MultiInput variant
 
-  timesteps: 240000                # Need multiple updates for LSTM credit assignment
-  learning_rate: 0.0005
+  timesteps: 120000                # Need multiple updates for LSTM credit assignment
+  learning_rate: 0.0002
   n_steps: 1024                    # Prefer multiples of episode length for RNNs
   batch_size: 256                  # Must divide n_steps * n_envs; here n_envs=1
   n_epochs: 10
@@ -990,7 +1010,7 @@ experiment_4_maskable_lstm:
 
   policy_kwargs:
     lstm_hidden_size: 256
-    n_lstm_layers: 2
+    n_lstm_layers: 1
     shared_lstm: true              # Actor & critic share the LSTM core
     enable_critic_lstm: false      # MUST be false when shared_lstm=true
     # For shared LSTM: input → LSTM → split to pi/vf MLP heads
@@ -1055,6 +1075,184 @@ experiment_3_debug_v4:
 
   # --- Other Settings ---
   seed: 44
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+# ===================================================================
+# HIERARCHICAL MULTI-DATACENTER EXPERIMENTS
+# ===================================================================
+
+# ===================================================================
+# Experiment: Hierarchical Multi-DC - 3 Datacenters
+# ===================================================================
+# Two-level Hierarchical MARL:
+# - Global Agent: Routes cloudlets to datacenters
+# - Local Agents: Schedule cloudlets to VMs within each DC (parameter sharing)
+#
+# Features:
+# - 3 heterogeneous datacenters with different wind turbines
+# - Independent green energy sources per DC
+# - Smart router (no global queue) - immediate routing upon arrival
+# ===================================================================
+
+experiment_multi_dc_3:
+  # --- Identification ---
+  simulation_name: "Hierarchical_3DC_Green"
+  experiment_name: "hierarchical_3dc"
+  experiment_type_dir: "Multi_Datacenter"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true      # Enable multi-DC mode
+  py4j_port: 25333                     # Py4J gateway port
+  max_arriving_cloudlets: 50           # Max cloudlets arriving per timestep (for action space sizing)
+
+  # --- Datacenter Configurations ---
+  datacenters:
+    # Datacenter 0: High-Performance DC
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      turbine_id: 57                   # Wind turbine ID
+      wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
+      green_energy_enabled: true
+
+      # Infrastructure
+      hosts_count: 20
+      host_pes: 24                     # More powerful hosts
+      host_pe_mips: 60000              # Higher MIPS
+      host_ram: 131072                 # 128 GB
+      host_bw: 100000                  # 100 Gbps
+      host_storage: 200000             # 200 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 20
+      initial_m_vm_count: 10
+      initial_l_vm_count: 6
+
+      # VM Delays
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 1: Energy-Efficient DC
+    - datacenter_id: 1
+      name: "DC_EnergyEfficient"
+      turbine_id: 58                   # Different turbine
+      wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
+      green_energy_enabled: true
+
+      # Infrastructure (lower power, more hosts)
+      hosts_count: 24
+      host_pes: 16
+      host_pe_mips: 50000
+      host_ram: 65536                  # 64 GB
+      host_bw: 50000                   # 50 Gbps
+      host_storage: 100000             # 100 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 18
+      initial_m_vm_count: 8
+      initial_l_vm_count: 4
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 2: Edge DC (Lower capacity)
+    - datacenter_id: 2
+      name: "DC_Edge"
+      turbine_id: 59                   # Different turbine
+      wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
+      green_energy_enabled: true
+
+      # Infrastructure (smaller, edge location)
+      hosts_count: 12
+      host_pes: 12
+      host_pe_mips: 40000              # Lower MIPS
+      host_ram: 32768                  # 32 GB
+      host_bw: 25000                   # 25 Gbps
+      host_storage: 50000              # 50 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 4096               # Smaller VMs
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 3           # Smaller large VMs
+
+      # Initial VM Fleet
+      initial_s_vm_count: 12
+      initial_m_vm_count: 6
+      initial_l_vm_count: 2
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/poisson_05_300.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 2000
+
+  # --- Global Agent Configuration ---
+  global_agent:
+    algorithm: "PPO"
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    # Global reward weights
+    reward_total_energy_coef: 2.0     # Minimize total energy consumption
+    reward_green_ratio_coef: 3.0      # Maximize green energy usage ratio
+    reward_load_balance_coef: 1.5     # Balance load across DCs
+    reward_global_queue_coef: 1.0     # Minimize total waiting cloudlets
+
+  # --- Local Agents Configuration ---
+  local_agents:
+    algorithm: "MaskablePPO"
+    parameter_sharing: true            # Share parameters across local agents
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    # Local reward weights
+    reward_wait_time_coef: 1.0        # Minimize local wait time
+    reward_utilization_coef: 0.8      # Maximize local utilization
+    reward_local_queue_coef: 0.5      # Minimize local queue size
+    reward_invalid_action_coef: 2.0   # Penalize invalid assignments
+
+  # --- Training Configuration ---
+  mode: "train"
+  timesteps: 150000                    # Total timesteps for training
+  seed: 2025
   save_experiment: true
   verbose: 1
   device: "auto"

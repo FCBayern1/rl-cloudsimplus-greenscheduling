@@ -199,6 +199,50 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             if self.logger is not None:
                  # Record custom metrics maybe? Monitor already handles reward/length.
                  self.logger.record("rollout/ep_num_monitor", self.current_episode_num_monitor)
+
+                 # === Log Energy Consumption Statistics ===
+                 # Get final (cumulative) values from the last step of the episode
+                 if len(self.cumulative_green_energy_whs) > 0:
+                     final_green_wh = self.cumulative_green_energy_whs[-1]
+                     final_brown_wh = self.cumulative_brown_energy_whs[-1]
+                     final_total_wh = final_green_wh + final_brown_wh
+                     final_wasted_wh = self.total_wasted_green_whs[-1]
+                     final_clock = self.current_clocks[-1] if len(self.current_clocks) > 0 else 0
+
+                     # Calculate metrics
+                     green_ratio = final_green_wh / final_total_wh if final_total_wh > 0 else 0
+                     total_green_available = final_green_wh + final_wasted_wh
+                     green_utilization = final_green_wh / total_green_available if total_green_available > 0 else 0
+
+                     # Calculate average power
+                     episode_duration_h = (final_clock / 3600.0) if final_clock > 0 else 1e-6
+                     avg_power_w = final_total_wh / episode_duration_h
+                     avg_green_power_w = np.mean(self.current_green_power_ws) if len(self.current_green_power_ws) > 0 else 0
+
+                     # Record to TensorBoard/CSV
+                     self.logger.record("energy/total_energy_wh", final_total_wh)
+                     self.logger.record("energy/total_energy_kwh", final_total_wh / 1000.0)
+                     self.logger.record("energy/green_energy_wh", final_green_wh)
+                     self.logger.record("energy/green_energy_kwh", final_green_wh / 1000.0)
+                     self.logger.record("energy/brown_energy_wh", final_brown_wh)
+                     self.logger.record("energy/brown_energy_kwh", final_brown_wh / 1000.0)
+                     self.logger.record("energy/wasted_green_wh", final_wasted_wh)
+                     self.logger.record("energy/wasted_green_kwh", final_wasted_wh / 1000.0)
+                     self.logger.record("energy/green_ratio", green_ratio)
+                     self.logger.record("energy/green_ratio_percentage", green_ratio * 100)
+                     self.logger.record("energy/green_utilization", green_utilization)
+                     self.logger.record("energy/green_utilization_percentage", green_utilization * 100)
+                     self.logger.record("energy/avg_power_w", avg_power_w)
+                     self.logger.record("energy/avg_power_kw", avg_power_w / 1000.0)
+                     self.logger.record("energy/avg_green_power_w", avg_green_power_w)
+                     self.logger.record("energy/avg_green_power_kw", avg_green_power_w / 1000.0)
+                     self.logger.record("energy/episode_duration_s", final_clock)
+                     self.logger.record("energy/episode_duration_h", episode_duration_h)
+
+                     # Log summary to console for visibility
+                     if self.verbose > 0:
+                         logger.info(f"  Energy Summary - Total: {final_total_wh:.2f} Wh, Green: {green_ratio*100:.1f}%, Wasted: {final_wasted_wh:.2f} Wh")
+
                  # Let SB3 core handle logger.dump to avoid resetting CSV headers early
 
 

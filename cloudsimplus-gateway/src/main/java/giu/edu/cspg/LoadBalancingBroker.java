@@ -147,6 +147,34 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
     }
 
     /**
+     * Receive a cloudlet from GlobalBroker and add it to the local waiting queue.
+     * This method is called when the Global Agent routes a cloudlet to this datacenter.
+     *
+     * @param cloudlet The cloudlet to receive
+     * @return true if cloudlet was successfully added to queue, false otherwise
+     */
+    public boolean receiveCloudlet(Cloudlet cloudlet) {
+        if (cloudlet == null) {
+            logger.warn("{}: {} Attempted to receive null cloudlet",
+                    getSimulation().clockStr(), getName());
+            return false;
+        }
+
+        // Add cloudlet to waiting queue
+        cloudletWaitingQueue.offer(cloudlet);
+
+        // Add listeners if not already added
+        addOnStartListener(cloudlet);
+        addOnFinishListener(cloudlet);
+
+        logger.debug("{}: {} Received Cloudlet {} from GlobalBroker (Queue size: {})",
+                getSimulation().clockStr(), getName(), cloudlet.getId(),
+                cloudletWaitingQueue.size());
+
+        return true;
+    }
+
+    /**
      * Assigns the next waiting cloudlet from the internal queue to the specified
      * VM.
      * Called by the LoadBalancerGateway based on the RL agent's action

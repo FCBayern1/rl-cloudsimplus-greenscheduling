@@ -248,4 +248,145 @@ public class DatacenterSetup {
     public int getLastCreatedVmId() {
         return vmIdCounter - 1;
     }
+
+    // ====================================================================
+    // Multi-Datacenter Support: Methods for DatacenterConfig
+    // ====================================================================
+
+    /**
+     * Create hosts for a specific datacenter based on DatacenterConfig.
+     *
+     * @param config Datacenter configuration
+     * @return List of created hosts
+     */
+    public static List<Host> createHostsForDatacenter(DatacenterConfig config) {
+        List<Host> hostList = new ArrayList<>();
+
+        // Create homogeneous hosts based on config
+        for (int i = 0; i < config.getHostsCount(); i++) {
+            // Create PEs list for this host
+            List<Pe> peList = new ArrayList<>();
+            for (int j = 0; j < config.getHostPes(); j++) {
+                peList.add(new PeSimple(config.getHostPeMips(), new PeProvisionerSimple()));
+            }
+
+            // Create host using HostWithoutCreatedList (memory optimized)
+            Host host = new HostWithoutCreatedList(
+                    config.getHostRam(),
+                    config.getHostBw(),
+                    config.getHostStorage(),
+                    peList
+            )
+            .setRamProvisioner(new ResourceProvisionerSimple())
+            .setBwProvisioner(new ResourceProvisionerSimple())
+            .setVmScheduler(new VmSchedulerTimeShared())
+            .setStateHistoryEnabled(true);
+
+            // Add power model (using default power model)
+            double maxPower = 250.0; // Watts
+            double staticPowerPercent = 70;  // 70% static power
+            host.setPowerModel(new PowerModelHostSimple(maxPower, staticPowerPercent));
+
+            hostList.add(host);
+        }
+
+        LOGGER.info("Created {} hosts for datacenter {} ({})",
+                hostList.size(), config.getDatacenterId(), config.getDatacenterName());
+
+        return hostList;
+    }
+
+    /**
+     * Create a Datacenter from DatacenterConfig.
+     *
+     * @param simulation CloudSimPlus instance
+     * @param config Datacenter configuration
+     * @param hostList List of hosts for this datacenter
+     * @param vmAllocationPolicy VM allocation policy
+     * @return Created Datacenter
+     */
+    public static Datacenter createDatacenterFromConfig(
+            CloudSimPlus simulation,
+            DatacenterConfig config,
+            List<Host> hostList,
+            VmAllocationPolicy vmAllocationPolicy) {
+
+        // Create datacenter using CloudSim Plus API
+        Datacenter datacenter = new DatacenterSimple(simulation, hostList, vmAllocationPolicy)
+                .setCharacteristics(new DatacenterCharacteristicsSimple(0.75, 0.02, 0.001, 0.005));
+
+        datacenter.setName(config.getDatacenterName());
+
+        LOGGER.info("Datacenter created: {} (ID: {}) with {} hosts",
+                config.getDatacenterName(), config.getDatacenterId(), hostList.size());
+
+        return datacenter;
+    }
+
+    /**
+     * Create VM fleet for a specific datacenter based on DatacenterConfig.
+     *
+     * @param config Datacenter configuration
+     * @param vmPool List to populate with created VMs
+     */
+    public static void createVmFleetForDatacenter(DatacenterConfig config, List<Vm> vmPool) {
+        vmPool.clear();
+
+        // Create Small VMs
+        for (int i = 0; i < config.getInitialSmallVmCount(); i++) {
+            Vm vm = createVm(
+                    vmIdCounter++,
+                    config.getSmallVmPes(),
+                    config.getSmallVmRam(),
+                    config.getSmallVmBw(),
+                    config.getSmallVmStorage()
+            );
+            vmPool.add(vm);
+        }
+
+        // Create Medium VMs
+        int mediumPes = config.getMediumVmPes();
+        long mediumRam = config.getMediumVmRam();
+        for (int i = 0; i < config.getInitialMediumVmCount(); i++) {
+            Vm vm = createVm(
+                    vmIdCounter++,
+                    mediumPes,
+                    mediumRam,
+                    config.getSmallVmBw() * config.getMediumVmMultiplier(),
+                    config.getSmallVmStorage() * config.getMediumVmMultiplier()
+            );
+            vmPool.add(vm);
+        }
+
+        // Create Large VMs
+        int largePes = config.getLargeVmPes();
+        long largeRam = config.getLargeVmRam();
+        for (int i = 0; i < config.getInitialLargeVmCount(); i++) {
+            Vm vm = createVm(
+                    vmIdCounter++,
+                    largePes,
+                    largeRam,
+                    config.getSmallVmBw() * config.getLargeVmMultiplier(),
+                    config.getSmallVmStorage() * config.getLargeVmMultiplier()
+            );
+            vmPool.add(vm);
+        }
+
+        LOGGER.info("Created {} VMs for datacenter {} (S:{}, M:{}, L:{})",
+                vmPool.size(), config.getDatacenterId(),
+                config.getInitialSmallVmCount(),
+                config.getInitialMediumVmCount(),
+                config.getInitialLargeVmCount());
+    }
+
+    /**
+     * Helper method to create a single VM.
+     */
+    private static Vm createVm(int id, int pes, long ram, long bw, long storage) {
+        Vm vm = new VmSimple(id, 1000, pes);  // 1000 MIPS per PE
+        vm.setRam(ram)
+                .setBw(bw)
+                .setSize(storage);
+        return vm;
+    }
 }
