@@ -5,10 +5,19 @@ import torch
 import gymnasium as gym
 from gymnasium import spaces
 from sb3_contrib import MaskablePPO
+try:
+    from sb3_contrib import RecurrentPPO
+except Exception:
+    RecurrentPPO = None
 import stable_baselines3 as sb3
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.logger import configure
+from stable_baselines3.common.callbacks import (
+    EvalCallback,
+    StopTrainingOnRewardThreshold,
+    StopTrainingOnNoModelImprovement,
+)
 
 from callbacks.save_on_best_training_reward_callback import SaveOnBestTrainingRewardCallback
 import gym_cloudsimplus # noqa: F401
@@ -46,7 +55,7 @@ def train(params: dict):
     # --- Logging and Monitoring ---
     log_destination = ["stdout"]
     log_dir = params.get("log_dir") # Get log_dir set by entrypoint.py
-    callback = None
+    callbacks = []
 
     if params.get("save_experiment", False) and log_dir:
         logger.info(f"Saving experiment data to: {log_dir}")
@@ -60,21 +69,33 @@ def train(params: dict):
             "reward_queue_penalty", "reward_invalid_action",
             "reward_energy",  # Energy consumption reward component
             "current_power_w", "cumulative_energy_wh", "average_host_utilization",  # Energy metrics
+            "cumulative_green_energy_wh", "cumulative_brown_energy_wh",  # Green energy consumption
+            "total_wasted_green_wh", "current_green_power_w", "green_ratio",  # Green energy details
             "assignment_success",
             "invalid_action_taken",
             "actual_vm_count", "current_clock"
+        )
+        # Episode-aggregated metrics (computed in env at episode end)
+        info_keywords_to_log += (
+            "episode_reward_wait_time_mean",
+            "episode_reward_unutilization_mean",
+            "episode_reward_queue_penalty_mean",
+            "episode_reward_invalid_action_mean",
+            "episode_reward_energy_mean",
+            "episode_avg_power_w",
         )
         env = Monitor(env, log_dir, info_keywords=info_keywords_to_log)
         logger.info(f"Environment wrapped with Monitor, logging to {log_dir}")
 
         # Setup Best Model Callback
         # The callback writes all the other .csv files and saves the model (with replay buffer) when the reward is the best
-        callback = SaveOnBestTrainingRewardCallback(
+        save_best_callback = SaveOnBestTrainingRewardCallback(
             log_dir=log_dir,
             verbose=1,
             save_replay_buffer=params.get("save_replay_buffer", False) # Make saving buffer configurable
         )
         logger.info("SaveOnBestTrainingRewardCallback initialized.")
+        callbacks.append(save_best_callback)
     else:
         logger.info("Experiment saving disabled or log_dir not specified.")
         # Wrap with Monitor even if not saving to log reward/length easily
@@ -95,6 +116,61 @@ def train(params: dict):
         env = DummyVecEnv([lambda: env])
         logger.info("Environment wrapped with DummyVecEnv.")
 
+    # --- Evaluation / Early Stopping Setup ---
+    # Optional early stopping using SB3 EvalCallback
+    early_cfg = params.get("early_stop", {}) or {}
+    if early_cfg.get("enabled", False):
+        try:
+            # Separate eval env (no vectorization needed here; EvalCallback handles it)
+            eval_env = gym.make(params.get('env_id', 'LoadBalancingScaling-v0'), config_params=params)
+            eval_log_dir = None
+            if log_dir:
+                eval_log_dir = os.path.join(log_dir, "eval")
+                os.makedirs(eval_log_dir, exist_ok=True)
+            eval_env = Monitor(eval_env, eval_log_dir) if eval_log_dir else Monitor(eval_env)
+
+            eval_freq = int(early_cfg.get("eval_freq", 5000))
+            n_eval_episodes = int(early_cfg.get("n_eval_episodes", 5))
+
+            stop_type = str(early_cfg.get("type", "no_improvement")).lower()
+            if stop_type == "reward_threshold":
+                threshold = float(early_cfg.get("reward_threshold", 200.0))
+                stop_cb = StopTrainingOnRewardThreshold(reward_threshold=threshold, verbose=1)
+                eval_cb = EvalCallback(
+                    eval_env,
+                    best_model_save_path=log_dir,
+                    log_path=eval_log_dir or log_dir,
+                    eval_freq=eval_freq,
+                    n_eval_episodes=n_eval_episodes,
+                    deterministic=True,
+                    callback_on_new_best=stop_cb,
+                    verbose=1,
+                )
+            else:
+                # Default: stop when no improvement after patience eval rounds
+                patience = int(early_cfg.get("patience", 5))
+                min_evals = int(early_cfg.get("min_evals", 5))
+                stop_cb = StopTrainingOnNoModelImprovement(
+                    max_no_improvement_evals=patience,
+                    min_evals=min_evals,
+                    verbose=1,
+                )
+                eval_cb = EvalCallback(
+                    eval_env,
+                    best_model_save_path=log_dir,
+                    log_path=eval_log_dir or log_dir,
+                    eval_freq=eval_freq,
+                    n_eval_episodes=n_eval_episodes,
+                    deterministic=True,
+                    callback_after_eval=stop_cb,
+                    verbose=1,
+                )
+
+            callbacks.append(eval_cb)
+            logger.info("EvalCallback for early stopping initialized.")
+        except Exception as e:
+            logger.error(f"Failed to set up early stopping EvalCallback: {e}", exc_info=True)
+
     # --- Algorithm Selection ---
     # Assuming MaskablePPO for now due to action masking requirement
     algorithm_name = params.get("algorithm", "PPO")
@@ -106,6 +182,12 @@ def train(params: dict):
         except ImportError:
             logger.error("sb3_contrib not installed. Cannot use MaskablePPO. Install with 'pip install sb3-contrib'")
             env.close(); return
+    elif algorithm_name == "RecurrentPPO":
+        if RecurrentPPO is None:
+            logger.error("sb3_contrib RecurrentPPO not available. Please install/upgrade sb3-contrib.")
+            env.close(); return
+        ModelClass = RecurrentPPO
+        logger.info("Using RL Algorithm: RecurrentPPO (from sb3_contrib)")
     else:
         try:
             algo_map = {"PPO": sb3.PPO, "A2C": sb3.A2C, "DQN": sb3.DQN, "SAC": sb3.SAC, "TD3": sb3.TD3}
@@ -122,8 +204,8 @@ def train(params: dict):
              env.close(); return
 
     # --- Model Instantiation ---
-    # Define policy based on observation space type
-    policy = "MultiInputPolicy" if isinstance(env.observation_space, spaces.Dict) else "MlpPolicy"
+    # Define policy: prefer explicit config, else infer by observation space
+    policy = params.get("policy") or ("MultiInputPolicy" if isinstance(env.observation_space, spaces.Dict) else "MlpPolicy")
 
     # Define hyperparameters, taking from params or using defaults
     policy_kwargs = params.get("policy_kwargs", None) # e.g., dict(net_arch=[128, 128])
@@ -145,7 +227,7 @@ def train(params: dict):
         del common_params["policy_kwargs"]
 
     specific_params = {}
-    if ModelClass in [MaskablePPO, sb3.PPO]:
+    if (ModelClass == MaskablePPO) or (ModelClass == sb3.PPO) or (RecurrentPPO is not None and ModelClass == RecurrentPPO):
         specific_params = {
             "n_steps": int(params.get("n_steps", 2048)),
             "batch_size": int(params.get("batch_size", 64)),
@@ -196,7 +278,7 @@ def train(params: dict):
         model.learn(
             total_timesteps=total_timesteps,
             log_interval=params.get("log_interval", 1), # Log stats every episode
-            callback=callback,
+            callback=(callbacks if len(callbacks) > 0 else None),
             progress_bar=True, # Show progress bar
         )
         training_duration = time.time() - start_time
@@ -219,6 +301,11 @@ def train(params: dict):
         # --- Cleanup ---
         logger.info("Closing environment...")
         env.close() # This should call LoadBalancingEnv.close() -> gateway.close()
+        if 'eval_env' in locals():
+            try:
+                eval_env.close()
+            except Exception:
+                pass
         logger.info("Training script finished.")
         # Delete the model from memory
         if 'model' in locals():

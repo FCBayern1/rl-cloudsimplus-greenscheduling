@@ -60,7 +60,7 @@ public class GreenEnergyProvider {
         this.csvFilePath = csvFilePath;
         this.historyBuffer = new CircularBuffer<>(HISTORY_SIZE);
 
-        LOGGER.info("Initializing GreenEnergyProvider for turbine {}...", turbineId);
+        LOGGER.info("Initialising GreenEnergyProvider for turbine {}...", turbineId);
         loadAndBuildSpline();
         LOGGER.info("GreenEnergyProvider initialized successfully");
     }

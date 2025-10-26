@@ -1,8 +1,14 @@
 package giu.edu.cspg;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +76,7 @@ public class LoadBalancerGateway {
     /**
      * Configures the simulation settings. Called once by Python after
      * initialization.
-     * 
+     *
      * @param params Map containing simulation parameters.
      */
     public void configureSimulation(Map<String, Object> params) {
@@ -78,7 +84,41 @@ public class LoadBalancerGateway {
         this.simName = settings.getSimulationName();
         LOGGER.info("Simulation Name: {}", this.simName);
         LOGGER.info("Simulation settings dump\n{}", settings.printSettings());
+
+        // Clean up previous results for this simulation to avoid accumulation
+        cleanupPreviousResults();
+
+        // Reset episode counter for new training run
+        this.episodeCounter = 0;
+
         LOGGER.info("Simulation configured. Waiting for reset request...");
+    }
+
+    /**
+     * Deletes previous episode results for the current simulation name.
+     * This ensures each training run starts with a clean results directory.
+     */
+    private void cleanupPreviousResults() {
+        String resultsPath = String.format("results/%s", settings.getSimulationName());
+        Path resultsDirPath = Paths.get(resultsPath);
+
+        if (!Files.exists(resultsDirPath)) {
+            LOGGER.info("No previous results found at: {}", resultsPath);
+            return;
+        }
+
+        try {
+            // Delete all episode directories and files under this simulation's results directory
+            Files.walk(resultsDirPath)
+                .sorted(Comparator.reverseOrder())  // Delete files before directories
+                .map(Path::toFile)
+                .forEach(File::delete);
+
+            LOGGER.info("Cleaned up previous results at: {}", resultsPath);
+        } catch (IOException e) {
+            LOGGER.warn("Failed to clean up previous results at {}: {}", resultsPath, e.getMessage());
+            LOGGER.warn("Continuing with new training run, but old episodes may remain mixed with new ones.");
+        }
     }
 
     /**
@@ -133,6 +173,12 @@ public class LoadBalancerGateway {
                 String episodeResultName = String.format("%s/episode_%d", settings.getSimulationName(), episodeCounter);
                 LOGGER.info("Saving results from previous episode as: {}", episodeResultName);
                 SimulationResultUtils.printAndSaveResults(this.simulationCore, episodeResultName);
+
+                // Save green energy statistics if enabled
+                if (greenEnergyProvider != null) {
+                    SimulationResultUtils.saveGreenEnergyStats(getGreenEnergyStats(), episodeResultName);
+                }
+
                 episodeCounter++; // Increment episode counter
             } catch (Exception e) {
                 LOGGER.error("Failed to save previous episode results: {}", e.getMessage(), e);
@@ -267,6 +313,11 @@ public class LoadBalancerGateway {
         }
 
         // --- 6. Create Info Object ---
+        // Calculate current step green ratio
+        double stepGreenRatio = (this.cumulativeEnergyWh > 0)
+            ? (this.cumulativeGreenEnergyWh / this.cumulativeEnergyWh)
+            : 0.0;
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, false, false,
                 false, false, wasInvalidAction,
@@ -279,7 +330,9 @@ public class LoadBalancerGateway {
                 getInfrastructureObservation(),
                 simulationCore.getBroker()
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
-                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization);
+                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
+                this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
+                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -446,6 +499,11 @@ public class LoadBalancerGateway {
         }
 
         // --- 6. Create Info Object ---
+        // Calculate current step green ratio
+        double stepGreenRatio = (this.cumulativeEnergyWh > 0)
+            ? (this.cumulativeGreenEnergyWh / this.cumulativeEnergyWh)
+            : 0.0;
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, createAttempted, createSuccess,
                 destroyAttempted, destroySuccess, wasInvalidAction,
@@ -458,7 +516,9 @@ public class LoadBalancerGateway {
                 getInfrastructureObservation(),
                 simulationCore.getBroker()
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
-                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization);
+                this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
+                this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
+                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -515,51 +575,24 @@ public class LoadBalancerGateway {
         // 4. Invalid Action Penalty
         this.rewardInvalidActionComponent = -settings.getRewardInvalidActionCoef() * (wasInvalidAction ? 1.0 : 0.0);
 
-        // 5. Energy Consumption Penalty
-        // Goal: Minimize total energy consumption (Wh) over the entire episode, not just instantaneous power (W)
+        // Energy tracking (for logging purposes only, not part of reward)
         double currentClock = simulationCore.getClock();
-
-        // Calculate time interval BEFORE calling calculateAndUpdateEnergy (which updates previousClock)
-        double timeDeltaHours = (currentClock - previousClock) / 3600.0;
-
-        // Record cumulative energy before update
-        double previousEnergyWh = this.cumulativeEnergyWh;
-
-        // Update power and cumulative energy
         this.currentPowerW = calculateAndUpdateEnergy(currentClock);
         this.averageHostUtilization = calculateAverageHostUtilization();
-
-        // Calculate energy consumed in this step (Wh)
-        double stepEnergyWh = this.cumulativeEnergyWh - previousEnergyWh;
-
-        // Calculate maximum possible step energy (if all hosts were at full utilization)
-        double maxStepEnergyWh = this.maxTotalPowerW * timeDeltaHours;
-
-        // Normalize step energy consumption (0 to 1 range)
-        // This penalizes actual energy consumed (Wh), considering both power level AND duration
-        double normalizedStepEnergy = maxStepEnergyWh > 0 ? stepEnergyWh / maxStepEnergyWh : 0;
-
-        // Energy penalty based on actual energy consumed, not just instantaneous power
-        this.rewardEnergyComponent = -settings.getRewardEnergyCoef() * normalizedStepEnergy;
-
-        LOGGER.debug("Energy - Step: {}Wh, Power: {}W, Cumulative: {}Wh, " +
-                    "TimeDelta: {}h, Normalized: {}, Reward: {}",
-                    stepEnergyWh, this.currentPowerW, this.cumulativeEnergyWh,
-                    timeDeltaHours, normalizedStepEnergy, this.rewardEnergyComponent);
+        this.rewardEnergyComponent = 0.0;  // Not used in original reward function
 
         // --- Total Reward ---
+        // Note: No direct positive reward, agent optimizes by *minimizing penalties*.
         double totalReward = this.rewardWaitTimeComponent +
                 this.rewardUnutilizationComponent +
                 this.rewardQueuePenaltyComponent +
-                this.rewardInvalidActionComponent +
-                this.rewardEnergyComponent;
+                this.rewardInvalidActionComponent;
 
-        LOGGER.debug("Reward Calc: Wait={}, UtilBal={}, Queue={}, Invalid={}, Energy={}, Total={}",
+        LOGGER.debug("Reward Calc: Wait={}, UtilBal={}, Queue={}, Invalid={}, Total={}",
                 String.format("%.3f", this.rewardWaitTimeComponent),
                 String.format("%.3f", this.rewardUnutilizationComponent),
                 String.format("%.3f", this.rewardQueuePenaltyComponent),
                 String.format("%.3f", this.rewardInvalidActionComponent),
-                String.format("%.3f", this.rewardEnergyComponent),
                 String.format("%.3f", totalReward));
 
         return totalReward;
@@ -861,6 +894,12 @@ public class LoadBalancerGateway {
             // Print results before stopping (save final episode)
             String finalEpisodeResultName = String.format("%s/episode_%d", settings.getSimulationName(), episodeCounter);
             SimulationResultUtils.printAndSaveResults(simulationCore, finalEpisodeResultName);
+
+            // Save green energy statistics if enabled
+            if (greenEnergyProvider != null) {
+                SimulationResultUtils.saveGreenEnergyStats(getGreenEnergyStats(), finalEpisodeResultName);
+            }
+
             simulationCore.stopSimulation();
         }
         // Trigger JVM shutdown

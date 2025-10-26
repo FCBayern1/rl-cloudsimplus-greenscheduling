@@ -15,9 +15,9 @@ common:
   hosts_count: 32 # Number of physical hosts/servers
   host_pes: 16 # Processing Elements (cores) per host
   host_pe_mips: 50000 # MIPS capacity per PE (core)
-  host_ram: 65536 # Host RAM in MB (64 GB)
-  host_bw: 50000 # Host Bandwidth in Mbps (50 Gbps)
-  host_storage: 100000 # Host Storage in MB (100 GB)
+  host_ram: 65536  # Host RAM in MB (640 GB)
+  host_bw: 50000  # Host Bandwidth in Mbps (100 Gbps)
+  host_storage: 100000  # Host Storage in MB (100 GB)
 
   # --- VM Configuration (Base 'S' & Multipliers) ---
   small_vm_pes: 2 # PEs for base 'S' VM (like m5a.large)
@@ -28,7 +28,7 @@ common:
   large_vm_multiplier: 4 # 'L' VM PEs/RAM = multiplier * 'S' (e.g., 8 PEs, 32GB RAM)
 
   # --- Initial VM Fleet ---
-  initial_s_vm_count: 20 # Start with 0 Small VMs
+  initial_s_vm_count: 20  # Start with 0 Small VMs
   initial_m_vm_count: 10 # Start with 0 Medium VM
   initial_l_vm_count: 5 # Start with 0 Large VMs
 
@@ -60,7 +60,7 @@ common:
   # --- Green Energy Configuration ---
   # Enable wind turbine power integration for green datacenter scheduling
   green_energy:
-    enabled: false                                      # Enable/disable green energy provider
+    enabled: true                                      # Enable/disable green energy provider
     turbine_id: 57                                      # Wind turbine ID to load from dataset
     wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
     prediction:
@@ -103,6 +103,19 @@ common:
   train_model_dir: "" # REQUIRED FOR TEST/TRANSFER: Path to trained model log dir (relative to base_log_dir)
   save_replay_buffer: false # Save replay buffer with best model (only for off-policy algos)
   device: "auto" # Device for PyTorch ("auto", "cpu", "cuda")
+
+  # --- Early Stopping (Evaluation-Based) ---
+  # Enable and configure EvalCallback-driven early stopping.
+  # type: "no_improvement" stops after 'patience' eval rounds without improvement.
+  # type: "reward_threshold" stops when the eval mean reward reaches the threshold.
+  early_stop:
+    enabled: false
+    type: "no_improvement"            # Options: "no_improvement", "reward_threshold"
+    eval_freq: 5000                    # Evaluate every N training steps
+    n_eval_episodes: 5                 # Episodes per evaluation
+    patience: 5                        # For no_improvement: max eval rounds without improvement
+    min_evals: 5                       # For no_improvement: minimum eval rounds before checking
+    # reward_threshold: 200.0            # For reward_threshold: stop when reached
 
 # ===================================================================
 # Experiment-Specific Overrides (Define different runs below)
@@ -174,7 +187,7 @@ experiment_2:
   log_interval: 1
 
 # ===================================================================
-# Experiment 3: Quick Test with CSV Workload (Fixed)
+# Experiment 3: Quick Test with CSV Workload
 # ===================================================================
 experiment_3:
   simulation_name: "Exp3_CSV_QuickTest_Fixed"
@@ -187,21 +200,27 @@ experiment_3:
   
   mode: "train"
   algorithm: "MaskablePPO"
-  timesteps: 10000  # Increase for better learning
+  learning_rate: 0.0005
+  timesteps: 120000  # Increase for better learning
   
   # Use optimized parameters
-  initial_s_vm_count: 10
-  initial_m_vm_count: 5
-  initial_l_vm_count: 2
+  initial_s_vm_count: 20
+  initial_m_vm_count: 10
+  initial_l_vm_count: 4
+
+  n_steps: 512  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
   
   reward_unutilization_coef: 0.5
   reward_cost_coef: 0.5
   reward_invalid_action_coef: 2.0
-  
-  seed: 42
-  save_experiment: true
-  max_episode_length: 100  # Shorter for CSV workload (165 tasks)
-  
+
+
 # ===================================================================
 # Experiment 4: Medium-Scale with Better Workload
 # ===================================================================
@@ -746,13 +765,13 @@ experiment_10_spec_real:
 
   # --- Workload ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/synthetic_dense_200s.csv"
+  cloudlet_trace_file: "traces/poisson_05_300.csv"
 
   # --- Training ---
   mode: "train"
   algorithm: "MaskablePPO"
   timesteps: 150000              # Extended training for complex server selection
-  learning_rate: 0.0003
+  learning_rate: 0.0005
 
   # --- PPO Hyperparameters ---
   n_steps: 512
@@ -810,15 +829,15 @@ experiment_10_spec_real:
   reward_cost_coef: 0.5
   reward_queue_penalty_coef: 0.8
   reward_invalid_action_coef: 2.0
-  reward_energy_coef: 1.5             # 🔋 Strong energy optimization
-                                       # Agent should learn:
+  reward_energy_coef: 1.5              # - Strong energy optimization
+                                       # - Agent should learn:
                                        # - Avoid Acer R520 (57.6% idle - terrible!)
                                        # - Prefer ASUS RS720 (12.5% idle - excellent!)
                                        # - Use ASUS RS500A for efficiency (214W peak!)
                                        # - Reserve RS700A for true peak demands
 
   # --- Episode Configuration ---
-  max_episode_length: 1200              # Increased to allow natural episode completion
+  max_episode_length: 2000              # Increased to allow natural episode completion
 
   # --- Other Settings ---
   seed: 1010
@@ -884,3 +903,158 @@ experiment_10_spec_real_debug:
   save_experiment: true
   verbose: 2               # VERBOSE logging!
   device: "cuda"
+
+# ===================================================================
+# Experiment 3 - Debug Version 2: Reward Rebalancing (RECOMMENDED)
+# ===================================================================
+# Goal: Fix reward component imbalance to encourage fast completion
+# Key changes:
+# 1. Increase wait time penalty (0.75 → 2.0)
+# 2. Increase throughput reward (0.85 → 1.5)
+# 3. Decrease unutilization penalty (0.5 → 0.3) - avoid over-optimization
+# 4. Increase queue penalty (0.55 → 1.0) - reduce waiting
+# 5. Shorten episode length (1200 → 400) - force faster completion
+# ===================================================================
+
+experiment_3_debug_v2:
+  simulation_name: "Exp3_Debug_RewardBalance"
+  experiment_name: "exp3_debug_reward"
+  experiment_type_dir: "QuickTests"
+
+  # --- Workload (Same as Exp3) ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 320000          # 120000 → 150000 (more training)
+  learning_rate: 0.0005      # Keep same as Exp3
+
+  # --- PPO Hyperparameters (Same as Exp3) ---
+  n_steps: 1024
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02             # Keep exploration same for now
+
+  # --- VM Fleet (Same as Exp3) ---
+  initial_s_vm_count: 20
+  initial_m_vm_count: 10
+  initial_l_vm_count: 4
+
+  # --- Reward Weights (KEY CHANGES!) ---
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
+
+  # --- Episode Configuration ---
+  max_episode_length: 800    # 1200 → 400 (force faster completion)
+
+  # --- Other Settings ---
+  seed: 43                   # Different seed from Exp3
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+# ===================================================================
+# Experiment 4: MaskablePPO + LSTM policy
+# ===================================================================
+experiment_4_maskable_lstm:
+  simulation_name: "Exp4_RecurrentPPO_LSTM"
+  experiment_name: "exp4_maskable_lstm"
+  experiment_type_dir: "RecurrentPolicies"
+
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  mode: "train"
+  algorithm: "RecurrentPPO"
+  policy: "MultiInputLstmPolicy"   # Dict observation → use MultiInput variant
+
+  timesteps: 240000                # Need multiple updates for LSTM credit assignment
+  learning_rate: 0.0005
+  n_steps: 1024                    # Prefer multiples of episode length for RNNs
+  batch_size: 256                  # Must divide n_steps * n_envs; here n_envs=1
+  n_epochs: 10
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip_range: 0.15
+  ent_coef: 0.01
+  vf_coef: 0.3
+  max_grad_norm: 0.5
+
+  policy_kwargs:
+    lstm_hidden_size: 256
+    n_lstm_layers: 2
+    shared_lstm: true              # Actor & critic share the LSTM core
+    enable_critic_lstm: false      # MUST be false when shared_lstm=true
+    # For shared LSTM: input → LSTM → split to pi/vf MLP heads
+    net_arch:
+      pi: [128]                    # MLP head after shared LSTM for actor
+      vf: [128]                    # MLP head after shared LSTM for critic
+  
+  seed: 42
+  save_experiment: true
+  max_episode_length: 800  # Shorter for CSV workload (165 tasks)
+  
+# ===================================================================
+# Experiment 3 - Debug Version 4: More Exploration
+# ===================================================================
+# Goal: Increase exploration to discover fast strategy more reliably
+# Key changes:
+# 1. Increase entropy coefficient (0.02 → 0.08) - 4x more exploration
+# 2. Longer training (200000 timesteps)
+# 3. Lower learning rate (0.0003) - more stable learning
+# 4. Moderate reward adjustments
+# ===================================================================
+
+experiment_3_debug_v4:
+  simulation_name: "Exp3_Debug_MoreExploration"
+  experiment_name: "exp3_debug_explore"
+  experiment_type_dir: "QuickTests"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 200000          # 120000 → 200000 (much longer training)
+  learning_rate: 0.0003      # 0.0005 → 0.0003 (lower for stability)
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.08             # 0.02 → 0.08 (4x more exploration!)
+
+  # --- VM Fleet ---
+  initial_s_vm_count: 20
+  initial_m_vm_count: 10
+  initial_l_vm_count: 4
+
+  # --- Reward Weights (Moderate adjustments) ---
+  reward_wait_time_coef: 1.5          # Increase wait time penalty
+  reward_throughput_coef: 1.2         # Increase throughput
+  reward_unutilization_coef: 0.4      # Decrease a bit
+  reward_cost_coef: 0.4
+  reward_queue_penalty_coef: 1.0      # Increase queue penalty
+  reward_invalid_action_coef: 2.0
+
+  # --- Episode Configuration ---
+  max_episode_length: 350    # Shorter than original
+
+  # --- Other Settings ---
+  seed: 44
+  save_experiment: true
+  verbose: 1
+  device: "auto"

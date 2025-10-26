@@ -21,7 +21,8 @@
       "Bash(powershell -Command \"(Get-Content ../../drl-manager.log | Select-String -Pattern ''Step 1:.*Waiting=.*Finished='' | Select-Object -Last 5)\")",
       "Bash(powershell -Command \"(Import-Csv three_60max_8maxcores.csv | Measure-Object).Count\")",
       "Bash(powershell -Command \"(Import-Csv three_60max_8maxcores.csv | Select-Object -First 10 | Format-Table -AutoSize)\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(drl-manager/.venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

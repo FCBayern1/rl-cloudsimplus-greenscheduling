@@ -25,15 +25,11 @@ public class SimulationStepResult {
     }
 
     // --- Getters ---
-
     public boolean isTerminated() {
         return terminated;
     }
     public boolean isTruncated() {
         return truncated;
-    }
-    public SimulationStepInfo getInfo() {a
-        return info;
     }
 
     @Override

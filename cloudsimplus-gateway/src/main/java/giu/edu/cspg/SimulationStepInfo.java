@@ -43,6 +43,13 @@ public class SimulationStepInfo {
     private final double cumulativeEnergyWh;     // Cumulative energy consumption in Watt-hours
     private final double averageHostUtilization; // Average CPU utilization across all hosts
 
+    // Green Energy Metrics
+    private final double cumulativeGreenEnergyWh;  // Cumulative green (renewable) energy consumed
+    private final double cumulativeBrownEnergyWh;  // Cumulative brown (grid) energy consumed
+    private final double totalWastedGreenWh;       // Total wasted green energy (excess not used)
+    private final double currentGreenPowerW;       // Current green power availability in Watts
+    private final double greenRatio;               // Green energy ratio for current step (0.0 to 1.0)
+
     // Constructor with all fields
     public SimulationStepInfo(boolean assignmentSuccess, boolean createVmAttempted, boolean createVmSuccess,
             boolean destroyVmAttempted, boolean destroyVmSuccess, boolean invalidActionTaken, int hostAffectedId,
@@ -52,7 +59,9 @@ public class SimulationStepInfo {
             double rewardQueuePenaltyComponent, double rewardInvalidActionComponent,
             double rewardEnergyComponent,
             int[] observationTreeArray, List<Double> completedCloudletWaitTimes,
-            double currentPowerW, double cumulativeEnergyWh, double averageHostUtilization) {
+            double currentPowerW, double cumulativeEnergyWh, double averageHostUtilization,
+            double cumulativeGreenEnergyWh, double cumulativeBrownEnergyWh,
+            double totalWastedGreenWh, double currentGreenPowerW, double greenRatio) {
         this.assignmentSuccess = assignmentSuccess;
         this.createVmAttempted = createVmAttempted;
         this.createVmSuccess = createVmSuccess;
@@ -72,13 +81,18 @@ public class SimulationStepInfo {
         this.currentPowerW = currentPowerW;
         this.cumulativeEnergyWh = cumulativeEnergyWh;
         this.averageHostUtilization = averageHostUtilization;
+        this.cumulativeGreenEnergyWh = cumulativeGreenEnergyWh;
+        this.cumulativeBrownEnergyWh = cumulativeBrownEnergyWh;
+        this.totalWastedGreenWh = totalWastedGreenWh;
+        this.currentGreenPowerW = currentGreenPowerW;
+        this.greenRatio = greenRatio;
     }
 
     // Simplified constructor for SimulationResetResult where action outcomes aren't
     // relevant
     public SimulationStepInfo(double currentClock) {
         this(false, false, false, false, false, false, -1, 0, currentClock, 0, 0, 0, 0, 0, new int[1],
-                new ArrayList<>(), 0, 0, 0);
+                new ArrayList<>(), 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     // --- Getters ---
@@ -116,6 +130,11 @@ public class SimulationStepInfo {
         map.put("current_power_w", this.currentPowerW);
         map.put("cumulative_energy_wh", this.cumulativeEnergyWh);
         map.put("average_host_utilization", this.averageHostUtilization);
+        map.put("cumulative_green_energy_wh", this.cumulativeGreenEnergyWh);
+        map.put("cumulative_brown_energy_wh", this.cumulativeBrownEnergyWh);
+        map.put("total_wasted_green_wh", this.totalWastedGreenWh);
+        map.put("current_green_power_w", this.currentGreenPowerW);
+        map.put("green_ratio", this.greenRatio);
         return map;
     }
 

@@ -131,6 +131,76 @@ public class SimulationResultUtils {
         LOGGER.info("Result processing finished for {}.", baseFileName);
     }
 
+    /**
+     * Saves green energy statistics to a CSV file.
+     *
+     * @param greenEnergyStats Map containing green energy statistics from LoadBalancerGateway.getGreenEnergyStats()
+     * @param baseFileName     A base name for the output file
+     */
+    public static void saveGreenEnergyStats(Map<String, Double> greenEnergyStats, String baseFileName) {
+        if (greenEnergyStats == null || greenEnergyStats.isEmpty()) {
+            LOGGER.info("No green energy statistics available to save.");
+            return;
+        }
+
+        LOGGER.info("Saving green energy statistics...");
+        String filePath = String.format("results/%s/green_energy_summary.csv", baseFileName);
+
+        try {
+            java.io.File file = new java.io.File(filePath);
+            file.getParentFile().mkdirs(); // Create directories if they don't exist
+
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(file)) {
+                // Write header
+                writer.println("=== GREEN ENERGY SUMMARY ===");
+                writer.println();
+
+                // Write main statistics
+                writer.println("Metric,Value,Unit");
+                writer.println(String.format("Cumulative Green Energy,%.4f,Wh",
+                    greenEnergyStats.getOrDefault("cumulative_green_wh", 0.0)));
+                writer.println(String.format("Cumulative Brown Energy,%.4f,Wh",
+                    greenEnergyStats.getOrDefault("cumulative_brown_wh", 0.0)));
+                writer.println(String.format("Total Wasted Green Energy,%.4f,Wh",
+                    greenEnergyStats.getOrDefault("total_wasted_green_wh", 0.0)));
+                writer.println(String.format("Current Green Power,%.2f,W",
+                    greenEnergyStats.getOrDefault("current_green_power_w", 0.0)));
+                writer.println(String.format("Green Energy Ratio,%.4f,fraction (0-1)",
+                    greenEnergyStats.getOrDefault("green_ratio", 0.0)));
+
+                if (greenEnergyStats.containsKey("overall_green_ratio")) {
+                    writer.println(String.format("Overall Green Ratio,%.4f,fraction (0-1)",
+                        greenEnergyStats.get("overall_green_ratio")));
+                }
+
+                writer.println();
+
+                // Write derived statistics
+                double cumulativeGreen = greenEnergyStats.getOrDefault("cumulative_green_wh", 0.0);
+                double cumulativeBrown = greenEnergyStats.getOrDefault("cumulative_brown_wh", 0.0);
+                double totalEnergy = cumulativeGreen + cumulativeBrown;
+                double wastedGreen = greenEnergyStats.getOrDefault("total_wasted_green_wh", 0.0);
+
+                writer.println("=== DERIVED STATISTICS ===");
+                writer.println("Metric,Value,Unit");
+                writer.println(String.format("Total Energy Consumed,%.4f,Wh", totalEnergy));
+                writer.println(String.format("Total Energy Consumed,%.6f,kWh", totalEnergy / 1000.0));
+                writer.println(String.format("Green Percentage,%.2f,%%",
+                    totalEnergy > 0 ? (cumulativeGreen / totalEnergy * 100.0) : 0.0));
+                writer.println(String.format("Brown Percentage,%.2f,%%",
+                    totalEnergy > 0 ? (cumulativeBrown / totalEnergy * 100.0) : 0.0));
+                writer.println(String.format("Waste Percentage (of green available),%.2f,%%",
+                    (cumulativeGreen + wastedGreen) > 0 ? (wastedGreen / (cumulativeGreen + wastedGreen) * 100.0) : 0.0));
+                writer.println(String.format("CO2 Emissions Avoided (vs 100%% brown),%.4f,kg",
+                    (cumulativeGreen / 1000.0) * 0.5)); // Assuming 0.5 kg CO2 per kWh for brown energy
+            }
+
+            LOGGER.info("Green energy statistics saved to {}", filePath);
+        } catch (java.io.IOException e) {
+            LOGGER.error("Failed to save green energy stats to CSV: {}", e.getMessage(), e);
+        }
+    }
+
     /** Prints and saves the state history for a single host. */
     private static void printAndSaveHostHistory(Host host, String baseFileName) {
         // Only print/save if the host was actually used

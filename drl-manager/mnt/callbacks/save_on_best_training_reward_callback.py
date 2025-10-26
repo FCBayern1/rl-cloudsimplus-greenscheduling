@@ -47,10 +47,17 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         self.reward_unutilizations = []
         self.reward_queue_penalties = []
         self.reward_invalid_actions = []
+        self.reward_energies = []  # Energy reward component
         self.assignment_successes = []
         self.invalid_actions_taken = []
         self.actual_vm_counts = []
         self.current_clocks = []
+        # Green energy metrics
+        self.cumulative_green_energy_whs = []
+        self.cumulative_brown_energy_whs = []
+        self.total_wasted_green_whs = []
+        self.current_green_power_ws = []
+        self.green_ratios = []
         self.current_episode_length = 0
 
     def _save_timestep_details(self) -> None:
@@ -71,10 +78,17 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         self.reward_unutilizations.append(info.get("reward_unutilization", 0.0))
         self.reward_queue_penalties.append(info.get("reward_queue_penalty", 0.0))
         self.reward_invalid_actions.append(info.get("reward_invalid_action", 0.0))
+        self.reward_energies.append(info.get("reward_energy", 0.0))
         self.assignment_successes.append(info.get("assignment_success", False))
         self.invalid_actions_taken.append(info.get("invalid_action_taken", False))
         self.actual_vm_counts.append(info.get("actual_vm_count", 0))
         self.current_clocks.append(info.get("current_clock", 0.0))
+        # Green energy metrics
+        self.cumulative_green_energy_whs.append(info.get("cumulative_green_energy_wh", 0.0))
+        self.cumulative_brown_energy_whs.append(info.get("cumulative_brown_energy_wh", 0.0))
+        self.total_wasted_green_whs.append(info.get("total_wasted_green_wh", 0.0))
+        self.current_green_power_ws.append(info.get("current_green_power_w", 0.0))
+        self.green_ratios.append(info.get("green_ratio", 0.0))
 
         self.current_episode_length += 1
 
@@ -95,9 +109,16 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             "reward_unutilization": self.reward_unutilizations,
             "reward_queue_penalty": self.reward_queue_penalties,
             "reward_invalid_action": self.reward_invalid_actions,
+            "reward_energy": self.reward_energies,
             "assignment_success": self.assignment_successes,
             "invalid_action_taken": self.invalid_actions_taken,
             "actual_vm_count": self.actual_vm_counts,
+            # Green energy metrics
+            "cumulative_green_energy_wh": self.cumulative_green_energy_whs,
+            "cumulative_brown_energy_wh": self.cumulative_brown_energy_whs,
+            "total_wasted_green_wh": self.total_wasted_green_whs,
+            "current_green_power_w": self.current_green_power_ws,
+            "green_ratio": self.green_ratios,
         }
         # Ensure all lists have the same length (robustness)
         expected_len = self.current_episode_length
@@ -178,8 +199,7 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             if self.logger is not None:
                  # Record custom metrics maybe? Monitor already handles reward/length.
                  self.logger.record("rollout/ep_num_monitor", self.current_episode_num_monitor)
-                 # Add other custom rollout stats if needed
-                 self.logger.dump(step=self.num_timesteps)
+                 # Let SB3 core handle logger.dump to avoid resetting CSV headers early
 
 
             # --- Check for new best model based on Monitor's smoothed reward ---

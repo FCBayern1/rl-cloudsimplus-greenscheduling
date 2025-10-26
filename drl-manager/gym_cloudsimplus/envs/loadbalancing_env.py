@@ -27,12 +27,17 @@ class LoadBalancingEnv(gym.Env):
     - next_cloudlet_pes: Box(1) - Normalized PEs needed
     """
     metadata = {"render_modes": ["human", "ansi"]}
+    # Class-level guard to avoid closing the Java gateway multiple times across instances
+    _java_gateway_closed = False
 
     def __init__(self, config_params: dict, render_mode="ansi"):
         super(LoadBalancingEnv, self).__init__()
 
         logger.info("Initializing LoadBalancingEnv...")
         self.config = config_params
+        self._closed = False
+        # Episode-level accumulators for logging meaningful per-episode stats
+        self._reset_episode_accumulators()
 
         if render_mode is not None and render_mode not in self.metadata["render_modes"]:
             gym.logger.warn(
@@ -176,6 +181,17 @@ class LoadBalancingEnv(gym.Env):
             logger.error(f"Error processing info object: {e}")
             return {"error": str(e)} # Return error info
 
+    def _reset_episode_accumulators(self):
+        self._ep_steps = 0
+        self._ep_sum = {
+            "reward_wait_time": 0.0,
+            "reward_unutilization": 0.0,
+            "reward_queue_penalty": 0.0,
+            "reward_invalid_action": 0.0,
+            "reward_energy": 0.0,
+            "current_power_w": 0.0,
+        }
+
     def step(self, action: int):
         self.current_step += 1
 
@@ -197,6 +213,24 @@ class LoadBalancingEnv(gym.Env):
             info = self._process_info(step_result_java.getInfo())
             info["actual_vm_count"] = step_result_java.getObservation().getActualVmCount()
             info["actual_host_count"] = step_result_java.getObservation().getActualHostCount()
+
+            # --- Accumulate episode-level stats ---
+            self._ep_steps += 1
+            for k in list(self._ep_sum.keys()):
+                if k in info and isinstance(info[k], (int, float)):
+                    self._ep_sum[k] += float(info[k])
+
+            # On episode end, compute episode means and attach to final info
+            if terminated or truncated:
+                steps = max(1, self._ep_steps)
+                info["episode_reward_wait_time_mean"] = self._ep_sum["reward_wait_time"] / steps
+                info["episode_reward_unutilization_mean"] = self._ep_sum["reward_unutilization"] / steps
+                info["episode_reward_queue_penalty_mean"] = self._ep_sum["reward_queue_penalty"] / steps
+                info["episode_reward_invalid_action_mean"] = self._ep_sum["reward_invalid_action"] / steps
+                info["episode_reward_energy_mean"] = self._ep_sum["reward_energy"] / steps
+                info["episode_avg_power_w"] = self._ep_sum["current_power_w"] / steps
+                # Reset accumulators for next episode
+                self._reset_episode_accumulators()
 
             # Update internal state for action masking
             self._update_internal_state(observation)
@@ -266,18 +300,31 @@ class LoadBalancingEnv(gym.Env):
                 return error_msg if self.render_mode == 'ansi' else {"error": error_msg}
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         logger.info("Closing environment and gateway connection...")
+        # Try to close Java side once globally across all env instances
+        if not LoadBalancingEnv._java_gateway_closed:
+            try:
+                if hasattr(self, 'loadbalancer_gateway') and self.loadbalancer_gateway:
+                    self.loadbalancer_gateway.close()
+            except Py4JNetworkError:
+                # Connection already down or closed elsewhere; not an error during shutdown
+                logger.info("Java gateway already closed; ignoring during shutdown.")
+            except Exception as e:
+                # Downgrade to warning to avoid noisy shutdown logs
+                logger.warning(f"Non-critical error during gateway close request: {e}")
+            finally:
+                LoadBalancingEnv._java_gateway_closed = True
+        # Always shutdown client side quietly
         try:
-            if hasattr(self, 'loadbalancer_gateway') and self.loadbalancer_gateway:
-                # Request Java side close (which might trigger JVM shutdown)
-                self.loadbalancer_gateway.close()
-        except Exception as e:
-             logger.error(f"Error during gateway close request: {e}")
-        finally:
-             if hasattr(self, 'gateway') and self.gateway:
-                 # Close the Python client-side connection
-                 self.gateway.shutdown()
-                 logger.info("Py4J Gateway client shut down.")
+            if hasattr(self, 'gateway') and self.gateway:
+                self.gateway.shutdown()
+                logger.info("Py4J Gateway client shut down.")
+        except Exception:
+            # Ignore any client-side shutdown issues
+            pass
 
     def action_masks(self) -> list[bool]:
         """

@@ -117,7 +117,15 @@ tensorboard --logdir=logs
 # 浏览器打开 http://localhost:6006
 ```
 
----
+```powershell
+.venv/Scripts/python.exe analyze_training.py --log_dir D:\rl-cloudsimplus-greenscheduling\logs\QuickTests\exp3_csv_quick
+
+.venv/Scripts/python.exe monitor_success_rate.py --log_dir D:\rl-cloudsimplus-greenscheduling\logs\QuickTests\exp3_csv_quick
+
+
+```
+
+
 
 ## 🏗️ 系统架构
 

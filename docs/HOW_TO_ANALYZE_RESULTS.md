@@ -45,6 +45,8 @@ cd drl-manager
 
 # 或使用教程脚本（更详细）
 .venv/Scripts/python.exe tutorial_analyze.py ../logs/SPEC_Authentic/exp10_spec_real
+
+.venv/Scripts/python.exe analyze_training_complete.py --log_dir ../logs/QuickTests/exp3_csv_quick --fast_strategy_steps 170
 ```
 
 **生成的文件**：
@@ -115,7 +117,7 @@ Write-Host "Truncated: $truncated / $total ($([math]::Round($truncated/$total*10
    # 在新列计算前10和后10的平均值
    =AVERAGE(C2:C11)      # First 10
    =AVERAGE(C192:C201)   # Last 10
-
+   
    # 计算改善百分比
    =(Last10 - First10) / First10 * 100
    ```
