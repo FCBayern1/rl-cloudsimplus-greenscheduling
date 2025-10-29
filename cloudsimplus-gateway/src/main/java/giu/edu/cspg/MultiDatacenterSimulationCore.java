@@ -424,7 +424,11 @@ public class MultiDatacenterSimulationCore {
                 nextCloudletPes, // nextCloudletPes
                 convertDoubleArrayToIntArray(dcAvailablePes),  // vmAvailablePes
                 numDatacenters,  // actualVmCount (reuse for DC count)
-                numDatacenters   // actualHostCount (reuse for DC count)
+                numDatacenters,  // actualHostCount (reuse for DC count)
+                0L,              // nextCloudletMi (not tracked at global level)
+                0.0,             // nextCloudletWaitTime (not tracked at global level)
+                new int[3],      // queuePesDistribution (not tracked at global level)
+                0                // completedCloudletsLast10Steps (not tracked at global level)
         );
     }
 
@@ -524,7 +528,11 @@ public class MultiDatacenterSimulationCore {
                 nextCloudletPes,
                 vmAvailablePes,
                 (int) vms.stream().filter(vm -> vm.isCreated() && !vm.isFailed()).count(),  // actualVmCount
-                hosts.size()  // actualHostCount
+                hosts.size(),  // actualHostCount
+                0L,              // nextCloudletMi (not tracked at DC level)
+                0.0,             // nextCloudletWaitTime (not tracked at DC level)
+                new int[3],      // queuePesDistribution (not tracked at DC level)
+                0                // completedCloudletsLast10Steps (not tracked at DC level)
         );
     }
 

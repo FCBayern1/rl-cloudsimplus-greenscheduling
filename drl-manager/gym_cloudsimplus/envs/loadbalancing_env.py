@@ -98,8 +98,15 @@ class LoadBalancingEnv(gym.Env):
         self.observation_space = spaces.Dict({
             "vm_loads": spaces.Box(low=0.0, high=1.0, shape=(self.num_vms,), dtype=np.float32),
             "vm_available_pes": spaces.Box(low=0, high=self.large_vm_pes, shape=(self.num_vms,), dtype=np.int32),
+            "vm_types": spaces.Box(low=0, high=3, shape=(self.num_vms,), dtype=np.int32),  # 0=None, 1=Small, 2=Medium, 3=Large
             "waiting_cloudlets": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-            "next_cloudlet_pes": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32)
+            "next_cloudlet_pes": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            # Enhanced cloudlet information
+            "next_cloudlet_mi": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            "next_cloudlet_wait_time": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            "queue_pes_distribution": spaces.Box(low=0, high=np.inf, shape=(3,), dtype=np.int32),  # [small, medium, large]
+            # Historical statistics
+            "completed_cloudlets_last_10_steps": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.int32)
         })
         logger.info(f"Observation Space defined: {self.observation_space.spaces.keys()}")
 
@@ -131,14 +138,25 @@ class LoadBalancingEnv(gym.Env):
              traceback.print_exc()
              # Return dummy observation/info if reset fails critically
              dummy_obs = {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.observation_space.spaces.items()}
-             return dummy_obs, {"error": "Reset failed"}
+             dummy_info = {
+                 "error": "Reset failed",
+                 "reward_wait_time": 0.0,
+                 "reward_unutilization": 0.0,
+                 "reward_queue_penalty": 0.0,
+                 "reward_invalid_action": 0.0,
+                 "reward_energy": 0.0,
+                 "current_power_w": 0.0,
+                 "actual_vm_count": 0,
+                 "actual_host_count": 0
+             }
+             return dummy_obs, dummy_info
 
     def _get_obs(self, java_obs_state):
         """Converts the Java ObservationState object to a NumPy dictionary."""
         if java_obs_state is None:
             logger.error("Received null Java ObservationState!")
             # Return a zeroed-out observation matching the space structure
-            return {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.observation_space.spaces.items()}
+            return {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.action.spaces.items()}
 
         # Extract arrays (Py4J automatically converts Java arrays to Python tuples/lists)
         # Assumes Java side provides vmLoads padded up to maxPotentialVms, slice it
@@ -148,19 +166,39 @@ class LoadBalancingEnv(gym.Env):
 
         vm_available_pes = self._to_nparray(java_obs_state.getVmAvailablePes(), dtype=np.int32)
 
+        # Extract VM types (0=None, 1=Small, 2=Medium, 3=Large)
+        full_vm_types = self._to_nparray(java_obs_state.getVmTypes(), dtype=np.int32)
+        vm_types = full_vm_types[:self.num_vms]
+
         # Extract raw scalar values
         waiting_cloudlets_raw = np.array([java_obs_state.getWaitingCloudlets()], dtype=np.float32) # Keep as float Box for SB3
         next_cloudlet_pes_raw = np.array([java_obs_state.getNextCloudletPes()], dtype=np.float32) # Keep as float Box for SB3
 
+        # Extract enhanced cloudlet information
+        next_cloudlet_mi = np.array([float(java_obs_state.getNextCloudletMi())], dtype=np.float32)
+        next_cloudlet_wait_time = np.array([java_obs_state.getNextCloudletWaitTime()], dtype=np.float32)
+        queue_pes_dist = self._to_nparray(java_obs_state.getQueuePesDistribution(), dtype=np.int32)
+
+        # Extract historical statistics
+        completed_last_10 = np.array([java_obs_state.getCompletedCloudletsLast10Steps()], dtype=np.int32)
+
         # Ensure correct shape (defensive)
         if vm_loads.shape[0] != self.num_vms: vm_loads = np.pad(vm_loads, (0, self.num_vms - vm_loads.shape[0]))[:self.num_vms]
         if vm_available_pes.shape[0] != self.num_vms: vm_available_pes = np.pad(vm_available_pes, (0, self.num_vms - vm_available_pes.shape[0]))[:self.num_vms]
+        if vm_types.shape[0] != self.num_vms: vm_types = np.pad(vm_types, (0, self.num_vms - vm_types.shape[0]))[:self.num_vms]
 
         obs_dict = {
             "vm_loads": vm_loads,
-            "vm_available_pes": vm_available_pes, # Added
+            "vm_available_pes": vm_available_pes,
+            "vm_types": vm_types,  # Added VM type information for optimal resource matching
             "waiting_cloudlets": waiting_cloudlets_raw, # Raw count
             "next_cloudlet_pes": next_cloudlet_pes_raw, # Raw count
+            # Enhanced cloudlet information
+            "next_cloudlet_mi": next_cloudlet_mi,
+            "next_cloudlet_wait_time": next_cloudlet_wait_time,
+            "queue_pes_distribution": queue_pes_dist,
+            # Historical statistics
+            "completed_cloudlets_last_10_steps": completed_last_10,
         }
         logger.debug(f"Processed Observation: {obs_dict}")
         return obs_dict
@@ -247,7 +285,16 @@ class LoadBalancingEnv(gym.Env):
              traceback.print_exc()
              # Return dummy observation/info and set done=True if step fails critically
              dummy_obs = {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.observation_space.spaces.items()}
-             return dummy_obs, 0.0, True, False, {"error": "Step failed"}
+             dummy_info = {
+                 "error": "Step failed",
+                 "reward_wait_time": 0.0,
+                 "reward_unutilization": 0.0,
+                 "reward_queue_penalty": 0.0,
+                 "reward_invalid_action": 0.0,
+                 "reward_energy": 0.0,
+                 "current_power_w": 0.0
+             }
+             return dummy_obs, 0.0, True, False, dummy_info
 
     def _update_internal_state(self, observation: dict):
         """Stores the latest observation dictionary for use in action masking."""

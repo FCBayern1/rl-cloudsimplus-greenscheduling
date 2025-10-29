@@ -9,7 +9,7 @@ common:
   # --- Simulation Control & Timing ---
   simulation_timestep: 1.0 # Duration of each RL agent step (seconds)
   min_time_between_events: 0.1 # CloudSim internal minimum time granularity (s)
-  max_episode_length: 500 # Max steps per episode before truncation
+  max_episode_length: 500 # Max steps per episode before truncation (1 hour to cover green energy data points)
 
   # --- Host Configuration ---
   hosts_count: 32 # Number of physical hosts/servers
@@ -22,8 +22,8 @@ common:
   # --- VM Configuration (Base 'S' & Multipliers) ---
   small_vm_pes: 2 # PEs for base 'S' VM (like m5a.large)
   small_vm_ram: 8192 # RAM (MB) for 'S' VM (8 GB)
-  small_vm_bw: 1000 # Bandwidth (Mbps) for 'S' VM (1 Gbps)
-  small_vm_storage: 4000 # Storage (MB) for 'S' VM (4 GB)
+  small_vm_bw: 10000 # Bandwidth (Mbps) for 'S' VM (1 Gbps)
+  small_vm_storage: 10000 # Storage (MB) for 'S' VM (4 GB)
   medium_vm_multiplier: 2 # 'M' VM PEs/RAM = multiplier * 'S' (e.g., 4 PEs, 16GB RAM)
   large_vm_multiplier: 4 # 'L' VM PEs/RAM = multiplier * 'S' (e.g., 8 PEs, 32GB RAM)
 
@@ -60,7 +60,7 @@ common:
   # --- Green Energy Configuration ---
   # Enable wind turbine power integration for green datacenter scheduling
   green_energy:
-    enabled: true                                      # Enable/disable green energy provider
+    enabled: false                                     # Enable/disable green energy provider
     turbine_id: 57                                      # Wind turbine ID to load from dataset
     wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
     prediction:
@@ -240,534 +240,6 @@ experiment_3:
   reward_cost_coef: 0.5
   reward_invalid_action_coef: 2.0
 
-
-# ===================================================================
-# Experiment 4: Medium-Scale with Better Workload
-# ===================================================================
-experiment_4:
-  simulation_name: "Exp4_MultiCSV_Optimized"
-  experiment_name: "exp4_multi_csv"
-  experiment_type_dir: "CSV_Optimized"
-  
-  # Use CSV workload for predictable arrival times
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-  
-  # Optimized RL configuration
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 50000
-  learning_rate: 0.0001
-  
-  # PPO parameters
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
-  ent_coef: 0.02
-  
-  # Optimized infrastructure
-  initial_s_vm_count: 10
-  initial_m_vm_count: 5
-  initial_l_vm_count: 2
-  
-  # Optimized rewards
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 0.5
-  reward_cost_coef: 0.5
-  reward_invalid_action_coef: 2.0
-  
-  max_episode_length: 100
-  seed: 42
-  save_experiment: true
-  verbose: 1
-
-# ===================================================================
-# Experiment 5: Poisson Workload - Small Scale (112 tasks)
-# ===================================================================
-experiment_5:
-  simulation_name: "Exp5_Poisson_Dense"
-  experiment_name: "exp5_poisson_dense"
-  experiment_type_dir: "Synthetic_Workloads"
-  
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/synthetic_dense_200s.csv"  # 396 tasks, dense arrivals (2.0/s)
-  
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 50000
-  learning_rate: 0.0001
-  
-  # Optimized configuration
-  initial_s_vm_count: 12  # More VMs for higher load
-  initial_m_vm_count: 6
-  initial_l_vm_count: 3
-  
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 0.5
-  reward_cost_coef: 0.5
-  reward_invalid_action_coef: 2.0
-  
-  max_episode_length: 400  # Enough for 200s workload + execution time
-  seed: 42
-  save_experiment: true
-  verbose: 1
-
-# ===================================================================
-# Experiment 6: Uniform Workload - Medium Scale (150 tasks)
-# ===================================================================
-experiment_6:
-  simulation_name: "Exp6_Uniform_Medium"
-  experiment_name: "exp6_uniform_medium"
-  experiment_type_dir: "Synthetic_Workloads"
-  
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/synthetic_uniform_300s.csv"  # 150 tasks, 300s
-  
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 30000
-  learning_rate: 0.0001
-  
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  
-  initial_s_vm_count: 10
-  initial_m_vm_count: 5
-  initial_l_vm_count: 2
-  
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 0.5
-  reward_cost_coef: 0.5
-  reward_invalid_action_coef: 2.0
-  
-  max_episode_length: 320
-  seed: 42
-  save_experiment: true
-  verbose: 1
-
-# ===================================================================
-# Experiment 7: Large Scale Poisson (605 tasks) - RECOMMENDED
-# ===================================================================
-experiment_7:
-  simulation_name: "Exp7_Poisson_Large"
-  experiment_name: "exp7_poisson_large"
-  experiment_type_dir: "Synthetic_Workloads"
-  
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/synthetic_large_600s.csv"  # 605 tasks, 600s
-  
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 100000  # Longer training for complex workload
-  learning_rate: 0.0001
-  
-  # PPO hyperparameters
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
-  clip_range: 0.2
-  ent_coef: 0.02
-  
-  # Infrastructure
-  initial_s_vm_count: 12
-  initial_m_vm_count: 6
-  initial_l_vm_count: 3
-  
-  # Reward weights
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 0.5
-  reward_cost_coef: 0.5
-  reward_invalid_action_coef: 2.0
-  
-  max_episode_length: 620
-  seed: 42
-  save_experiment: true
-  verbose: 1
-
-# ===================================================================
-# Experiment 8: Bursty Workload - Stress Test (200 tasks in bursts)
-# ===================================================================
-experiment_8:
-  simulation_name: "Exp8_Bursty_StressTest"
-  experiment_name: "exp8_bursty"
-  experiment_type_dir: "Synthetic_Workloads"
-  
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/synthetic_bursty_400s.csv"  # 200 tasks, bursty
-  
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 50000
-  learning_rate: 0.0001
-  
-  # Handle burst load
-  initial_s_vm_count: 15  # More VMs for burst handling
-  initial_m_vm_count: 8
-  initial_l_vm_count: 4
-  
-  reward_wait_time_coef: 1.5  # Higher penalty for wait time in bursts
-  reward_unutilization_coef: 0.4  # Lower during bursts (acceptable to over-provision)
-  reward_cost_coef: 0.5
-  reward_invalid_action_coef: 2.0
-  
-  max_episode_length: 420
-  seed: 42
-  save_experiment: true
-  verbose: 1
-
-# ===================================================================
-# Experiment 5 Improved: Based on Experiment 4 Analysis
-# ===================================================================
-# Key improvements:
-# 1. Reduced small/medium VMs, increased large VMs (better resource efficiency)
-# 2. Increased utilization and cost penalties (address main weakness)
-# 3. Increased learning rate and exploration (escape local optimum)
-# 4. Longer training and episodes (more learning time)
-# 5. Same workload as Exp4 for direct comparison
-# ===================================================================
-
-experiment_5_improved:
-  # --- Identification ---
-  simulation_name: "Exp5_CSV_ResourceOptimized"
-  experiment_name: "exp5_resource_optimized"
-  experiment_type_dir: "CSV_Optimized_V2"
-  
-  # --- Workload (Same as Exp4 for comparison) ---
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-  
-  # --- Algorithm & Training ---
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 100000              # 50000 → 100000 (2x longer training)
-  learning_rate: 0.0003          # 0.0001 → 0.0003 (3x higher, escape local optimum)
-  
-  # --- PPO Hyperparameters ---
-  n_steps: 512                   # Keep from Exp4
-  batch_size: 128                # Keep from Exp4
-  n_epochs: 15                   # Keep from Exp4
-  gamma: 0.995                   # Keep from Exp4
-  gae_lambda: 0.98               # Keep from Exp4
-  clip_range: 0.2
-  ent_coef: 0.05                 # 0.02 → 0.05 (more exploration)
-  vf_coef: 0.5
-  max_grad_norm: 0.5
-  
-  # --- VM Fleet (KEY IMPROVEMENT: More Large VMs, Fewer Small VMs) ---
-  initial_s_vm_count: 5          # 10 → 5 (reduce idle resources)
-  initial_m_vm_count: 3          # 5 → 3 (reduce idle resources)
-  initial_l_vm_count: 4          # 2 → 4 (increase high-capacity VMs)
-  
-  # --- Reward Weights (KEY IMPROVEMENT: Penalize waste) ---
-  reward_wait_time_coef: 0.8               # Slightly reduce (was dominating)
-  reward_unutilization_coef: 1.0           # 0.5 → 1.0 (2x penalty for low utilization)
-  reward_cost_coef: 0.8                    # NEW: Strong cost penalty
-  reward_queue_penalty_coef: 0.55          # Keep from common
-  reward_invalid_action_coef: 1.5          # Slightly increase
-  
-  # --- Episode Configuration ---
-  max_episode_length: 200        # 100 → 200 (give more time for tasks to complete)
-  
-  # --- Infrastructure (Keep from Exp4) ---
-  hosts_count: 32
-  host_pes: 16
-  host_pe_mips: 50000
-  host_ram: 65536
-  host_bw: 50000
-  host_storage: 100000
-  
-  # --- VM Specs (Keep from common) ---
-  small_vm_pes: 2
-  small_vm_ram: 8192
-  small_vm_bw: 1000
-  small_vm_storage: 4000
-  medium_vm_multiplier: 2
-  large_vm_multiplier: 4
-  
-  # --- Other Settings ---
-  seed: 42                       # Change seed for different initialization
-  save_experiment: true
-  verbose: 1                     # Show training progress
-  log_interval: 1
-  device: "auto"                 # Use GPU if available
-
-# ===================================================================
-# Experiment 6: Energy-Aware Green Scheduling
-# ===================================================================
-# Focus: Minimize energy consumption while maintaining performance
-# Key innovation: Add energy penalty to reward function
-# Trade-off: Balance between task completion time and energy efficiency
-# ===================================================================
-
-experiment_6_green:
-  # --- Identification ---
-  simulation_name: "Exp6_Green_EnergyAware"
-  experiment_name: "exp6_green_energy"
-  experiment_type_dir: "Green_Scheduling"
-
-  # --- Workload (Same as Exp5 for comparison) ---
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-
-  # --- Algorithm & Training ---
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 100000              # Sufficient training
-  learning_rate: 0.0003          # Same as Exp5
-
-  # --- PPO Hyperparameters ---
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
-  clip_range: 0.2
-  ent_coef: 0.05                 # Encourage exploration
-  vf_coef: 0.5
-  max_grad_norm: 0.5
-
-  # --- VM Fleet (Balanced configuration) ---
-  initial_s_vm_count: 15         # More VMs to reduce wait time
-  initial_m_vm_count: 10
-  initial_l_vm_count: 5
-  # Total: 30 VMs, 180 cores
-
-  # --- Reward Weights (Green Scheduling Focus) ---
-  reward_wait_time_coef: 1.0           # Maintain performance
-  reward_unutilization_coef: 0.5       # Encourage efficient resource use
-  reward_cost_coef: 0.3                # Lower priority (cost secondary to energy)
-  reward_queue_penalty_coef: 0.8       # Keep tasks moving
-  reward_invalid_action_coef: 2.0      # Penalize invalid actions
-  reward_energy_coef: 1.5              # 🌱 KEY: High energy penalty for green scheduling
-
-  # --- Episode Configuration ---
-  max_episode_length: 300              # Enough time to complete all tasks
-
-  # --- Infrastructure (Standard) ---
-  hosts_count: 32
-  host_pes: 16
-  host_pe_mips: 50000
-  host_ram: 65536
-  host_bw: 50000
-  host_storage: 100000
-
-  # --- VM Specs ---
-  small_vm_pes: 2
-  small_vm_ram: 8192
-  small_vm_bw: 1000
-  small_vm_storage: 4000
-  medium_vm_multiplier: 2
-  large_vm_multiplier: 4
-
-  # --- Other Settings ---
-  seed: 123                      # Different seed for variety
-  save_experiment: true
-  verbose: 1
-  log_interval: 1
-  device: "auto"
-
-# ===================================================================
-# Experiment 7: Extreme Green - Maximum Energy Savings
-# ===================================================================
-# Ultra-aggressive energy optimization, accepting longer wait times
-# ===================================================================
-
-experiment_7_ultra_green:
-  # --- Identification ---
-  simulation_name: "Exp7_UltraGreen_MaxSavings"
-  experiment_name: "exp7_ultra_green"
-  experiment_type_dir: "Green_Scheduling"
-
-  # --- Workload ---
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-
-  # --- Algorithm & Training ---
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 150000              # Longer training for complex trade-off
-  learning_rate: 0.0003
-
-  # --- PPO Hyperparameters ---
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
-  clip_range: 0.2
-  ent_coef: 0.08                 # More exploration for energy-saving strategies
-
-  # --- VM Fleet (Minimal for energy savings) ---
-  initial_s_vm_count: 8          # Fewer VMs = lower baseline power
-  initial_m_vm_count: 5
-  initial_l_vm_count: 3
-  # Total: 16 VMs, 96 cores
-
-  # --- Reward Weights (Extreme Green) ---
-  reward_wait_time_coef: 0.3           # 🔽 Lower: Accept longer waits
-  reward_unutilization_coef: 1.0       # High: Maximize VM usage
-  reward_cost_coef: 0.2                # Low priority
-  reward_queue_penalty_coef: 0.3       # Lower: Accept some queuing
-  reward_invalid_action_coef: 2.0
-  reward_energy_coef: 3.0              # 🌱🌱🌱 EXTREME: Maximize energy savings
-
-  # --- Episode Configuration ---
-  max_episode_length: 500              # Much longer to accommodate slower execution
-
-  # --- Infrastructure ---
-  hosts_count: 32
-  host_pes: 16
-  host_pe_mips: 50000
-
-  # --- Other Settings ---
-  seed: 456
-  save_experiment: true
-  verbose: 1
-  device: "auto"
-
-# ===================================================================
-# Experiment 8: Heterogeneous Datacenter - Real Server Profiles
-# ===================================================================
-# Features:
-# - Mixed server types based on SPEC power_ssj2008 real data
-# - Different power consumption characteristics per host type
-# - Energy-aware scheduling learns to utilize efficient servers
-# ===================================================================
-
-experiment_8_heterogeneous:
-  # --- Identification ---
-  simulation_name: "Exp8_Heterogeneous_RealServers"
-  experiment_name: "exp8_heterogeneous"
-  experiment_type_dir: "Heterogeneous_Green"
-
-  # --- Workload ---
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-
-  # --- Algorithm & Training ---
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 100000
-  learning_rate: 0.0003
-
-  # --- PPO Hyperparameters ---
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
-  ent_coef: 0.05
-
-  # 🌟 HETEROGENEOUS HOSTS CONFIGURATION 🌟
-  # Enable heterogeneous datacenter with real server profiles
-  enable_heterogeneous_hosts: true
-
-  # Server distribution (total: 32 hosts)
-  # Based on SPEC power_ssj2008 real server data:
-
-  host_count_low_power: 10      # HP ProLiant DL360 G7
-                                 # - 8 cores, 32GB RAM
-                                 # - Idle: 58W, Peak: 208W
-                                 # - Energy efficient for light workloads
-
-  host_count_medium: 12          # Dell PowerEdge R720
-                                 # - 16 cores, 64GB RAM
-                                 # - Idle: 98W, Peak: 345W
-                                 # - Balanced performance
-
-  host_count_high_perf: 8        # Cisco UCS C240 M4
-                                 # - 24 cores, 128GB RAM
-                                 # - Idle: 142W, Peak: 476W
-                                 # - High performance for heavy tasks
-
-  host_count_ultra: 2            # HPE ProLiant DL380 Gen10
-                                 # - 32 cores, 256GB RAM
-                                 # - Idle: 194W, Peak: 634W
-                                 # - Reserved for peak loads
-
-  hosts_count: 32                # Total (should match sum above)
-
-  # --- VM Fleet ---
-  initial_s_vm_count: 15
-  initial_m_vm_count: 10
-  initial_l_vm_count: 5
-
-  # --- Reward Weights (Green + Heterogeneous Aware) ---
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 0.8     # Encourage high utilization
-  reward_cost_coef: 0.3
-  reward_queue_penalty_coef: 0.7
-  reward_invalid_action_coef: 2.0
-  reward_energy_coef: 2.0            # 🔋 High energy penalty to learn efficient server selection
-
-  # --- Episode Configuration ---
-  max_episode_length: 300
-
-  # --- Other Settings ---
-  seed: 789
-  save_experiment: true
-  verbose: 1
-  device: "auto"
-
-# ===================================================================
-# Experiment 9: Extreme Heterogeneous - Maximize Energy Diversity
-# ===================================================================
-# Testing agent's ability to exploit server diversity for energy savings
-# ===================================================================
-
-experiment_9_extreme_hetero:
-  # --- Identification ---
-  simulation_name: "Exp9_ExtremeHetero_MaxDiversity"
-  experiment_name: "exp9_extreme_hetero"
-  experiment_type_dir: "Heterogeneous_Green"
-
-  # --- Workload ---
-  workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
-
-  # --- Training ---
-  mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 150000              # Longer training for complex optimization
-  learning_rate: 0.0003
-
-  # 🌟 EXTREME HETEROGENEITY 🌟
-  enable_heterogeneous_hosts: true
-
-  # Highly diverse server mix
-  host_count_low_power: 16       # Majority low-power for efficiency
-  host_count_medium: 8           # Some balanced servers
-  host_count_high_perf: 6        # Limited high-perf
-  host_count_ultra: 2            # Minimal ultra for emergencies
-
-  hosts_count: 32
-
-  # --- VM Fleet (Smaller to force smart placement) ---
-  initial_s_vm_count: 10
-  initial_m_vm_count: 6
-  initial_l_vm_count: 4
-
-  # --- Reward Weights (Extreme Green) ---
-  reward_wait_time_coef: 0.5          # 🔽 Lower: accept delays for energy savings
-  reward_unutilization_coef: 1.5      # 🔼 High: maximize usage of active servers
-  reward_cost_coef: 0.2
-  reward_queue_penalty_coef: 0.4
-  reward_invalid_action_coef: 2.0
-  reward_energy_coef: 4.0             # 🔋🔋🔋 EXTREME: Learn to prefer low-power servers
-
-  # --- Episode Configuration ---
-  max_episode_length: 400
-
-  # --- Other Settings ---
-  seed: 999
-  save_experiment: true
-  verbose: 1
-  device: "auto"
 
 # ===================================================================
 # Experiment 10: Real SPEC Servers - Authentic Power Profiles
@@ -1008,6 +480,14 @@ experiment_4_maskable_lstm:
   vf_coef: 0.3
   max_grad_norm: 0.5
 
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
+
+
   policy_kwargs:
     lstm_hidden_size: 256
     n_lstm_layers: 1
@@ -1020,64 +500,100 @@ experiment_4_maskable_lstm:
   
   seed: 42
   save_experiment: true
-  max_episode_length: 800  # Shorter for CSV workload (165 tasks)
+  max_episode_length: 800  # Shorter for CSV workload (164 tasks)
   
-# ===================================================================
-# Experiment 3 - Debug Version 4: More Exploration
-# ===================================================================
-# Goal: Increase exploration to discover fast strategy more reliably
-# Key changes:
-# 1. Increase entropy coefficient (0.02 → 0.08) - 4x more exploration
-# 2. Longer training (200000 timesteps)
-# 3. Lower learning rate (0.0003) - more stable learning
-# 4. Moderate reward adjustments
-# ===================================================================
+experiment_11_long:
+  # --- Identification ---
+  simulation_name: "Exp11_LongEpisode_3600s"
+  experiment_name: "exp11_3600s"
+  experiment_type_dir: "LongEpisode"
 
-experiment_3_debug_v4:
-  simulation_name: "Exp3_Debug_MoreExploration"
-  experiment_name: "exp3_debug_explore"
-  experiment_type_dir: "QuickTests"
-
-  # --- Workload ---
+  # --- Workload Configuration ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+  cloudlet_trace_file: "traces/poisson_04_3600.csv"  # 1426 tasks, 3600s
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
 
-  # --- Training ---
+  # --- Infrastructure Configuration ---
+  # Host setup: 16 hosts × 16 cores = 256 total cores
+  # Provides 3x capacity vs average demand (58 cores), 3x vs peak (87 cores)
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536      # 64 GB per host
+  host_bw: 50000       # 50 Gbps
+  host_storage: 100000 # 100 GB
+
+  # --- VM Configuration ---
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_bw: 1000
+  small_vm_storage: 4000
+  medium_vm_multiplier: 2   # Medium: 4 PEs
+  large_vm_multiplier: 4    # Large: 8 PEs
+
+  # --- Initial VM Fleet ---
+  # Total: 20×2 + 10×4 + 5×8 = 120 cores
+  # Coverage: 120 cores ÷ 58 avg = 2.1x average demand (good utilization target)
+  #           120 cores ÷ 87 peak = 1.4x peak demand (allows some stress)
+  initial_s_vm_count: 20    # Small (2 cores each) = 40 cores
+  initial_m_vm_count: 10    # Medium (4 cores each) = 40 cores
+  initial_l_vm_count: 5     # Large (8 cores each) = 40 cores
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 7200  # 🕐 1 hour episodes
+
+  # --- RL Algorithm Configuration ---
   mode: "train"
-  algorithm: "MaskablePPO"
-  timesteps: 200000          # 120000 → 200000 (much longer training)
-  learning_rate: 0.0003      # 0.0005 → 0.0003 (lower for stability)
+  algorithm: "RecurrentPPO"
+  policy: "MultiInputLstmPolicy"   # LSTM for temporal patterns
 
-  # --- PPO Hyperparameters ---
-  n_steps: 512
-  batch_size: 128
-  n_epochs: 15
-  gamma: 0.995
-  gae_lambda: 0.98
+  # Training configuration
+  timesteps: 1000000             # Long training (many 3600s episodes)
+  learning_rate: 0.0003
+  n_steps: 4096                 # Collect more steps before update
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.995                  # High discount for long episodes
+  gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.08             # 0.02 → 0.08 (4x more exploration!)
+  ent_coef: 0.05                # Moderate exploration
+  vf_coef: 0.5
+  max_grad_norm: 0.5
 
-  # --- VM Fleet ---
-  initial_s_vm_count: 20
-  initial_m_vm_count: 10
-  initial_l_vm_count: 4
+  # --- LSTM Policy Configuration ---
+  policy_kwargs:
+    lstm_hidden_size: 256       # Large hidden state for 1-hour context
+    n_lstm_layers: 1
+    shared_lstm: true
+    enable_critic_lstm: false
+    net_arch:
+      pi: [128, 128]            # Deeper actor head
+      vf: [128, 128]            # Deeper critic head
 
-  # --- Reward Weights (Moderate adjustments) ---
-  reward_wait_time_coef: 1.5          # Increase wait time penalty
-  reward_throughput_coef: 1.2         # Increase throughput
-  reward_unutilization_coef: 0.4      # Decrease a bit
-  reward_cost_coef: 0.4
-  reward_queue_penalty_coef: 1.0      # Increase queue penalty
-  reward_invalid_action_coef: 2.0
-
-  # --- Episode Configuration ---
-  max_episode_length: 350    # Shorter than original
+  # --- Reward Weights ---
+  # Balanced rewards for long episodes
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
 
   # --- Other Settings ---
-  seed: 44
+  seed: 3600
   save_experiment: true
   verbose: 1
-  device: "auto"
+  log_interval: 1
+  device: "cuda"
+
+  # --- VM Lifecycle ---
+  vm_startup_delay: 0.0
+  vm_shutdown_delay: 0.0
+
 
 # ===================================================================
 # HIERARCHICAL MULTI-DATACENTER EXPERIMENTS
@@ -1114,7 +630,7 @@ experiment_multi_dc_3:
       name: "DC_HighPerformance"
       turbine_id: 57                   # Wind turbine ID
       wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
-      green_energy_enabled: true
+      green_energy_enabled: false
 
       # Infrastructure
       hosts_count: 20
@@ -1146,7 +662,7 @@ experiment_multi_dc_3:
       name: "DC_EnergyEfficient"
       turbine_id: 58                   # Different turbine
       wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
-      green_energy_enabled: true
+      green_energy_enabled: false
 
       # Infrastructure (lower power, more hosts)
       hosts_count: 24
@@ -1177,7 +693,8 @@ experiment_multi_dc_3:
       name: "DC_Edge"
       turbine_id: 59                   # Different turbine
       wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"
-      green_energy_enabled: true
+      green_energy_enabled: false
+    
 
       # Infrastructure (smaller, edge location)
       hosts_count: 12

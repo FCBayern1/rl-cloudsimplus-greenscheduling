@@ -50,6 +50,12 @@ public class SimulationStepInfo {
     private final double currentGreenPowerW;       // Current green power availability in Watts
     private final double greenRatio;               // Green energy ratio for current step (0.0 to 1.0)
 
+    // Episode Statistics (only populated at episode end)
+    private final double episodeDuration;          // Total episode duration in seconds
+    private final int episodeCompletedCloudlets;   // Number of cloudlets completed in this episode
+    private final int episodeTotalCloudlets;       // Total number of cloudlets in this episode
+    private final double episodeCompletionRate;    // Completion rate (completed/total)
+
     // Constructor with all fields
     public SimulationStepInfo(boolean assignmentSuccess, boolean createVmAttempted, boolean createVmSuccess,
             boolean destroyVmAttempted, boolean destroyVmSuccess, boolean invalidActionTaken, int hostAffectedId,
@@ -61,7 +67,8 @@ public class SimulationStepInfo {
             int[] observationTreeArray, List<Double> completedCloudletWaitTimes,
             double currentPowerW, double cumulativeEnergyWh, double averageHostUtilization,
             double cumulativeGreenEnergyWh, double cumulativeBrownEnergyWh,
-            double totalWastedGreenWh, double currentGreenPowerW, double greenRatio) {
+            double totalWastedGreenWh, double currentGreenPowerW, double greenRatio,
+            double episodeDuration, int episodeCompletedCloudlets, int episodeTotalCloudlets, double episodeCompletionRate) {
         this.assignmentSuccess = assignmentSuccess;
         this.createVmAttempted = createVmAttempted;
         this.createVmSuccess = createVmSuccess;
@@ -86,13 +93,17 @@ public class SimulationStepInfo {
         this.totalWastedGreenWh = totalWastedGreenWh;
         this.currentGreenPowerW = currentGreenPowerW;
         this.greenRatio = greenRatio;
+        this.episodeDuration = episodeDuration;
+        this.episodeCompletedCloudlets = episodeCompletedCloudlets;
+        this.episodeTotalCloudlets = episodeTotalCloudlets;
+        this.episodeCompletionRate = episodeCompletionRate;
     }
 
     // Simplified constructor for SimulationResetResult where action outcomes aren't
     // relevant
     public SimulationStepInfo(double currentClock) {
         this(false, false, false, false, false, false, -1, 0, currentClock, 0, 0, 0, 0, 0, new int[1],
-                new ArrayList<>(), 0, 0, 0, 0, 0, 0, 0, 0);
+                new ArrayList<>(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     // --- Getters ---
@@ -135,6 +146,10 @@ public class SimulationStepInfo {
         map.put("total_wasted_green_wh", this.totalWastedGreenWh);
         map.put("current_green_power_w", this.currentGreenPowerW);
         map.put("green_ratio", this.greenRatio);
+        map.put("episode_duration", this.episodeDuration);
+        map.put("episode_completed_cloudlets", this.episodeCompletedCloudlets);
+        map.put("episode_total_cloudlets", this.episodeTotalCloudlets);
+        map.put("episode_completion_rate", this.episodeCompletionRate);
         return map;
     }
 

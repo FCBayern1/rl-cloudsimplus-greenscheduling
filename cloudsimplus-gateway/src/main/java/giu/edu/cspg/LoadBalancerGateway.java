@@ -68,6 +68,11 @@ public class LoadBalancerGateway {
     // Wind power predictor (Py4J interface for optional prediction service)
     private Object windPowerPredictor = null;
 
+    // Historical statistics for enhanced observation
+    private static final int HISTORY_WINDOW = 10;
+    private final List<Integer> completedCloudletsHistory = new ArrayList<>();  // Completed cloudlets per step
+    private int previousFinishedCount = 0;  // Track finished cloudlets to calculate delta
+
     public LoadBalancerGateway() {
         // Settings will be properly initialized by configureSimulation
         LOGGER.info("LoadBalancerGateway created. Waiting for configuration...");
@@ -231,7 +236,7 @@ public class LoadBalancerGateway {
     }
 
     /**
-     * Executes one simulation step based on the agent's action list.
+     * Executes one simulation step based on the agent's action.
      * Action format: [target_vm_id]
      * 
      * @param targetVmId the target VM ID for assigning the cloudlet.
@@ -255,9 +260,10 @@ public class LoadBalancerGateway {
             LOGGER.trace("Action: No assignment requested (targetVmId = -1).");
             if (simulationCore.getBroker().hasWaitingCloudlets()) {
                 LOGGER.warn("Agent chose NoAssign (-1) but cloudlets are waiting. Considered invalid action.");
-                wasInvalidAction = true; // Penalize choosing NoOp when work exists
+                wasInvalidAction = true; // Penalise choosing NoOp when work exists
             }
-        } else {
+        }
+        else {
             // Assign Cloudlet
             // Agent chose a specific VM ID (0 to N-1)
             if (simulationCore.getBroker().hasWaitingCloudlets()) {
@@ -268,7 +274,8 @@ public class LoadBalancerGateway {
                             targetVmId);
                     wasInvalidAction = true; // Treat failed assignment as invalid action
                 }
-            } else {
+            }
+            else {
                 LOGGER.warn("Assign Cloudlet action taken, but queue is empty. Invalid action.");
                 wasInvalidAction = true; // Invalid action if queue is empty
             }
@@ -318,6 +325,25 @@ public class LoadBalancerGateway {
             ? (this.cumulativeGreenEnergyWh / this.cumulativeEnergyWh)
             : 0.0;
 
+        // Calculate episode statistics (only meaningful at episode end)
+        double episodeDuration = 0;
+        int episodeCompletedCloudlets = 0;
+        int episodeTotalCloudlets = 0;
+        double episodeCompletionRate = 0;
+
+        if (terminated || truncated) {
+            episodeDuration = currentClock;
+            episodeCompletedCloudlets = simulationCore.getBroker() != null
+                ? simulationCore.getBroker().getCloudletFinishedList().size()
+                : 0;
+            episodeTotalCloudlets = simulationCore.getBroker() != null
+                ? simulationCore.getBroker().getInputCloudlets().size()
+                : 0;
+            episodeCompletionRate = episodeTotalCloudlets > 0
+                ? (double) episodeCompletedCloudlets / episodeTotalCloudlets
+                : 0.0;
+        }
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, false, false,
                 false, false, wasInvalidAction,
@@ -332,7 +358,8 @@ public class LoadBalancerGateway {
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
                 this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
                 this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
-                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio);
+                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio,
+                episodeDuration, episodeCompletedCloudlets, episodeTotalCloudlets, episodeCompletionRate);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -504,6 +531,25 @@ public class LoadBalancerGateway {
             ? (this.cumulativeGreenEnergyWh / this.cumulativeEnergyWh)
             : 0.0;
 
+        // Calculate episode statistics (only meaningful at episode end)
+        double episodeDuration = 0;
+        int episodeCompletedCloudlets = 0;
+        int episodeTotalCloudlets = 0;
+        double episodeCompletionRate = 0;
+
+        if (terminated || truncated) {
+            episodeDuration = currentClock;
+            episodeCompletedCloudlets = simulationCore.getBroker() != null
+                ? simulationCore.getBroker().getCloudletFinishedList().size()
+                : 0;
+            episodeTotalCloudlets = simulationCore.getBroker() != null
+                ? simulationCore.getBroker().getInputCloudlets().size()
+                : 0;
+            episodeCompletionRate = episodeTotalCloudlets > 0
+                ? (double) episodeCompletedCloudlets / episodeTotalCloudlets
+                : 0.0;
+        }
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, createAttempted, createSuccess,
                 destroyAttempted, destroySuccess, wasInvalidAction,
@@ -518,7 +564,8 @@ public class LoadBalancerGateway {
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
                 this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
                 this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
-                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio);
+                this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio,
+                episodeDuration, episodeCompletedCloudlets, episodeTotalCloudlets, episodeCompletionRate);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
                 terminated, truncated, stepInfo);
@@ -624,9 +671,21 @@ public class LoadBalancerGateway {
             int maxHosts = settings != null ? settings.getHostsCount() : 10; // Use default if settings is null somehow
             int maxVms = maxPotentialVms > 0 ? maxPotentialVms : 50; // Use calculated max or default
             return new ObservationState(
-                    new double[maxHosts], new double[maxHosts],
-                    new double[maxVms], new int[maxVms], new int[maxVms], getInfrastructureObservation(),
-                    0, 0, new int[maxVms], 0, 0);
+                    new double[maxHosts],
+                    new double[maxHosts],
+                    new double[maxVms],
+                    new int[maxVms],
+                    new int[maxVms],
+                    getInfrastructureObservation(),
+                    0,
+                    0,
+                    new int[maxVms],
+                    0,
+                    0,
+                    0L,
+                    0.0,
+                    new int[3],
+                    0);  // New fields with default values
         }
 
         // Initialize padded arrays
@@ -688,9 +747,59 @@ public class LoadBalancerGateway {
                 : null;
         int nextCloudletPes = (int) ((nextCloudlet != null) ? nextCloudlet.getPesNumber() : 0);
 
+        // ===== Enhanced Cloudlet Information =====
+        // 1. Next cloudlet MI
+        long nextCloudletMi = (nextCloudlet != null) ? nextCloudlet.getLength() : 0;
+
+        // 2. Next cloudlet wait time (how long it has been waiting)
+        double nextCloudletWaitTime = 0.0;
+        if (nextCloudlet != null && simulationCore.getBroker() != null) {
+            Double arrivalTime = simulationCore.getBroker().getCloudletArrivalTimeMap().get(nextCloudlet.getId());
+            if (arrivalTime != null) {
+                nextCloudletWaitTime = simulationCore.getClock() - arrivalTime;
+            }
+        }
+
+        // 3. Queue PEs distribution [small (1-2 PEs), medium (3-4 PEs), large (5+ PEs)]
+        int[] queuePesDistribution = new int[3]; // [small, medium, large]
+        if (simulationCore.getBroker() != null) {
+            List<Cloudlet> waitingQueue = simulationCore.getBroker().getCloudletWaitingList();
+            for (Cloudlet cloudlet : waitingQueue) {
+                int pes = (int) cloudlet.getPesNumber();
+                if (pes <= 2) {
+                    queuePesDistribution[0]++;  // small
+                } else if (pes <= 4) {
+                    queuePesDistribution[1]++;  // medium
+                } else {
+                    queuePesDistribution[2]++;  // large
+                }
+            }
+        }
+
+        // ===== Historical Statistics =====
+        // 4. Track completed cloudlets in this step
+        int currentFinishedCount = (simulationCore.getBroker() != null)
+                ? simulationCore.getBroker().getCloudletFinishedList().size()
+                : 0;
+        int completedThisStep = currentFinishedCount - previousFinishedCount;
+        previousFinishedCount = currentFinishedCount;
+
+        completedCloudletsHistory.add(completedThisStep);
+        if (completedCloudletsHistory.size() > HISTORY_WINDOW) {
+            completedCloudletsHistory.remove(0);  // Circular buffer
+        }
+
+        // Calculate total completed in last N steps
+        int completedCloudletsLast10Steps = 0;
+        for (int count : completedCloudletsHistory) {
+            completedCloudletsLast10Steps += count;
+        }
+
         return new ObservationState(
                 hostLoads, hostRamUsageRatio, vmLoads, vmTypes, vmHostMap, getInfrastructureObservation(),
-                waitingCloudlets, nextCloudletPes, vmAvailablePes, actualVmCount, numHosts);
+                waitingCloudlets, nextCloudletPes, vmAvailablePes, actualVmCount, numHosts,
+                nextCloudletMi, nextCloudletWaitTime, queuePesDistribution,
+                completedCloudletsLast10Steps);
     }
 
     /** Helper to convert VM type string (S, M, L) to integer index (1, 2, 3). */
@@ -953,7 +1062,7 @@ public class LoadBalancerGateway {
                 // Total cumulative energy (green + brown)
                 cumulativeEnergyWh += allocation.getTotalEnergyWh();
 
-                LOGGER.debug("Green Energy - Green: {:.2f}Wh({:.1f}%), Brown: {:.2f}Wh, Wasted: {:.2f}Wh, GreenPower: {:.1f}W",
+                LOGGER.debug("Green Energy - Green: {}Wh({}%), Brown: {}Wh, Wasted: {}Wh, GreenPower: {}W",
                     allocation.getGreenEnergyWh(), allocation.getGreenRatio() * 100,
                     allocation.getBrownEnergyWh(), allocation.getWastedGreenWh(),
                     allocation.getGreenPowerW());
@@ -1018,14 +1127,14 @@ public class LoadBalancerGateway {
                 // Get max power at 100% utilization
                 double maxPower = host.getPowerModel().getPower(1.0);
                 totalMaxPower += maxPower;
-                LOGGER.debug("Host {}: max power = {:.2f}W", host.getId(), maxPower);
+                LOGGER.debug("Host {}: max power = {}W", host.getId(), maxPower);
             } else {
                 LOGGER.warn("Host {} has no power model, using default 250W", host.getId());
                 totalMaxPower += 250.0; // Default fallback for hosts without power model
             }
         }
 
-        LOGGER.info("Total maximum power across {} hosts: {:.2f}W", hostList.size(), totalMaxPower);
+        LOGGER.info("Total maximum power across {} hosts: {}W", hostList.size(), totalMaxPower);
         return totalMaxPower;
     }
 
