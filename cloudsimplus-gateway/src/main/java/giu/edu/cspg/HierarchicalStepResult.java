@@ -9,13 +9,13 @@ import lombok.Getter;
  * Result object for a hierarchical simulation step in multi-datacenter environment.
  *
  * Contains observations, rewards, and info for both global and local levels:
- * - Global level: Aggregated state of all datacenters
- * - Local level: Individual state of each datacenter
+ * - Global level: Aggregated state of all datacenters (GlobalObservationState)
+ * - Local level: Individual state of each datacenter (ObservationState per DC)
  */
 @Getter
 public class HierarchicalStepResult {
     // === Global Level ===
-    private final ObservationState globalObservation;
+    private final GlobalObservationState globalObservation;
     private final double globalReward;
 
     // === Local Level ===
@@ -32,8 +32,8 @@ public class HierarchicalStepResult {
     /**
      * Create a hierarchical step result.
      *
-     * @param globalObservation Global observation (all DCs aggregated)
-     * @param localObservations Map of local observations (one per DC)
+     * @param globalObservation Global observation (all DCs aggregated, GlobalObservationState)
+     * @param localObservations Map of local observations (one ObservationState per DC)
      * @param globalReward Global reward
      * @param localRewards Map of local rewards (one per DC)
      * @param terminated Whether simulation terminated naturally
@@ -41,7 +41,7 @@ public class HierarchicalStepResult {
      * @param info Additional information dictionary
      */
     public HierarchicalStepResult(
-            ObservationState globalObservation,
+            GlobalObservationState globalObservation,
             Map<Integer, ObservationState> localObservations,
             double globalReward,
             Map<Integer, Double> localRewards,

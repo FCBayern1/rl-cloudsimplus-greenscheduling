@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import lombok.Getter;
 import org.cloudsimplus.brokers.DatacenterBrokerSimple;
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.core.CloudSimPlus;
@@ -11,9 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Global Broker for multi-datacenter environment (Smart Router Mode).
+ *   Global Broker for multi-datacenter environment (Smart Router Mode).
  *
- * Instead of maintaining a global queue, this broker acts as an intelligent router:
+ *   Instead of maintaining a global queue, this broker acts as an intelligent router:
  * - Stores all cloudlets with their arrival times (from workload trace)
  * - Provides cloudlets that arrive in the current time window
  * - Routes cloudlets to target datacenters based on Global Agent's decisions
@@ -32,7 +33,14 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     // === Routing State ===
     private int nextCloudletIndex = 0;  // Index of next cloudlet to process
 
+    /**
+     * -- GETTER --
+     *  Get the number of cloudlets that have been routed to datacenters.
+     *
+     * @return Total cloudlets routed
+     */
     // === Statistics ===
+    @Getter
     private int totalCloudletsRouted = 0;
     private int totalCloudletsCompleted = 0;
 
@@ -193,15 +201,6 @@ public class GlobalBroker extends DatacenterBrokerSimple {
      */
     public int getTotalCloudletCount() {
         return allCloudlets.size();
-    }
-
-    /**
-     * Get the number of cloudlets that have been routed to datacenters.
-     *
-     * @return Total cloudlets routed
-     */
-    public int getTotalCloudletsRouted() {
-        return totalCloudletsRouted;
     }
 
     /**

@@ -86,7 +86,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             "dc_queue_sizes": spaces.Box(
                 low=0, high=10000,
                 shape=(self.num_datacenters,),
-                dtype=np.float32
+                dtype=np.int32  # Changed to int32 (queue sizes are integers)
             ),
             "dc_utilizations": spaces.Box(
                 low=0.0, high=1.0,
@@ -96,10 +96,31 @@ class HierarchicalMultiDCEnv(gym.Env):
             "dc_available_pes": spaces.Box(
                 low=0, high=1000,
                 shape=(self.num_datacenters,),
+                dtype=np.int32  # Changed to int32 (PEs are integers)
+            ),
+            "dc_ram_utilizations": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
             "upcoming_cloudlets_count": spaces.Discrete(self.max_arriving_cloudlets + 1),
             "next_cloudlet_pes": spaces.Discrete(100),  # Max PEs for a cloudlet
+            "next_cloudlet_mi": spaces.Box(
+                low=0, high=1000000,  # Max MI for a cloudlet
+                shape=(1,),
+                dtype=np.int64
+            ),
+            "upcoming_pes_distribution": spaces.Box(
+                low=0, high=1000,
+                shape=(3,),  # [small (1-2 PEs), medium (3-4 PEs), large (5+ PEs)]
+                dtype=np.int32
+            ),
+            "load_imbalance": spaces.Box(
+                low=0.0, high=10.0,
+                shape=(1,),
+                dtype=np.float32
+            ),
+            "recent_completed": spaces.Discrete(10000),
         })
 
         # Local observation spaces (per datacenter)
@@ -292,15 +313,20 @@ class HierarchicalMultiDCEnv(gym.Env):
                 'local': {dc_id: local observation dict}
             }
         """
-        # Parse global observation
+        # Parse global observation (GlobalObservationState)
         global_obs_java = result.getGlobalObservation()
         global_obs = {
-            "dc_green_power": np.array(global_obs_java.getVmLoads(), dtype=np.float32),  # Reused field
-            "dc_queue_sizes": np.array(global_obs_java.getHostRamUsageRatio(), dtype=np.float32),  # Reused
-            "dc_utilizations": np.array(global_obs_java.getHostLoads(), dtype=np.float32),
-            "dc_available_pes": np.array(global_obs_java.getVmAvailablePes(), dtype=np.float32),
-            "upcoming_cloudlets_count": global_obs_java.getWaitingCloudlets(),
+            "dc_green_power": np.array(global_obs_java.getDcGreenPower(), dtype=np.float32),
+            "dc_queue_sizes": np.array(global_obs_java.getDcQueueSizes(), dtype=np.int32),
+            "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
+            "dc_available_pes": np.array(global_obs_java.getDcAvailablePes(), dtype=np.int32),
+            "dc_ram_utilizations": np.array(global_obs_java.getDcRamUtilizations(), dtype=np.float32),
+            "upcoming_cloudlets_count": global_obs_java.getUpcomingCloudletsCount(),
             "next_cloudlet_pes": global_obs_java.getNextCloudletPes(),
+            "next_cloudlet_mi": np.array([global_obs_java.getNextCloudletMi()], dtype=np.int64),
+            "upcoming_pes_distribution": np.array(global_obs_java.getUpcomingCloudletsPesDistribution(), dtype=np.int32),
+            "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
+            "recent_completed": global_obs_java.getRecentCompletedCloudlets(),
         }
 
         # Parse local observations

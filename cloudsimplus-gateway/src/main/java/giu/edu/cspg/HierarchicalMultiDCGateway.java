@@ -163,7 +163,7 @@ public class HierarchicalMultiDCGateway {
         simulationCore.resetSimulation();
 
         // Return initial observation
-        ObservationState globalObs = simulationCore.getGlobalObservation();
+        GlobalObservationState globalObs = simulationCore.getGlobalObservation();
         Map<Integer, ObservationState> localObs = simulationCore.getLocalObservations();
 
         return new HierarchicalStepResult(
@@ -210,15 +210,10 @@ public class HierarchicalMultiDCGateway {
     /**
      * Get global observation.
      */
-    public ObservationState getGlobalObservation() {
+    public GlobalObservationState getGlobalObservation() {
         if (simulationCore == null) {
             // Return empty observation
-            return new ObservationState(
-                    new double[0], new double[0], new double[0],
-                    new int[0], new int[0], new int[0],
-                    0, 0, new int[0], 0, 0,
-                    0L, 0.0, new int[3], 0
-            );
+            return GlobalObservationState.createEmpty(1);
         }
         return simulationCore.getGlobalObservation();
     }

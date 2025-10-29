@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.core.CloudSimPlus;
+import org.cloudsimplus.core.CloudSimTag;
 import org.cloudsimplus.datacenters.Datacenter;
 import org.cloudsimplus.hosts.Host;
 import org.cloudsimplus.vms.Vm;
@@ -57,7 +58,7 @@ public class MultiDatacenterSimulationCore {
     private boolean firstStep = true;
 
     /**
-     * Initialize the multi-datacenter simulation core.
+     * Initialise the multi-datacenter simulation core.
      *
      * @param settings General simulation settings
      * @param datacenterConfigs List of configurations for each datacenter
@@ -95,7 +96,7 @@ public class MultiDatacenterSimulationCore {
         allCloudlets = loadAllCloudlets();
         LOGGER.info("Loaded {} cloudlets from workload trace", allCloudlets.size());
 
-        // === Step 2: Create Datacenter Instances ===
+        // === Step 2: Create Datacenter Instances including datacenter, hosts, vms, and localbroker ===
         datacenterInstances = new ArrayList<>();
         for (DatacenterConfig config : datacenterConfigs) {
             DatacenterInstance dcInstance = createDatacenterInstance(config);
@@ -107,8 +108,17 @@ public class MultiDatacenterSimulationCore {
         globalBroker = new GlobalBroker(simulation, allCloudlets, datacenterInstances);
         LOGGER.info("GlobalBroker created with {} cloudlets", allCloudlets.size());
 
-        // === Step 4: Start Simulation (sync mode) ===
+        // === Step 4: Ensure all cloudlets complete ===
+        ensureAllCloudletsCompleteBeforeSimulationEnds();
+        LOGGER.info("Configured event listener to ensure all cloudlets complete");
+
+        // === Step 5: Start Simulation (sync mode) ===
         simulation.startSync();
+
+        // === Step 6: Initialize simulation by proceeding clock ===
+        proceedClockTo(settings.getMinTimeBetweenEvents());
+        LOGGER.info("Simulation clock initialized to {}", currentClock);
+
         LOGGER.info("Multi-datacenter simulation initialized successfully");
     }
 
@@ -257,7 +267,7 @@ public class MultiDatacenterSimulationCore {
         advanceSimulationTime();
 
         // === Phase 4: Collect Observations ===
-        ObservationState globalObs = getGlobalObservation();
+        GlobalObservationState globalObs = getGlobalObservation();
         Map<Integer, ObservationState> localObs = getLocalObservations();
 
         // === Phase 5: Calculate Rewards ===
@@ -265,13 +275,22 @@ public class MultiDatacenterSimulationCore {
         Map<Integer, Double> localRewards = calculateLocalRewards();
 
         // === Phase 6: Check Termination ===
-        boolean terminated = !simulation.isRunning();
+        boolean allCloudletsCompleted = !hasUnfinishedCloudlets();
+        boolean simulationEnded = !simulation.isRunning();
+
+        // Natural termination: all cloudlets completed and simulation ended
+        boolean terminated = allCloudletsCompleted && simulationEnded;
+
+        // Truncation: reached max steps (may still have unfinished cloudlets)
         boolean truncated = currentStep >= settings.getMaxEpisodeLength();
 
         // === Phase 7: Build Info ===
         Map<String, Object> info = buildStepInfo(cloudletsRouted, localResults);
+        info.put("all_cloudlets_completed", allCloudletsCompleted);
+        info.put("simulation_ended", simulationEnded);
 
-        LOGGER.debug("=== Step {} completed (Clock: {}s) ===", currentStep, currentClock);
+        LOGGER.debug("=== Step {} completed (Clock: {}s, Terminated: {}, Truncated: {}) ===",
+                     currentStep, currentClock, terminated, truncated);
 
         return new HierarchicalStepResult(
                 globalObs, localObs,
@@ -346,90 +365,147 @@ public class MultiDatacenterSimulationCore {
 
     /**
      * Advance simulation time by one timestep.
+     * Uses proceedClockTo to ensure precise time advancement.
      */
     private void advanceSimulationTime() {
-        simulation.runFor(timestepSize);
-        currentClock = simulation.clock();
+        double targetTime = currentClock + timestepSize;
+
+        LOGGER.debug("Advancing simulation from {} to {}", currentClock, targetTime);
+
+        // Use proceedClockTo for precise time advancement
+        proceedClockTo(targetTime);
+
         firstStep = false;
+
+        LOGGER.debug("Simulation advanced to {}", currentClock);
     }
 
     /**
      * Get global observation (aggregated state of all datacenters).
      *
-     * For global agent, we provide:
-     * - dc_green_power[] - Green energy availability per DC
-     * - dc_queue_sizes[] - Waiting cloudlets per DC
-     * - dc_utilizations[] - CPU usage per DC
-     * - dc_available_pes[] - Free resources per DC
-     * - upcoming_cloudlets_count - Arriving soon
-     * - next_cloudlet_features - Next task info
+     * Returns datacenter-level aggregated metrics for the Global Agent:
+     * - Green energy availability per DC
+     * - Queue sizes per DC
+     * - CPU/RAM utilization per DC
+     * - Available resources per DC
+     * - Upcoming cloudlets information
+     * - Load balance metrics
+     *
+     * @return GlobalObservationState with DC-level metrics
      */
-    public ObservationState getGlobalObservation() {
+    public GlobalObservationState getGlobalObservation() {
         int numDatacenters = datacenterInstances.size();
 
         // Create arrays for datacenter-level metrics
         double[] dcGreenPower = new double[numDatacenters];
-        double[] dcQueueSizes = new double[numDatacenters];
+        int[] dcQueueSizes = new int[numDatacenters];
         double[] dcUtilizations = new double[numDatacenters];
-        double[] dcAvailablePes = new double[numDatacenters];
+        int[] dcAvailablePes = new int[numDatacenters];
+        double[] dcRamUtilizations = new double[numDatacenters];
 
         // Collect metrics from each datacenter
         for (int i = 0; i < numDatacenters; i++) {
             DatacenterInstance dc = datacenterInstances.get(i);
 
-            // Green power availability (normalized to kW scale)
+            // Green power availability (kW)
             dcGreenPower[i] = dc.getCurrentGreenPowerW(currentClock) / 1000.0;
 
-            // Waiting cloudlets count
+            // Waiting cloudlets count (exact integer)
             dcQueueSizes[i] = dc.getWaitingCloudletCount();
 
-            // Average CPU utilization
+            // Average CPU utilization [0.0, 1.0]
             dcUtilizations[i] = dc.getAverageHostUtilization();
 
             // Available PEs across all VMs
-            dcAvailablePes[i] = dc.getTotalAvailablePes();
+            dcAvailablePes[i] = (int) dc.getTotalAvailablePes();
+
+            // Average RAM utilization [0.0, 1.0] - compute from hosts
+            double totalRamUtil = 0.0;
+            List<Host> hosts = dc.getHostList();
+            if (!hosts.isEmpty()) {
+                for (Host host : hosts) {
+                    totalRamUtil += host.getRam().getPercentUtilization();
+                }
+                dcRamUtilizations[i] = totalRamUtil / hosts.size();
+            } else {
+                dcRamUtilizations[i] = 0.0;
+            }
         }
 
         // Get upcoming cloudlets info
         List<Cloudlet> upcomingCloudlets = globalBroker.getArrivingCloudlets(
-                currentClock, timestepSize * 2);  // Look ahead 2 timesteps
+                currentClock, timestepSize);  // Current time window
         int upcomingCount = upcomingCloudlets.size();
 
         // Get next cloudlet features
         int nextCloudletPes = 0;
+        long nextCloudletMi = 0L;
         if (!upcomingCloudlets.isEmpty()) {
-            nextCloudletPes = (int) upcomingCloudlets.get(0).getPesNumber();
+            Cloudlet nextCloudlet = upcomingCloudlets.get(0);
+            nextCloudletPes = (int) nextCloudlet.getPesNumber();
+            nextCloudletMi = nextCloudlet.getLength();
         }
 
-        // Pack into infrastructure observation (reusing existing structure)
-        int[] infrastructureObs = new int[numDatacenters * 4 + 2];
-        for (int i = 0; i < numDatacenters; i++) {
-            infrastructureObs[i] = (int) dcGreenPower[i];
-            infrastructureObs[numDatacenters + i] = (int) dcQueueSizes[i];
-            infrastructureObs[numDatacenters * 2 + i] = (int) (dcUtilizations[i] * 100);
-            infrastructureObs[numDatacenters * 3 + i] = (int) dcAvailablePes[i];
+        // Calculate PEs distribution in upcoming cloudlets
+        int[] upcomingPesDistribution = new int[3];  // [small, medium, large]
+        for (Cloudlet cloudlet : upcomingCloudlets) {
+            int pes = (int) cloudlet.getPesNumber();
+            if (pes <= 2) {
+                upcomingPesDistribution[0]++;  // Small
+            } else if (pes <= 4) {
+                upcomingPesDistribution[1]++;  // Medium
+            } else {
+                upcomingPesDistribution[2]++;  // Large
+            }
         }
-        infrastructureObs[numDatacenters * 4] = upcomingCount;
-        infrastructureObs[numDatacenters * 4 + 1] = nextCloudletPes;
 
-        // Create observation state (use DC metrics as "host" metrics for global view)
-        return new ObservationState(
-                dcUtilizations,  // hostLoads
-                dcUtilizations,  // hostRamUsageRatio (reuse utilization)
-                dcGreenPower,    // vmLoads (reuse for green power)
-                new int[numDatacenters],  // vmTypes (not used at global level)
-                new int[numDatacenters],  // vmHostMap (not used at global level)
-                infrastructureObs,  // infrastructureObservation
-                upcomingCount,   // waitingCloudlets
-                nextCloudletPes, // nextCloudletPes
-                convertDoubleArrayToIntArray(dcAvailablePes),  // vmAvailablePes
-                numDatacenters,  // actualVmCount (reuse for DC count)
-                numDatacenters,  // actualHostCount (reuse for DC count)
-                0L,              // nextCloudletMi (not tracked at global level)
-                0.0,             // nextCloudletWaitTime (not tracked at global level)
-                new int[3],      // queuePesDistribution (not tracked at global level)
-                0                // completedCloudletsLast10Steps (not tracked at global level)
+        // Calculate load imbalance (variance in utilization)
+        double loadImbalance = calculateLoadImbalance(dcUtilizations);
+
+        // Get recent completed cloudlets (across all DCs)
+        // Note: This requires tracking completed counts in DatacenterInstance
+        // For now, use broker's finished list size as proxy
+        int recentCompleted = datacenterInstances.stream()
+                .mapToInt(dc -> dc.getLocalBroker().getCloudletFinishedList().size())
+                .sum();
+
+        // Create GlobalObservationState with proper DC-level semantics
+        return new GlobalObservationState(
+                dcGreenPower,
+                dcQueueSizes,
+                dcUtilizations,
+                dcAvailablePes,
+                dcRamUtilizations,
+                upcomingCount,
+                nextCloudletPes,
+                nextCloudletMi,
+                upcomingPesDistribution,
+                loadImbalance,
+                recentCompleted,
+                numDatacenters,
+                currentClock
         );
+    }
+
+    /**
+     * Calculate load imbalance metric across datacenters.
+     * Uses variance in utilization as the metric.
+     *
+     * @param dcUtilizations Array of utilization values
+     * @return Load imbalance metric (higher = more unbalanced)
+     */
+    private double calculateLoadImbalance(double[] dcUtilizations) {
+        if (dcUtilizations.length == 0) {
+            return 0.0;
+        }
+
+        double mean = Arrays.stream(dcUtilizations).average().orElse(0.0);
+        double variance = Arrays.stream(dcUtilizations)
+                .map(u -> Math.pow(u - mean, 2))
+                .average()
+                .orElse(0.0);
+
+        return Math.sqrt(variance);  // Return standard deviation
     }
 
     /**
@@ -613,7 +689,7 @@ public class MultiDatacenterSimulationCore {
         // === Combine rewards ===
         reward = greenEnergyReward + energyPenalty + loadBalancePenalty + queuePenalty;
 
-        LOGGER.debug("Global Reward: total={:.3f} (green={:.3f}, energy={:.3f}, balance={:.3f}, queue={:.3f})",
+        LOGGER.debug("Global Reward: total={} (green={}, energy={}, balance={}, queue={})",
                 reward, greenEnergyReward, energyPenalty, loadBalancePenalty, queuePenalty);
 
         return reward;
@@ -698,7 +774,7 @@ public class MultiDatacenterSimulationCore {
         // === Combine local rewards ===
         reward = queuePenalty + utilizationReward + completionReward + invalidActionPenalty;
 
-        LOGGER.debug("DC {} Local Reward: total={:.3f} (queue={:.3f}, util={:.3f}, completion={:.3f})",
+        LOGGER.debug("DC {} Local Reward: total={} (queue={}, util={}, completion={})",
                 dc.getName(), reward, queuePenalty, utilizationReward, completionReward);
 
         return reward;
@@ -732,6 +808,104 @@ public class MultiDatacenterSimulationCore {
             simulation.terminate();
             LOGGER.info("Simulation terminated");
         }
+    }
+
+    /**
+     * Get the number of future events in the simulation.
+     */
+    private long getNumberOfFutureEvents() {
+        return simulation.getNumberOfFutureEvents(info -> true);
+    }
+
+    /**
+     * Check if there are any unfinished cloudlets across all datacenters.
+     *
+     * @return true if there are unfinished cloudlets, false otherwise
+     */
+    private boolean hasUnfinishedCloudlets() {
+        // Check GlobalBroker for unrouted cloudlets
+        if (globalBroker != null && globalBroker.getRemainingCloudletCount() > 0) {
+            return true;
+        }
+
+        // Check each LocalBroker for unfinished cloudlets
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker != null && localBroker.hasUnfinishedCloudlets()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Ensure all cloudlets complete before simulation ends.
+     *
+     * This method adds an event listener that checks if there are unfinished
+     * cloudlets when there is only one future event left. If there are unfinished
+     * cloudlets, it sends an empty event to keep the simulation running.
+     */
+    private void ensureAllCloudletsCompleteBeforeSimulationEnds() {
+        double interval = settings.getSimulationTimestep();
+        simulation.addOnEventProcessingListener(info -> {
+            if (getNumberOfFutureEvents() == 1 && hasUnfinishedCloudlets()) {
+                LOGGER.trace("Cloudlets not finished. Sending empty event to keep simulation running.");
+
+                // Send event to first datacenter to keep simulation alive
+                if (!datacenterInstances.isEmpty()) {
+                    Datacenter firstDc = datacenterInstances.get(0).getDatacenter();
+                    simulation.send(firstDc, firstDc, interval, CloudSimTag.NONE, null);
+                }
+            }
+        });
+    }
+
+    /**
+     * Advances the simulation clock to the specified target time.
+     *
+     * This method runs the simulation in increments until the target time is reached
+     * or the maximum number of iterations is exceeded to prevent an infinite loop.
+     *
+     * @param targetTime The target time to advance the simulation clock to
+     */
+    private void proceedClockTo(final double targetTime) {
+        if (simulation == null) {
+            throw new IllegalStateException("Simulation not initialized. Call resetSimulation first.");
+        }
+        if (!simulation.isRunning()) {
+            LOGGER.warn("Attempting to proceed clock on a simulation that is not running.");
+        }
+
+        double adjustedInterval = targetTime - currentClock;
+        int maxIterations = 1000; // Safety check to prevent infinite loop
+        int iterations = 0;
+
+        LOGGER.trace("Proceeding clock from {} to {} (interval: {})", currentClock, targetTime, adjustedInterval);
+
+        // Run the simulation until the target time is reached
+        while (simulation.runFor(adjustedInterval) < targetTime) {
+            // Update current clock
+            currentClock = simulation.clock();
+
+            // Calculate the remaining time to the target
+            adjustedInterval = targetTime - currentClock;
+
+            // Use the minimum time between events if the remaining time is non-positive
+            adjustedInterval = adjustedInterval <= 0 ? settings.getMinTimeBetweenEvents() : adjustedInterval;
+
+            // Increment the iteration counter and break if it exceeds the maximum allowed iterations
+            if (++iterations >= maxIterations) {
+                LOGGER.warn("Exceeded maximum iterations ({}) in proceedClockTo. Current clock: {}, Target: {}",
+                        maxIterations, currentClock, targetTime);
+                break;
+            }
+        }
+
+        // Final clock update
+        currentClock = simulation.clock();
+
+        LOGGER.trace("Clock advanced to {} (target was {})", currentClock, targetTime);
     }
 
     /**
