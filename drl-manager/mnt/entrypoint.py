@@ -154,17 +154,27 @@ def main():
     mode = params.get("mode", DEFAULT_MODE)
     logger.info(f"Selected mode: {mode}")
 
+    # --- Check for Multi-Datacenter Mode ---
+    is_multi_dc = params.get("multi_datacenter_enabled", False)
+    if is_multi_dc and mode == "train":
+        logger.info("Multi-datacenter mode detected, using hierarchical training module")
+        mode_module = "train_hierarchical_multidc"
+        func_name = "train_hierarchical_multidc"
+    else:
+        mode_module = mode
+        func_name = mode
+
     try:
         # Dynamically import the module corresponding to the mode
         # Assumes train.py, test.py, transfer.py are in the same directory (mnt)
         try:
-            module = importlib.import_module(mode)
+            module = importlib.import_module(mode_module)
         except ModuleNotFoundError:
             print(
                 f"Mode {params['mode']} was not found. Available modes are: 'train', 'transfer', 'test'."
             )
         # Get the function with the same name as the mode
-        func = getattr(module, mode)
+        func = getattr(module, func_name)
         # Execute the function, passing the parameters
         func(params)
     except ModuleNotFoundError:
