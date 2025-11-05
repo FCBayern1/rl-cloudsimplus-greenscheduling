@@ -275,6 +275,79 @@ python train.py \
   --device cuda
 ```
 
+#### Multi-Datacenter Hierarchical MARL Training
+
+Train a hierarchical multi-agent system with a global routing agent and local scheduling agents across multiple datacenters:
+
+```bash
+# Step 1: Start Java Gateway (Terminal 1)
+cd cloudsimplus-gateway
+./gradlew run
+
+# Step 2: Run Multi-DC Training (Terminal 2)
+cd drl-manager
+
+# Activate virtual environment
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# Run hierarchical 3-datacenter experiment
+export EXPERIMENT_ID="experiment_multi_dc_3"  # Linux/Mac
+# $env:EXPERIMENT_ID="experiment_multi_dc_3"  # PowerShell
+
+python mnt/entrypoint.py
+
+# Or directly specify in Python
+python -c "import os; os.environ['EXPERIMENT_ID']='experiment_multi_dc_3'; exec(open('mnt/entrypoint.py').read())"
+```
+
+**Multi-DC Features:**
+- **Global Agent**: Routes arriving cloudlets to optimal datacenter based on:
+  - Total energy consumption across all DCs
+  - Green energy availability and usage ratio
+  - Load balancing across datacenters
+  - Total system queue lengths
+- **Local Agents**: Schedule cloudlets to VMs within each datacenter with parameter sharing
+- **3 Heterogeneous Datacenters**:
+  - DC0: High-Performance (24 cores/host, 60k MIPS)
+  - DC1: Energy-Efficient (16 cores/host, 50k MIPS)
+  - DC2: Edge Location (12 cores/host, 40k MIPS)
+- **Independent Green Energy**: Each DC has different wind turbine (IDs: 57, 58, 59)
+
+**Training Configuration:**
+```yaml
+experiment_multi_dc_3:
+  multi_datacenter_enabled: true
+  max_arriving_cloudlets: 50
+  timesteps: 150000
+  max_episode_length: 2000
+
+  global_agent:
+    algorithm: "PPO"
+    reward_total_energy_coef: 2.0
+    reward_green_ratio_coef: 3.0
+    reward_load_balance_coef: 1.5
+
+  local_agents:
+    algorithm: "MaskablePPO"
+    parameter_sharing: true
+    reward_wait_time_coef: 1.0
+    reward_utilization_coef: 0.8
+```
+
+**Monitoring Multi-DC Training:**
+```bash
+# TensorBoard
+tensorboard --logdir=logs/Multi_Datacenter
+
+# Check logs
+tail -f logs/Multi_Datacenter/hierarchical_3dc/current_run.log
+
+# View green energy metrics
+cd logs/Multi_Datacenter/hierarchical_3dc
+cat monitor.csv | grep "green_ratio\|cumulative_energy"
+```
+
 #### Evaluation Phase
 
 ```bash

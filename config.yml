@@ -60,7 +60,7 @@ common:
   # --- Green Energy Configuration ---
   # Enable wind turbine power integration for green datacenter scheduling
   green_energy:
-    enabled: false                                     # Enable/disable green energy provider
+    enabled: true                                     # Enable/disable green energy provider
     turbine_id: 57                                      # Wind turbine ID to load from dataset
     wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
     prediction:
@@ -122,8 +122,8 @@ common:
 # ===================================================================
 
 experiment_1:
-  simulation_name: "Exp1_CSVSimple_Ent_0_01" # Unique name for logging this specific run
-  experiment_name: "Exp1_CSVSimple_Ent_0_01" # Name for the log sub-folder
+  simulation_name: "Exp1_CSVSimple_GreenEnergy" # Unique name for logging this specific run
+  experiment_name: "Exp1_CSVSimple_GreenEnergy" # Name for the log sub-folder
   experiment_type_dir: "CSV_Train"
   workload_mode: "CSV"
   cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
@@ -133,7 +133,9 @@ experiment_1:
   timesteps: 50000  # Longer training
   learning_rate: 0.0001  # Lower LR for stability
 
-  n_steps: 512  # Smaller for more frequent updates
+  max_episode_length: 5000
+
+  n_steps: 1024  # Smaller for more frequent updates
   batch_size: 128
   n_epochs: 15
   gamma: 0.995
@@ -141,12 +143,25 @@ experiment_1:
   clip_range: 0.2
   ent_coef: 0.02  # Increase exploration
 
-  reward_wait_time_coef: 0.1        # Increase wait time penalty
-  reward_throughput_coef: 0.085
-  reward_unutilization_coef: 0.05    # Double utilization weight (from 0.25)
-  reward_cost_coef: 0.05             # Increase cost weight (from 0.35)
-  reward_queue_penalty_coef: 0.055
-  reward_invalid_action_coef: 0.2   # Harshly penalize invalid actions (from 1.0)
+  # Green Energy Configuration - Testing wind turbine integration
+  green_energy:
+    enabled: true                                     # ✅ Enable green energy
+    turbine_id: 57                                    # Wind turbine ID from dataset
+    wind_data_file: "windProduction/processed_data/cleaned_data.csv"  # ✅ Cleaned wind power data
+    prediction:
+      enabled: false                                  # Disable prediction for now
+      model_path: "../SWF_Prediction/saved_models/best_model.pth"
+      cache_duration_seconds: 600
+      horizon: 8
+
+  # Reward Weights - Added energy coefficient for green energy optimization
+  reward_wait_time_coef: 0.1        # Wait time penalty
+  reward_throughput_coef: 0.085     # Throughput reward
+  reward_unutilization_coef: 0.05   # Utilization penalty
+  reward_cost_coef: 0.05            # Cost penalty
+  reward_queue_penalty_coef: 0.055  # Queue penalty
+  reward_energy_coef: 0.2           # ✅ Energy consumption penalty (new for green energy)
+  reward_invalid_action_coef: 0.2   # Invalid action penalty
 
 # ===================================================================
 # Experiment 2: Large-Scale LLNL Workload with Optimized Parameters

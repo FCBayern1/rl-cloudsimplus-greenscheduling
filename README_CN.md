@@ -523,6 +523,96 @@ python .\drl-manager\mnt\entrypoint.py
 python ./drl-manager/mnt/entrypoint.py  # 默认使用 experiment_1
 ```
 
+### 多数据中心层次化MARL训练
+
+训练一个层次化多智能体系统，包含全局路由智能体和多个数据中心的本地调度智能体：
+
+```bash
+# 步骤 1: 启动 Java Gateway (终端1)
+cd cloudsimplus-gateway
+./gradlew run
+
+# 步骤 2: 运行 Multi-DC 训练 (终端2)
+cd drl-manager
+
+# 激活虚拟环境
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# 运行3数据中心层次化实验
+export EXPERIMENT_ID="experiment_multi_dc_3"  # Linux/Mac
+# $env:EXPERIMENT_ID="experiment_multi_dc_3"  # PowerShell
+
+python mnt/entrypoint.py
+
+# 或在PowerShell中直接指定
+$env:EXPERIMENT_ID="experiment_multi_dc_3"
+python mnt/entrypoint.py
+```
+
+**Multi-DC 特性：**
+- **全局智能体（Global Agent）**：将到达的任务路由到最优数据中心，基于：
+  - 所有数据中心的总能耗
+  - 绿色能源可用性和使用比例
+  - 数据中心间的负载均衡
+  - 系统总队列长度
+- **本地智能体（Local Agents）**：在各数据中心内将任务调度到VM，使用参数共享
+- **3个异构数据中心**：
+  - DC0: 高性能数据中心（24核/主机，60k MIPS）
+  - DC1: 节能型数据中心（16核/主机，50k MIPS）
+  - DC2: 边缘数据中心（12核/主机，40k MIPS）
+- **独立绿色能源**：每个DC使用不同的风力涡轮机（ID: 57, 58, 59）
+
+**训练配置示例：**
+```yaml
+experiment_multi_dc_3:
+  multi_datacenter_enabled: true  # 启用多数据中心模式
+  max_arriving_cloudlets: 50      # 每时间步最多到达任务数
+  timesteps: 150000               # 总训练步数
+  max_episode_length: 2000        # Episode最大长度
+
+  # 全局智能体配置
+  global_agent:
+    algorithm: "PPO"
+    reward_total_energy_coef: 2.0      # 最小化总能耗
+    reward_green_ratio_coef: 3.0       # 最大化绿色能源使用比例
+    reward_load_balance_coef: 1.5      # DC间负载均衡
+
+  # 本地智能体配置
+  local_agents:
+    algorithm: "MaskablePPO"
+    parameter_sharing: true            # 参数共享
+    reward_wait_time_coef: 1.0         # 最小化本地等待时间
+    reward_utilization_coef: 0.8       # 最大化本地利用率
+```
+
+**监控 Multi-DC 训练：**
+```bash
+# TensorBoard可视化
+tensorboard --logdir=logs/Multi_Datacenter
+
+# 查看实时日志
+tail -f logs/Multi_Datacenter/hierarchical_3dc/current_run.log
+
+# 查看绿色能源指标
+cd logs/Multi_Datacenter/hierarchical_3dc
+cat monitor.csv | grep "green_ratio\|cumulative_energy"
+```
+
+**训练结果位置：**
+```
+logs/Multi_Datacenter/hierarchical_3dc/
+├── global_agent_model/           # 全局智能体模型
+│   ├── best_model.zip           # 最佳全局模型
+│   └── final_model.zip          # 最终全局模型
+├── local_agent_model/           # 本地智能体模型（参数共享）
+│   ├── best_model.zip           # 最佳本地模型
+│   └── final_model.zip          # 最终本地模型
+├── monitor.csv                  # Episode级别统计
+├── progress.csv                 # 训练进度
+└── current_run.log              # 训练日志
+```
+
 ### 创建自定义实验
 
 在 `config.yml` 中添加新的实验配置：
