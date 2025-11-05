@@ -3,11 +3,14 @@ import giu.edu.cspg.common.DatacenterConfig;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Singular;
 import lombok.ToString;
+
+import java.util.Map;
 
 /**
  * Configuration class for a single datacenter in multi-datacenter setup.
- * Contains infrastructure specs, VM fleet, and green energy settings.
+ * Supports heterogeneous host composition via Map<String, Integer>.
  */
 @Getter
 @Builder
@@ -17,13 +20,29 @@ public class DatacenterConfig {
     private final int datacenterId;
     private final String datacenterName;
 
-    // === Host Configuration ===
-    private final int hostsCount;
-    private final int hostPes;             // Processing Elements (cores) per host
-    private final long hostPeMips;         // MIPS capacity per PE
-    private final long hostRam;            // RAM in MB
-    private final long hostBw;             // Bandwidth in Mbps
-    private final long hostStorage;        // Storage in MB
+    // === Host Configuration (NEW: Heterogeneous support via Map) ===
+
+    /**
+     * Host composition: profileName -> count
+     * Example: {"MEDIUM": 10, "HIGH_PERFORMANCE": 5, "LOW_POWER": 3}
+     * Use @Singular to enable builder.hostProfile("MEDIUM", 10)
+     */
+    @Singular("hostProfile")
+    private final Map<String, Integer> hostProfiles;
+
+    // === Legacy: Single host configuration (deprecated) ===
+    @Deprecated
+    private final Integer hostsCount;
+    @Deprecated
+    private final Integer hostPes;             // Processing Elements (cores) per host
+    @Deprecated
+    private final Long hostPeMips;         // MIPS capacity per PE
+    @Deprecated
+    private final Long hostRam;            // RAM in MB
+    @Deprecated
+    private final Long hostBw;             // Bandwidth in Mbps
+    @Deprecated
+    private final Long hostStorage;        // Storage in MB
 
     // === VM Configuration ===
     // Small VM (base tier)
@@ -58,10 +77,72 @@ public class DatacenterConfig {
     }
 
     /**
-     * Get total cores (PEs) in this datacenter.
+     * Get total number of hosts across all profiles.
+     */
+    public int getTotalHostCount() {
+        if (hostProfiles != null && !hostProfiles.isEmpty()) {
+            return hostProfiles.values().stream()
+                    .mapToInt(Integer::intValue)
+                    .sum();
+        }
+        // Fallback to legacy mode
+        return hostsCount != null ? hostsCount : 0;
+    }
+
+    /**
+     * Get total cores (PEs) across all hosts.
      */
     public int getTotalCores() {
-        return hostsCount * hostPes;
+        if (hostProfiles != null && !hostProfiles.isEmpty()) {
+            return hostProfiles.entrySet().stream()
+                    .mapToInt(entry -> {
+                        HostProfile profile = HostProfile.fromName(entry.getKey());
+                        return profile.getPes() * entry.getValue();
+                    })
+                    .sum();
+        }
+        // Fallback to legacy mode
+        if (hostsCount != null && hostPes != null) {
+            return hostsCount * hostPes;
+        }
+        return 0;
+    }
+
+    /**
+     * Validate this configuration.
+     */
+    public void validate() {
+        if (datacenterId < 0) {
+            throw new IllegalArgumentException("Datacenter ID cannot be negative");
+        }
+
+        // Validate host configurations
+        if (hostProfiles != null && !hostProfiles.isEmpty()) {
+            // New mode: validate each profile
+            for (Map.Entry<String, Integer> entry : hostProfiles.entrySet()) {
+                String profileName = entry.getKey();
+                Integer count = entry.getValue();
+
+                if (count == null || count < 0) {
+                    throw new IllegalArgumentException(
+                        "Invalid host count for profile '" + profileName + "': " + count);
+                }
+
+                // Validate profile name exists
+                try {
+                    HostProfile.fromName(profileName);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(
+                        "Unknown host profile in datacenter config: '" + profileName + "'. " + e.getMessage());
+                }
+            }
+
+            if (getTotalHostCount() == 0) {
+                throw new IllegalArgumentException("Total host count cannot be zero");
+            }
+        } else if (hostsCount == null || hostsCount <= 0) {
+            throw new IllegalArgumentException("No valid host configuration provided");
+        }
     }
 
     /**
@@ -93,18 +174,50 @@ public class DatacenterConfig {
     }
 
     /**
-     * Create a default datacenter configuration for testing.
+     * Create a default datacenter with heterogeneous hosts.
      */
+    public static DatacenterConfig createDefaultHeterogeneous(int datacenterId) {
+        return DatacenterConfig.builder()
+                .datacenterId(datacenterId)
+                .datacenterName("DC_" + datacenterId)
+                // Define mixed host composition using @Singular
+                .hostProfile("MEDIUM", 10)
+                .hostProfile("HIGH_PERFORMANCE", 5)
+                .hostProfile("LOW_POWER", 3)
+                // VM config
+                .smallVmPes(2)
+                .smallVmRam(8192)
+                .smallVmBw(1000)
+                .smallVmStorage(4000)
+                .mediumVmMultiplier(2)
+                .largeVmMultiplier(4)
+                .initialSmallVmCount(10)
+                .initialMediumVmCount(5)
+                .initialLargeVmCount(3)
+                // Green energy
+                .greenEnergyEnabled(true)
+                .turbineId(57 + datacenterId)  // Turbine 57, 58, 59, ...
+                .windDataFile("windProduction/sdwpf_2001_2112_full.csv")
+                .vmStartupDelay(0.0)
+                .vmShutdownDelay(0.0)
+                .build();
+    }
+
+    /**
+     * Create a default datacenter configuration for testing (legacy, homogeneous).
+     * @deprecated Use createDefaultHeterogeneous() instead
+     */
+    @Deprecated
     public static DatacenterConfig createDefault(int datacenterId) {
         return DatacenterConfig.builder()
                 .datacenterId(datacenterId)
                 .datacenterName("DC_" + datacenterId)
                 .hostsCount(16)
                 .hostPes(16)
-                .hostPeMips(50000)
-                .hostRam(65536)
-                .hostBw(50000)
-                .hostStorage(100000)
+                .hostPeMips(50000L)
+                .hostRam(65536L)
+                .hostBw(50000L)
+                .hostStorage(100000L)
                 .smallVmPes(2)
                 .smallVmRam(8192)
                 .smallVmBw(1000)

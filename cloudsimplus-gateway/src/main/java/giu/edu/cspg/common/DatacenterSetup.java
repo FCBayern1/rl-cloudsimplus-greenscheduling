@@ -5,6 +5,7 @@ import giu.edu.cspg.common.DatacenterConfig;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.cloudsimplus.allocationpolicies.VmAllocationPolicy;
 import org.cloudsimplus.core.CloudSimPlus;
@@ -258,6 +259,7 @@ public class DatacenterSetup {
 
     /**
      * Create hosts for a specific datacenter based on DatacenterConfig.
+     * Supports heterogeneous host composition via Map<String, Integer>.
      *
      * @param config Datacenter configuration
      * @return List of created hosts
@@ -265,36 +267,74 @@ public class DatacenterSetup {
     public static List<Host> createHostsForDatacenter(DatacenterConfig config) {
         List<Host> hostList = new ArrayList<>();
 
-        // Create homogeneous hosts based on config
-        for (int i = 0; i < config.getHostsCount(); i++) {
-            // Create PEs list for this host
-            List<Pe> peList = new ArrayList<>();
-            for (int j = 0; j < config.getHostPes(); j++) {
-                peList.add(new PeSimple(config.getHostPeMips(), new PeProvisionerSimple()));
+        // NEW: Support heterogeneous hosts via Map
+        if (config.getHostProfiles() != null && !config.getHostProfiles().isEmpty()) {
+            LOGGER.info("Creating heterogeneous hosts for datacenter {} ({})",
+                    config.getDatacenterId(), config.getDatacenterName());
+
+            // Iterate through the map: profileName -> count
+            for (Map.Entry<String, Integer> entry : config.getHostProfiles().entrySet()) {
+                String profileName = entry.getKey();
+                int count = entry.getValue();
+
+                // Skip if count is 0
+                if (count <= 0) {
+                    continue;
+                }
+
+                // Get the HostProfile
+                HostProfile profile = HostProfile.fromName(profileName);
+
+                LOGGER.info("  - Creating {} hosts with profile: {} [{}]",
+                        count, profileName, profile);
+
+                // Create hosts with this profile
+                for (int i = 0; i < count; i++) {
+                    hostList.add(createHost(profile));
+                }
             }
 
-            // Create host using HostWithoutCreatedList (memory optimized)
-            Host host = new HostWithoutCreatedList(
-                    config.getHostRam(),
-                    config.getHostBw(),
-                    config.getHostStorage(),
-                    peList
-            )
-            .setRamProvisioner(new ResourceProvisionerSimple())
-            .setBwProvisioner(new ResourceProvisionerSimple())
-            .setVmScheduler(new VmSchedulerTimeShared())
-            .setStateHistoryEnabled(true);
+            LOGGER.info("Created {} total hosts for datacenter {} across {} profile types",
+                    hostList.size(), config.getDatacenterId(),
+                    config.getHostProfiles().size());
 
-            // Add power model (using default power model)
-            double maxPower = 250.0; // Watts
-            double staticPowerPercent = 70;  // 70% static power
-            host.setPowerModel(new PowerModelHostSimple(maxPower, staticPowerPercent));
+        } else {
+            // LEGACY: Homogeneous hosts mode
+            LOGGER.info("Creating homogeneous hosts for datacenter {} (legacy mode)",
+                    config.getDatacenterId());
 
-            hostList.add(host);
+            int count = config.getHostsCount() != null ? config.getHostsCount() : 0;
+
+            for (int i = 0; i < count; i++) {
+                // Create PEs list for this host
+                List<Pe> peList = new ArrayList<>();
+                for (int j = 0; j < config.getHostPes(); j++) {
+                    peList.add(new PeSimple(config.getHostPeMips(), new PeProvisionerSimple()));
+                }
+
+                // Create host using HostWithoutCreatedList (memory optimized)
+                Host host = new HostWithoutCreatedList(
+                        config.getHostRam(),
+                        config.getHostBw(),
+                        config.getHostStorage(),
+                        peList
+                )
+                .setRamProvisioner(new ResourceProvisionerSimple())
+                .setBwProvisioner(new ResourceProvisionerSimple())
+                .setVmScheduler(new VmSchedulerTimeShared())
+                .setStateHistoryEnabled(true);
+
+                // Add default power model
+                double maxPower = 250.0; // Watts
+                double staticPowerPercent = 70;  // 70% static power
+                host.setPowerModel(new PowerModelHostSimple(maxPower, staticPowerPercent));
+
+                hostList.add(host);
+            }
+
+            LOGGER.info("Created {} hosts for datacenter {}",
+                    hostList.size(), config.getDatacenterId());
         }
-
-        LOGGER.info("Created {} hosts for datacenter {} ({})",
-                hostList.size(), config.getDatacenterId(), config.getDatacenterName());
 
         return hostList;
     }

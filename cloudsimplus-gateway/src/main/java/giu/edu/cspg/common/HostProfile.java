@@ -206,6 +206,59 @@ public class HostProfile {
         return maxPowerW * staticPowerPercent / 100.0;
     }
 
+    /**
+     * Resolve profile name to HostProfile instance.
+     *
+     * @param name Profile name (case-insensitive)
+     * @return HostProfile instance
+     * @throws IllegalArgumentException if name is unknown
+     */
+    public static HostProfile fromName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Profile name cannot be null or empty");
+        }
+
+        String upperName = name.toUpperCase().trim();
+
+        switch (upperName) {
+            case "LOW_POWER":
+                return LOW_POWER();
+            case "MEDIUM":
+                return MEDIUM();
+            case "HIGH_PERFORMANCE":
+            case "HIGH_PERF":  // Alias
+                return HIGH_PERFORMANCE();
+            case "ULTRA_HIGH":
+            case "ULTRA":  // Alias
+                return ULTRA_HIGH();
+
+            // SPEC profiles
+            case "SPEC_ACER_R520":
+            case "ACER_R520":  // Alias
+                return SPEC_ACER_R520();
+            case "SPEC_ACER_AR360":
+            case "ACER_AR360":  // Alias
+                return SPEC_ACER_AR360();
+            case "SPEC_ASUS_RS720_E9":
+            case "ASUS_RS720_E9":  // Alias
+                return SPEC_ASUS_RS720_E9();
+            case "SPEC_ASUS_RS500A":
+            case "ASUS_RS500A":  // Alias
+                return SPEC_ASUS_RS500A();
+            case "SPEC_ASUS_RS700A":
+            case "ASUS_RS700A":  // Alias
+                return SPEC_ASUS_RS700A();
+
+            default:
+                throw new IllegalArgumentException(
+                    "Unknown host profile: '" + name + "'. " +
+                    "Available profiles: LOW_POWER, MEDIUM, HIGH_PERFORMANCE, ULTRA_HIGH, " +
+                    "SPEC_ACER_R520, SPEC_ACER_AR360, SPEC_ASUS_RS720_E9, " +
+                    "SPEC_ASUS_RS500A, SPEC_ASUS_RS700A"
+                );
+        }
+    }
+
     @Override
     public String toString() {
         return String.format("%s [%d cores, %.0fW peak, %.0fW idle]",
