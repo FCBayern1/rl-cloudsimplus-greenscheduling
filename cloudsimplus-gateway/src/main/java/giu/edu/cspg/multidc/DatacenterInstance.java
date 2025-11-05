@@ -1,4 +1,6 @@
-package giu.edu.cspg;
+package giu.edu.cspg.multidc;
+import giu.edu.cspg.common.DatacenterConfig;
+import giu.edu.cspg.singledc.LoadBalancingBroker;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +44,13 @@ public class DatacenterInstance {
 
     // === Green Energy ===
     private GreenEnergyProvider greenEnergyProvider;
+
+    // === Energy Tracking ===
+    private double cumulativeGreenEnergyWh = 0.0;   // Total green energy consumed
+    private double cumulativeBrownEnergyWh = 0.0;   // Total brown (grid) energy consumed
+    private double totalWastedGreenWh = 0.0;        // Total wasted green energy
+    private double currentPowerW = 0.0;             // Current power consumption
+    private double previousClock = 0.0;             // Previous update time for delta calculation
 
     // === Runtime State ===
     private int cloudletsReceived = 0;      // Total cloudlets assigned to this DC
@@ -180,12 +189,90 @@ public class DatacenterInstance {
     }
 
     /**
+     * Update energy metrics for this datacenter at current timestep.
+     * Calculates power consumption from all hosts and allocates energy between green and brown sources.
+     *
+     * @param currentClock Current simulation time in seconds
+     */
+    public void updateEnergyMetrics(double currentClock) {
+        if (hostList == null || hostList.isEmpty()) {
+            return;
+        }
+
+        // Calculate time delta
+        double timeDelta = currentClock - previousClock;
+        if (timeDelta <= 0) {
+            return;  // Skip if no time has passed
+        }
+
+        // Calculate total power consumption from all hosts
+        currentPowerW = hostList.stream()
+                .mapToDouble(host -> {
+                    if (host.getPowerModel() != null) {
+                        double utilization = host.getCpuPercentUtilization();
+                        return host.getPowerModel().getPower(utilization);
+                    }
+                    return 0.0;
+                })
+                .sum();
+
+        // Allocate energy if green energy is enabled
+        if (isGreenEnergyEnabled()) {
+            giu.edu.cspg.energy.EnergyAllocation allocation = greenEnergyProvider.allocateEnergy(
+                    currentPowerW, currentClock, timeDelta
+            );
+
+            // Update cumulative statistics
+            cumulativeGreenEnergyWh += allocation.getGreenEnergyWh();
+            cumulativeBrownEnergyWh += allocation.getBrownEnergyWh();
+            totalWastedGreenWh += allocation.getWastedGreenWh();
+
+            LOGGER.debug("{}: Energy allocated - Green: {}Wh ({}%), Brown: {}Wh, Wasted: {}Wh",
+                    getName(),
+                    allocation.getGreenEnergyWh(),
+                    allocation.getGreenRatio() * 100,
+                    allocation.getBrownEnergyWh(),
+                    allocation.getWastedGreenWh());
+        } else {
+            // No green energy - all brown
+            double timeDeltaHours = timeDelta / 3600.0;
+            double energyWh = currentPowerW * timeDeltaHours;
+            cumulativeBrownEnergyWh += energyWh;
+        }
+
+        previousClock = currentClock;
+    }
+
+    /**
+     * Get green energy ratio (0-1).
+     */
+    public double getGreenEnergyRatio() {
+        double total = cumulativeGreenEnergyWh + cumulativeBrownEnergyWh;
+        return total > 0 ? cumulativeGreenEnergyWh / total : 0.0;
+    }
+
+    /**
+     * Get total energy consumed (Wh).
+     */
+    public double getTotalEnergyWh() {
+        return cumulativeGreenEnergyWh + cumulativeBrownEnergyWh;
+    }
+
+    /**
      * Reset statistics for this datacenter instance.
      */
     public void resetStatistics() {
         cloudletsReceived = 0;
         cloudletsCompleted = 0;
         cloudletsWaiting = 0;
+
+        // Reset energy statistics
+        cumulativeGreenEnergyWh = 0.0;
+        cumulativeBrownEnergyWh = 0.0;
+        totalWastedGreenWh = 0.0;
+        currentPowerW = 0.0;
+        previousClock = 0.0;
+
         if (isGreenEnergyEnabled()) {
             greenEnergyProvider.resetStatistics();
         }

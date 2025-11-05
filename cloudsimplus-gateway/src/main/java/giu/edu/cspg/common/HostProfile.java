@@ -1,4 +1,5 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
+import giu.edu.cspg.common.HostProfile;
 import lombok.Getter;
 /**
  * Represents a server hardware profile with specific power consumption characteristics.

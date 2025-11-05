@@ -1,4 +1,5 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
+import giu.edu.cspg.common.SimulationSettings;
 
 import java.util.Map;
 import java.util.Objects;

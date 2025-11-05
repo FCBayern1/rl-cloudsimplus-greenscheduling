@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
 
 import lombok.Getter;
 import org.cloudsimplus.allocationpolicies.VmAllocationPolicyRoundRobin;

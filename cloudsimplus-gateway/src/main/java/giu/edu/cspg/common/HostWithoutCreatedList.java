@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
 
 import org.cloudsimplus.hosts.HostSimple;
 import org.cloudsimplus.provisioners.ResourceProvisioner;

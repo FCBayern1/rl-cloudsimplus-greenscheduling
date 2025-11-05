@@ -187,6 +187,22 @@ class HierarchicalMultiDCEnv(gym.Env):
         ])
         self.local_action_space = spaces.Discrete(max_vms)
 
+        # Gymnasium requires self.action_space and self.observation_space
+        # Combine global and local spaces into a Dict space
+        self.action_space = spaces.Dict({
+            "global": self.global_action_space,
+            "local": spaces.Dict({
+                i: self.local_action_space for i in range(self.num_datacenters)
+            })
+        })
+
+        self.observation_space = spaces.Dict({
+            "global": self.global_observation_space,
+            "local": spaces.Dict({
+                i: self.local_observation_space for i in range(self.num_datacenters)
+            })
+        })
+
     def _connect_to_java(self):
         """
         Establish Py4J connection to Java gateway with retry mechanism.

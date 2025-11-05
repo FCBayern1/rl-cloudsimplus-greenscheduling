@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
 
 import java.lang.reflect.Field;
 import java.util.List;

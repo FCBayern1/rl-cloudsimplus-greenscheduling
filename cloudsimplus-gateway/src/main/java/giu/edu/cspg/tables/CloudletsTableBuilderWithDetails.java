@@ -10,7 +10,7 @@ import org.cloudsimplus.builders.tables.TableColumn;
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.core.Identifiable;
 
-import giu.edu.cspg.CloudletCost;
+import giu.edu.cspg.common.CloudletCost;
 
 /**
  * Extends CloudletsTableBuilder to add columns for the average CPU Utilization

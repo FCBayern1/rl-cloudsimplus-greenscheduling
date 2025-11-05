@@ -8,7 +8,7 @@ import static org.apache.commons.lang3.StringUtils.isNumeric;
 import org.cloudsimplus.cloudlets.Cloudlet;
 import org.cloudsimplus.traces.TraceReaderAbstract;
 
-import giu.edu.cspg.CloudletDescriptor;
+import giu.edu.cspg.common.CloudletDescriptor;
 
 /**
  * Reads workload traces from SWF or CSV files and generates a list

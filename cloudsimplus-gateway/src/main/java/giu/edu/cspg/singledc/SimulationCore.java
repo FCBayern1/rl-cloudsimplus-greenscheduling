@@ -1,4 +1,8 @@
-package giu.edu.cspg;
+package giu.edu.cspg.singledc;
+import giu.edu.cspg.common.VmAllocationPolicyCustom;
+import giu.edu.cspg.common.DatacenterSetup;
+import giu.edu.cspg.common.CloudletDescriptor;
+import giu.edu.cspg.common.SimulationSettings;
 
 import java.util.ArrayList;
 import java.util.HashMap;

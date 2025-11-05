@@ -127,14 +127,44 @@ class HierarchicalMultiDCWrapper(gym.Wrapper):
 class HierarchicalTrainingCallback(BaseCallback):
     """
     Custom callback for monitoring hierarchical training progress.
+    Tracks rewards, saves best models, and logs detailed metrics.
     """
 
-    def __init__(self, verbose: int = 0):
+    def __init__(self, agent_type: str, log_dir: str, verbose: int = 0):
+        """
+        Args:
+            agent_type: "global" or "local" for identifying which agent
+            log_dir: Directory to save logs and models
+            verbose: Verbosity level
+        """
         super().__init__(verbose)
+        self.agent_type = agent_type
+        self.log_dir = log_dir
+
+        # Episode tracking
         self.episode_rewards = []
         self.episode_lengths = []
         self.current_episode_reward = 0
         self.current_episode_length = 0
+
+        # Best model tracking
+        self.best_mean_reward = -np.inf
+        self.eval_window = 10  # Evaluate over last 10 episodes
+
+        # Create agent-specific directories
+        self.agent_log_dir = os.path.join(log_dir, f"{agent_type}_agent_logs")
+        self.model_dir = os.path.join(log_dir, f"{agent_type}_agent_model")
+        os.makedirs(self.agent_log_dir, exist_ok=True)
+        os.makedirs(self.model_dir, exist_ok=True)
+
+        # CSV log file
+        self.csv_path = os.path.join(self.agent_log_dir, "training_progress.csv")
+        with open(self.csv_path, 'w') as f:
+            f.write("episode,reward,length,mean_reward_10ep\n")
+
+        logger.info(f"{agent_type.upper()} agent callback initialized")
+        logger.info(f"  Logs: {self.agent_log_dir}")
+        logger.info(f"  Models: {self.model_dir}")
 
     def _on_step(self) -> bool:
         # Accumulate episode statistics
@@ -145,12 +175,36 @@ class HierarchicalTrainingCallback(BaseCallback):
         if self.locals["dones"][0]:
             self.episode_rewards.append(self.current_episode_reward)
             self.episode_lengths.append(self.current_episode_length)
+            episode_num = len(self.episode_rewards)
 
+            # Calculate mean reward over evaluation window
+            if len(self.episode_rewards) >= self.eval_window:
+                mean_reward = np.mean(self.episode_rewards[-self.eval_window:])
+            else:
+                mean_reward = np.mean(self.episode_rewards)
+
+            # Log to CSV
+            with open(self.csv_path, 'a') as f:
+                f.write(f"{episode_num},{self.current_episode_reward:.2f},"
+                       f"{self.current_episode_length},{mean_reward:.2f}\n")
+
+            # Console logging
             if self.verbose > 0:
                 logger.info(
-                    f"Episode {len(self.episode_rewards)}: "
+                    f"[{self.agent_type.upper()}] Episode {episode_num}: "
                     f"Reward={self.current_episode_reward:.2f}, "
-                    f"Length={self.current_episode_length}"
+                    f"Length={self.current_episode_length}, "
+                    f"Mean(10ep)={mean_reward:.2f}"
+                )
+
+            # Save best model
+            if mean_reward > self.best_mean_reward:
+                self.best_mean_reward = mean_reward
+                best_model_path = os.path.join(self.model_dir, "best_model.zip")
+                self.model.save(best_model_path)
+                logger.info(
+                    f"[{self.agent_type.upper()}] 🌟 New best model! "
+                    f"Mean reward: {mean_reward:.2f} (saved to {best_model_path})"
                 )
 
             # Reset episode counters
@@ -158,6 +212,28 @@ class HierarchicalTrainingCallback(BaseCallback):
             self.current_episode_length = 0
 
         return True
+
+    def _on_training_end(self) -> None:
+        """Called at the end of training."""
+        # Save final model
+        final_model_path = os.path.join(self.model_dir, "final_model.zip")
+        self.model.save(final_model_path)
+        logger.info(f"[{self.agent_type.upper()}] Final model saved to {final_model_path}")
+
+        # Save training summary
+        summary_path = os.path.join(self.agent_log_dir, "training_summary.txt")
+        with open(summary_path, 'w') as f:
+            f.write(f"=== {self.agent_type.upper()} Agent Training Summary ===\n")
+            f.write(f"Total Episodes: {len(self.episode_rewards)}\n")
+            f.write(f"Best Mean Reward (10ep): {self.best_mean_reward:.2f}\n")
+            if self.episode_rewards:
+                f.write(f"Final Episode Reward: {self.episode_rewards[-1]:.2f}\n")
+                f.write(f"Mean Reward (all): {np.mean(self.episode_rewards):.2f}\n")
+                f.write(f"Std Reward (all): {np.std(self.episode_rewards):.2f}\n")
+                f.write(f"Min Reward: {np.min(self.episode_rewards):.2f}\n")
+                f.write(f"Max Reward: {np.max(self.episode_rewards):.2f}\n")
+
+        logger.info(f"[{self.agent_type.upper()}] Training summary saved to {summary_path}")
 
 
 def train_hierarchical_multidc(params: Dict[str, Any]):
@@ -197,6 +273,10 @@ def train_hierarchical_multidc(params: Dict[str, Any]):
 
     # Train local agent
     logger.info("Creating local agent (MaskablePPO)...")
+
+    # Set TensorBoard log dir for local agent
+    local_tb_log = os.path.join(log_dir, "local_agent_tensorboard")
+
     local_agent = MaskablePPO(
         "MultiInputPolicy",
         local_env,
@@ -206,22 +286,30 @@ def train_hierarchical_multidc(params: Dict[str, Any]):
         n_epochs=params.get("local_agents", {}).get("n_epochs", 10),
         gamma=params.get("local_agents", {}).get("gamma", 0.99),
         device=device,
+        tensorboard_log=local_tb_log,
         verbose=1
     )
 
-    local_callback = HierarchicalTrainingCallback(verbose=1)
+    local_callback = HierarchicalTrainingCallback(
+        agent_type="local",
+        log_dir=log_dir,
+        verbose=1
+    )
 
     logger.info(f"Training local agent for {timesteps // 2} timesteps...")
+    logger.info(f"TensorBoard logs: {local_tb_log}")
+
     local_agent.learn(
         total_timesteps=timesteps // 2,
         callback=local_callback,
-        progress_bar=True
+        progress_bar=True,
+        tb_log_name="local_agent"
     )
 
-    # Save local agent
-    local_model_path = os.path.join(log_dir, "local_agent.zip")
-    local_agent.save(local_model_path)
-    logger.info(f"Local agent saved to {local_model_path}")
+    logger.info("Local agent training complete!")
+    logger.info(f"  Best model: {os.path.join(log_dir, 'local_agent_model/best_model.zip')}")
+    logger.info(f"  Final model: {os.path.join(log_dir, 'local_agent_model/final_model.zip')}")
+    logger.info(f"  Training progress: {os.path.join(log_dir, 'local_agent_logs/training_progress.csv')}")
 
     local_env.close()
 
@@ -242,6 +330,10 @@ def train_hierarchical_multidc(params: Dict[str, Any]):
 
     # Train global agent
     logger.info("Creating global agent (PPO)...")
+
+    # Set TensorBoard log dir for global agent
+    global_tb_log = os.path.join(log_dir, "global_agent_tensorboard")
+
     global_agent = PPO(
         "MultiInputPolicy",
         global_env,
@@ -251,39 +343,94 @@ def train_hierarchical_multidc(params: Dict[str, Any]):
         n_epochs=params.get("global_agent", {}).get("n_epochs", 10),
         gamma=params.get("global_agent", {}).get("gamma", 0.99),
         device=device,
+        tensorboard_log=global_tb_log,
         verbose=1
     )
 
-    global_callback = HierarchicalTrainingCallback(verbose=1)
+    global_callback = HierarchicalTrainingCallback(
+        agent_type="global",
+        log_dir=log_dir,
+        verbose=1
+    )
 
     logger.info(f"Training global agent for {timesteps // 2} timesteps...")
+    logger.info(f"TensorBoard logs: {global_tb_log}")
+
     global_agent.learn(
         total_timesteps=timesteps // 2,
         callback=global_callback,
-        progress_bar=True
+        progress_bar=True,
+        tb_log_name="global_agent"
     )
 
-    # Save global agent
-    global_model_path = os.path.join(log_dir, "global_agent.zip")
-    global_agent.save(global_model_path)
-    logger.info(f"Global agent saved to {global_model_path}")
+    logger.info("Global agent training complete!")
+    logger.info(f"  Best model: {os.path.join(log_dir, 'global_agent_model/best_model.zip')}")
+    logger.info(f"  Final model: {os.path.join(log_dir, 'global_agent_model/final_model.zip')}")
+    logger.info(f"  Training progress: {os.path.join(log_dir, 'global_agent_logs/training_progress.csv')}")
 
     global_env.close()
 
     # ============================================================
     # Training Complete
     # ============================================================
-    logger.info("\n" + "=" * 60)
-    logger.info("Hierarchical Training Complete!")
-    logger.info("=" * 60)
-    logger.info(f"Local agent: {local_model_path}")
-    logger.info(f"Global agent: {global_model_path}")
-    logger.info(f"Logs saved to: {log_dir}")
+    logger.info("\n" + "=" * 80)
+    logger.info("🎉 HIERARCHICAL MULTI-DATACENTER TRAINING COMPLETE!")
+    logger.info("=" * 80)
+    logger.info("")
+    logger.info("📊 Training Results:")
+    logger.info(f"  Total timesteps: {timesteps:,}")
+    logger.info(f"  Local agent timesteps: {timesteps // 2:,}")
+    logger.info(f"  Global agent timesteps: {timesteps // 2:,}")
+    logger.info("")
+    logger.info("💾 Saved Models:")
+    logger.info(f"  LOCAL Agent:")
+    logger.info(f"    - Best:  {os.path.join(log_dir, 'local_agent_model/best_model.zip')}")
+    logger.info(f"    - Final: {os.path.join(log_dir, 'local_agent_model/final_model.zip')}")
+    logger.info(f"  GLOBAL Agent:")
+    logger.info(f"    - Best:  {os.path.join(log_dir, 'global_agent_model/best_model.zip')}")
+    logger.info(f"    - Final: {os.path.join(log_dir, 'global_agent_model/final_model.zip')}")
+    logger.info("")
+    logger.info("📁 Logs and Metrics:")
+    logger.info(f"  LOCAL Agent:")
+    logger.info(f"    - Progress CSV: {os.path.join(log_dir, 'local_agent_logs/training_progress.csv')}")
+    logger.info(f"    - Summary:      {os.path.join(log_dir, 'local_agent_logs/training_summary.txt')}")
+    logger.info(f"    - TensorBoard:  {os.path.join(log_dir, 'local_agent_tensorboard')}")
+    logger.info(f"  GLOBAL Agent:")
+    logger.info(f"    - Progress CSV: {os.path.join(log_dir, 'global_agent_logs/training_progress.csv')}")
+    logger.info(f"    - Summary:      {os.path.join(log_dir, 'global_agent_logs/training_summary.txt')}")
+    logger.info(f"    - TensorBoard:  {os.path.join(log_dir, 'global_agent_tensorboard')}")
+    logger.info("")
+    logger.info("📈 View Training Progress:")
+    logger.info(f"  tensorboard --logdir={log_dir}")
+    logger.info("=" * 80)
+
+    # Save overall summary
+    overall_summary_path = os.path.join(log_dir, "TRAINING_COMPLETE.txt")
+    with open(overall_summary_path, 'w') as f:
+        f.write("=" * 80 + "\n")
+        f.write("HIERARCHICAL MULTI-DATACENTER TRAINING COMPLETE\n")
+        f.write("=" * 80 + "\n\n")
+        f.write("Configuration:\n")
+        f.write(f"  Experiment Name: {experiment_name}\n")
+        f.write(f"  Total Timesteps: {timesteps:,}\n")
+        f.write(f"  Device: {device}\n\n")
+        f.write("Models Saved:\n")
+        f.write(f"  - local_agent_model/best_model.zip\n")
+        f.write(f"  - local_agent_model/final_model.zip\n")
+        f.write(f"  - global_agent_model/best_model.zip\n")
+        f.write(f"  - global_agent_model/final_model.zip\n\n")
+        f.write("Next Steps:\n")
+        f.write(f"  1. View TensorBoard: tensorboard --logdir={log_dir}\n")
+        f.write(f"  2. Analyze CSV logs: cat */training_progress.csv\n")
+        f.write(f"  3. Read summaries: cat */training_summary.txt\n")
+        f.write(f"  4. Evaluate models: python test_hierarchical_multidc.py\n")
 
     return {
         "local_agent": local_agent,
         "global_agent": global_agent,
-        "log_dir": log_dir
+        "log_dir": log_dir,
+        "local_best_reward": local_callback.best_mean_reward,
+        "global_best_reward": global_callback.best_mean_reward,
     }
 
 

@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.singledc;
 
 /**
  * Represents the result of resetting the simulation environment, conforming to

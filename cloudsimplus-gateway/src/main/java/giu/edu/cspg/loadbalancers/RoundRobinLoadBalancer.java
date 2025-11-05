@@ -7,9 +7,9 @@ import org.cloudsimplus.vms.Vm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import giu.edu.cspg.LoadBalancingBroker;
-import giu.edu.cspg.SimulationCore;
-import giu.edu.cspg.SimulationSettings;
+import giu.edu.cspg.singledc.LoadBalancingBroker;
+import giu.edu.cspg.singledc.SimulationCore;
+import giu.edu.cspg.common.SimulationSettings;
 import giu.edu.cspg.utils.ConfigLoader;
 import giu.edu.cspg.utils.SimulationResultUtils;
 

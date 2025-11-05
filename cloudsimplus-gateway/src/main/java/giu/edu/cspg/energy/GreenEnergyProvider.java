@@ -261,35 +261,69 @@ public class GreenEnergyProvider {
      */
     private void loadAndBuildSpline() {
         try {
+            LOGGER.info("Starting loadCsvData for turbine {} from file: {}", turbineId, csvFilePath);
             List<WindDataPoint> dataPoints = loadCsvData();
+            LOGGER.info("Loaded {} data points for turbine {}", dataPoints.size(), turbineId);
 
             if (dataPoints.isEmpty()) {
-                LOGGER.error("No data points loaded for turbine {}", turbineId);
+                LOGGER.error(" No data points loaded for turbine {} from file: {}", turbineId, csvFilePath);
+                LOGGER.error("   Please verify:");
+                LOGGER.error("   1. File exists: {}", csvFilePath);
+                LOGGER.error("   2. Turbine ID {} exists in CSV", turbineId);
+                LOGGER.error("   3. CSV format is correct (18 columns)");
                 return;
             }
 
-            // Extract time and power sequences
-            timePoints = new double[dataPoints.size()];
-            powerValues = new double[dataPoints.size()];
+            // Extract time and power sequences, removing duplicates
+            List<Double> uniqueTimes = new ArrayList<>();
+            List<Double> uniquePowers = new ArrayList<>();
 
-            for (int i = 0; i < dataPoints.size(); i++) {
-                WindDataPoint dp = dataPoints.get(i);
-                timePoints[i] = dp.timestamp;
-                powerValues[i] = dp.powerKW;
+            double lastTime = Double.NEGATIVE_INFINITY;
+            int duplicatesRemoved = 0;
+
+            for (WindDataPoint dp : dataPoints) {
+                if (dp.timestamp > lastTime) {
+                    // Strictly increasing timestamp
+                    uniqueTimes.add(dp.timestamp);
+                    uniquePowers.add(dp.powerKW);
+                    lastTime = dp.timestamp;
+                } else {
+                    // Duplicate or non-monotonic timestamp, skip
+                    duplicatesRemoved++;
+                    if (duplicatesRemoved <= 5) {
+                        LOGGER.warn("Skipping duplicate/non-monotonic timestamp at {} s (power: {} kW)",
+                                   dp.timestamp, dp.powerKW);
+                    }
+                }
             }
+
+            if (duplicatesRemoved > 0) {
+                LOGGER.warn("Removed {} duplicate/non-monotonic timestamps from dataset", duplicatesRemoved);
+            }
+
+            // Convert to arrays
+            timePoints = uniqueTimes.stream().mapToDouble(Double::doubleValue).toArray();
+            powerValues = uniquePowers.stream().mapToDouble(Double::doubleValue).toArray();
 
             minTime = timePoints[0];
             maxTime = timePoints[timePoints.length - 1];
 
             // Build spline interpolator
+            LOGGER.info("Building spline interpolator with {} unique points...", timePoints.length);
             SplineInterpolator interpolator = new SplineInterpolator();
             powerSpline = interpolator.interpolate(timePoints, powerValues);
 
-            LOGGER.info("Spline interpolation built: {} data points, time range [{:.1f}s, {:.1f}s]",
-                       dataPoints.size(), minTime, maxTime);
+            LOGGER.info(" Spline interpolation built successfully!");
+            LOGGER.info("   Data points: {} (original: {})", timePoints.length, dataPoints.size());
+            LOGGER.info("   Time range: [{} s, {} s] ({} hours)",
+                       minTime, maxTime, (maxTime - minTime) / 3600.0);
+            LOGGER.info("   Power range: [{} kW, {} kW]",
+                       java.util.Arrays.stream(powerValues).min().orElse(0),
+                       java.util.Arrays.stream(powerValues).max().orElse(0));
 
         } catch (Exception e) {
-            LOGGER.error("Failed to load and build spline: {}", e.getMessage(), e);
+            LOGGER.error(" Failed to load and build spline: {}", e.getMessage(), e);
+            LOGGER.error("   Stack trace:", e);
         }
     }
 
@@ -307,23 +341,32 @@ public class GreenEnergyProvider {
             InputStream is = getClass().getClassLoader().getResourceAsStream(csvFilePath);
             if (is != null) {
                 reader = new BufferedReader(new InputStreamReader(is));
-                LOGGER.info("Loading CSV from resources: {}", csvFilePath);
+                LOGGER.info("✅ Loading CSV from resources: {}", csvFilePath);
             } else {
+                LOGGER.warn("⚠️ CSV not found in resources, trying file system: {}", csvFilePath);
                 reader = new BufferedReader(new FileReader(csvFilePath));
-                LOGGER.info("Loading CSV from file system: {}", csvFilePath);
+                LOGGER.info("✅ Loading CSV from file system: {}", csvFilePath);
             }
 
             String line = reader.readLine();  // Skip header
+            LOGGER.info("CSV Header: {}", line);
+
             long baseTimestamp = -1;
             int lineCount = 0;
             int matchedLines = 0;
+            int skippedColumns = 0;
+            int skippedTurbine = 0;
 
             while ((line = reader.readLine()) != null) {
                 lineCount++;
                 String[] parts = line.split(",");
 
                 if (parts.length < 18) {
-                    LOGGER.warn("Line {} has insufficient columns ({}), skipping", lineCount, parts.length);
+                    skippedColumns++;
+                    if (skippedColumns <= 5) {  // Only log first 5 warnings
+                        LOGGER.warn("Line {} has insufficient columns ({}), skipping: {}",
+                                   lineCount, parts.length, line.substring(0, Math.min(80, line.length())));
+                    }
                     continue;
                 }
 
@@ -332,12 +375,22 @@ public class GreenEnergyProvider {
                 try {
                     tid = Integer.parseInt(parts[0].trim());
                 } catch (NumberFormatException e) {
+                    LOGGER.debug("Line {}: Invalid turbine ID, skipping", lineCount);
                     continue;  // Skip invalid lines
                 }
 
-                if (tid != turbineId) continue;  // Only load specified turbine
+                if (tid != turbineId) {
+                    skippedTurbine++;
+                    continue;  // Only load specified turbine
+                }
 
                 matchedLines++;
+
+                // Log first matched line for debugging
+                if (matchedLines == 1) {
+                    LOGGER.info("First matched line for turbine {}: {}", turbineId,
+                               line.substring(0, Math.min(100, line.length())));
+                }
 
                 // Parse timestamp
                 try {
@@ -357,12 +410,15 @@ public class GreenEnergyProvider {
 
                 // Progress logging
                 if (matchedLines % 100000 == 0) {
-                    LOGGER.info("Loaded {} data points for turbine {}...", matchedLines, turbineId);
+                    LOGGER.info("Progress: Loaded {} data points for turbine {}...", matchedLines, turbineId);
                 }
             }
 
-            LOGGER.info("CSV loading complete: {} total lines, {} matched for turbine {}",
-                       lineCount, matchedLines, turbineId);
+            LOGGER.info("CSV loading complete:");
+            LOGGER.info("  Total lines processed: {}", lineCount);
+            LOGGER.info("  Lines skipped (insufficient columns): {}", skippedColumns);
+            LOGGER.info("  Lines skipped (different turbine): {}", skippedTurbine);
+            LOGGER.info("  ✅ Matched lines for turbine {}: {}", turbineId, matchedLines);
 
         } finally {
             if (reader != null) {

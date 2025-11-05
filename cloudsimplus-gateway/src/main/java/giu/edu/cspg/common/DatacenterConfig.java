@@ -1,4 +1,5 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
+import giu.edu.cspg.common.DatacenterConfig;
 
 import lombok.Builder;
 import lombok.Getter;

@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
 
 import java.util.Map;
 import java.util.Objects;

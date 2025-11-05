@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.singledc;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +23,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 
+import giu.edu.cspg.Main;
+import giu.edu.cspg.common.SimulationSettings;
 import giu.edu.cspg.energy.EnergyAllocation;
 import giu.edu.cspg.energy.GreenEnergyProvider;
 import giu.edu.cspg.utils.SimulationResultUtils;

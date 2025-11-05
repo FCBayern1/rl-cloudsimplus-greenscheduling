@@ -1,4 +1,5 @@
-package giu.edu.cspg;
+package giu.edu.cspg.multidc;
+import giu.edu.cspg.singledc.LoadBalancingBroker;
 
 import java.util.ArrayList;
 import java.util.List;

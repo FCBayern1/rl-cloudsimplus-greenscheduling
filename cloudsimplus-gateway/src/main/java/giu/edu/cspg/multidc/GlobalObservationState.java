@@ -1,4 +1,5 @@
-package giu.edu.cspg;
+package giu.edu.cspg.multidc;
+import giu.edu.cspg.singledc.ObservationState;
 
 import java.util.Arrays;
 

@@ -1,4 +1,7 @@
-package giu.edu.cspg;
+package giu.edu.cspg.common;
+import giu.edu.cspg.common.HostProfile;
+import giu.edu.cspg.common.SimulationSettings;
+import giu.edu.cspg.common.DatacenterConfig;
 
 import java.util.ArrayList;
 import java.util.List;

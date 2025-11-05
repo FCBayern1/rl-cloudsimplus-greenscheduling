@@ -19,9 +19,9 @@ import org.cloudsimplus.vms.VmCost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import giu.edu.cspg.CloudletCost;
-import giu.edu.cspg.LoadBalancingBroker;
-import giu.edu.cspg.SimulationCore;
+import giu.edu.cspg.common.CloudletCost;
+import giu.edu.cspg.singledc.LoadBalancingBroker;
+import giu.edu.cspg.singledc.SimulationCore;
 import giu.edu.cspg.tables.CloudletsTableBuilderWithDetails;
 import giu.edu.cspg.tables.HostHistoryTableBuilderCsv;
 import giu.edu.cspg.tables.TableLogger;

@@ -168,20 +168,28 @@ def main():
         # Dynamically import the module corresponding to the mode
         # Assumes train.py, test.py, transfer.py are in the same directory (mnt)
         try:
+            logger.info(f"Attempting to import module: {mode_module}")
             module = importlib.import_module(mode_module)
-        except ModuleNotFoundError:
-            print(
-                f"Mode {params['mode']} was not found. Available modes are: 'train', 'transfer', 'test'."
-            )
+            logger.info(f"Successfully imported module: {mode_module}")
+        except ModuleNotFoundError as e:
+            logger.error(f"Mode script '{mode_module}.py' not found in mnt directory.")
+            logger.error(f"Available modes are: 'train', 'transfer', 'test', 'train_hierarchical_multidc'.")
+            logger.error(f"Error details: {e}")
+            sys.exit(1)
+
         # Get the function with the same name as the mode
+        logger.info(f"Attempting to get function: {func_name} from module: {mode_module}")
         func = getattr(module, func_name)
+        logger.info(f"Successfully found function: {func_name}")
+
         # Execute the function, passing the parameters
+        logger.info(f"Executing function: {func_name}")
         func(params)
-    except ModuleNotFoundError:
-        logger.error(f"Mode script '{mode}.py' not found in mnt directory.")
-        sys.exit(1)
-    except AttributeError:
-        logger.error(f"Function '{mode}' not found within '{mode}.py'.")
+
+    except AttributeError as e:
+        logger.error(f"Function '{func_name}' not found within '{mode_module}.py'.")
+        logger.error(f"Error details: {e}")
+        logger.error(f"Available functions in module: {dir(module)}")
         sys.exit(1)
     except Exception as e:
         logger.critical(f"An error occurred during execution of mode '{mode}': {e}", exc_info=True)

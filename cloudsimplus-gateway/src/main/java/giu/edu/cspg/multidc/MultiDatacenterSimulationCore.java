@@ -1,4 +1,4 @@
-package giu.edu.cspg;
+package giu.edu.cspg.multidc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,7 +17,14 @@ import org.cloudsimplus.vms.Vm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import giu.edu.cspg.common.CloudletDescriptor;
+import giu.edu.cspg.common.DatacenterConfig;
+import giu.edu.cspg.common.DatacenterSetup;
+import giu.edu.cspg.common.SimulationSettings;
+import giu.edu.cspg.common.VmAllocationPolicyCustom;
 import giu.edu.cspg.energy.GreenEnergyProvider;
+import giu.edu.cspg.singledc.LoadBalancingBroker;
+import giu.edu.cspg.singledc.ObservationState;
 import giu.edu.cspg.utils.WorkloadFileReader;
 import lombok.Getter;
 
@@ -266,6 +273,9 @@ public class MultiDatacenterSimulationCore {
         // === Phase 3: Advance Simulation Time ===
         advanceSimulationTime();
 
+        // === Phase 3.5: Update Energy Metrics for All Datacenters ===
+        updateAllDatacenterEnergyMetrics();
+
         // === Phase 4: Collect Observations ===
         GlobalObservationState globalObs = getGlobalObservation();
         Map<Integer, ObservationState> localObs = getLocalObservations();
@@ -378,6 +388,18 @@ public class MultiDatacenterSimulationCore {
         firstStep = false;
 
         LOGGER.debug("Simulation advanced to {}", currentClock);
+    }
+
+    /**
+     * Update energy metrics for all datacenters.
+     * This should be called after each timestep to track energy consumption.
+     */
+    private void updateAllDatacenterEnergyMetrics() {
+        for (DatacenterInstance dc : datacenterInstances) {
+            dc.updateEnergyMetrics(currentClock);
+        }
+        LOGGER.debug("Energy metrics updated for all {} datacenters at clock={}",
+                datacenterInstances.size(), currentClock);
     }
 
     /**
@@ -790,7 +812,76 @@ public class MultiDatacenterSimulationCore {
         info.put("current_step", currentStep);
         info.put("total_cloudlets", allCloudlets.size());
         info.put("remaining_cloudlets", globalBroker.getRemainingCloudletCount());
+
+        // Add energy metrics for each datacenter
+        Map<Integer, Map<String, Object>> dcEnergyMetrics = collectDatacenterEnergyMetrics();
+        info.put("datacenter_energy_metrics", dcEnergyMetrics);
+
+        // Add global energy statistics
+        Map<String, Object> globalEnergyStats = calculateGlobalEnergyStatistics();
+        info.put("global_energy_stats", globalEnergyStats);
+
         return info;
+    }
+
+    /**
+     * Collect energy metrics from all datacenters.
+     */
+    private Map<Integer, Map<String, Object>> collectDatacenterEnergyMetrics() {
+        Map<Integer, Map<String, Object>> metricsMap = new HashMap<>();
+
+        for (DatacenterInstance dc : datacenterInstances) {
+            DatacenterEnergyMetrics metrics = new DatacenterEnergyMetrics(
+                    dc.getId(),
+                    dc.getName(),
+                    dc.getCumulativeGreenEnergyWh(),
+                    dc.getCumulativeBrownEnergyWh(),
+                    dc.getTotalWastedGreenWh(),
+                    dc.getCurrentPowerW(),
+                    dc.isGreenEnergyEnabled() ? dc.getCurrentGreenPowerW(currentClock) : 0.0
+            );
+
+            metricsMap.put(dc.getId(), metrics.toMap());
+        }
+
+        return metricsMap;
+    }
+
+    /**
+     * Calculate global energy statistics (aggregated across all DCs).
+     */
+    private Map<String, Object> calculateGlobalEnergyStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+
+        double totalGreenWh = 0.0;
+        double totalBrownWh = 0.0;
+        double totalWastedWh = 0.0;
+        double totalPowerW = 0.0;
+        double totalGreenPowerW = 0.0;
+
+        for (DatacenterInstance dc : datacenterInstances) {
+            totalGreenWh += dc.getCumulativeGreenEnergyWh();
+            totalBrownWh += dc.getCumulativeBrownEnergyWh();
+            totalWastedWh += dc.getTotalWastedGreenWh();
+            totalPowerW += dc.getCurrentPowerW();
+            if (dc.isGreenEnergyEnabled()) {
+                totalGreenPowerW += dc.getCurrentGreenPowerW(currentClock);
+            }
+        }
+
+        double totalEnergyWh = totalGreenWh + totalBrownWh;
+        double greenRatio = totalEnergyWh > 0 ? totalGreenWh / totalEnergyWh : 0.0;
+
+        stats.put("total_green_energy_wh", totalGreenWh);
+        stats.put("total_brown_energy_wh", totalBrownWh);
+        stats.put("total_wasted_green_wh", totalWastedWh);
+        stats.put("total_energy_wh", totalEnergyWh);
+        stats.put("green_energy_ratio", greenRatio);
+        stats.put("total_power_w", totalPowerW);
+        stats.put("total_green_power_w", totalGreenPowerW);
+        stats.put("num_datacenters", datacenterInstances.size());
+
+        return stats;
     }
 
     /**
