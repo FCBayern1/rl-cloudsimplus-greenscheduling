@@ -1,0 +1,55 @@
+{
+  "n_turbines": 134,
+  "n_features": 16,
+  "feature_names": [
+    "Wspd",
+    "Wdir",
+    "Etmp",
+    "Itmp",
+    "Ndir",
+    "Pab1",
+    "Pab2",
+    "Pab3",
+    "Prtv",
+    "T2m",
+    "Sp",
+    "RelH",
+    "Wspd_w",
+    "Wdir_w",
+    "Tp",
+    "Patv"
+  ],
+  "feature_ranges": {
+    "temperature_features": [
+      "Wdir",
+      "Etmp",
+      "Itmp",
+      "T2m"
+    ],
+    "other_features": [
+      "Wspd",
+      "Ndir",
+      "Pab1",
+      "Pab2",
+      "Pab3",
+      "Prtv",
+      "Sp",
+      "RelH",
+      "Wspd_w",
+      "Wdir_w",
+      "Tp",
+      "Patv"
+    ]
+  },
+  "power_feature_index": 15,
+  "n_timestamps": 84785,
+  "time_range": {
+    "start": "2020-01-01 00:10:00",
+    "end": "2022-01-01 00:10:00"
+  },
+  "split": {
+    "train": 67828,
+    "val": 8478,
+    "test": 8479
+  }
+}

@@ -144,3 +144,8 @@ SWF_Prediction/saved_models/
 SWF_Prediction/**/*.pth
 SWF_Prediction/**/*.pt
 SWF_Prediction/**/*.ckpt
+# Processed wind data - exclude large files
+**/windProduction/processed_data/*.csv
+**/windProduction/processed_data/*.pkl
+**/windProduction/processed_data_turbine_wise/*.csv
+**/windProduction/processed_data_turbine_wise/*.pkl

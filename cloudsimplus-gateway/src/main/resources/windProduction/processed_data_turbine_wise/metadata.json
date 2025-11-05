@@ -1,0 +1,27 @@
+{
+  "features": [
+    "Wspd",
+    "Wdir",
+    "Etmp",
+    "Itmp",
+    "Ndir",
+    "Pab1",
+    "Pab2",
+    "Pab3",
+    "Prtv",
+    "T2m",
+    "Sp",
+    "RelH",
+    "Wspd_w",
+    "Wdir_w",
+    "Tp",
+    "Patv"
+  ],
+  "n_turbines": 134,
+  "n_timestamps": 84785,
+  "train_timestamps": 67828,
+  "val_timestamps": 8478,
+  "test_timestamps": 8479,
+  "normalization_strategy": "turbine_wise",
+  "scaler_count": 2144
+}
