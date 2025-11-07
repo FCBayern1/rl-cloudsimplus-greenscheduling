@@ -23,7 +23,9 @@
       "Bash(powershell -Command \"(Import-Csv three_60max_8maxcores.csv | Select-Object -First 10 | Format-Table -AutoSize)\")",
       "Bash(powershell:*)",
       "Bash(drl-manager/.venv/Scripts/python.exe:*)",
-      "Bash(.venv/Scripts/activate)"
+      "Bash(.venv/Scripts/activate)",
+      "Bash(cp:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []

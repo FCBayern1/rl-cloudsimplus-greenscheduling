@@ -788,3 +788,33 @@ experiment_multi_dc_3:
   save_experiment: true
   verbose: 1
   device: "auto"
+
+  # --- Joint Training Configuration ---
+  # Configuration for training Global and Local agents together
+  joint_training:
+    enabled: true                      # Enable joint training mode
+    strategy: "alternating"            # Training strategy: "alternating" or "simultaneous"
+
+    # Alternating training parameters (train global, then local, repeat)
+    alternating:
+      num_cycles: 10                   # Number of alternating training cycles
+      global_steps_per_cycle: 10000    # Timesteps to train global agent per cycle
+      local_steps_per_cycle: 10000     # Timesteps to train local agents per cycle
+
+    # Simultaneous training parameters (experimental)
+    simultaneous:
+      batch_size: 1000                 # Mini-batch size for simultaneous updates
+      global_weight: 0.5               # Weight for global agent updates [0, 1]
+      local_weight: 0.5                # Weight for local agent updates [0, 1]
+
+    # Checkpoint and logging
+    checkpoint_freq: 10000             # Save checkpoint every N timesteps
+    log_freq: 100                      # Log metrics every N timesteps
+    tensorboard_log: true              # Enable TensorBoard logging
+
+    # Early stopping for joint training
+    early_stopping:
+      enabled: false                   # Enable early stopping
+      metric: "green_ratio"            # Metric to monitor: "green_ratio", "carbon", "reward"
+      threshold: 0.80                  # Stop when metric reaches this value
+      patience: 5                      # Cycles without improvement before stopping

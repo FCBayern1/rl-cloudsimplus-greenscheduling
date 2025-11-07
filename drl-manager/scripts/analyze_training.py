@@ -335,7 +335,6 @@ def plot_training_curves(df, output_dir):
 # ============================================================================
 
 def plot_ppo_losses(ppo_df, output_dir):
-    """绘制 PPO Loss 曲线（Actor, Critic, Entropy）"""
 
     if ppo_df is None:
         print("[SKIP] No PPO metrics available, skipping loss plots")

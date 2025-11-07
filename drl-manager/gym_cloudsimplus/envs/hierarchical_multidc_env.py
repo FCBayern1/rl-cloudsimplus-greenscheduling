@@ -86,6 +86,27 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
+            # New green energy metrics
+            "dc_current_green_power_w": spaces.Box(
+                low=0.0, high=10000.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_current_power_w": spaces.Box(
+                low=0.0, high=10000.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_green_ratio": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_cumulative_wasted_green_wh": spaces.Box(
+                low=0.0, high=1e6,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
             "dc_queue_sizes": spaces.Box(
                 low=0, high=10000,
                 shape=(self.num_datacenters,),
@@ -128,6 +149,7 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         # Local observation spaces (per datacenter)
         # Dynamically sized based on DC configs, but we'll use max sizes for now
+        # Todo: This should be dynamic host number for different DC
         max_hosts = max([dc.get("hosts_count", 16) for dc in self.config.get("datacenters", [{"hosts_count": 16}])])
         max_vms = max([
             dc.get("initial_s_vm_count", 10) +
@@ -401,10 +423,17 @@ class HierarchicalMultiDCEnv(gym.Env):
             global_actions = global_actions[:num_arriving]
 
         # Convert local actions dict to Java-compatible format
+        # Apply action mapping: agent outputs 0 to num_vms -> Java expects -1 to num_vms-1
+        # - action=0 → targetVmId=-1 (NoAssign)
+        # - action=1 → targetVmId=0 (VM 0)
+        # - action=n → targetVmId=n-1 (VM n-1)
         try:
             local_actions_java = {}
-            for dc_id, vm_id in local_actions_map.items():
-                local_actions_java[int(dc_id)] = int(vm_id)
+            for dc_id, agent_action in local_actions_map.items():
+                # Map agent action to Java targetVmId
+                target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
+                local_actions_java[int(dc_id)] = target_vm_id
+                logger.trace(f"DC {dc_id}: agent_action={agent_action} → targetVmId={target_vm_id}")
         except Exception as e:
             logger.error(f"Failed to convert local actions: {e}")
             raise ValueError(f"Invalid local action format. DC IDs and VM IDs must be integers.") from e
@@ -462,6 +491,11 @@ class HierarchicalMultiDCEnv(gym.Env):
         global_obs_java = result.getGlobalObservation()
         global_obs = {
             "dc_green_power": np.array(global_obs_java.getDcGreenPower(), dtype=np.float32),
+            # New green energy metrics
+            "dc_current_green_power_w": np.array(global_obs_java.getDcCurrentGreenPowerW(), dtype=np.float32),
+            "dc_current_power_w": np.array(global_obs_java.getDcCurrentPowerW(), dtype=np.float32),
+            "dc_green_ratio": np.array(global_obs_java.getDcGreenRatio(), dtype=np.float32),
+            "dc_cumulative_wasted_green_wh": np.array(global_obs_java.getDcCumulativeWastedGreenWh(), dtype=np.float32),
             "dc_queue_sizes": np.array(global_obs_java.getDcQueueSizes(), dtype=np.int32),
             "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
             "dc_available_pes": np.array(global_obs_java.getDcAvailablePes(), dtype=np.int32),
@@ -581,3 +615,70 @@ class HierarchicalMultiDCEnv(gym.Env):
         if self.java_env is None:
             return 0
         return self.java_env.getArrivingCloudletsCount()
+
+    def get_local_action_masks(self, dc_id: int) -> np.ndarray:
+        """
+        Generate action mask for a specific datacenter's local agent.
+
+        Mask logic (consistent with Single-DC environment):
+        - If queue is empty: only allow action 0 (NoAssign)
+        - If queue has tasks: forbid action 0, allow VMs with enough resources
+        - If no VM has enough resources: allow all VMs (Java handles penalty)
+
+        Args:
+            dc_id: Datacenter ID
+
+        Returns:
+            mask: Boolean array of shape (num_vms+1,) where True = action allowed
+        """
+        # Fallback: allow all actions if environment not initialized
+        if self.java_env is None or dc_id >= self.num_datacenters or dc_id < 0:
+            logger.warning(f"Cannot generate mask for DC {dc_id}, allowing all actions")
+            return np.ones(self.local_action_space.n, dtype=bool)
+
+        # Get DC state from last observation
+        try:
+            if not hasattr(self, 'last_observations') or 'local' not in self.last_observations:
+                logger.debug(f"No observations available yet, allowing all actions for DC {dc_id}")
+                return np.ones(self.local_action_space.n, dtype=bool)
+
+            local_obs = self.last_observations["local"].get(dc_id)
+            if local_obs is None:
+                logger.warning(f"No observation for DC {dc_id}, allowing all actions")
+                return np.ones(self.local_action_space.n, dtype=bool)
+
+            vm_available_pes = local_obs["vm_available_pes"]
+            waiting_cloudlets = local_obs["waiting_cloudlets"]
+            next_cloudlet_pes = local_obs["next_cloudlet_pes"]
+
+        except Exception as e:
+            logger.error(f"Failed to extract state for DC {dc_id}: {e}, allowing all actions")
+            return np.ones(self.local_action_space.n, dtype=bool)
+
+        # Initialize mask (all False)
+        mask = np.zeros(self.local_action_space.n, dtype=bool)
+
+        # Case 1: Queue is empty or next task invalid
+        if waiting_cloudlets == 0 or next_cloudlet_pes == 0:
+            mask[0] = True  # Only allow action 0 (NoAssign)
+            logger.trace(f"DC {dc_id}: Queue empty, only NoAssign allowed")
+            return mask
+
+        # Case 2: Queue has tasks
+        mask[0] = False  # Forbid explicit NoAssign (encourage assignment)
+
+        # Check each VM's resources
+        has_valid_vm = False
+        for vm_idx, available_pes in enumerate(vm_available_pes):
+            if available_pes >= next_cloudlet_pes:
+                mask[vm_idx + 1] = True  # action (vm_idx+1) → targetVmId (vm_idx)
+                has_valid_vm = True
+
+        # Case 3: No VM has enough resources (fallback: allow all VMs, Java handles penalty)
+        if not has_valid_vm:
+            logger.trace(f"DC {dc_id}: No VM has {next_cloudlet_pes} PEs, allowing all VMs")
+            mask[1:] = True  # Allow all VM actions
+            mask[0] = False  # Still forbid NoAssign
+
+        logger.trace(f"DC {dc_id}: Mask generated - {np.sum(mask)}/{len(mask)} actions allowed")
+        return mask

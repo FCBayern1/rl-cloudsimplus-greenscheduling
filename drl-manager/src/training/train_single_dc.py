@@ -19,8 +19,8 @@ from stable_baselines3.common.callbacks import (
     StopTrainingOnNoModelImprovement,
 )
 
-from callbacks.save_on_best_training_reward_callback import SaveOnBestTrainingRewardCallback
-import gym_cloudsimplus # noqa: F401
+from src.callbacks.save_on_best_reward import SaveOnBestTrainingRewardCallback
+import gym_cloudsimplus  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

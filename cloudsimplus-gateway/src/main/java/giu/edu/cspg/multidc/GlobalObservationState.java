@@ -26,6 +26,34 @@ public class GlobalObservationState {
     private final double[] dcGreenPower;
 
     /**
+     * Current green power available at each datacenter (W).
+     * This is the instantaneous green power supply at the current timestep.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcCurrentGreenPowerW;
+
+    /**
+     * Current total power consumption at each datacenter (W).
+     * This is the instantaneous power draw from all hosts at the current timestep.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcCurrentPowerW;
+
+    /**
+     * Green energy usage ratio at each datacenter [0.0, 1.0].
+     * Ratio of green energy consumed to total energy consumed.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcGreenRatio;
+
+    /**
+     * Cumulative wasted green energy at each datacenter (Wh).
+     * Green energy that was available but not used (e.g., low load with high green supply).
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcCumulativeWastedGreenWh;
+
+    /**
      * Number of cloudlets waiting in each datacenter's local queue.
      * Index corresponds to datacenter ID.
      */
@@ -105,6 +133,10 @@ public class GlobalObservationState {
      * Constructor for GlobalObservationState.
      *
      * @param dcGreenPower Green power available at each DC (kW)
+     * @param dcCurrentGreenPowerW Current green power at each DC (W)
+     * @param dcCurrentPowerW Current total power consumption at each DC (W)
+     * @param dcGreenRatio Green energy usage ratio at each DC [0, 1]
+     * @param dcCumulativeWastedGreenWh Cumulative wasted green energy at each DC (Wh)
      * @param dcQueueSizes Queue sizes at each DC
      * @param dcUtilizations CPU utilization at each DC [0, 1]
      * @param dcAvailablePes Available PEs at each DC
@@ -120,6 +152,10 @@ public class GlobalObservationState {
      */
     public GlobalObservationState(
             double[] dcGreenPower,
+            double[] dcCurrentGreenPowerW,
+            double[] dcCurrentPowerW,
+            double[] dcGreenRatio,
+            double[] dcCumulativeWastedGreenWh,
             int[] dcQueueSizes,
             double[] dcUtilizations,
             int[] dcAvailablePes,
@@ -135,6 +171,10 @@ public class GlobalObservationState {
 
         // Defensive copies for arrays
         this.dcGreenPower = Arrays.copyOf(dcGreenPower, dcGreenPower.length);
+        this.dcCurrentGreenPowerW = Arrays.copyOf(dcCurrentGreenPowerW, dcCurrentGreenPowerW.length);
+        this.dcCurrentPowerW = Arrays.copyOf(dcCurrentPowerW, dcCurrentPowerW.length);
+        this.dcGreenRatio = Arrays.copyOf(dcGreenRatio, dcGreenRatio.length);
+        this.dcCumulativeWastedGreenWh = Arrays.copyOf(dcCumulativeWastedGreenWh, dcCumulativeWastedGreenWh.length);
         this.dcQueueSizes = Arrays.copyOf(dcQueueSizes, dcQueueSizes.length);
         this.dcUtilizations = Arrays.copyOf(dcUtilizations, dcUtilizations.length);
         this.dcAvailablePes = Arrays.copyOf(dcAvailablePes, dcAvailablePes.length);
@@ -159,6 +199,22 @@ public class GlobalObservationState {
 
     public double[] getDcGreenPower() {
         return Arrays.copyOf(dcGreenPower, dcGreenPower.length);
+    }
+
+    public double[] getDcCurrentGreenPowerW() {
+        return Arrays.copyOf(dcCurrentGreenPowerW, dcCurrentGreenPowerW.length);
+    }
+
+    public double[] getDcCurrentPowerW() {
+        return Arrays.copyOf(dcCurrentPowerW, dcCurrentPowerW.length);
+    }
+
+    public double[] getDcGreenRatio() {
+        return Arrays.copyOf(dcGreenRatio, dcGreenRatio.length);
+    }
+
+    public double[] getDcCumulativeWastedGreenWh() {
+        return Arrays.copyOf(dcCumulativeWastedGreenWh, dcCumulativeWastedGreenWh.length);
     }
 
     public int[] getDcQueueSizes() {
@@ -331,6 +387,10 @@ public class GlobalObservationState {
     public static GlobalObservationState createEmpty(int numDatacenters) {
         return new GlobalObservationState(
                 new double[numDatacenters],  // dcGreenPower
+                new double[numDatacenters],  // dcCurrentGreenPowerW
+                new double[numDatacenters],  // dcCurrentPowerW
+                new double[numDatacenters],  // dcGreenRatio
+                new double[numDatacenters],  // dcCumulativeWastedGreenWh
                 new int[numDatacenters],     // dcQueueSizes
                 new double[numDatacenters],  // dcUtilizations
                 new int[numDatacenters],     // dcAvailablePes

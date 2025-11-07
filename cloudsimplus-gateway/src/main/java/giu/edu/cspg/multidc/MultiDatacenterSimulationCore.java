@@ -420,6 +420,10 @@ public class MultiDatacenterSimulationCore {
 
         // Create arrays for datacenter-level metrics
         double[] dcGreenPower = new double[numDatacenters];
+        double[] dcCurrentGreenPowerW = new double[numDatacenters];
+        double[] dcCurrentPowerW = new double[numDatacenters];
+        double[] dcGreenRatio = new double[numDatacenters];
+        double[] dcCumulativeWastedGreenWh = new double[numDatacenters];
         int[] dcQueueSizes = new int[numDatacenters];
         double[] dcUtilizations = new double[numDatacenters];
         int[] dcAvailablePes = new int[numDatacenters];
@@ -429,8 +433,14 @@ public class MultiDatacenterSimulationCore {
         for (int i = 0; i < numDatacenters; i++) {
             DatacenterInstance dc = datacenterInstances.get(i);
 
-            // Green power availability (kW)
+            // Green power availability (kW) - keep for backward compatibility
             dcGreenPower[i] = dc.getCurrentGreenPowerW(currentClock) / 1000.0;
+
+            // New green energy metrics
+            dcCurrentGreenPowerW[i] = dc.getCurrentGreenPowerW(currentClock);  // W
+            dcCurrentPowerW[i] = dc.getCurrentPowerW();  // W
+            dcGreenRatio[i] = dc.getGreenEnergyRatio();  // [0, 1]
+            dcCumulativeWastedGreenWh[i] = dc.getTotalWastedGreenWh();  // Wh
 
             // Waiting cloudlets count (exact integer)
             dcQueueSizes[i] = dc.getWaitingCloudletCount();
@@ -494,6 +504,10 @@ public class MultiDatacenterSimulationCore {
         // Create GlobalObservationState with proper DC-level semantics
         return new GlobalObservationState(
                 dcGreenPower,
+                dcCurrentGreenPowerW,
+                dcCurrentPowerW,
+                dcGreenRatio,
+                dcCumulativeWastedGreenWh,
                 dcQueueSizes,
                 dcUtilizations,
                 dcAvailablePes,
@@ -656,89 +670,159 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
-     * Calculate global reward (total energy, makespan, etc.).
+     * Calculate global reward for the Global Agent.
+     *
+     * Design: 50% Green Energy + 50% Performance
      *
      * Global objectives:
-     * - Minimize total energy consumption
-     * - Maximize green energy ratio
-     * - Minimize makespan (simulation time)
+     * - Maximize green energy usage and minimize waste
+     * - Reduce carbon emissions (brown energy)
+     * - Maintain high task completion rate
+     * - Minimize waiting time
      * - Balance load across datacenters
      */
     private double calculateGlobalReward() {
-        double reward = 0.0;
+        // === Component 1: Green Energy Reward (50% weight) ===
+        double greenReward = calculateGreenEnergyReward();
 
-        // === Energy-based rewards ===
-        double totalEnergyWh = 0.0;
-        double totalGreenEnergyWh = 0.0;
+        // === Component 2: Performance Reward (50% weight) ===
+        double performanceReward = calculatePerformanceReward();
 
-        for (DatacenterInstance dc : datacenterInstances) {
-            // Get datacenter power consumption (simplified)
-            double dcPowerW = dc.getHostList().stream()
-                    .mapToDouble(host -> {
-                        if (host.getPowerModel() != null) {
-                            return host.getPowerModel().getPower();
-                        }
-                        return 0.0;
-                    })
-                    .sum();
+        // === Final Reward (50%-50% balance) ===
+        double reward = 0.5 * greenReward + 0.5 * performanceReward;
 
-            // Energy consumed in this timestep (Wh)
-            double energyWh = dcPowerW * (timestepSize / 3600.0);
-            totalEnergyWh += energyWh;
-
-            // Green energy available in this timestep (Wh)
-            double greenPowerW = dc.getCurrentGreenPowerW(currentClock);
-            double greenEnergyWh = greenPowerW * (timestepSize / 3600.0);
-            totalGreenEnergyWh += Math.min(greenEnergyWh, energyWh);  // Actual green energy used
-        }
-
-        // Reward for green energy usage (higher ratio = higher reward)
-        double greenEnergyRatio = totalEnergyWh > 0 ? totalGreenEnergyWh / totalEnergyWh : 0.0;
-        double greenEnergyReward = greenEnergyRatio * 10.0;  // Scale: 0 to 10
-
-        // Penalty for total energy consumption
-        double energyPenalty = -totalEnergyWh / 1000.0;  // Convert to kWh and penalize
-
-        // === Load balancing reward ===
-        double loadBalancePenalty = calculateLoadBalancePenalty();
-
-        // === Queue size penalty (global perspective) ===
-        int totalWaitingCloudlets = datacenterInstances.stream()
-                .mapToInt(DatacenterInstance::getWaitingCloudletCount)
-                .sum();
-        double queuePenalty = -totalWaitingCloudlets * 0.1;
-
-        // === Combine rewards ===
-        reward = greenEnergyReward + energyPenalty + loadBalancePenalty + queuePenalty;
-
-        LOGGER.debug("Global Reward: total={} (green={}, energy={}, balance={}, queue={})",
-                reward, greenEnergyReward, energyPenalty, loadBalancePenalty, queuePenalty);
+        LOGGER.debug("Global Reward: total={} (green={}, performance={})",
+                reward, greenReward, performanceReward);
 
         return reward;
     }
 
     /**
-     * Calculate load balance penalty across datacenters.
-     * Penalizes uneven distribution of work.
+     * Calculate green energy component of global reward.
+     *
+     * Components:
+     * - 50%: Green energy usage ratio (encourages using green power)
+     * - 30%: Waste penalty (penalizes wasting available green energy)
+     * - 20%: Carbon emission penalty (penalizes using brown energy)
+     *
+     * @return Green energy reward [0, 1]
      */
-    private double calculateLoadBalancePenalty() {
-        if (datacenterInstances.isEmpty()) {
+    private double calculateGreenEnergyReward() {
+        double totalEnergy = datacenterInstances.stream()
+                .mapToDouble(DatacenterInstance::getTotalEnergyWh)
+                .sum();
+
+        if (totalEnergy == 0) {
             return 0.0;
         }
 
-        // Calculate variance in utilization across DCs
+        // 1.1 Green Energy Usage Ratio (weighted average across DCs)
+        double greenEnergy = datacenterInstances.stream()
+                .mapToDouble(DatacenterInstance::getCumulativeGreenEnergyWh)
+                .sum();
+        double greenRatioReward = greenEnergy / totalEnergy;  // [0, 1]
+
+        // 1.2 Waste Penalty
+        // Penalize situations where green power is available but load is low
+        double wastePenalty = 0.0;
+        for (DatacenterInstance dc : datacenterInstances) {
+            double greenPower = dc.getCurrentGreenPowerW(currentClock);
+            double currentPower = dc.getCurrentPowerW();
+
+            // If green power exceeds consumption by >10W, penalize the waste
+            if (greenPower > currentPower + 10.0) {
+                double wasted = greenPower - currentPower;
+                wastePenalty += wasted / Math.max(greenPower, 1.0);
+            }
+        }
+        wastePenalty /= Math.max(datacenterInstances.size(), 1);  // Normalize
+        wastePenalty = Math.min(wastePenalty, 1.0);  // Clip to [0, 1]
+
+        // 1.3 Carbon Emission Penalty
+        double brownEnergy = datacenterInstances.stream()
+                .mapToDouble(DatacenterInstance::getCumulativeBrownEnergyWh)
+                .sum();
+        double carbonPenalty = brownEnergy / Math.max(totalEnergy, 1.0);  // [0, 1]
+
+        // Combine green energy components
+        double greenReward = 0.5 * greenRatioReward +      // 50%: Use green energy
+                            0.3 * (1.0 - wastePenalty) +   // 30%: Reduce waste
+                            0.2 * (1.0 - carbonPenalty);   // 20%: Reduce carbon
+
+        LOGGER.trace("  Green Energy - Ratio: {}, Waste: {}, Carbon: {} -> Reward: {}",
+                greenRatioReward, wastePenalty, carbonPenalty, greenReward);
+
+        return greenReward;  // [0, 1]
+    }
+
+    /**
+     * Calculate performance component of global reward.
+     *
+     * Components:
+     * - 40%: Task completion rate (encourage finishing cloudlets)
+     * - 30%: Waiting time penalty (minimize queue lengths)
+     * - 30%: Load balance reward (even distribution across DCs)
+     *
+     * @return Performance reward [0, 1]
+     */
+    private double calculatePerformanceReward() {
+        // 2.1 Task Completion Rate
+        int totalCompleted = datacenterInstances.stream()
+                .mapToInt(DatacenterInstance::getCloudletsCompleted)
+                .sum();
+        int totalReceived = datacenterInstances.stream()
+                .mapToInt(DatacenterInstance::getCloudletsReceived)
+                .sum();
+
+        double completionReward = totalReceived > 0 ?
+                (double) totalCompleted / totalReceived : 0.0;  // [0, 1]
+
+        // 2.2 Waiting Time Penalty
+        double avgWaitingCloudlets = datacenterInstances.stream()
+                .mapToInt(DatacenterInstance::getWaitingCloudletCount)
+                .average()
+                .orElse(0.0);
+
+        // Normalize by expected max queue size (assume max 100 cloudlets per DC)
+        double waitPenalty = Math.min(avgWaitingCloudlets / 100.0, 1.0);  // [0, 1]
+
+        // 2.3 Load Balance Reward
         double[] utilizations = datacenterInstances.stream()
                 .mapToDouble(DatacenterInstance::getAverageHostUtilization)
                 .toArray();
 
-        double mean = Arrays.stream(utilizations).average().orElse(0.0);
-        double variance = Arrays.stream(utilizations)
-                .map(u -> Math.pow(u - mean, 2))
+        double variance = calculateVariance(utilizations);
+        double balanceReward = Math.exp(-variance * 10.0);  // Exp decay, lower variance = higher reward
+
+        // Combine performance components
+        double perfReward = 0.4 * completionReward +        // 40%: Complete tasks
+                           0.3 * (1.0 - waitPenalty) +      // 30%: Reduce waiting
+                           0.3 * balanceReward;             // 30%: Balance load
+
+        LOGGER.trace("  Performance - Completion: {}, Wait: {}, Balance: {} -> Reward: {}",
+                completionReward, waitPenalty, balanceReward, perfReward);
+
+        return perfReward;  // [0, 1]
+    }
+
+    /**
+     * Calculate variance of an array of values.
+     *
+     * @param values Array of values
+     * @return Variance
+     */
+    private double calculateVariance(double[] values) {
+        if (values.length == 0) {
+            return 0.0;
+        }
+
+        double mean = Arrays.stream(values).average().orElse(0.0);
+        double variance = Arrays.stream(values)
+                .map(v -> Math.pow(v - mean, 2))
                 .average()
                 .orElse(0.0);
 
-        // Penalize high variance (unbalanced load)
-        return -variance * 5.0;
+        return variance;
     }
 
     /**

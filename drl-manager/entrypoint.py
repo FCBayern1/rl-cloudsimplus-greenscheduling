@@ -10,12 +10,12 @@ import traceback
 import yaml
 from datetime import datetime
 
-# Assuming utils are in the same mnt directory structure
+# Import from reorganized src package
 try:
-    from utils.config_loader import load_config
+    from src.utils.config_loader import load_config
 except ImportError:
     # Handle potential import issues if structure changes
-    print("Error: Could not import ConfigLoader. Make sure utils/config_loader.py exists.")
+    print("Error: Could not import ConfigLoader. Make sure src/utils/config_loader.py exists.")
     sys.exit(1)
 
 # Configure basic logging early
@@ -158,21 +158,27 @@ def main():
     is_multi_dc = params.get("multi_datacenter_enabled", False)
     if is_multi_dc and mode == "train":
         logger.info("Multi-datacenter mode detected, using hierarchical training module")
-        mode_module = "train_hierarchical_multidc"
+        mode_module = "src.training.train_hierarchical_multidc"
         func_name = "train_hierarchical_multidc"
     else:
-        mode_module = mode
+        # Map mode to new module structure
+        mode_mapping = {
+            "train": "src.training.train_single_dc",
+            "test": "src.training.test",  # If test module exists
+            "transfer": "src.training.transfer"  # If transfer module exists
+        }
+        mode_module = mode_mapping.get(mode, f"src.training.{mode}")
         func_name = mode
 
     try:
         # Dynamically import the module corresponding to the mode
-        # Assumes train.py, test.py, transfer.py are in the same directory (mnt)
+        # Modules are now in src/training/ directory
         try:
             logger.info(f"Attempting to import module: {mode_module}")
             module = importlib.import_module(mode_module)
             logger.info(f"Successfully imported module: {mode_module}")
         except ModuleNotFoundError as e:
-            logger.error(f"Mode script '{mode_module}.py' not found in mnt directory.")
+            logger.error(f"Mode script '{mode_module}.py' not found in src/training/ directory.")
             logger.error(f"Available modes are: 'train', 'transfer', 'test', 'train_hierarchical_multidc'.")
             logger.error(f"Error details: {e}")
             sys.exit(1)
