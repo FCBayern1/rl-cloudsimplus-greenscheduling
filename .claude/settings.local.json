@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.spec.org)",
+      "Bash(powershell -Command \"Get-Content ''D:\\rl-cloudsimplus-greenscheduling\\config.yml'' | Measure-Object -Line | Select-Object -ExpandProperty Lines\")",
+      "Bash(powershell -Command \"(Get-Content ''D:\\rl-cloudsimplus-greenscheduling\\config.yml'').Count\")",
+      "Bash(python test_cuda_simple.py)",
+      "Bash(python test_cuda_compute.py)",
+      "Bash(python analyze_training.py --log_dir ../logs/SPEC_Authentic/exp10_spec_real)",
+      "Bash(python drl-manager/analyze_training.py --log_dir logs/SPEC_Authentic/exp10_spec_real)",
+      "Bash(cat -A)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(awk:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(powershell -Command \"(Import-Csv monitor.csv | Select-Object -Last 5 | Format-Table -AutoSize | Out-String -Width 200)\")",
+      "Bash(powershell -Command \"(Import-Csv monitor.csv | Measure-Object -Property cumulative_energy_wh -Average -Minimum -Maximum | Format-List)\")",
+      "Bash(powershell -Command \"(Import-Csv progress.csv | Select-Object -Last 1 | Format-List)\")",
+      "Bash(powershell -Command \"(Get-Content ../../drl-manager.log | Select-String -Pattern ''Step 1:.*Waiting=.*Finished='' | Select-Object -Last 5)\")",
+      "Bash(powershell -Command \"(Import-Csv three_60max_8maxcores.csv | Measure-Object).Count\")",
+      "Bash(powershell -Command \"(Import-Csv three_60max_8maxcores.csv | Select-Object -First 10 | Format-Table -AutoSize)\")",
+      "Bash(powershell:*)",
+      "Bash(drl-manager/.venv/Scripts/python.exe:*)",
+      "Bash(.venv/Scripts/activate)",
+      "Bash(cp:*)",
+      "Bash(mv:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

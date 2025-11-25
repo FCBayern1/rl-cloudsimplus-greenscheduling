@@ -1,0 +1,23 @@
+# WSL2 性能优化配置
+# 保存到 Windows 用户目录: C:\Users\<你的用户名>\.wslconfig
+# 修改后重启WSL: wsl --shutdown
+
+[wsl2]
+# 增加内存限制（默认50%，改为80%）
+memory=32GB
+
+# 增加处理器核心数（默认全部，但可以指定）
+processors=16
+
+# 启用嵌套虚拟化（提升性能）
+nestedVirtualization=true
+
+# 增加交换空间
+swap=8GB
+
+# 启用GPU支持
+gpuSupport=true
+
+# 本地环回地址（提升网络性能）
+localhostForwarding=true
+

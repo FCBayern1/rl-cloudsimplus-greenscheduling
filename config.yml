@@ -1,0 +1,1357 @@
+# ===================================================================
+# config.yml - Default Configuration for DRL Load Balancing/Scaling
+# ===================================================================
+
+common:
+  # --- Simulation Identification ---
+  simulation_name: "DefaultSimRun" # Used in logging and result file names
+
+  # --- Simulation Control & Timing ---
+  simulation_timestep: 1.0 # Duration of each RL agent step (seconds)
+  min_time_between_events: 0.1 # CloudSim internal minimum time granularity (s)
+  max_episode_length: 500 # Max steps per episode before truncation (1 hour to cover green energy data points)
+
+  # --- Host Configuration ---
+  hosts_count: 32 # Number of physical hosts/servers
+  host_pes: 16 # Processing Elements (cores) per host
+  host_pe_mips: 50000 # MIPS capacity per PE (core)
+  host_ram: 65536  # Host RAM in MB (640 GB)
+  host_bw: 50000  # Host Bandwidth in Mbps (100 Gbps)
+  host_storage: 100000  # Host Storage in MB (100 GB)
+
+  # --- VM Configuration (Base 'S' & Multipliers) ---
+  small_vm_pes: 2 # PEs for base 'S' VM (like m5a.large)
+  small_vm_ram: 8192 # RAM (MB) for 'S' VM (8 GB)
+  small_vm_bw: 10000 # Bandwidth (Mbps) for 'S' VM (1 Gbps)
+  small_vm_storage: 10000 # Storage (MB) for 'S' VM (4 GB)
+  medium_vm_multiplier: 2 # 'M' VM PEs/RAM = multiplier * 'S' (e.g., 4 PEs, 16GB RAM)
+  large_vm_multiplier: 4 # 'L' VM PEs/RAM = multiplier * 'S' (e.g., 8 PEs, 32GB RAM)
+
+  # --- Initial VM Fleet ---
+  initial_s_vm_count: 20  # Start with 0 Small VMs
+  initial_m_vm_count: 10 # Start with 0 Medium VM
+  initial_l_vm_count: 5 # Start with 0 Large VMs
+
+  # --- VM Lifecycle Delays ---
+  vm_startup_delay: 0.0 # Time (sec) for VM to boot (reduced for faster testing)
+  vm_shutdown_delay: 0.0 # Time (sec) before idle VM is destroyed by broker (agent action is immediate)
+
+  # --- Workload Configuration ---
+  workload_mode: "SWF" # Options: "SWF", "CSV"
+  cloudlet_trace_file: "traces/LLNL-Atlas-2006-2.1-cln-test.swf" # Default trace file path (relative to resources)
+  max_cloudlets_to_create_from_workload_file: 2147483647 # Limit lines read for faster testing (Set to MAX_INT for full file)
+  workload_reader_mips: 50000 # MIPS ref for SWF length calc (match host_pe_mips)
+  split_large_cloudlets: true # Split cloudlets requesting more PEs than max_cloudlet_pes?
+  max_cloudlet_pes: 8 # Max PEs a single (split) cloudlet can request (e.g., = large VM PEs)
+
+  # --- Costing Configuration ---
+  small_vm_hourly_cost: 0.086 # Approx AWS m5a.large hourly cost ($)
+  paying_for_the_full_hour: false # Billing model (false = per-second approx)
+
+  # --- Reward Weights ---
+  # Note: Tune these weights heavily based on experimental results!
+  reward_wait_time_coef: 0.75 # Penalty for FINISHED CLOUDLETS WAIT TIME (Avg per step)
+  reward_throughput_coef: 0.85 # Reward for THROUGHPUT (Avg Cloudlets Finished per step)
+  reward_unutilization_coef: 0.25 # Penalty for avg VM CPU UNUTILIZATION (1.0 - utilization)
+  reward_cost_coef: 0.35 # Penalty for INFRASTRUCTURE COST (Allocated Cores / Total Cores Ratio)
+  reward_queue_penalty_coef: 0.55 # Penalty for number of WAITING cloudlets (normalized)
+  reward_invalid_action_coef: 1.0 # Flat penalty for attempting an invalid action
+
+  # --- Green Energy Configuration ---
+  # Enable wind turbine power integration for green datacenter scheduling
+  green_energy:
+    enabled: true                                     # Enable/disable green energy provider
+    turbine_id: 57                                      # Wind turbine ID to load from dataset
+    wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
+    prediction:
+      enabled: false                                    # Enable/disable power prediction
+      model_path: "../SWF_Prediction/saved_models/best_model.pth"  # Path to trained prediction model
+      cache_duration_seconds: 600                       # Cache prediction results for 10 minutes
+      horizon: 8                                        # Predict 8 timesteps ahead (80 minutes)
+
+  # --- Observation Normalization ---
+  max_queue_norm: 100.0 # Expected max queue length for normalizing observation
+  max_pes_norm: 8.0 # Expected max PEs for normalizing next_cloudlet_pes obs (e.g., largest VM size)
+  # tree_array_max_len: 5000          # Optional: Manually set Tree Array padding size (if calculated value is unstable/undesired)
+
+  # --- Technical Flags ---
+  clear_created_lists: true # Optimization: Clear internal CloudSim broker lists
+
+  # --- Python/RL Parameters ---
+  env_id: "LoadBalancingScaling-v0" # Gym environment ID to use
+  mode: "train" # Default execution mode: "train", "test"
+  algorithm: "PPO" # RL algorithm ("MaskablePPO", "PPO", "A2C", etc.)
+  policy: "MultiInputPolicy" # Network policy for Dict observation space
+  timesteps: 1000 # Total training timesteps
+  learning_rate: 0.0003 # Optimizer learning rate
+  n_steps: 2048 # (PPO/A2C) Steps per policy update
+  batch_size: 64 # (PPO/Others) Minibatch size for training
+  n_epochs: 10 # (PPO) Optimisation epochs per update
+  gamma: 0.99 # Discount factor for future rewards
+  gae_lambda: 0.95 # (PPO/A2C) Factor for Generalized Advantage Estimation
+  clip_range: 0.2 # (PPO) Clipping parameter
+  ent_coef: 0.01 # Entropy coefficient (exploration bonus)
+  vf_coef: 0.5 # Value function coefficient in loss
+  max_grad_norm: 0.5 # Max gradient norm for clipping
+  # policy_kwargs: # Optional: e.g., net_arch: [128, 128]
+  verbose: 0 # SB3 Verbosity level (0=minimal, 1=info, 2=debug)
+  log_interval: 1 # Log stats every N episodes
+  seed: 4567 # Default random seed for Python/Torch/Numpy/Env
+  save_experiment: true # Save logs, models, etc.
+  base_log_dir: "logs" # Root directory for all logs
+  experiment_type_dir: "DefaultType" # Subdirectory for this type of experiment (e.g., "SWF_Tests", "CSV_Tests")
+  train_model_dir: "" # REQUIRED FOR TEST/TRANSFER: Path to trained model log dir (relative to base_log_dir)
+  save_replay_buffer: false # Save replay buffer with best model (only for off-policy algos)
+  device: "auto" # Device for PyTorch ("auto", "cpu", "cuda")
+
+  # --- Early Stopping (Evaluation-Based) ---
+  # Enable and configure EvalCallback-driven early stopping.
+  # type: "no_improvement" stops after 'patience' eval rounds without improvement.
+  # type: "reward_threshold" stops when the eval mean reward reaches the threshold.
+  early_stop:
+    enabled: false
+    type: "no_improvement"            # Options: "no_improvement", "reward_threshold"
+    eval_freq: 5000                    # Evaluate every N training steps
+    n_eval_episodes: 5                 # Episodes per evaluation
+    patience: 5                        # For no_improvement: max eval rounds without improvement
+    min_evals: 5                       # For no_improvement: minimum eval rounds before checking
+    # reward_threshold: 200.0            # For reward_threshold: stop when reached
+
+# ===================================================================
+# Experiment-Specific Overrides (Define different runs below)
+# ===================================================================
+
+experiment_1:
+  simulation_name: "Exp1_CSVSimple_GreenEnergy" # Unique name for logging this specific run
+  experiment_name: "Exp1_CSVSimple_GreenEnergy" # Name for the log sub-folder
+  experiment_type_dir: "CSV_Train"
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  mode: "train"
+  algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
+  timesteps: 50000  # Longer training
+  learning_rate: 0.0001  # Lower LR for stability
+
+  max_episode_length: 5000
+
+  n_steps: 1024  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+
+  # Green Energy Configuration - Testing wind turbine integration
+  green_energy:
+    enabled: true                                     # ✅ Enable green energy
+    turbine_id: 57                                    # Wind turbine ID from dataset
+    wind_data_file: "windProduction/processed_data/cleaned_data.csv"  # ✅ Cleaned wind power data
+    prediction:
+      enabled: false                                  # Disable prediction for now
+      model_path: "../SWF_Prediction/saved_models/best_model.pth"
+      cache_duration_seconds: 600
+      horizon: 8
+
+  # Reward Weights - Added energy coefficient for green energy optimization
+  reward_wait_time_coef: 0.1        # Wait time penalty
+  reward_throughput_coef: 0.085     # Throughput reward
+  reward_unutilization_coef: 0.05   # Utilization penalty
+  reward_cost_coef: 0.05            # Cost penalty
+  reward_queue_penalty_coef: 0.055  # Queue penalty
+  reward_energy_coef: 0.2           # ✅ Energy consumption penalty (new for green energy)
+  reward_invalid_action_coef: 0.2   # Invalid action penalty
+
+# ===================================================================
+# Experiment 2: Large-Scale LLNL Workload with Optimized Parameters
+# ===================================================================
+experiment_2:
+  simulation_name: "Exp2_LLNL_Large_Optimized"
+  experiment_name: "exp2_llnl_large"
+  experiment_type_dir: "LargeScale_Experiments"
+  
+  # Workload Configuration
+  workload_mode: "SWF"
+  cloudlet_trace_file: "traces/LLNL-Atlas-2006-2.1-cln.swf"
+  max_cloudlets_to_create_from_workload_file: 500  # Start with 500 tasks (full dataset: 43810)
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+  
+  # RL Algorithm Configuration (Optimized)
+  mode: "train"
+  algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
+  timesteps: 50000  # Longer training
+  learning_rate: 0.0001  # Lower LR for stability
+  
+  # PPO Hyperparameters
+  n_steps: 512  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+  
+  # Infrastructure Configuration (Optimized)
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536
+  
+  # Reduce initial VMs to force RL to learn efficient scaling
+  initial_s_vm_count: 10  # Reduced from 20
+  initial_m_vm_count: 5   # Reduced from 10
+  initial_l_vm_count: 2   # Reduced from 5
+  
+  # Reward Weights (Optimized)
+  reward_wait_time_coef: 1.0        # Increase wait time penalty
+  reward_throughput_coef: 0.85
+  reward_unutilization_coef: 0.5    # Double utilization weight (from 0.25)
+  reward_cost_coef: 0.5             # Increase cost weight (from 0.35)
+  reward_queue_penalty_coef: 0.55
+  reward_invalid_action_coef: 2.0   # Harshly penalize invalid actions (from 1.0)
+  
+  # Experiment Control
+  max_episode_length: 500
+  seed: 42  # Fixed seed for reproducibility
+  save_experiment: true
+  device: "auto"
+  verbose: 1  # Show detailed training info
+  log_interval: 1
+
+# ===================================================================
+# Experiment 3: Quick Test with CSV Workload
+# ===================================================================
+experiment_3:
+  simulation_name: "Exp3_CSV_QuickTest_Fixed"
+  experiment_name: "exp3_csv_quick"
+  experiment_type_dir: "QuickTests"
+  
+  # Quick Test Configuration - Using CSV instead of SWF
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"  # CSV with reasonable arrival times
+  
+  mode: "train"
+  algorithm: "MaskablePPO"
+  learning_rate: 0.0005
+  timesteps: 120000  # Increase for better learning
+  
+  # Use optimized parameters
+  initial_s_vm_count: 20
+  initial_m_vm_count: 10
+  initial_l_vm_count: 4
+
+  n_steps: 512  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+  
+  reward_unutilization_coef: 0.5
+  reward_cost_coef: 0.5
+  reward_invalid_action_coef: 2.0
+
+
+# ===================================================================
+# Experiment 10: Real SPEC Servers - Authentic Power Profiles
+# ===================================================================
+# Uses exact server configurations from SPEC power_ssj2008 benchmark data
+# Includes legacy inefficient servers and modern efficient AMD EPYC systems
+# Realistic heterogeneous datacenter with wide efficiency range (12.5% to 57.6% idle power)
+# ===================================================================
+
+experiment_10_spec_real:
+  # --- Identification ---
+  simulation_name: "Exp10_SPEC_RealServers"
+  experiment_name: "exp10_spec_real"
+  experiment_type_dir: "SPEC_Authentic"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/poisson_05_300.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 150000              # Extended training for complex server selection
+  learning_rate: 0.0005
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.05
+
+  # 🌟 SPEC POWER_SSJ2008 REAL SERVERS 🌟
+  # Enable heterogeneous datacenter with exact benchmark data
+  enable_heterogeneous_hosts: true
+
+  # Real server distribution (total: 28 hosts)
+  # Using actual SPEC power_ssj2008 benchmark data from ASUSTeK and Acer:
+
+  host_count_spec_acer_r520: 4        # Acer Altos R520 (Legacy)
+                                       # - Intel Xeon E5450, 8 cores, 16GB RAM
+                                       # - Idle: 155W, Peak: 269W (57.6% idle!)
+                                       # - Very inefficient, legacy workloads only
+                                       # - Realistic: old servers still in production
+
+  host_count_spec_acer_ar360: 6       # Acer AR360 F2 (Medium Older)
+                                       # - Intel Xeon E5-2660, 16 cores, 32GB RAM
+                                       # - Idle: 69.4W, Peak: 315W (22.0% idle)
+                                       # - Transition-era efficiency
+
+  host_count_spec_asus_rs720_e9: 8    # ASUSTeK RS720-E9/RS8 (Modern Efficient)
+                                       # - Intel Xeon Platinum 8180, 56 cores, 128GB RAM
+                                       # - Idle: 48.2W, Peak: 385W (12.5% idle) ⚡
+                                       # - HIGHLY EFFICIENT: Best idle power ratio
+                                       # - Primary workhorse servers
+
+  host_count_spec_asus_rs500a: 8      # ASUSTeK RS500A-E10-PS4 (Large AMD EPYC)
+                                       # - AMD EPYC 7742, 64 cores, 256GB RAM
+                                       # - Idle: 51.4W, Peak: 214W (24.0% idle)
+                                       # - EXTREMELY POWER EFFICIENT: Lowest peak power
+                                       # - 64 cores with only 214W peak!
+
+  host_count_spec_asus_rs700a: 2      # ASUSTeK RS700A-E9-RS4V2 (Ultra Dual-Socket)
+                                       # - AMD EPYC 7742 x2, 128 cores, 512GB RAM
+                                       # - Idle: 106W, Peak: 430W (24.7% idle)
+                                       # - Massive capacity for peak loads
+
+  hosts_count: 28                      # Total (4+6+8+8+2 = 28 hosts)
+
+  # --- VM Fleet (Optimized for SPEC server capacities) ---
+  initial_s_vm_count: 30              # Small VMs for light tasks
+  initial_m_vm_count: 15               # Medium VMs for balanced workloads
+  initial_l_vm_count: 10               # Large VMs for heavy computation
+
+  # --- Reward Weights (Green Optimization with Real Server Data) ---
+  reward_wait_time_coef: 1.0          # Maintain performance
+  reward_unutilization_coef: 1.0      # High utilization to minimize active servers
+  reward_cost_coef: 0.5
+  reward_queue_penalty_coef: 0.8
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 1.5              # - Strong energy optimization
+                                       # - Agent should learn:
+                                       # - Avoid Acer R520 (57.6% idle - terrible!)
+                                       # - Prefer ASUS RS720 (12.5% idle - excellent!)
+                                       # - Use ASUS RS500A for efficiency (214W peak!)
+                                       # - Reserve RS700A for true peak demands
+
+  # --- Episode Configuration ---
+  max_episode_length: 2000              # Increased to allow natural episode completion
+
+  # --- Other Settings ---
+  seed: 1010
+  save_experiment: true
+  verbose: 1
+  device: "cuda"  # Force CPU (RTX 5080 not supported yet)
+
+
+# ===================================================================
+# DEBUG: Single Episode Test
+# ===================================================================
+experiment_10_spec_real_debug:
+  # --- Identification ---
+  simulation_name: "Exp10_SPEC_DEBUG"
+  experiment_name: "exp10_spec_real_debug"
+  experiment_type_dir: "DEBUG"
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training: ONLY 1 EPISODE ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 400              # Just enough for 1 episode
+  learning_rate: 0.0003
+
+  # --- PPO Hyperparameters ---
+  n_steps: 512
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.05
+
+  # SPEC Servers
+  enable_heterogeneous_hosts: true
+  host_count_spec_acer_r520: 4
+  host_count_spec_acer_ar360: 6
+  host_count_spec_asus_rs720_e9: 8
+  host_count_spec_asus_rs500a: 8
+  host_count_spec_asus_rs700a: 2
+  hosts_count: 28
+
+  # VM Fleet
+  initial_s_vm_count: 12
+  initial_m_vm_count: 8
+  initial_l_vm_count: 6
+
+  # Reward Weights
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_cost_coef: 0.5
+  reward_queue_penalty_coef: 0.8
+  reward_invalid_action_coef: 2.0
+  reward_energy_coef: 2.5
+
+  # Episode Configuration
+  max_episode_length: 600  # Increased to allow natural episode completion
+
+  # Other Settings
+  seed: 1010
+  save_experiment: true
+  verbose: 2               # VERBOSE logging!
+  device: "cuda"
+
+# ===================================================================
+# Experiment 3 - Debug Version 2: Reward Rebalancing (RECOMMENDED)
+# ===================================================================
+# Goal: Fix reward component imbalance to encourage fast completion
+# Key changes:
+# 1. Increase wait time penalty (0.75 → 2.0)
+# 2. Increase throughput reward (0.85 → 1.5)
+# 3. Decrease unutilization penalty (0.5 → 0.3) - avoid over-optimization
+# 4. Increase queue penalty (0.55 → 1.0) - reduce waiting
+# 5. Shorten episode length (1200 → 400) - force faster completion
+# ===================================================================
+
+experiment_3_debug_v2:
+  simulation_name: "Exp3_Debug_RewardBalance"
+  experiment_name: "exp3_debug_reward"
+  experiment_type_dir: "QuickTests"
+
+  # --- Workload (Same as Exp3) ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  # --- Training ---
+  mode: "train"
+  algorithm: "MaskablePPO"
+  timesteps: 320000          # 120000 → 150000 (more training)
+  learning_rate: 0.0005      # Keep same as Exp3
+
+  # --- PPO Hyperparameters (Same as Exp3) ---
+  n_steps: 1024
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02             # Keep exploration same for now
+
+  # --- VM Fleet (Same as Exp3) ---
+  initial_s_vm_count: 20
+  initial_m_vm_count: 10
+  initial_l_vm_count: 4
+
+  # --- Reward Weights (KEY CHANGES!) ---
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
+
+  # --- Episode Configuration ---
+  max_episode_length: 800    # 1200 → 400 (force faster completion)
+
+  # --- Other Settings ---
+  seed: 43                   # Different seed from Exp3
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+# ===================================================================
+# Experiment 4: MaskablePPO + LSTM policy
+# ===================================================================
+experiment_4_maskable_lstm:
+  simulation_name: "Exp4_RecurrentPPO_LSTM"
+  experiment_name: "exp4_maskable_lstm"
+  experiment_type_dir: "RecurrentPolicies"
+
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  mode: "train"
+  algorithm: "RecurrentPPO"
+  policy: "MultiInputLstmPolicy"   # Dict observation → use MultiInput variant
+
+  timesteps: 120000                # Need multiple updates for LSTM credit assignment
+  learning_rate: 0.0002
+  n_steps: 1024                    # Prefer multiples of episode length for RNNs
+  batch_size: 256                  # Must divide n_steps * n_envs; here n_envs=1
+  n_epochs: 10
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip_range: 0.15
+  ent_coef: 0.01
+  vf_coef: 0.3
+  max_grad_norm: 0.5
+
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
+
+
+  policy_kwargs:
+    lstm_hidden_size: 256
+    n_lstm_layers: 1
+    shared_lstm: true              # Actor & critic share the LSTM core
+    enable_critic_lstm: false      # MUST be false when shared_lstm=true
+    # For shared LSTM: input → LSTM → split to pi/vf MLP heads
+    net_arch:
+      pi: [128]                    # MLP head after shared LSTM for actor
+      vf: [128]                    # MLP head after shared LSTM for critic
+  
+  seed: 42
+  save_experiment: true
+  max_episode_length: 800  # Shorter for CSV workload (164 tasks)
+  
+experiment_11_long:
+  # --- Identification ---
+  simulation_name: "Exp11_LongEpisode_3600s"
+  experiment_name: "exp11_3600s"
+  experiment_type_dir: "LongEpisode"
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/poisson_04_3600.csv"  # 1426 tasks, 3600s
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Infrastructure Configuration ---
+  # Host setup: 16 hosts × 16 cores = 256 total cores
+  # Provides 3x capacity vs average demand (58 cores), 3x vs peak (87 cores)
+  hosts_count: 32
+  host_pes: 16
+  host_pe_mips: 50000
+  host_ram: 65536      # 64 GB per host
+  host_bw: 50000       # 50 Gbps
+  host_storage: 100000 # 100 GB
+
+  # --- VM Configuration ---
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_bw: 1000
+  small_vm_storage: 4000
+  medium_vm_multiplier: 2   # Medium: 4 PEs
+  large_vm_multiplier: 4    # Large: 8 PEs
+
+  # --- Initial VM Fleet ---
+  # Total: 20×2 + 10×4 + 5×8 = 120 cores
+  # Coverage: 120 cores ÷ 58 avg = 2.1x average demand (good utilization target)
+  #           120 cores ÷ 87 peak = 1.4x peak demand (allows some stress)
+  initial_s_vm_count: 20    # Small (2 cores each) = 40 cores
+  initial_m_vm_count: 10    # Medium (4 cores each) = 40 cores
+  initial_l_vm_count: 5     # Large (8 cores each) = 40 cores
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 7200  # 🕐 1 hour episodes
+
+  # --- RL Algorithm Configuration ---
+  mode: "train"
+  algorithm: "RecurrentPPO"
+  policy: "MultiInputLstmPolicy"   # LSTM for temporal patterns
+
+  # Training configuration
+  timesteps: 1000000             # Long training (many 3600s episodes)
+  learning_rate: 0.0003
+  n_steps: 4096                 # Collect more steps before update
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.995                  # High discount for long episodes
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.05                # Moderate exploration
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+  # --- LSTM Policy Configuration ---
+  policy_kwargs:
+    lstm_hidden_size: 256       # Large hidden state for 1-hour context
+    n_lstm_layers: 1
+    shared_lstm: true
+    enable_critic_lstm: false
+    net_arch:
+      pi: [128, 128]            # Deeper actor head
+      vf: [128, 128]            # Deeper critic head
+
+  # --- Reward Weights ---
+  # Balanced rewards for long episodes
+  reward_wait_time_coef: 0.2
+  reward_throughput_coef: 0.15
+  reward_unutilization_coef: 0.03
+  reward_cost_coef: 0.03 
+  reward_queue_penalty_coef: 0.1
+  reward_invalid_action_coef: 0.2
+
+  # --- Other Settings ---
+  seed: 3600
+  save_experiment: true
+  verbose: 1
+  log_interval: 1
+  device: "cuda"
+
+  # --- VM Lifecycle ---
+  vm_startup_delay: 0.0
+  vm_shutdown_delay: 0.0
+
+
+# ===================================================================
+# HIERARCHICAL MULTI-DATACENTER EXPERIMENTS
+# ===================================================================
+
+# ===================================================================
+# Experiment: Hierarchical Multi-DC - 3 Datacenters
+# ===================================================================
+# Two-level Hierarchical MARL:
+# - Global Agent: Routes cloudlets to datacenters
+# - Local Agents: Schedule cloudlets to VMs within each DC (parameter sharing)
+#
+# Features:
+# - 3 heterogeneous datacenters with different wind turbines
+# - Independent green energy sources per DC
+# - Smart router (no global queue) - immediate routing upon arrival
+# ===================================================================
+
+experiment_multi_dc_3:
+  # --- Identification ---
+  simulation_name: "Hierarchical_3DC_Green"
+  experiment_name: "hierarchical_3dc"
+  experiment_type_dir: "Multi_Datacenter"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true      # Enable multi-DC mode
+  py4j_port: 25333                     # Py4J gateway port
+  
+  # Global Routing Configuration (Batch Mode - Recommended)
+  global_routing_batch_size: 3         # Fixed batch size for global routing per timestep
+                                       # - Agent routes up to 5 cloudlets per step
+                                       # - Remaining cloudlets wait in global queue
+                                       # - Provides stable action space for RL training
+                                       # - Recommended: 3-10 based on workload arrival rate
+
+  # --- Datacenter Configurations ---
+  datacenters:
+    # Datacenter 0: High-Performance DC
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      turbine_id: 1                    # Wind turbine ID (Turbine 1)
+      wind_data_file: "windProduction/Turbine_1_2021_clean.csv"  # 7.1 MB optimized file
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
+
+      # Infrastructure
+      hosts_count: 20
+      host_pes: 24                     # More powerful hosts
+      host_pe_mips: 60000              # Higher MIPS
+      host_ram: 131072                 # 128 GB
+      host_bw: 100000                  # 100 Gbps
+      host_storage: 200000             # 200 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet (Optimized for 3-8 PE workloads)
+      initial_s_vm_count: 8    # Reduced: Only for small jobs (1-2 PEs)
+      initial_m_vm_count: 12   # Increased: For typical jobs (3-4 PEs)
+      initial_l_vm_count: 10   # Increased: For large jobs (5-8 PEs)
+
+      # VM Delays
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 1: Energy-Efficient DC
+    - datacenter_id: 1
+      name: "DC_EnergyEfficient"
+      turbine_id: 57                   # Wind turbine ID (Turbine 57)
+      wind_data_file: "windProduction/Turbine_57_2021_clean.csv"  # 7.1 MB optimized file
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
+
+      # Infrastructure (lower power, more hosts)
+      hosts_count: 24
+      host_pes: 16
+      host_pe_mips: 50000
+      host_ram: 65536                  # 64 GB
+      host_bw: 50000                   # 50 Gbps
+      host_storage: 100000             # 100 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet (Optimized for 3-8 PE workloads)
+      initial_s_vm_count: 6    # Reduced: Only for small jobs (1-2 PEs)
+      initial_m_vm_count: 10   # Increased: For typical jobs (3-4 PEs)
+      initial_l_vm_count: 8    # Increased: For large jobs (5-8 PEs)
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 2: Edge DC (Lower capacity)
+    - datacenter_id: 2
+      name: "DC_Edge"
+      turbine_id: 124                  # Wind turbine ID (Turbine 124)
+      wind_data_file: "windProduction/Turbine_124_2021_clean.csv"  # 7.2 MB optimized file
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
+
+      # Infrastructure (smaller, edge location)
+      hosts_count: 12
+      host_pes: 12
+      host_pe_mips: 40000              # Lower MIPS
+      host_ram: 32768                  # 32 GB
+      host_bw: 25000                   # 25 Gbps
+      host_storage: 50000              # 50 GB
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 4096               # Smaller VMs
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 3           # Smaller large VMs
+
+      # Initial VM Fleet (Edge DC - smaller capacity, optimized for 3-6 PE workloads)
+      initial_s_vm_count: 4    # Reduced: Minimal small VMs
+      initial_m_vm_count: 8    # Increased: Primary capacity
+      initial_l_vm_count: 4    # Doubled: For larger jobs (note: Large VM here has 6 PEs)
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/multidc_light_workload.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 2000
+
+  # --- Global Agent Configuration ---
+  global_agent:
+    algorithm: "PPO"
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    # Global reward weights
+    reward_total_energy_coef: 2.0     # Minimize total energy consumption
+    reward_green_ratio_coef: 3.0      # Maximize green energy usage ratio
+    reward_load_balance_coef: 1.5     # Balance load across DCs
+    reward_global_queue_coef: 1.0     # Minimize total waiting cloudlets
+
+  # --- Local Agents Configuration ---
+  local_agents:
+    algorithm: "MaskablePPO"
+    parameter_sharing: true            # Share parameters across local agents
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    # Local reward weights
+    reward_wait_time_coef: 1.0        # Minimize local wait time
+    reward_utilization_coef: 0.8      # Maximize local utilization
+    reward_local_queue_coef: 0.5      # Minimize local queue size
+    reward_invalid_action_coef: 2.0   # Penalize invalid assignments
+
+  # --- Training Configuration ---
+  mode: "train"
+  timesteps: 100000                    # Total timesteps for training
+  seed: 2025
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+  # --- Joint Training Configuration ---
+  # Configuration for training Global and Local agents together
+  joint_training:
+    enabled: true                      # Enable joint training mode
+    strategy: "alternating"            # Training strategy: "alternating" or "simultaneous"
+
+    # Alternating training parameters (train global, then local, repeat)
+    alternating:
+      num_cycles: 10                   # Number of alternating training cycles
+      global_steps_per_cycle: 10000    # Timesteps to train global agent per cycle
+      local_steps_per_cycle: 10000     # Timesteps to train local agents per cycle
+
+    # Simultaneous training parameters (experimental)
+    simultaneous:
+      batch_size: 1000                 # Mini-batch size for simultaneous updates
+      global_weight: 0.5               # Weight for global agent updates [0, 1]
+      local_weight: 0.5                # Weight for local agent updates [0, 1]
+
+    # Checkpoint and logging
+    checkpoint_freq: 10000             # Save checkpoint every N timesteps
+    log_freq: 100                      # Log metrics every N timesteps
+    tensorboard_log: true              # Enable TensorBoard logging
+
+    # Early stopping for joint training
+    early_stopping:
+      enabled: false                   # Enable early stopping
+      metric: "green_ratio"            # Metric to monitor: "green_ratio", "carbon", "reward"
+      threshold: 0.80                  # Stop when metric reaches this value
+      patience: 5                      # Cycles without improvement before stopping
+
+  # --- RLlib Training Configuration ---
+  # Configuration for PettingZoo + RLlib parallel training
+  training:
+    total_timesteps: 100000           # Total training timesteps
+    num_workers: 0                    # 0 for single-process (avoid Windows DLL issues)
+    num_gpus: 1                       # Number of GPUs (0=CPU only, 1=use GPU)
+    train_batch_size: 4000            # Training batch size
+    sgd_minibatch_size: 128           # SGD minibatch size
+    num_sgd_iter: 10                  # Number of SGD iterations
+    checkpoint_freq_timesteps: 10000  # Save checkpoint every N timesteps
+
+  # --- Wind Prediction ---
+  wind_prediction:
+    enabled: false                    # Disable wind prediction for this experiment
+    horizon: 8
+    device: "cuda"
+
+# ===================================================================
+# EXPERIMENT: 5-Datacenter Hierarchical MARL for Green Scheduling
+# ===================================================================
+# Purpose: Large-scale multi-DC green scheduling with 5 diverse datacenters
+# Features:
+# - 5 datacenters with different characteristics (high-performance, energy-efficient, edge, mid-range, regional)
+# - Parameter sharing for local agents
+# - RLlib PPO training with PettingZoo
+# - Wind energy integration for all DCs
+# ===================================================================
+
+experiment_multi_dc_5:
+  # --- Identification ---
+  simulation_name: "Hierarchical_5DC_Green"
+  experiment_name: "hierarchical_5dc"
+  experiment_type_dir: "Multi_Datacenter"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true      # Enable multi-DC mode
+  py4j_port: 25333                     # Py4J gateway port
+
+  # Global Routing Configuration (Batch Mode - Recommended)
+  global_routing_batch_size: 5         # Fixed batch size for global routing per timestep
+                                       # - Agent routes up to 5 cloudlets per step
+                                       # - Increased from 3 to handle more DCs
+                                       # - Provides stable action space for RL training
+
+  # --- Datacenter Configurations ---
+  datacenters:
+    # Datacenter 0: High-Performance DC
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      turbine_id: 1                    # Wind turbine ID (Turbine 1)
+      wind_data_file: "windProduction/split/Turbine_1_2021.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+
+      # Carbon Emission Factors (kg CO2 per kWh)
+      brown_carbon_factor: 0.8         # Coal-heavy grid (high carbon intensity)
+      green_carbon_factor: 0.01        # Wind lifecycle emissions
+
+      # Infrastructure (Most powerful)
+      hosts_count: 20
+      host_pes: 24
+      host_pe_mips: 60000
+      host_ram: 131072                 # 128 GB
+      host_bw: 100000                  # 100 Gbps
+      host_storage: 200000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 8
+      initial_m_vm_count: 12
+      initial_l_vm_count: 10
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 1: Energy-Efficient DC
+    - datacenter_id: 1
+      name: "DC_EnergyEfficient"
+      turbine_id: 57                   # Wind turbine ID (Turbine 57)
+      wind_data_file: "windProduction/split/Turbine_57_2021.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+
+      # Carbon Emission Factors (kg CO2 per kWh)
+      brown_carbon_factor: 0.5         # Natural gas grid (medium carbon intensity)
+      green_carbon_factor: 0.01        # Wind lifecycle emissions
+
+      # Infrastructure (Lower power, more hosts)
+      hosts_count: 24
+      host_pes: 16
+      host_pe_mips: 50000
+      host_ram: 65536                  # 64 GB
+      host_bw: 50000                   # 50 Gbps
+      host_storage: 100000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 6
+      initial_m_vm_count: 10
+      initial_l_vm_count: 8
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 2: Edge DC (Lower capacity)
+    - datacenter_id: 2
+      name: "DC_Edge"
+      turbine_id: 124                  # Wind turbine ID (Turbine 124)
+      wind_data_file: "windProduction/split/Turbine_124_2021.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+
+      # Carbon Emission Factors (kg CO2 per kWh)
+      brown_carbon_factor: 0.6         # Mixed grid (medium-high carbon intensity)
+      green_carbon_factor: 0.01        # Wind lifecycle emissions
+
+      # Infrastructure (Smaller, edge location)
+      hosts_count: 12
+      host_pes: 12
+      host_pe_mips: 40000
+      host_ram: 32768                  # 32 GB
+      host_bw: 25000                   # 25 Gbps
+      host_storage: 50000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 3
+
+      # Initial VM Fleet
+      initial_s_vm_count: 4
+      initial_m_vm_count: 8
+      initial_l_vm_count: 4
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 3: Mid-Range DC (Balanced specs)
+    - datacenter_id: 3
+      name: "DC_MidRange"
+      turbine_id: 80                   # Wind turbine ID (Turbine 80)
+      wind_data_file: "windProduction/split/Turbine_80_2021.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+
+      # Carbon Emission Factors (kg CO2 per kWh)
+      brown_carbon_factor: 0.3         # Clean grid (low carbon intensity - hydro/nuclear mix)
+      green_carbon_factor: 0.01        # Wind lifecycle emissions
+
+      # Infrastructure (Balanced performance and efficiency)
+      hosts_count: 18
+      host_pes: 20
+      host_pe_mips: 55000
+      host_ram: 98304                  # 96 GB
+      host_bw: 75000                   # 75 Gbps
+      host_storage: 150000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 7
+      initial_m_vm_count: 11
+      initial_l_vm_count: 9
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 4: Regional DC (Good capacity, different location)
+    - datacenter_id: 4
+      name: "DC_Regional"
+      turbine_id: 100                  # Wind turbine ID (Turbine 100)
+      wind_data_file: "windProduction/split/Turbine_100_2021.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+
+      # Carbon Emission Factors (kg CO2 per kWh)
+      brown_carbon_factor: 0.45        # Natural gas grid (medium-low carbon intensity)
+      green_carbon_factor: 0.01        # Wind lifecycle emissions
+
+      # Infrastructure (Good all-around specs)
+      hosts_count: 16
+      host_pes: 18
+      host_pe_mips: 52000
+      host_ram: 65536                  # 64 GB
+      host_bw: 60000                   # 60 Gbps
+      host_storage: 120000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet
+      initial_s_vm_count: 6
+      initial_m_vm_count: 10
+      initial_l_vm_count: 7
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/my_uniform.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 2000
+
+  # --- Carbon Emission Penalty Configuration ---
+  # Coefficient for carbon emission penalty in global reward
+  # Penalty = carbon_emission_penalty_coef × total_carbon_kg
+  # 
+  # Observed values from training:
+  # - Local rewards magnitude: ~7,800 (negative)
+  # - Carbon emission: ~1.0 kg CO2 per episode
+  # - To achieve 1-5% penalty impact: coef should be 50-400
+  # - To achieve 10% penalty impact: coef should be 500-1000
+  # 
+  # Recommended starting point: 100 (gives ~1.3% impact on reward)
+  # If carbon doesn't decrease: increase to 300-500
+  # If reward decreases too much: decrease to 50-80
+  carbon_emission_penalty_coef: 1000.0
+
+  # --- Global Agent Configuration ---
+  global_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 10
+
+  # --- Local Agents Configuration ---
+  local_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 10
+
+  # --- RLlib Training Configuration ---
+  training:
+    total_timesteps: 32000           # Increased for 5 DCs
+    num_workers: 0                    # 0 for single-process (avoid Windows DLL issues)
+    num_gpus: 1                       # Number of GPUs (RTX 5080 16GB)
+    train_batch_size: 4000            # Increased for 5 DCs
+    sgd_minibatch_size: 512           # 🚀 增大到512（RTX 5080可以处理）
+    num_sgd_iter: 10
+    checkpoint_freq_timesteps: 15000
+
+  # --- Wind Prediction ---
+  wind_prediction:
+    enabled: false
+    horizon: 8
+    device: "cuda"
+
+  # --- Other Settings ---
+  mode: "train"
+  seed: 2025
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+# ===================================================================
+# TEST EXPERIMENT: Quick verification of bug fixes
+# ===================================================================
+# Purpose: Test bug fixes with reduced training time
+# - Callback reward calculation fix
+# - Action masking fixes (GlobalAgentEnv + LocalAgentEnv)
+# Expected results:
+# - Episode rewards should be stable (not oscillating +201/-1300)
+# - No "VM not found" warnings in Java logs
+# ===================================================================
+
+experiment_test_fixes:
+  # --- Identification ---
+  simulation_name: "Test_Fixes_3DC"
+  experiment_name: "test_fixes"
+  experiment_type_dir: "Test_Fixes"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+  global_routing_batch_size: 5
+
+  # --- Datacenter Configurations (using optimized clean files) ---
+  datacenters:
+    # Datacenter 0: High-Performance DC
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      turbine_id: 1
+      wind_data_file: "windProduction/Turbine_1_2021_clean.csv"  # 7.1 MB optimized file
+      green_energy_enabled: true
+
+      # Infrastructure
+      hosts_count: 20
+      host_pes: 24
+      host_pe_mips: 60000
+      host_ram: 131072
+      host_bw: 100000
+      host_storage: 200000
+
+      # VM Configuration
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # Initial VM Fleet (Optimized)
+      initial_s_vm_count: 8
+      initial_m_vm_count: 12
+      initial_l_vm_count: 10
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 1: Energy-Efficient DC
+    - datacenter_id: 1
+      name: "DC_EnergyEfficient"
+      turbine_id: 57
+      wind_data_file: "windProduction/Turbine_57_2021_clean.csv"  # 7.1 MB optimized file
+      green_energy_enabled: true
+
+      hosts_count: 24
+      host_pes: 16
+      host_pe_mips: 50000
+      host_ram: 65536
+      host_bw: 50000
+      host_storage: 100000
+
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      initial_s_vm_count: 6
+      initial_m_vm_count: 10
+      initial_l_vm_count: 8
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 2: Edge DC
+    - datacenter_id: 2
+      name: "DC_Edge"
+      turbine_id: 124
+      wind_data_file: "windProduction/Turbine_124_2021_clean.csv"  # 7.2 MB optimized file
+      green_energy_enabled: true
+
+      hosts_count: 12
+      host_pes: 12
+      host_pe_mips: 40000
+      host_ram: 32768
+      host_bw: 25000
+      host_storage: 50000
+
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 3
+
+      initial_s_vm_count: 4
+      initial_m_vm_count: 8
+      initial_l_vm_count: 4
+
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/poisson_05_300.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 1000
+
+  # --- Global Agent Configuration ---
+  global_agent:
+    algorithm: "PPO"
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    reward_total_energy_coef: 2.0
+    reward_green_ratio_coef: 3.0
+    reward_load_balance_coef: 1.5
+    reward_global_queue_coef: 1.0
+
+  # --- Local Agents Configuration ---
+  local_agents:
+    algorithm: "MaskablePPO"
+    parameter_sharing: true
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+
+    reward_wait_time_coef: 1.0
+    reward_utilization_coef: 0.8
+    reward_local_queue_coef: 0.5
+    reward_invalid_action_coef: 2.0
+
+  # --- Training Configuration ---
+  mode: "train"
+  timesteps: 8000                     # REDUCED for quick test (2 cycles × 2000 × 2 agents)
+  seed: 2025
+  save_experiment: true
+  verbose: 1
+  device: "auto"
+
+  # --- Joint Training Configuration ---
+  joint_training:
+    enabled: true
+    strategy: "alternating"
+
+    # REDUCED for quick test
+    alternating:
+      num_cycles: 2                    # Only 2 cycles (vs 10)
+      global_steps_per_cycle: 2000     # Only 2000 steps (vs 10000)
+      local_steps_per_cycle: 2000      # Only 2000 steps (vs 10000)
+
+    simultaneous:
+      batch_size: 1000
+      global_weight: 0.5
+      local_weight: 0.5
+
+    checkpoint_freq: 2000
+    log_freq: 100
+    tensorboard_log: true
+
+    early_stopping:
+      enabled: false
+      metric: "green_ratio"
+      threshold: 0.80
+      patience: 5
+
+  # --- Wind Power Prediction Configuration ---
+wind_prediction:
+  enabled: false  # DISABLED for WSL (was true - set paths first if needed)
+  horizon: 8      # Number of future timesteps to predict
+  device: "cuda"   # Device for model inference ('cpu' or 'cuda')
+
+  # Model paths (DISABLED for WSL - Update paths if needed)
+  model_checkpoint: ""  # Was: D:/SWF_Prediction/experiments/improved_cvitrnn_20251117_075540/best_model.pth
+  scalers_path: ""      # Was: D:/SWF_Prediction/Data/sdwpf_scalers.pkl
+  data_path: ""         # Was: D:/SWF_Prediction/Data/sdwpf_data.npz
+
+  # Turbine ID mapping for each datacenter
+  # datacenter_0 -> turbine_1, datacenter_1 -> turbine_57, datacenter_2 -> turbine_124
+  turbine_ids: [1, 57, 124]
+
+  # Logging
+  enable_logging: true
+  log_interval: 100  # Log prediction statistics every N steps
+
+  # --- Time Alignment for COMPRESSED Mode (CRITICAL) ---
+  # Java GreenEnergyProvider skips first 12 CSV rows to ensure lookback availability
+  # Python predictor uses these rows for historical context
+  #
+  # Time Mapping:
+  #   Java:   simulation_step=0 → CSV row 12
+  #           simulation_step=1 → CSV row 13
+  #   Python: simulation_step=0 → CSV row 12 (lookback: rows 0-11)
+  #           simulation_step=1 → CSV row 13 (lookback: rows 1-12)
+  #
+  # This ensures:
+  #   - Java provides power from same row Python uses for features
+  #   - Perfect time alignment between simulation and prediction
+  #   - Always 12 rows available for CViTRNN lookback
+  #
+  csv_start_offset: 12  # DO NOT CHANGE (Java skips first 12 rows)
+
+  # --- Turbine CSV Paths (REQUIRED when enabled=true) ---
+  # MUST provide CSV files with 13 features for accurate prediction
+  # DISABLED for WSL - Update paths if needed
+  turbine_csv_paths:  {}  # Empty dict - was Windows paths

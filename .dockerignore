@@ -1,0 +1,109 @@
+# ==============================================================================
+# Docker ignore file - Exclude unnecessary files from Docker build
+# ==============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments (IMPORTANT: exclude these!)
+.venv/
+venv/
+ENV/
+env/
+*.venv/
+drl-manager/.venv/
+drl-manager/venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Logs and outputs
+logs/
+*.log
+tensorboard/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+*.txt
+!requirements*.txt
+
+# Data files (exclude large datasets)
+# Exclude all CSV files except those in resources
+*.csv
+*.npz
+*.pkl
+*.npy
+*.h5
+*.hdf5
+!cloudsimplus-gateway/src/main/resources/**/*.csv
+
+# Exclude large data directories
+Data/
+data/
+datasets/
+drl-manager/Data/
+drl-manager/data/
+D:/SWF_Prediction/
+
+# Gradle (keep only necessary files)
+cloudsimplus-gateway/.gradle/
+cloudsimplus-gateway/build/
+!cloudsimplus-gateway/build.gradle
+!cloudsimplus-gateway/settings.gradle
+
+# Docker files (don't include in image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Large model files
+*.pth
+*.pt
+*.ckpt
+*.keras
+*.safetensors
+*.bin
+
+# Model directories
+models/
+checkpoints/
+saved_models/
+experiments/
+wandb/

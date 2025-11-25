@@ -1,0 +1,6 @@
+Algorithm,Total Cloudlet Cost ($),Mean Cloudlet Cost ($),Mean Completion Time (s),Total VM Cost ($),Mean VM Cost ($),Mean CPU Utilization (%),Total Cloudlets,Total VMs,Simulation Time (s)
+drl,70277.02,566.75,57.39,23465.40,670.44,3.28,124,35,148
+horizontal,3550.27,44.38,4.24,103704.09,1525.06,10.13,80,68,508
+least,140322.47,1031.78,70.95,55145.40,1575.58,3.39,136,35,500
+random,83233.57,645.22,57.58,55145.40,1575.58,4.60,129,35,500
+round,266635.76,1625.83,104.05,46055.40,1315.87,3.08,164,35,399
