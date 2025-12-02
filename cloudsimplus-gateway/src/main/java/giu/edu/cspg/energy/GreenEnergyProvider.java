@@ -17,8 +17,10 @@ import java.util.List;
 
 /**
  * Provides green energy data from wind turbine power generation.
- * Supports spline interpolation for continuous power queries and
- * maintains historical data buffer for prediction inputs.
+ * Supports spline interpolation for continuous power queries.
+ *
+ * Simplified version - removed prediction model integration.
+ * Future forecasts now use God's Eye (ground truth) from CSV data.
  */
 public class GreenEnergyProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(GreenEnergyProvider.class.getSimpleName());
@@ -35,56 +37,154 @@ public class GreenEnergyProvider {
     private double minTime;
     private double maxTime;
 
-    // Historical data buffer for prediction
-    private final CircularBuffer<WindDataFrame> historyBuffer;
-    private static final int HISTORY_SIZE = 12;
-
     // Energy statistics
     private double cumulativeGreenEnergyWh = 0;
     private double cumulativeBrownEnergyWh = 0;
     private double totalWastedGreenWh = 0;
     private double lastUpdateTime = 0;
 
-    // Prediction cache
-    private double[] cachedPrediction = null;
-    private double predictionCacheTime = -1;
-    private static final double PREDICTION_CACHE_DURATION = 600; // 10 minutes
+    // Max power for normalization (computed from CSV data)
+    private double maxPowerKw = 1.0;
+
+    // Future trend feature configuration
+    private final int shortTermRows;   // Default: 3 rows (30 minutes)
+    private final int longTermRows;    // Default: 144 rows (24 hours)
+
+    // Flag for simplified CSV format (only timestamp + power)
+    private boolean isSimplifiedFormat = false;
+
+    // Time zone offset for geo-distributed simulation (in rows/simulation seconds)
+    // In COMPRESSED mode: 1 row = 10 min real time, so 6 hours = 36 rows
+    // This simulates different geographic locations with different local times
+    private final int timeZoneOffsetRows;
 
     /**
      * Create a green energy provider for a specific wind turbine.
-     * Uses REAL_TIME mode by default (preserves original 600s intervals).
-     *
-     * @param turbineId   Turbine ID to load data for
-     * @param csvFilePath Path to CSV data file (relative to resources or absolute)
      */
     public GreenEnergyProvider(int turbineId, String csvFilePath) {
-        this(turbineId, csvFilePath, TimeScalingMode.REAL_TIME);
+        this(turbineId, csvFilePath, TimeScalingMode.REAL_TIME, 3, 144, 0);
     }
 
     /**
      * Create a green energy provider with specified time scaling mode.
-     *
-     * @param turbineId       Turbine ID to load data for
-     * @param csvFilePath     Path to CSV data file (relative to resources or absolute)
-     * @param timeScalingMode Time scaling mode (REAL_TIME or COMPRESSED)
      */
     public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode) {
-        this.turbineId = turbineId;
-        this.csvFilePath = csvFilePath;
-        this.timeScalingMode = timeScalingMode;
-        this.historyBuffer = new CircularBuffer<>(HISTORY_SIZE);
+        this(turbineId, csvFilePath, timeScalingMode, 3, 144, 0);
+    }
 
-        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with mode: {}...",
-                   turbineId, timeScalingMode.getDescription());
+    /**
+     * Create a green energy provider with full configuration (legacy, no timezone offset).
+     */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows) {
+        this(turbineId, csvFilePath, timeScalingMode, shortTermRows, longTermRows, 0);
+    }
+
+    /**
+     * Create a green energy provider with full configuration including timezone offset.
+     *
+     * @param turbineId Wind turbine ID
+     * @param csvFilePath Path to CSV file or directory
+     * @param timeScalingMode COMPRESSED or REAL_TIME
+     * @param shortTermRows Rows for short-term prediction features
+     * @param longTermRows Rows for long-term prediction features
+     * @param timeZoneOffsetRows Offset in rows to simulate different time zones.
+     *                           In COMPRESSED mode: 6 rows = 1 hour (each row = 10 min real time)
+     *                           Example offsets: US West=0, US East=18 (3h), Europe=54 (9h), APAC=96 (16h)
+     */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows, int timeZoneOffsetRows) {
+        this.turbineId = turbineId;
+        this.csvFilePath = resolveCsvPath(turbineId, csvFilePath);
+        this.timeScalingMode = timeScalingMode;
+        this.shortTermRows = shortTermRows;
+        this.longTermRows = longTermRows;
+        this.timeZoneOffsetRows = timeZoneOffsetRows;
+
+        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with CSV '{}', mode: {}, tzOffset: {} rows",
+                   turbineId, this.csvFilePath, timeScalingMode.getDescription(), timeZoneOffsetRows);
         loadAndBuildSpline();
         LOGGER.info("GreenEnergyProvider initialized successfully");
     }
 
     /**
-     * Get current green power at specified simulation time (with spline interpolation).
-     *
-     * @param simulationTime Simulation time in seconds
-     * @return Green power in Watts, or 0 if out of range
+     * Resolve the actual CSV path to load.
+     * Supports both simplified format (2 columns) and legacy format (15 columns).
+     * Prefers simplified directory if available.
+     */
+    private String resolveCsvPath(int turbineId, String csvFilePath) {
+        if (csvFilePath == null || csvFilePath.isBlank()) {
+            csvFilePath = "windProduction/simplified";
+        }
+
+        // If it's a concrete CSV file, use as-is
+        String lower = csvFilePath.toLowerCase();
+        if (lower.endsWith(".csv")) {
+            return csvFilePath;
+        }
+
+        // Treat as a directory/base path
+        String base = csvFilePath.endsWith("/") ? csvFilePath.substring(0, csvFilePath.length() - 1) : csvFilePath;
+
+        // Try simplified directory first
+        String simplifiedPath = base.replace("/split", "/simplified");
+        if (!simplifiedPath.contains("simplified")) {
+            simplifiedPath = base + "/../simplified";
+        }
+
+        String resolved = findTurbineFile(simplifiedPath, turbineId);
+        if (resolved != null) {
+            isSimplifiedFormat = true;
+            LOGGER.info("Using simplified format CSV: {}", resolved);
+            return resolved;
+        }
+
+        // Fallback to original directory
+        resolved = findTurbineFile(base, turbineId);
+        if (resolved != null) {
+            isSimplifiedFormat = false;
+            LOGGER.info("Using legacy format CSV: {}", resolved);
+            return resolved;
+        }
+
+        // Default fallback
+        String fallback = "windProduction/simplified/Turbine_" + turbineId + "_2021.csv";
+        LOGGER.warn("Could not find CSV for turbine {}, using fallback: {}", turbineId, fallback);
+        isSimplifiedFormat = true;
+        return fallback;
+    }
+
+    /**
+     * Try to find a turbine CSV file with various naming patterns.
+     */
+    private String findTurbineFile(String baseDir, int turbineId) {
+        String[] patterns = {
+            baseDir + "/Turbine_" + turbineId + "_2021.csv",
+            baseDir + "/Turbine_" + turbineId + "_2020.csv",
+            baseDir + "/Turbine_" + turbineId + "_2022.csv",
+            baseDir + "/turbine_" + turbineId + "_2021.csv",
+            baseDir + "/Turbine_" + turbineId + ".csv",
+        };
+
+        for (String pattern : patterns) {
+            InputStream is = getClass().getClassLoader().getResourceAsStream(pattern);
+            if (is != null) {
+                try { is.close(); } catch (Exception ignored) {}
+                return pattern;
+            }
+
+            java.io.File file = new java.io.File(pattern);
+            if (file.exists() && file.isFile()) {
+                return pattern;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get current green power at specified simulation time.
+     * Applies timezone offset for geo-distributed simulation.
      */
     public double getCurrentPowerW(double simulationTime) {
         if (powerSpline == null) {
@@ -93,27 +193,24 @@ public class GreenEnergyProvider {
         }
 
         try {
-            // Use simulation time directly (assumes time mapping is handled elsewhere if needed)
-            double powerKW = powerSpline.value(simulationTime);
-            double powerW = Math.max(0, powerKW * 1000);  // kW to W, clip negative values
+            // Apply timezone offset to simulate different geographic locations
+            double adjustedTime = simulationTime + timeZoneOffsetRows;
 
-            // COMPRESSED mode scaling: CSV data represents 600s intervals compressed to 1s
-            // Scale power down to match the time compression ratio
+            // Wrap around if we exceed the data range (cyclic behavior)
+            double dataLength = maxTime - minTime;
+            if (dataLength > 0 && adjustedTime > maxTime) {
+                adjustedTime = minTime + ((adjustedTime - minTime) % dataLength);
+            }
+
+            double powerKW = powerSpline.value(adjustedTime);
+            double powerW = Math.max(0, powerKW * 1000);
+
             if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                // Real-world data: 1 CSV row = 600 seconds (10 minutes)
-                // Simulation: 1 CSV row = 1 second
-                // Therefore, scale power by 600 to match energy availability per simulation second
                 powerW = powerW / 600.0;
-                LOGGER.trace("COMPRESSED mode: Scaled power from {} W to {} W (÷600)",
-                           powerKW * 1000, powerW);
             }
 
             return powerW;
         } catch (OutOfRangeException e) {
-            if (simulationTime < minTime || simulationTime > maxTime) {
-                LOGGER.debug("Simulation time {} out of data range [{}, {}], returning 0",
-                           simulationTime, minTime, maxTime);
-            }
             return 0;
         } catch (Exception e) {
             LOGGER.error("Error interpolating power at time {}: {}", simulationTime, e.getMessage());
@@ -122,107 +219,23 @@ public class GreenEnergyProvider {
     }
 
     /**
-     * Update history buffer with current timestep data.
-     * Fetches complete feature data from interpolated/cached sources.
-     *
-     * @param simulationTime Current simulation time
-     * @param powerW         Current power in W
-     */
-    public void updateHistoryBuffer(double simulationTime, double powerW) {
-        // For now, create a simple frame with power only
-        // In full implementation, would fetch all 16 features
-        double[] features = new double[WindDataFrame.NUM_FEATURES];
-        features[WindDataFrame.POWER_INDEX] = powerW / 1000.0;  // W to kW
-
-        WindDataFrame frame = new WindDataFrame(simulationTime, features);
-        historyBuffer.add(frame);
-    }
-
-    /**
-     * Get historical data for prediction input.
-     *
-     * @param lookback Number of historical timesteps to retrieve
-     * @return List of historical frames (may be less than lookback if insufficient data)
-     */
-    public List<WindDataFrame> getHistoricalData(int lookback) {
-        return historyBuffer.getLast(lookback);
-    }
-
-    /**
-     * Get predicted future power values (requires external prediction service).
-     * Uses caching to avoid excessive calls.
-     *
-     * @param windPredictor Prediction service object (Py4J interface)
-     * @param horizon       Number of future steps to predict
-     * @param currentTime   Current simulation time (for cache validation)
-     * @return Array of predicted power values in Watts
-     */
-    public double[] getPredictedPowerW(Object windPredictor, int horizon, double currentTime) {
-        // Check cache validity
-        if (cachedPrediction != null &&
-            cachedPrediction.length == horizon &&
-            (currentTime - predictionCacheTime) < PREDICTION_CACHE_DURATION) {
-            LOGGER.debug("Using cached prediction (age: {}s)", currentTime - predictionCacheTime);
-            return cachedPrediction;
-        }
-
-        // Get historical data
-        List<WindDataFrame> history = getHistoricalData(12);
-        if (history.size() < 12) {
-            LOGGER.warn("Insufficient history for prediction: {}/12, returning zeros", history.size());
-            return new double[horizon];
-        }
-
-        // Call prediction service (implementation depends on Py4J interface)
-        try {
-            double[] predictedKW = invokePythonPredictor(windPredictor, history, horizon);
-
-            // Convert kW to W and cache
-            cachedPrediction = new double[predictedKW.length];
-            for (int i = 0; i < predictedKW.length; i++) {
-                cachedPrediction[i] = Math.max(0, predictedKW[i] * 1000);
-            }
-
-            predictionCacheTime = currentTime;
-            LOGGER.debug("Prediction updated: {} steps ahead", horizon);
-
-            return cachedPrediction;
-        } catch (Exception e) {
-            LOGGER.error("Prediction failed: {}", e.getMessage(), e);
-            return new double[horizon];  // Return zeros on failure
-        }
-    }
-
-    /**
      * Allocate energy between green and brown sources.
-     * Green energy is prioritized; excess is wasted (not stored).
-     *
-     * @param demandPowerW  Total power demand in W
-     * @param currentTime   Current simulation time in seconds
-     * @param timeDelta     Time interval in seconds
-     * @return EnergyAllocation result
      */
     public EnergyAllocation allocateEnergy(double demandPowerW, double currentTime, double timeDelta) {
         double greenPowerW = getCurrentPowerW(currentTime);
         double timeDeltaHours = timeDelta / 3600.0;
 
-        // Calculate energy amounts (Wh)
         double demandWh = demandPowerW * timeDeltaHours;
         double greenAvailableWh = greenPowerW * timeDeltaHours;
 
-        // Allocation strategy: prioritize green energy
         double greenUsedWh = Math.min(demandWh, greenAvailableWh);
         double brownUsedWh = demandWh - greenUsedWh;
-        double wastedGreenWh = greenAvailableWh - greenUsedWh;  // Excess is wasted
+        double wastedGreenWh = greenAvailableWh - greenUsedWh;
 
-        // Update cumulative statistics
         cumulativeGreenEnergyWh += greenUsedWh;
         cumulativeBrownEnergyWh += brownUsedWh;
         totalWastedGreenWh += wastedGreenWh;
         lastUpdateTime = currentTime;
-
-        // Update history buffer
-        updateHistoryBuffer(currentTime, greenPowerW);
 
         return new EnergyAllocation(
             greenUsedWh, brownUsedWh, wastedGreenWh,
@@ -231,12 +244,8 @@ public class GreenEnergyProvider {
     }
 
     /**
-     * Get future green power predictions at specified time horizons.
-     * Uses ground truth data from the CSV (perfect prediction).
-     *
-     * @param currentTime Current simulation time in seconds
-     * @param horizonSeconds Array of future time horizons in seconds (e.g., [300, 900, 1800, 3600])
-     * @return Array of predicted power values in Watts for each horizon
+     * Get future green power predictions using ground truth (God's Eye).
+     * Applies timezone offset for geo-distributed simulation.
      */
     public double[] getFuturePowerPredictions(double currentTime, int[] horizonSeconds) {
         if (powerSpline == null || horizonSeconds == null) {
@@ -244,31 +253,28 @@ public class GreenEnergyProvider {
         }
 
         double[] predictions = new double[horizonSeconds.length];
+        double dataLength = maxTime - minTime;
 
         for (int i = 0; i < horizonSeconds.length; i++) {
-            double futureTime = currentTime + horizonSeconds[i];
+            // Apply timezone offset
+            double futureTime = currentTime + horizonSeconds[i] + timeZoneOffsetRows;
 
-            // Check if future time is within data range
-            if (futureTime > maxTime) {
-                // Beyond available data, use last known value
-                predictions[i] = getCurrentPowerW(maxTime);
-                LOGGER.trace("Future time {} exceeds data range, using last value", futureTime);
-            } else {
-                // Get power at future time point (ground truth from CSV)
-                try {
-                    double futurePowerKW = powerSpline.value(futureTime);
-                    double futurePowerW = Math.max(0, futurePowerKW * 1000);
+            // Wrap around if we exceed the data range (cyclic behavior)
+            if (dataLength > 0 && futureTime > maxTime) {
+                futureTime = minTime + ((futureTime - minTime) % dataLength);
+            }
 
-                    // Apply same scaling as getCurrentPowerW for consistency
-                    if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                        futurePowerW = futurePowerW / 600.0;
-                    }
+            try {
+                double futurePowerKW = powerSpline.value(futureTime);
+                double futurePowerW = Math.max(0, futurePowerKW * 1000);
 
-                    predictions[i] = futurePowerW;
-                } catch (OutOfRangeException e) {
-                    predictions[i] = 0.0;
-                    LOGGER.debug("Future time {} out of range, returning 0", futureTime);
+                if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                    futurePowerW = futurePowerW / 600.0;
                 }
+
+                predictions[i] = futurePowerW;
+            } catch (OutOfRangeException e) {
+                predictions[i] = 0.0;
             }
         }
 
@@ -276,157 +282,199 @@ public class GreenEnergyProvider {
     }
 
     /**
-     * Get future green power predictions with confidence intervals.
-     * Uses ground truth mean and estimates uncertainty from historical variance.
-     *
-     * @param currentTime Current simulation time in seconds
-     * @param horizonSeconds Array of future time horizons in seconds
-     * @return 2D array [horizon][3] where each row is [lower_95%, mean, upper_95%]
+     * Compute future trend features for RL observation (God's Eye mode).
      */
-    public double[][] getFuturePowerPredictionsWithCI(double currentTime, int[] horizonSeconds) {
-        if (powerSpline == null || horizonSeconds == null) {
-            return new double[0][3];
+    public double[] computeFutureTrendFeatures(double simTime) {
+        double[] features = new double[4];
+        features[0] = 0.5;  // short_mean
+        features[1] = 0.0;  // short_trend
+        features[2] = 0.5;  // long_mean
+        features[3] = 0.5;  // long_peak_timing
+
+        if (powerValues == null || powerValues.length == 0) {
+            return features;
         }
 
-        double[][] predictions = new double[horizonSeconds.length][3];
+        int currentIdx = simTimeToRowIndex(simTime);
+        if (currentIdx < 0 || currentIdx >= powerValues.length) {
+            return features;
+        }
 
-        // Estimate standard deviation from historical data (simple approach)
-        // TODO: Could be improved with rolling window statistics
-        double estimatedStdDev = estimateHistoricalStdDev();
+        // Short-term features
+        int shortEndIdx = Math.min(currentIdx + shortTermRows, powerValues.length);
+        int shortAvailable = shortEndIdx - currentIdx;
 
-        for (int i = 0; i < horizonSeconds.length; i++) {
-            double futureTime = currentTime + horizonSeconds[i];
-            double meanPower = 0.0;
+        if (shortAvailable > 0) {
+            double shortSum = 0;
+            for (int i = currentIdx; i < shortEndIdx; i++) {
+                shortSum += powerValues[i];
+            }
+            double shortMean = shortSum / shortAvailable;
+            features[0] = Math.min(1.0, Math.max(0.0, shortMean / maxPowerKw));
 
-            if (futureTime > maxTime) {
-                meanPower = getCurrentPowerW(maxTime);
-            } else {
-                try {
-                    double futurePowerKW = powerSpline.value(futureTime);
-                    meanPower = Math.max(0, futurePowerKW * 1000);
+            double startPower = powerValues[currentIdx];
+            double endPower = powerValues[shortEndIdx - 1];
+            double shortTrend = (endPower - startPower) / maxPowerKw;
+            features[1] = Math.min(1.0, Math.max(-1.0, shortTrend));
+        }
 
-                    if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                        meanPower = meanPower / 600.0;
-                    }
-                } catch (OutOfRangeException e) {
-                    meanPower = 0.0;
+        // Long-term features
+        int longEndIdx = Math.min(currentIdx + longTermRows, powerValues.length);
+        int longAvailable = longEndIdx - currentIdx;
+
+        if (longAvailable > 0) {
+            double longSum = 0;
+            int peakIdx = currentIdx;
+            double peakPower = powerValues[currentIdx];
+
+            for (int i = currentIdx; i < longEndIdx; i++) {
+                longSum += powerValues[i];
+                if (powerValues[i] > peakPower) {
+                    peakPower = powerValues[i];
+                    peakIdx = i;
+                }
+            }
+            double longMean = longSum / longAvailable;
+            features[2] = Math.min(1.0, Math.max(0.0, longMean / maxPowerKw));
+
+            double peakTiming = (double)(peakIdx - currentIdx) / longAvailable;
+            features[3] = Math.min(1.0, Math.max(0.0, peakTiming));
+        }
+
+        return features;
+    }
+
+    /**
+     * Convert simulation time to CSV row index.
+     * Applies timezone offset for geo-distributed simulation.
+     */
+    private int simTimeToRowIndex(double simTime) {
+        // Apply timezone offset
+        double adjustedTime = simTime + timeZoneOffsetRows;
+
+        if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+            int index = (int) Math.round(adjustedTime);
+            // Wrap around for cyclic behavior
+            if (powerValues != null && powerValues.length > 0 && index >= powerValues.length) {
+                index = index % powerValues.length;
+            }
+            return index;
+        } else {
+            if (timePoints == null || timePoints.length == 0) {
+                return -1;
+            }
+
+            int low = 0;
+            int high = timePoints.length - 1;
+
+            while (low < high) {
+                int mid = (low + high) / 2;
+                if (timePoints[mid] < adjustedTime) {
+                    low = mid + 1;
+                } else {
+                    high = mid;
                 }
             }
 
-            // Calculate 95% confidence interval (1.96 * std dev)
-            double margin = 1.96 * estimatedStdDev;
-            predictions[i][0] = Math.max(0, meanPower - margin);  // Lower bound
-            predictions[i][1] = meanPower;                        // Mean
-            predictions[i][2] = meanPower + margin;               // Upper bound
+            if (low > 0 && Math.abs(timePoints[low - 1] - adjustedTime) < Math.abs(timePoints[low] - adjustedTime)) {
+                return low - 1;
+            }
+            return low;
         }
-
-        return predictions;
     }
 
-    /**
-     * Estimate standard deviation from historical power data.
-     * Simple implementation using overall variance.
-     *
-     * @return Estimated standard deviation in Watts
-     */
-    private double estimateHistoricalStdDev() {
-        if (powerValues == null || powerValues.length < 2) {
-            return 0.0;
-        }
+    // ==================== Statistics Methods ====================
 
-        // Calculate mean
-        double sum = 0.0;
-        for (double powerKW : powerValues) {
-            double powerW = powerKW * 1000;
-            if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                powerW = powerW / 600.0;
-            }
-            sum += powerW;
-        }
-        double mean = sum / powerValues.length;
-
-        // Calculate variance
-        double varianceSum = 0.0;
-        for (double powerKW : powerValues) {
-            double powerW = powerKW * 1000;
-            if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                powerW = powerW / 600.0;
-            }
-            double diff = powerW - mean;
-            varianceSum += diff * diff;
-        }
-        double variance = varianceSum / powerValues.length;
-
-        return Math.sqrt(variance);
-    }
-
-    /**
-     * Get cumulative green energy consumed.
-     *
-     * @return Total green energy in Wh
-     */
     public double getCumulativeGreenEnergyWh() {
         return cumulativeGreenEnergyWh;
     }
 
-    /**
-     * Get cumulative brown energy consumed.
-     *
-     * @return Total brown energy in Wh
-     */
     public double getCumulativeBrownEnergyWh() {
         return cumulativeBrownEnergyWh;
     }
 
-    /**
-     * Get total wasted green energy.
-     *
-     * @return Total wasted energy in Wh
-     */
     public double getTotalWastedGreenWh() {
         return totalWastedGreenWh;
     }
 
-    /**
-     * Get overall green energy ratio.
-     *
-     * @return Ratio of green to total energy (0-1)
-     */
     public double getOverallGreenRatio() {
         double total = cumulativeGreenEnergyWh + cumulativeBrownEnergyWh;
         return total > 0 ? cumulativeGreenEnergyWh / total : 0.0;
     }
 
-    /**
-     * Reset cumulative statistics.
-     */
+    public double getMaxPowerKw() {
+        return maxPowerKw;
+    }
+
     public void resetStatistics() {
         cumulativeGreenEnergyWh = 0;
         cumulativeBrownEnergyWh = 0;
         totalWastedGreenWh = 0;
         lastUpdateTime = 0;
-        historyBuffer.clear();
-        cachedPrediction = null;
-        predictionCacheTime = -1;
     }
 
-    // ==================== Private Helper Methods ====================
+    public void updateCumulativeStatistics(double greenUsedWh, double greenWastedWh) {
+        cumulativeGreenEnergyWh += greenUsedWh;
+        totalWastedGreenWh += greenWastedWh;
+    }
+
+    // ==================== Multi-Turbine Aggregation ====================
+
+    public static double[] computeAggregatedFutureTrendFeatures(
+            List<GreenEnergyProvider> providers, double simTime) {
+
+        double[] aggregated = new double[]{0.5, 0.0, 0.5, 0.5};
+
+        if (providers == null || providers.isEmpty()) {
+            return aggregated;
+        }
+
+        if (providers.size() == 1) {
+            return providers.get(0).computeFutureTrendFeatures(simTime);
+        }
+
+        double totalMaxPower = 0.0;
+        double weightedShortMean = 0.0;
+        double weightedShortTrend = 0.0;
+        double weightedLongMean = 0.0;
+        double earliestPeakTiming = 1.0;
+
+        for (GreenEnergyProvider provider : providers) {
+            double[] features = provider.computeFutureTrendFeatures(simTime);
+            double maxPower = provider.getMaxPowerKw();
+
+            totalMaxPower += maxPower;
+            weightedShortMean += features[0] * maxPower;
+            weightedShortTrend += features[1] * maxPower;
+            weightedLongMean += features[2] * maxPower;
+
+            if (features[3] < earliestPeakTiming) {
+                earliestPeakTiming = features[3];
+            }
+        }
+
+        if (totalMaxPower > 0) {
+            aggregated[0] = Math.min(1.0, weightedShortMean / totalMaxPower);
+            aggregated[1] = Math.max(-1.0, Math.min(1.0, weightedShortTrend / totalMaxPower));
+            aggregated[2] = Math.min(1.0, weightedLongMean / totalMaxPower);
+        }
+        aggregated[3] = earliestPeakTiming;
+
+        return aggregated;
+    }
+
+    // ==================== CSV Loading ====================
 
     /**
      * Load CSV data and build spline interpolation function.
      */
     private void loadAndBuildSpline() {
         try {
-            LOGGER.info("Starting loadCsvData for turbine {} from file: {}", turbineId, csvFilePath);
             List<WindDataPoint> dataPoints = loadCsvData();
             LOGGER.info("Loaded {} data points for turbine {}", dataPoints.size(), turbineId);
 
             if (dataPoints.isEmpty()) {
-                LOGGER.error(" No data points loaded for turbine {} from file: {}", turbineId, csvFilePath);
-                LOGGER.error("   Please verify:");
-                LOGGER.error("   1. File exists: {}", csvFilePath);
-                LOGGER.error("   2. Turbine ID {} exists in CSV", turbineId);
-                LOGGER.error("   3. CSV format is correct (18 columns)");
+                LOGGER.error("No data points loaded for turbine {} from file: {}", turbineId, csvFilePath);
                 return;
             }
 
@@ -439,74 +487,47 @@ public class GreenEnergyProvider {
 
             for (WindDataPoint dp : dataPoints) {
                 if (dp.timestamp > lastTime) {
-                    // Strictly increasing timestamp
                     uniqueTimes.add(dp.timestamp);
                     uniquePowers.add(dp.powerKW);
                     lastTime = dp.timestamp;
                 } else {
-                    // Duplicate or non-monotonic timestamp, skip
                     duplicatesRemoved++;
-                    if (duplicatesRemoved <= 5) {
-                        LOGGER.warn("Skipping duplicate/non-monotonic timestamp at {} s (power: {} kW)",
-                                   dp.timestamp, dp.powerKW);
-                    }
                 }
             }
 
             if (duplicatesRemoved > 0) {
-                LOGGER.warn("Removed {} duplicate/non-monotonic timestamps from dataset", duplicatesRemoved);
+                LOGGER.warn("Removed {} duplicate timestamps", duplicatesRemoved);
             }
 
-            // Convert to arrays
             timePoints = uniqueTimes.stream().mapToDouble(Double::doubleValue).toArray();
             powerValues = uniquePowers.stream().mapToDouble(Double::doubleValue).toArray();
 
             minTime = timePoints[0];
             maxTime = timePoints[timePoints.length - 1];
 
-            // Build spline interpolator
-            LOGGER.info("Building spline interpolator with {} unique points...", timePoints.length);
             SplineInterpolator interpolator = new SplineInterpolator();
             powerSpline = interpolator.interpolate(timePoints, powerValues);
 
-            LOGGER.info(" Spline interpolation built successfully!");
-            LOGGER.info("   Time scaling mode: {}", timeScalingMode.getDescription());
-            LOGGER.info("   Data points: {} (original: {})", timePoints.length, dataPoints.size());
-            LOGGER.info("   Time range: [{} s, {} s] ({} hours)",
-                       minTime, maxTime, (maxTime - minTime) / 3600.0);
-            LOGGER.info("   Power range: [{} kW, {} kW]",
-                       java.util.Arrays.stream(powerValues).min().orElse(0),
-                       java.util.Arrays.stream(powerValues).max().orElse(0));
-
-            // Log data utilization for typical simulation duration
-            double typicalSimDuration = 2000.0;  // 2000 seconds typical
-            if (timeScalingMode == TimeScalingMode.REAL_TIME) {
-                double dataPointsUsed = typicalSimDuration / 600.0;  // One per 10 minutes
-                double utilizationPercent = (dataPointsUsed / timePoints.length) * 100.0;
-                LOGGER.info("   Data utilization (2000s simulation): ~{} points ({}%)",
-                           (int) Math.ceil(dataPointsUsed), utilizationPercent);
-            } else if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                double dataPointsUsed = Math.min(typicalSimDuration, timePoints.length);
-                double utilizationPercent = (dataPointsUsed / timePoints.length) * 100.0;
-                LOGGER.info("   Data utilization (2000s simulation): {} points ({}%)",
-                           (int) dataPointsUsed, utilizationPercent);
+            maxPowerKw = java.util.Arrays.stream(powerValues).max().orElse(1.0);
+            if (maxPowerKw <= 0) {
+                maxPowerKw = 1.0;
             }
 
+            LOGGER.info("Spline built: {} points, time [{}, {}], power [{}, {}] kW",
+                       timePoints.length, minTime, maxTime,
+                       java.util.Arrays.stream(powerValues).min().orElse(0), maxPowerKw);
+
         } catch (Exception e) {
-            LOGGER.error(" Failed to load and build spline: {}", e.getMessage(), e);
-            LOGGER.error("   Stack trace:", e);
+            LOGGER.error("Failed to load and build spline: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * Load CSV data for specified turbine.
-     *
-     * @return List of data points
+     * Load CSV data - supports both simplified (2 columns) and legacy (15 columns) formats.
      */
     private List<WindDataPoint> loadCsvData() throws IOException {
         List<WindDataPoint> result = new ArrayList<>();
 
-        // Try to load from resources first, then from absolute path
         BufferedReader reader = null;
         try {
             InputStream is = getClass().getClassLoader().getResourceAsStream(csvFilePath);
@@ -514,127 +535,92 @@ public class GreenEnergyProvider {
                 reader = new BufferedReader(new InputStreamReader(is));
                 LOGGER.info("Loading CSV from resources: {}", csvFilePath);
             } else {
-                LOGGER.warn("CSV not found in resources, trying file system: {}", csvFilePath);
                 reader = new BufferedReader(new FileReader(csvFilePath));
                 LOGGER.info("Loading CSV from file system: {}", csvFilePath);
             }
 
-            String line = reader.readLine();  // Skip header
-            LOGGER.info("CSV Header: {}", line);
+            String header = reader.readLine();
+            LOGGER.info("CSV Header: {}", header);
 
+            // Auto-detect format from header
+            boolean simplified = header != null && header.toLowerCase().contains("power_kw")
+                                 && !header.toLowerCase().contains("wspd");
+            if (simplified != isSimplifiedFormat) {
+                LOGGER.info("Format auto-detected: {}", simplified ? "simplified" : "legacy");
+                isSimplifiedFormat = simplified;
+            }
+
+            String line;
             long baseTimestamp = -1;
             int lineCount = 0;
-            int matchedLines = 0;
-            int skippedColumns = 0;
-            int skippedTurbine = 0;
-            int rowIndex = 0;  // For COMPRESSED mode
+            int rowIndex = 0;
 
             while ((line = reader.readLine()) != null) {
                 lineCount++;
                 String[] parts = line.split(",");
 
-                if (parts.length < 15) {
-                    skippedColumns++;
-                    if (skippedColumns <= 5) {  // Only log first 5 warnings
-                        LOGGER.warn("Line {} has insufficient columns ({}), skipping: {}",
-                                   lineCount, parts.length, line.substring(0, Math.min(80, line.length())));
-                    }
-                    continue;
-                }
-
-                // Parse turbine ID
-                int tid;
-                try {
-                    tid = Integer.parseInt(parts[0].trim());
-                } catch (NumberFormatException e) {
-                    LOGGER.debug("Line {}: Invalid turbine ID, skipping", lineCount);
-                    continue;  // Skip invalid lines
-                }
-
-                if (tid != turbineId) {
-                    skippedTurbine++;
-                    continue;  // Only load specified turbine
-                }
-
-                matchedLines++;
-
-                // Log first matched line for debugging
-                if (matchedLines == 1) {
-                    LOGGER.info("First matched line for turbine {}: {}", turbineId,
-                               line.substring(0, Math.min(100, line.length())));
-                }
-
-                // Determine timestamp based on mode
                 double timestamp;
+                double powerKW;
 
-                if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                    // COMPRESSED mode: Use row index as timestamp (1 data point = 1 second)
-                    // Skip first 12 rows to ensure sufficient lookback for prediction
-                    if (rowIndex < 12) {
+                if (isSimplifiedFormat) {
+                    // Simplified format: timestamp,power_kw
+                    if (parts.length < 2) continue;
+
+                    if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                        if (rowIndex < 12) {
+                            rowIndex++;
+                            continue;
+                        }
+                        timestamp = rowIndex - 12;
                         rowIndex++;
-                        continue;  // Skip this row, need 12 rows for lookback
+                    } else {
+                        try {
+                            timestamp = parseTimestamp(parts[0].trim(), baseTimestamp);
+                            if (baseTimestamp < 0) {
+                                baseTimestamp = (long)(timestamp * 1000);
+                                timestamp = 0;
+                            }
+                        } catch (Exception e) {
+                            continue;
+                        }
                     }
-                    timestamp = rowIndex - 12;  // Map: row 12 → timestamp 0, row 13 → timestamp 1, etc.
-                    rowIndex++;
+
+                    powerKW = parseDoubleOrZero(parts[1]);
+
                 } else {
-                    // REAL_TIME mode: Use actual timestamp from CSV
-                    try {
-                        // Handle multiple timestamp formats:
-                        // - "2020-01-03 01:25:00" (SQL format)
-                        // - "2020/1/3 1:25" (CSV format from dataset)
-                        String timestampStr = parts[1].trim();
-                        Timestamp ts;
+                    // Legacy format: TurbID,Tmstamp,...,Patv (15 columns)
+                    if (parts.length < 15) continue;
 
-                        if (timestampStr.contains("/")) {
-                            // Convert "2020/1/3 1:25" to SQL format
-                            timestampStr = timestampStr
-                                .replace("/", "-")  // 2020-1-3 1:25
-                                .replaceFirst("(\\d+)-(\\d+)-(\\d+)", "$1-$2-$3")  // Keep format
-                                + ":00";  // Add seconds
-                            // Parse with flexible format
-                            String[] dateParts = timestampStr.split(" ")[0].split("-");
-                            String[] timeParts = timestampStr.split(" ")[1].split(":");
-                            String formattedTimestamp = String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                                Integer.parseInt(dateParts[0]),
-                                Integer.parseInt(dateParts[1]),
-                                Integer.parseInt(dateParts[2]),
-                                Integer.parseInt(timeParts[0]),
-                                Integer.parseInt(timeParts[1]),
-                                Integer.parseInt(timeParts[2]));
-                            ts = Timestamp.valueOf(formattedTimestamp);
-                        } else {
-                            // Standard SQL timestamp format
-                            ts = Timestamp.valueOf(timestampStr);
+                    if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                        if (rowIndex < 12) {
+                            rowIndex++;
+                            continue;
                         }
-
-                        if (baseTimestamp < 0) baseTimestamp = ts.getTime();
-                        timestamp = (ts.getTime() - baseTimestamp) / 1000.0;
-
-                    } catch (Exception e) {
-                        if (matchedLines <= 5) {  // Log first few errors for debugging
-                            LOGGER.warn("Failed to parse line {}: {} (timestamp: '{}')",
-                                       lineCount, e.getMessage(), parts[1]);
+                        timestamp = rowIndex - 12;
+                        rowIndex++;
+                    } else {
+                        try {
+                            timestamp = parseTimestamp(parts[1].trim(), baseTimestamp);
+                            if (baseTimestamp < 0) {
+                                baseTimestamp = (long)(timestamp * 1000);
+                                timestamp = 0;
+                            }
+                        } catch (Exception e) {
+                            continue;
                         }
-                        continue;  // Skip this line on timestamp parse error
                     }
-                }
 
-                // Parse power (Patv) - column 14 (15th column, 0-indexed)
-                double powerKW = parseDoubleOrZero(parts[14]);
+                    powerKW = parseDoubleOrZero(parts[14]);  // Patv column
+                }
 
                 result.add(new WindDataPoint(timestamp, powerKW));
 
-                // Progress logging
-                if (matchedLines % 100000 == 0) {
-                    LOGGER.info("Progress: Loaded {} data points for turbine {}...", matchedLines, turbineId);
+                if (lineCount % 100000 == 0) {
+                    LOGGER.info("Progress: {} lines processed...", lineCount);
                 }
             }
 
-            LOGGER.info("CSV loading complete:");
-            LOGGER.info("  Total lines processed: {}", lineCount);
-            LOGGER.info("  Lines skipped (insufficient columns): {}", skippedColumns);
-            LOGGER.info("  Lines skipped (different turbine): {}", skippedTurbine);
-            LOGGER.info("  Matched lines for turbine {}: {}", turbineId, matchedLines);
+            LOGGER.info("CSV loading complete: {} data points from {} lines", result.size(), lineCount);
 
         } finally {
             if (reader != null) {
@@ -645,9 +631,31 @@ public class GreenEnergyProvider {
         return result;
     }
 
-    /**
-     * Parse double value or return 0 on failure.
-     */
+    private double parseTimestamp(String timestampStr, long baseTimestamp) {
+        Timestamp ts;
+
+        if (timestampStr.contains("/")) {
+            timestampStr = timestampStr.replace("/", "-") + ":00";
+            String[] dateParts = timestampStr.split(" ")[0].split("-");
+            String[] timeParts = timestampStr.split(" ")[1].split(":");
+            String formatted = String.format("%04d-%02d-%02d %02d:%02d:%02d",
+                Integer.parseInt(dateParts[0]),
+                Integer.parseInt(dateParts[1]),
+                Integer.parseInt(dateParts[2]),
+                Integer.parseInt(timeParts[0]),
+                Integer.parseInt(timeParts[1]),
+                Integer.parseInt(timeParts[2]));
+            ts = Timestamp.valueOf(formatted);
+        } else {
+            ts = Timestamp.valueOf(timestampStr);
+        }
+
+        if (baseTimestamp < 0) {
+            return ts.getTime();
+        }
+        return (ts.getTime() - baseTimestamp) / 1000.0;
+    }
+
     private double parseDoubleOrZero(String value) {
         if (value == null || value.trim().isEmpty()) {
             return 0.0;
@@ -660,27 +668,11 @@ public class GreenEnergyProvider {
     }
 
     /**
-     * Invoke Python prediction service via Py4J.
-     * This is a placeholder - actual implementation depends on Py4J interface.
-     *
-     * @param predictor Python predictor object
-     * @param history   Historical data frames
-     * @param horizon   Prediction horizon
-     * @return Predicted power values in kW
-     */
-    private double[] invokePythonPredictor(Object predictor, List<WindDataFrame> history, int horizon) {
-        // TODO: Implement actual Py4J call
-        // For now, return dummy prediction
-        LOGGER.warn("Python predictor invocation not yet implemented, returning zeros");
-        return new double[horizon];
-    }
-
-    /**
-     * Simple data structure for storing time-power pairs from CSV.
+     * Simple data structure for storing time-power pairs.
      */
     private static class WindDataPoint {
-        final double timestamp;  // Relative time in seconds
-        final double powerKW;    // Power in kW
+        final double timestamp;
+        final double powerKW;
 
         WindDataPoint(double timestamp, double powerKW) {
             this.timestamp = timestamp;

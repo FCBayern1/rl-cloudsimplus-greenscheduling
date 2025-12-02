@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Singular;
 import lombok.ToString;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -63,10 +64,37 @@ public class DatacenterConfig {
 
     // === Green Energy Configuration ===
     private final boolean greenEnergyEnabled;
-    private final int turbineId;                    // Wind turbine ID for this datacenter
+
+    /**
+     * List of wind turbine IDs for this datacenter.
+     * Multiple turbines can supply power to a single datacenter.
+     * Use @Singular to enable builder.turbineId(57).turbineId(58) syntax.
+     */
+    @Singular("turbineId")
+    private final List<Integer> turbineIds;
+
     private final String windDataFile;              // Path to wind power CSV file
     @Builder.Default
     private final TimeScalingMode timeScalingMode = TimeScalingMode.REAL_TIME;  // Time scaling mode (default: REAL_TIME)
+    
+    // Future energy forecast configuration
+    @Builder.Default
+    private final int shortTermRows = 3;            // Short-term forecast (default: 3 rows = 30 min)
+    @Builder.Default
+    private final int longTermRows = 144;           // Long-term forecast (default: 144 rows = 24 hours)
+
+    /**
+     * Time zone offset for geo-distributed simulation (in CSV rows).
+     * In COMPRESSED mode: 1 row = 10 min real time, so 6 hours = 36 rows.
+     * This simulates different geographic locations with different local times.
+     * Example offsets:
+     *   - US West (PST):     0 rows (baseline)
+     *   - US East (EST):    18 rows (+3 hours)
+     *   - Europe (CET):     54 rows (+9 hours)
+     *   - Asia Pacific:     96 rows (+16 hours)
+     */
+    @Builder.Default
+    private final int timeZoneOffsetRows = 0;
 
     // === Carbon Emission Factors ===
     /**
@@ -194,6 +222,37 @@ public class DatacenterConfig {
      */
     public long getLargeVmRam() {
         return smallVmRam * largeVmMultiplier;
+    }
+
+    /**
+     * Get turbine IDs list.
+     * Returns the list of turbine IDs, or a default list with turbine 57 if not configured.
+     */
+    public List<Integer> getTurbineIds() {
+        if (turbineIds == null || turbineIds.isEmpty()) {
+            return List.of(57);  // Default turbine
+        }
+        return turbineIds;
+    }
+
+    /**
+     * Get single turbine ID (backward compatibility).
+     * Returns the first turbine ID from the list.
+     * @deprecated Use getTurbineIds() for multi-turbine support
+     */
+    @Deprecated
+    public int getTurbineId() {
+        if (turbineIds == null || turbineIds.isEmpty()) {
+            return 57;  // Default turbine
+        }
+        return turbineIds.get(0);
+    }
+
+    /**
+     * Get number of turbines configured for this datacenter.
+     */
+    public int getTurbineCount() {
+        return getTurbineIds().size();
     }
 
     /**

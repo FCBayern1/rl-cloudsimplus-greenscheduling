@@ -25,7 +25,10 @@
       "Bash(drl-manager/.venv/Scripts/python.exe:*)",
       "Bash(.venv/Scripts/activate)",
       "Bash(cp:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python:*)",
+      "Bash(CUDA_LAUNCH_BLOCKING=1 python:*)"
     ],
     "deny": [],
     "ask": []

@@ -749,24 +749,24 @@ source .venv/bin/activate   # Linux/Mac
 .venv\Scripts\activate      # Windows
 
 # 方式 A: 直接运行（使用默认配置）
-$env:EXPERIMENT_ID = "experiment_multi_dc_3"
+#$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+export EXPERIMENT_ID="experiment_multi_dc_5"
+
 python drl-manager/entrypoint_multidc.py
 
 # 方式 B: 使用环境变量配置
 export CONFIG_FILE="../config.yml"
-export EXPERIMENT_ID="experiment_multi_dc_3"
-export STRATEGY="alternating"
+export EXPERIMENT_ID="experiment_multi_dc_5"
 export SEED="2025"
-python entrypoint_multidc.py
+python entrypoint_pettingzoo.py
 ```
 
 ```powershell
 # PowerShell
 $env:CONFIG_FILE = "..\config.yml"
-$env:EXPERIMENT_ID = "experiment_multi_dc_3"
-$env:STRATEGY = "alternating"
+$env:EXPERIMENT_ID = "experiment_multi_dc_5"
 $env:SEED = "2025"
-python entrypoint_multidc.py
+python entrypoint_pettingzoo.py
 ```
 
 #### 方法 2: 直接调用训练脚本
@@ -789,6 +789,7 @@ python entrypoint.py
 ```
 
 **Multi-DC 特性：**
+
 - **全局智能体（Global Agent）**：将到达的任务路由到最优数据中心，基于：
   - 所有数据中心的总能耗
   - 绿色能源可用性和使用比例
@@ -1306,10 +1307,11 @@ cloudlet_trace_file: "traces/my_uniform.csv"
 ```bash
 cd data-analysis
 python generate_workload.py \
+  --arrival-rate 1\
   --type uniform \
-  --num-jobs 500 \
-  --duration 2000 \
-  --output ../cloudsimplus-gateway/src/main/resources/traces/my_uniform.csv
+  --num-jobs 3000 \
+  --duration 1000 \
+  --output ../cloudsimplus-gateway/src/main/resources/traces/dc10_3000.csv
 ```
 
 ##### 训练配置

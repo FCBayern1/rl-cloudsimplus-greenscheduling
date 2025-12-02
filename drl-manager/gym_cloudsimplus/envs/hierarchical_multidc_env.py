@@ -84,6 +84,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         self._setup_action_spaces()
 
         logger.info(f"HierarchicalMultiDCEnv initialized with {self.num_datacenters} datacenters")
+        logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
 
     def _setup_observation_spaces(self):
         """
@@ -112,6 +113,27 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
+            # Future energy trend features (God's Eye mode)
+            "dc_future_short_mean": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_short_trend": spaces.Box(
+                low=-1.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_long_mean": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_long_peak_timing": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
             "dc_queue_sizes": spaces.Box(
                 low=0, high=10000,
                 shape=(self.num_datacenters,),
@@ -132,7 +154,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
-            "upcoming_cloudlets_count": spaces.Discrete(1000),  # Total cloudlets in global waiting queue
+            "upcoming_cloudlets_count": spaces.Discrete(100000),  # Total cloudlets in global waiting queue (increased for large workloads)
             "batch_cloudlet_pes": spaces.Box(
                 low=0, high=100,  # Max PEs for a cloudlet
                 shape=(self.global_routing_batch_size,),
@@ -153,7 +175,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(1,),
                 dtype=np.float32
             ),
-            "recent_completed": spaces.Discrete(10000),
+            "recent_completed": spaces.Discrete(100000),  # Increased for large workloads
         })
 
         # Local observation spaces (per datacenter)
@@ -213,8 +235,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.max_vms,),
                 dtype=np.int32
             ),
-            "waiting_cloudlets": spaces.Discrete(10000),
-            "next_cloudlet_pes": spaces.Discrete(100),
+            "waiting_cloudlets": spaces.Discrete(100000),  # Increased for large workloads
+            "next_cloudlet_pes": spaces.Discrete(256),  # Increased for cloudlets with more PEs
         })
 
     def _setup_action_spaces(self):
@@ -222,13 +244,17 @@ class HierarchicalMultiDCEnv(gym.Env):
         Define action spaces for global and local agents.
         
         Global Agent: Routes a fixed batch of cloudlets per step.
-        - If fewer cloudlets available, extra actions are ignored.
-        - If more cloudlets available, they wait in queue for next step.
+        - Each action is a datacenter index in [0, num_datacenters - 1]
+        - If fewer cloudlets are available than the routing batch size,
+          extra actions are simply ignored (trimmed to queue length).
+        - If more cloudlets are available,未被选中的继续在全局队列中等待。
         
         Local Agents: Assign one cloudlet per DC per step.
         """
-        # Global action space: Fixed batch of routing decisions
-        # Each action selects a datacenter for one cloudlet
+        # Global action space: fixed-size batch of routing decisions.
+        # Each element is a DC index ∈ {0, ..., num_datacenters-1}.
+        # We no longer use an explicit "NoAssign" action for the global agent;
+        # extra actions beyond the current queue length are ignored downstream.
         self.global_action_space = spaces.MultiDiscrete(
             [self.num_datacenters] * self.global_routing_batch_size
         )
@@ -452,11 +478,26 @@ class HierarchicalMultiDCEnv(gym.Env):
             # Continue with 0 if this fails
             num_available = 0
 
-        # Dynamically trim global actions to actual available cloudlets
-        # This allows the agent to output a fixed batch_size, but only route what's available
-        if len(global_actions) > num_available:
-            logger.debug(f"Trimming global actions from {len(global_actions)} to {num_available} (queue size)")
-            global_actions = global_actions[:num_available]
+        # Process global actions:
+        # - Each element is a datacenter index in [0, num_datacenters - 1]
+        # - Actions are one-to-one mapped to DC indices; there is no explicit NoAssign.
+        # - If there are more actions than available cloudlets, extra actions are ignored.
+        # Convert actions to DC indices and drop out-of-range values
+        global_actions_filtered = []
+        for i, action_val in enumerate(global_actions):
+            action_int = int(action_val)
+            dc_index = action_int
+            if 0 <= dc_index < self.num_datacenters:
+                global_actions_filtered.append(dc_index)
+            else:
+                logger.warning(f"Global action[{i}] = {action_int} out of range, skipping")
+        
+        # Trim to available cloudlets
+        if len(global_actions_filtered) > num_available:
+            logger.debug(f"Trimming global actions from {len(global_actions_filtered)} to {num_available} (queue size)")
+            global_actions_filtered = global_actions_filtered[:num_available]
+        
+        global_actions = global_actions_filtered
 
         # Convert local actions dict to Java-compatible format
         # Apply action mapping: agent outputs 0 to num_vms -> Java expects -1 to num_vms-1
@@ -576,16 +617,23 @@ class HierarchicalMultiDCEnv(gym.Env):
             "dc_current_power_w": np.array(global_obs_java.getDcCurrentPowerW(), dtype=np.float32),
             "dc_green_ratio": np.array(global_obs_java.getDcGreenRatio(), dtype=np.float32),
             "dc_cumulative_wasted_green_wh": np.array(global_obs_java.getDcCumulativeWastedGreenWh(), dtype=np.float32),
+            # Future energy trend features (God's Eye mode)
+            "dc_future_short_mean": np.array(global_obs_java.getDcFutureShortMean(), dtype=np.float32),
+            "dc_future_short_trend": np.array(global_obs_java.getDcFutureShortTrend(), dtype=np.float32),
+            "dc_future_long_mean": np.array(global_obs_java.getDcFutureLongMean(), dtype=np.float32),
+            "dc_future_long_peak_timing": np.array(global_obs_java.getDcFutureLongPeakTiming(), dtype=np.float32),
+            # Resource metrics
             "dc_queue_sizes": np.array(global_obs_java.getDcQueueSizes(), dtype=np.int32),
             "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
             "dc_available_pes": np.array(global_obs_java.getDcAvailablePes(), dtype=np.int32),
             "dc_ram_utilizations": np.array(global_obs_java.getDcRamUtilizations(), dtype=np.float32),
-            "upcoming_cloudlets_count": global_obs_java.getUpcomingCloudletsCount(),
+            # Clamp Discrete values to valid range to prevent one_hot errors
+            "upcoming_cloudlets_count": min(global_obs_java.getUpcomingCloudletsCount(), 99999),
             "batch_cloudlet_pes": np.array(global_obs_java.getBatchCloudletPes(), dtype=np.int32),
             "batch_cloudlet_mi": np.array(global_obs_java.getBatchCloudletMi(), dtype=np.int64),
             "upcoming_pes_distribution": np.array(global_obs_java.getUpcomingCloudletsPesDistribution(), dtype=np.int32),
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
-            "recent_completed": global_obs_java.getRecentCompletedCloudlets(),
+            "recent_completed": min(global_obs_java.getRecentCompletedCloudlets(), 99999),
         }
 
     def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
@@ -608,8 +656,9 @@ class HierarchicalMultiDCEnv(gym.Env):
             "vm_loads": self._pad_vector(vm_loads, self.max_vms, 0.0),
             "vm_types": self._pad_vector(vm_types, self.max_vms, 0),
             "vm_available_pes": self._pad_vector(vm_available_pes, self.max_vms, 0),
-            "waiting_cloudlets": local_obs_java.getWaitingCloudlets(),
-            "next_cloudlet_pes": local_obs_java.getNextCloudletPes(),
+            # Clamp Discrete values to valid range to prevent one_hot errors
+            "waiting_cloudlets": min(local_obs_java.getWaitingCloudlets(), 99999),
+            "next_cloudlet_pes": min(local_obs_java.getNextCloudletPes(), 255),
         }
 
     def _get_dc_host_count(self, dc_id: int) -> int:

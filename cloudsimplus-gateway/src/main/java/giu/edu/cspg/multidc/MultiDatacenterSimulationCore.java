@@ -253,17 +253,27 @@ public class MultiDatacenterSimulationCore {
         // Submit VMs to this broker
         localBroker.submitVmList(vmPool);
 
-        // === Create Green Energy Provider (if enabled) ===
+        // === Create Green Energy Providers (if enabled) ===
+        // Support multiple turbines per datacenter with timezone offset for geo-distribution
         if (config.isGreenEnergyEnabled()) {
-            GreenEnergyProvider greenEnergyProvider = new GreenEnergyProvider(
-                    config.getTurbineId(),
-                    config.getWindDataFile(),
-                    config.getTimeScalingMode()
-            );
-            dcInstance.setGreenEnergyProvider(greenEnergyProvider);
-            LOGGER.info("GreenEnergyProvider created for DC {} with turbine {} (mode: {})",
-                    config.getDatacenterId(), config.getTurbineId(),
-                    config.getTimeScalingMode().getDescription());
+            List<Integer> turbineIds = config.getTurbineIds();
+            for (int turbineId : turbineIds) {
+                GreenEnergyProvider greenEnergyProvider = new GreenEnergyProvider(
+                        turbineId,
+                        config.getWindDataFile(),
+                        config.getTimeScalingMode(),
+                        config.getShortTermRows(),
+                        config.getLongTermRows(),
+                        config.getTimeZoneOffsetRows()  // Apply timezone offset for geo-distribution
+                );
+                dcInstance.addGreenEnergyProvider(greenEnergyProvider);
+            }
+            LOGGER.info("Created {} GreenEnergyProvider(s) for DC {} with turbines {} (mode: {}, " +
+                       "forecast: short={}rows, long={}rows, tzOffset={}rows)",
+                    turbineIds.size(), config.getDatacenterId(), turbineIds,
+                    config.getTimeScalingMode().getDescription(),
+                    config.getShortTermRows(), config.getLongTermRows(),
+                    config.getTimeZoneOffsetRows());
         }
 
         return dcInstance;
@@ -307,13 +317,25 @@ public class MultiDatacenterSimulationCore {
         Map<Integer, Double> localRewards = calculateLocalRewards(localResults);
         // Global reward = sum of local rewards - green waste penalty
         double globalReward = calculateGlobalReward(localRewards);
+        
+        // === Phase 5.5: Clear per-step tracking lists ===
+        // Must be done AFTER reward calculation but BEFORE next step
+        clearPerStepTrackingLists();
 
         // === Phase 6: Check Termination ===
         boolean allCloudletsCompleted = !hasUnfinishedCloudlets();
         boolean simulationEnded = !simulation.isRunning();
 
-        // Natural termination: all cloudlets completed and simulation ended
-        boolean terminated = allCloudletsCompleted && simulationEnded;
+        // Natural termination: all cloudlets completed (don't require simulation to end)
+        // The simulation might still be "running" even when all work is done
+        boolean terminated = allCloudletsCompleted;
+
+        // If all cloudlets are completed, proactively terminate the simulation
+        if (allCloudletsCompleted && simulation.isRunning()) {
+            LOGGER.info("All cloudlets completed at step {}. Terminating simulation.", currentStep);
+            simulation.terminate();
+            simulationEnded = true;
+        }
 
         // Truncation: reached max steps (may still have unfinished cloudlets)
         boolean truncated = currentStep >= settings.getMaxEpisodeLength();
@@ -552,12 +574,31 @@ public class MultiDatacenterSimulationCore {
             }
         }
     }
+    
+    /**
+     * Clear per-step tracking lists for all datacenters.
+     * This must be called AFTER reward calculation but BEFORE the next step.
+     * 
+     * Clears:
+     * - cloudletsFinishedLastTimestep: cloudlets that finished in the last step
+     * - cloudletsFinishedWaitTimeLastTimestep: wait times of finished cloudlets
+     */
+    private void clearPerStepTrackingLists() {
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker != null) {
+                localBroker.clearFinishedWaitTimes();
+            }
+        }
+        LOGGER.trace("Cleared per-step tracking lists for all {} datacenters", datacenterInstances.size());
+    }
 
     /**
      * Get global observation (aggregated state of all datacenters).
      *
      * Returns datacenter-level aggregated metrics for the Global Agent:
      * - Green energy availability per DC
+     * - Future energy trend features (God's Eye) per DC
      * - Queue sizes per DC
      * - CPU/RAM utilization per DC
      * - Available resources per DC
@@ -574,6 +615,13 @@ public class MultiDatacenterSimulationCore {
         double[] dcCurrentPowerW = new double[numDatacenters];
         double[] dcGreenRatio = new double[numDatacenters];
         double[] dcCumulativeWastedGreenWh = new double[numDatacenters];
+
+        // Future energy trend features (God's Eye)
+        double[] dcFutureShortMean = new double[numDatacenters];
+        double[] dcFutureShortTrend = new double[numDatacenters];
+        double[] dcFutureLongMean = new double[numDatacenters];
+        double[] dcFutureLongPeakTiming = new double[numDatacenters];
+
         int[] dcQueueSizes = new int[numDatacenters];
         double[] dcUtilizations = new double[numDatacenters];
         int[] dcAvailablePes = new int[numDatacenters];
@@ -588,6 +636,24 @@ public class MultiDatacenterSimulationCore {
             dcCurrentPowerW[i] = dc.getCurrentPowerW();  // W
             dcGreenRatio[i] = dc.getGreenEnergyRatio();  // [0, 1]
             dcCumulativeWastedGreenWh[i] = dc.getTotalWastedGreenWh();  // Wh
+
+            // Future energy trend features (God's Eye mode)
+            // Use aggregated features from all turbines supplying this datacenter
+            List<GreenEnergyProvider> greenProviders = dc.getGreenEnergyProviders();
+            if (!greenProviders.isEmpty()) {
+                double[] trendFeatures = GreenEnergyProvider.computeAggregatedFutureTrendFeatures(
+                        greenProviders, currentClock);
+                dcFutureShortMean[i] = trendFeatures[0];
+                dcFutureShortTrend[i] = trendFeatures[1];
+                dcFutureLongMean[i] = trendFeatures[2];
+                dcFutureLongPeakTiming[i] = trendFeatures[3];
+            } else {
+                // Default values if green energy not enabled
+                dcFutureShortMean[i] = 0.5;
+                dcFutureShortTrend[i] = 0.0;
+                dcFutureLongMean[i] = 0.5;
+                dcFutureLongPeakTiming[i] = 0.5;
+            }
 
             // Waiting cloudlets count (exact integer)
             dcQueueSizes[i] = dc.getWaitingCloudletCount();
@@ -650,6 +716,10 @@ public class MultiDatacenterSimulationCore {
                 dcCurrentPowerW,
                 dcGreenRatio,
                 dcCumulativeWastedGreenWh,
+                dcFutureShortMean,      // Future energy trend features (God's Eye)
+                dcFutureShortTrend,
+                dcFutureLongMean,
+                dcFutureLongPeakTiming,
                 dcQueueSizes,
                 dcUtilizations,
                 dcAvailablePes,
@@ -1078,6 +1148,7 @@ public class MultiDatacenterSimulationCore {
         double utilizationCoef = settings.getRewardUnutilizationCoef();
         double queueCoef = settings.getRewardQueuePenaltyCoef();
         double invalidActionCoef = settings.getRewardInvalidActionCoef();
+        double completionCoef = settings.getRewardCompletionCoef();
 
         // === 1. Wait Time Penalty (exactly like LoadBalancerGateway) ===
         double waitTimePenalty = 0.0;
@@ -1137,16 +1208,35 @@ public class MultiDatacenterSimulationCore {
         // === 4. Invalid Action Penalty (exactly like LoadBalancerGateway) ===
         double invalidActionPenalty = -invalidActionCoef * (wasInvalidAction ? 1.0 : 0.0);
 
-        // === Total Reward (no clipping, same as LoadBalancerGateway) ===
-        double totalReward = waitTimePenalty + utilizationPenalty + queuePenalty + invalidActionPenalty;
+        // === 5. Completion Rate Reward (POSITIVE reward to prevent sacrificing completion) ===
+        // TEMPORARILY DISABLED - uncomment to re-enable
+        // Fixed per-completion reward instead of normalized by totalReceived
+        // This avoids reward explosion at episode start when totalReceived is small
+        //
+        // Formula: r_completion = completionCoef × completedThisStep
+        // With completionCoef = 0.1, each completion gives +0.1 reward
+        // This is similar magnitude to other penalties (~0.3-0.5 per step)
+        double completionReward = 0.0;
+        int completedThisStep = 0;
+        if (localBroker != null) {
+            completedThisStep = localBroker.getCloudletsFinishedLastStep(currentClock).size();
+            // Simple per-completion reward (no normalization)
+            // completionReward = completionCoef * completedThisStep;  // DISABLED
+        }
 
-        LOGGER.debug("DC {} Local Reward: total={} (wait={}, util={}, queue={}, invalid={})",
+        // === Total Reward (no clipping, same as LoadBalancerGateway) ===
+        // Note: completionReward is now always 0.0 (disabled)
+        double totalReward = waitTimePenalty + utilizationPenalty + queuePenalty + invalidActionPenalty + completionReward;
+
+        LOGGER.debug("DC {} Local Reward: total={} (wait={}, util={}, queue={}, invalid={}, completion={}[{}])",
                 dc.getName(),
                 String.format("%.3f", totalReward),
                 String.format("%.3f", waitTimePenalty),
                 String.format("%.3f", utilizationPenalty),
                 String.format("%.3f", queuePenalty),
-                String.format("%.3f", invalidActionPenalty));
+                String.format("%.3f", invalidActionPenalty),
+                String.format("%.3f", completionReward),
+                completedThisStep);
 
         return totalReward;
     }
@@ -1175,6 +1265,7 @@ public class MultiDatacenterSimulationCore {
 
     /**
      * Collect energy metrics from all datacenters.
+     * Also includes cloudlet completion statistics per DC.
      */
     private Map<Integer, Map<String, Object>> collectDatacenterEnergyMetrics() {
         Map<Integer, Map<String, Object>> metricsMap = new HashMap<>();
@@ -1191,7 +1282,33 @@ public class MultiDatacenterSimulationCore {
                     dc.isGreenEnergyEnabled() ? dc.getCurrentGreenPowerW(currentClock) : 0.0
             );
 
-            metricsMap.put(dc.getId(), metrics.toMap());
+            Map<String, Object> dcMetrics = metrics.toMap();
+
+            // Add cloudlet completion statistics
+            dcMetrics.put("cloudlets_received", dc.getCloudletsReceived());
+            dcMetrics.put("cloudlets_finished", dc.getCloudletsCompleted());
+
+            // Calculate mean completion time from finished cloudlets
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker != null) {
+                List<Cloudlet> finishedCloudlets = localBroker.getCloudletFinishedList();
+                if (!finishedCloudlets.isEmpty()) {
+                    double totalCompletionTime = 0.0;
+                    for (Cloudlet cloudlet : finishedCloudlets) {
+                        // Completion time = finishTime - arrivalTime (submissionDelay)
+                        double completionTime = cloudlet.getFinishTime() - cloudlet.getSubmissionDelay();
+                        totalCompletionTime += completionTime;
+                    }
+                    double meanCompletionTime = totalCompletionTime / finishedCloudlets.size();
+                    dcMetrics.put("mean_completion_time", meanCompletionTime);
+                } else {
+                    dcMetrics.put("mean_completion_time", 0.0);
+                }
+            } else {
+                dcMetrics.put("mean_completion_time", 0.0);
+            }
+
+            metricsMap.put(dc.getId(), dcMetrics);
         }
 
         return metricsMap;

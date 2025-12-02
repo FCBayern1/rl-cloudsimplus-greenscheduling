@@ -133,23 +133,11 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         obs_spaces = {}
 
-        # Global agent observation space (with action mask)
-        # For MultiDiscrete spaces, calculate total action count
-        global_action_space = self.base_env.global_action_space
-        if isinstance(global_action_space, spaces.MultiDiscrete):
-            # MultiDiscrete: total actions = product of all dimensions
-            num_global_actions = int(np.prod(global_action_space.nvec))
-        else:
-            # Discrete: use .n attribute
-            num_global_actions = global_action_space.n
-
+        # Global agent observation space (NO action mask).
+        # The global policy currently uses DictObsModel, which ignores action masks,
+        # so we only expose the underlying observation.
         obs_spaces["global_agent"] = spaces.Dict({
             "observation": self.base_env.global_observation_space,
-            "action_mask": spaces.Box(
-                low=0, high=1,
-                shape=(num_global_actions,),
-                dtype=np.float32
-            )
         })
 
         # Local agents observation spaces (each DC has its own obs and action mask size)
@@ -186,8 +174,8 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                     shape=(dc_vm_count,),
                     dtype=np.int32
                 ),
-                "waiting_cloudlets": spaces.Discrete(10000),
-                "next_cloudlet_pes": spaces.Discrete(100),
+                "waiting_cloudlets": spaces.Discrete(100000),  # Increased for large workloads
+                "next_cloudlet_pes": spaces.Discrete(256),  # Increased for cloudlets with more PEs
             })
 
             obs_spaces[f"local_agent_{i}"] = spaces.Dict({
@@ -397,17 +385,9 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         flat_obs = {}
 
-        # Global agent observation (no action masking for global routing)
-        # For MultiDiscrete spaces, calculate total action count
-        global_action_space = self.base_env.global_action_space
-        if isinstance(global_action_space, spaces.MultiDiscrete):
-            num_global_actions = int(np.prod(global_action_space.nvec))
-        else:
-            num_global_actions = global_action_space.n
-
+        # Global agent observation (no action mask for global routing)
         flat_obs["global_agent"] = {
             "observation": hierarchical_obs["global"],
-            "action_mask": np.ones(num_global_actions, dtype=np.float32)
         }
 
         # Local agents observations with action masks

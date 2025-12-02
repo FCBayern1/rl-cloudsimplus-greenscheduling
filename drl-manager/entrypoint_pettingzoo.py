@@ -158,7 +158,7 @@ Examples:
 
     # Resolve experiment ID
     if args.experiment is None:
-        args.experiment = os.getenv('EXPERIMENT_ID', 'experiment_multi_dc_3')
+        args.experiment = os.getenv('EXPERIMENT_ID', 'experiment_multi_dc_5')
 
     logger.info(f"Experiment: {args.experiment}")
 
@@ -269,6 +269,42 @@ Examples:
     if args.num_gpus is not None:
         training_config['num_gpus'] = args.num_gpus
 
+    # Create output directory
+    output_path = Path(args.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Setup file logging - save all logs to file
+    log_file = output_path / "training.log"
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)  # Capture all logs
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    logging.getLogger().addHandler(file_handler)
+    logger.info(f"Logging to file: {log_file}")
+    
+    # Save experiment configuration to YAML
+    import yaml
+    config_save_path = output_path / "experiment_config.yml"
+    with open(config_save_path, 'w', encoding='utf-8') as f:
+        yaml.dump({
+            'experiment_name': args.experiment,
+            'timestamp': datetime.now().isoformat(),
+            'command_line_args': {
+                'config': args.config,
+                'experiment': args.experiment,
+                'num_workers': args.num_workers,
+                'total_timesteps': args.total_timesteps,
+                'num_gpus': args.num_gpus,
+                'output_dir': args.output_dir,
+            },
+            'env_config': env_config,
+            'global_model_config': global_model_config,
+            'local_model_config': local_model_config,
+            'training_config': training_config,
+        }, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    logger.info(f"Saved experiment config to: {config_save_path}")
+
     # Print configuration summary
     logger.info("=" * 70)
     logger.info("Configuration Summary:")
@@ -276,11 +312,49 @@ Examples:
     logger.info(f"  Experiment: {args.experiment}")
     logger.info(f"  Multi-DC enabled: {env_config.get('multi_datacenter_enabled', False)}")
     logger.info(f"  Number of datacenters: {len(env_config.get('datacenters', []))}")
+    logger.info(f"  Global routing batch size: {env_config.get('global_routing_batch_size', 'NOT SET (default=5)')}")
     logger.info(f"  Wind prediction: {env_config.get('wind_prediction', {}).get('enabled', False)}")
     logger.info(f"  Num workers: {training_config.get('num_workers', 4)}")
     logger.info(f"  Total timesteps: {training_config.get('total_timesteps', 100000)}")
     logger.info(f"  Num GPUs: {training_config.get('num_gpus', 0)}")
     logger.info(f"  Output dir: {args.output_dir}")
+    
+    # Print reward configuration
+    logger.info("")
+    logger.info("  Reward Configuration:")
+    logger.info(f"    carbon_emission_penalty_coef: {env_config.get('carbon_emission_penalty_coef', 1.0)}")
+    logger.info(f"    reward_completion_coef: {env_config.get('reward_completion_coef', 1.0)}")
+    logger.info(f"    reward_wait_time_coef: {env_config.get('reward_wait_time_coef', 0.1)}")
+    logger.info(f"    reward_unutilization_coef: {env_config.get('reward_unutilization_coef', 0.85)}")
+    logger.info(f"    reward_queue_penalty_coef: {env_config.get('reward_queue_penalty_coef', 0.05)}")
+    logger.info(f"    reward_invalid_action_coef: {env_config.get('reward_invalid_action_coef', 1.0)}")
+    
+    # Print datacenter summary
+    datacenters = env_config.get('datacenters', [])
+    if datacenters:
+        logger.info("")
+        logger.info("  Datacenters:")
+        for dc in datacenters:
+            dc_name = dc.get('name', f"DC_{dc.get('datacenter_id', '?')}")
+            turbine_ids = dc.get('turbine_ids', [dc.get('turbine_id', '?')])
+            wind_data_file = dc.get('wind_data_file', '')
+
+            # Detect solar vs wind by wind_data_file
+            is_solar = isinstance(wind_data_file, str) and "solarProduction" in wind_data_file
+
+            if is_solar:
+                # For solar-powered DCs, highlight solar energy and omit turbine IDs
+                logger.info(
+                    f"    - {dc_name}: solar_energy={dc.get('green_energy_enabled', False)}, "
+                    f"solar_file={wind_data_file}"
+                )
+            else:
+                # Default: wind-powered DCs with turbine IDs
+                logger.info(
+                    f"    - {dc_name}: turbines={turbine_ids}, "
+                    f"green_energy={dc.get('green_energy_enabled', False)}"
+                )
+    
     logger.info("=" * 70)
     print()
 
@@ -329,10 +403,17 @@ Examples:
         logger.info("Training completed successfully!")
         logger.info("=" * 70)
         logger.info(f"Results saved to: {args.output_dir}")
-        logger.info("\nNext steps:")
-        logger.info("  1. View training logs in the output directory")
-        logger.info("  2. Load checkpoints for evaluation")
-        logger.info("  3. Adjust hyperparameters in config.yml for better results")
+        logger.info("")
+        logger.info("Saved files:")
+        logger.info(f"  - experiment_config.yml  : Full experiment configuration")
+        logger.info(f"  - training.log           : Complete training logs")
+        logger.info(f"  - monitor.csv            : Episode-by-episode metrics")
+        logger.info(f"  - multidc_training/      : RLlib checkpoints & TensorBoard")
+        logger.info("")
+        logger.info("Next steps:")
+        logger.info("  1. View TensorBoard: tensorboard --logdir={args.output_dir}")
+        logger.info("  2. Analyze monitor.csv with Python/Pandas")
+        logger.info("  3. Load checkpoints for evaluation")
 
     except KeyboardInterrupt:
         logger.warning("\nTraining interrupted by user")

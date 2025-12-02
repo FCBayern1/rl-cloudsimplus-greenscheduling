@@ -62,17 +62,29 @@ common:
   green_energy:
     enabled: true                                     # Enable/disable green energy provider
     turbine_id: 57                                      # Wind turbine ID to load from dataset
-    wind_data_file: "windProduction/sdwpf_2001_2112_full.csv"  # Path to wind power CSV file
     prediction:
       enabled: false                                    # Enable/disable power prediction
       model_path: "../SWF_Prediction/saved_models/best_model.pth"  # Path to trained prediction model
       cache_duration_seconds: 600                       # Cache prediction results for 10 minutes
       horizon: 8                                        # Predict 8 timesteps ahead (80 minutes)
 
-  # --- Observation Normalization ---
-  max_queue_norm: 100.0 # Expected max queue length for normalizing observation
-  max_pes_norm: 8.0 # Expected max PEs for normalizing next_cloudlet_pes obs (e.g., largest VM size)
-  # tree_array_max_len: 5000          # Optional: Manually set Tree Array padding size (if calculated value is unstable/undesired)
+  # --- Future Energy Forecast (God's Eye Mode) ---
+  # Provide future green energy trend features to RL agent using ground truth CSV data
+  future_energy_forecast:
+    # Short-term features: Next 30 minutes (3 CSV rows × 10 min/row)
+    # - dc_future_short_mean: Average power level [0, 1]
+    # - dc_future_short_trend: Trend direction [-1, 1]
+    short_term_rows: 3                                  # Number of CSV rows for short-term (30 min)
+
+    # Long-term features: Next 24 hours (144 CSV rows × 10 min/row)
+    # - dc_future_long_mean: Average power level [0, 1]
+    # - dc_future_long_peak_timing: When peak occurs [0, 1] (0=now, 1=24h later)
+    long_term_rows: 144                                 # Number of CSV rows for long-term (24 hours)
+
+  # # --- Observation Normalization ---
+  # max_queue_norm: 100.0 # Expected max queue length for normalizing observation
+  # max_pes_norm: 8.0 # Expected max PEs for normalizing next_cloudlet_pes obs (e.g., largest VM size)
+  # # tree_array_max_len: 5000          # Optional: Manually set Tree Array padding size (if calculated value is unstable/undesired)
 
   # --- Technical Flags ---
   clear_created_lists: true # Optimization: Clear internal CloudSim broker lists
@@ -145,9 +157,9 @@ experiment_1:
 
   # Green Energy Configuration - Testing wind turbine integration
   green_energy:
-    enabled: true                                     # ✅ Enable green energy
-    turbine_id: 57                                    # Wind turbine ID from dataset
-    wind_data_file: "windProduction/processed_data/cleaned_data.csv"  # ✅ Cleaned wind power data
+    enabled: true                                     
+    turbine_id: 57                                    
+    wind_data_file: "windProduction/processed_data/cleaned_data.csv"
     prediction:
       enabled: false                                  # Disable prediction for now
       model_path: "../SWF_Prediction/saved_models/best_model.pth"
@@ -649,7 +661,7 @@ experiment_multi_dc_3:
     # Datacenter 0: High-Performance DC
     - datacenter_id: 0
       name: "DC_HighPerformance"
-      turbine_id: 1                    # Wind turbine ID (Turbine 1)
+      turbine_ids: [1]                 # Wind turbine IDs (single turbine for now)
       wind_data_file: "windProduction/Turbine_1_2021_clean.csv"  # 7.1 MB optimized file
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
@@ -682,7 +694,7 @@ experiment_multi_dc_3:
     # Datacenter 1: Energy-Efficient DC
     - datacenter_id: 1
       name: "DC_EnergyEfficient"
-      turbine_id: 57                   # Wind turbine ID (Turbine 57)
+      turbine_ids: [57]                # Wind turbine IDs (single turbine for now)
       wind_data_file: "windProduction/Turbine_57_2021_clean.csv"  # 7.1 MB optimized file
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
@@ -714,7 +726,7 @@ experiment_multi_dc_3:
     # Datacenter 2: Edge DC (Lower capacity)
     - datacenter_id: 2
       name: "DC_Edge"
-      turbine_id: 124                  # Wind turbine ID (Turbine 124)
+      turbine_ids: [124]               # Wind turbine IDs (single turbine for now)
       wind_data_file: "windProduction/Turbine_124_2021_clean.csv"  # 7.2 MB optimized file
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"  # COMPRESSED (1 data point = 1s) or REAL_TIME (1 data point = 600s)
@@ -876,8 +888,8 @@ experiment_multi_dc_5:
     # Datacenter 0: High-Performance DC
     - datacenter_id: 0
       name: "DC_HighPerformance"
-      turbine_id: 1                    # Wind turbine ID (Turbine 1)
-      wind_data_file: "windProduction/split/Turbine_1_2021.csv"
+      turbine_ids: [1]                 # Wind turbine IDs (single turbine for now)
+      wind_data_file: "windProduction/simplified"  # Base directory, file inferred by turbineId
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"
 
@@ -885,13 +897,98 @@ experiment_multi_dc_5:
       brown_carbon_factor: 0.8         # Coal-heavy grid (high carbon intensity)
       green_carbon_factor: 0.01        # Wind lifecycle emissions
 
+      # LOW_POWER:
+      #   - Model: HP-DL360-G7-LowPower
+      #   - Cores (PEs): 8
+      #   - pe_mips: 50000
+      #   - RAM: 32768 MB
+      #   - BW: 10000 Mbps
+      #   - Storage: 100000 MB
+      #   - Max Power: 208 W
+      #   - Static Power: 27.9 % (idle / peak)
+      #
+      # MEDIUM:
+      #   - Model: Dell-R720-Medium
+      #   - Cores (PEs): 16
+      #   - pe_mips: 50000
+      #   - RAM: 65536 MB
+      #   - BW: 20000 Mbps
+      #   - Storage: 200000 MB
+      #   - Max Power: 345 W
+      #   - Static Power: 28.4 %
+      #
+      # HIGH_PERFORMANCE:
+      #   - Model: Cisco-UCS-C240-HighPerf
+      #   - Cores (PEs): 24
+      #   - pe_mips: 50000
+      #   - RAM: 131072 MB
+      #   - BW: 40000 Mbps
+      #   - Storage: 500000 MB
+      #   - Max Power: 476 W
+      #   - Static Power: 29.8 %
+      #
+      # ULTRA_HIGH:
+      #   - Model: HPE-DL380-Gen10-Ultra
+      #   - Cores (PEs): 32
+      #   - pe_mips: 50000
+      #   - RAM: 262144 MB
+      #   - BW: 50000 Mbps
+      #   - Storage: 1000000 MB
+      #   - Max Power: 634 W
+      #   - Static Power: 30.6 %
+      #
+      # SPEC_ACER_R520 (Acer Altos R520 - Legacy):
+      #   - CPU: Intel Xeon E5450
+      #   - Cores (PEs): 8
+      #   - pe_mips: 50000
+      #   - RAM: 16384 MB
+      #   - BW: 10000 Mbps
+      #   - Storage: 100000 MB
+      #   - Idle: 155 W, Peak: 269 W (57.6 % idle)
+      #
+      # SPEC_ACER_AR360 (Acer AR360 F2 - Medium Older):
+      #   - CPU: Intel Xeon E5-2660
+      #   - Cores (PEs): 16
+      #   - pe_mips: 50000
+      #   - RAM: 32768 MB
+      #   - BW: 10000 Mbps
+      #   - Storage: 200000 MB
+      #   - Idle: 69.4 W, Peak: 315 W (22.0 % idle)
+      #
+      # SPEC_ASUS_RS720_E9 (ASUSTeK RS720-E9/RS8 - Modern Efficient):
+      #   - CPU: Intel Xeon Platinum 8180 (2x28 cores)
+      #   - Cores (PEs): 56
+      #   - pe_mips: 50000
+      #   - RAM: 131072 MB
+      #   - BW: 25000 Mbps
+      #   - Storage: 500000 MB
+      #   - Idle: 48.2 W, Peak: 385 W (12.5 % idle)
+      #
+      # SPEC_ASUS_RS500A (ASUSTeK RS500A-E10-PS4 - Large AMD EPYC):
+      #   - CPU: AMD EPYC 7742
+      #   - Cores (PEs): 64
+      #   - pe_mips: 50000
+      #   - RAM: 262144 MB
+      #   - BW: 25000 Mbps
+      #   - Storage: 1000000 MB
+      #   - Idle: 51.4 W, Peak: 214 W (24.0 % idle)
+      #
+      # SPEC_ASUS_RS700A (ASUSTeK RS700A-E9-RS4V2 - Ultra Dual-Socket):
+      #   - CPU: AMD EPYC 7742 x2
+      #   - Cores (PEs): 128
+      #   - pe_mips: 50000
+      #   - RAM: 524288 MB
+      #   - BW: 40000 Mbps
+      #   - Storage: 2000000 MB
+      #   - Idle: 106 W, Peak: 430 W (24.7 % idle)
+
+
       # Infrastructure (Most powerful)
-      hosts_count: 20
-      host_pes: 24
-      host_pe_mips: 60000
-      host_ram: 131072                 # 128 GB
-      host_bw: 100000                  # 100 Gbps
-      host_storage: 200000
+      
+      # Heterogeneous host mix (total 20 hosts: 4×RS700A + 8×RS500A + 8×RS720)
+      host_count_spec_asus_rs700a: 4
+      host_count_spec_asus_rs500a: 8
+      host_count_spec_asus_rs720_e9: 8
 
       # VM Configuration
       small_vm_pes: 2
@@ -901,10 +998,10 @@ experiment_multi_dc_5:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      # Initial VM Fleet
-      initial_s_vm_count: 8
-      initial_m_vm_count: 12
-      initial_l_vm_count: 10
+      # Initial VM Fleet (≈40% of total host cores = 600+ cores)
+      initial_s_vm_count: 40   # 40 × 2 = 80 cores
+      initial_m_vm_count: 60   # 60 × 4 = 240 cores
+      initial_l_vm_count: 35   # 35 × 8 = 280 cores
 
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
@@ -912,8 +1009,8 @@ experiment_multi_dc_5:
     # Datacenter 1: Energy-Efficient DC
     - datacenter_id: 1
       name: "DC_EnergyEfficient"
-      turbine_id: 57                   # Wind turbine ID (Turbine 57)
-      wind_data_file: "windProduction/split/Turbine_57_2021.csv"
+      turbine_ids: [57]                # Wind turbine IDs (single turbine for now)
+      wind_data_file: "windProduction/simplified"  # Base directory, file inferred by turbineId
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"
 
@@ -929,6 +1026,11 @@ experiment_multi_dc_5:
       host_bw: 50000                   # 50 Gbps
       host_storage: 100000
 
+      # Heterogeneous host mix emphasizing energy efficiency (total 20 hosts)
+      host_count_spec_asus_rs500a: 10
+      host_count_spec_asus_rs720_e9: 6
+      host_count_low_power: 4
+
       # VM Configuration
       small_vm_pes: 2
       small_vm_ram: 8192
@@ -937,10 +1039,10 @@ experiment_multi_dc_5:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      # Initial VM Fleet
-      initial_s_vm_count: 6
-      initial_m_vm_count: 10
-      initial_l_vm_count: 8
+      # Initial VM Fleet (≈60% of host cores = 600+ cores)
+      initial_s_vm_count: 30   # 30 × 2 = 60 cores
+      initial_m_vm_count: 50   # 50 × 4 = 200 cores
+      initial_l_vm_count: 40   # 40 × 8 = 320 cores
 
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
@@ -948,8 +1050,8 @@ experiment_multi_dc_5:
     # Datacenter 2: Edge DC (Lower capacity)
     - datacenter_id: 2
       name: "DC_Edge"
-      turbine_id: 124                  # Wind turbine ID (Turbine 124)
-      wind_data_file: "windProduction/split/Turbine_124_2021.csv"
+      turbine_ids: [124]               # Wind turbine IDs (single turbine for now)
+      wind_data_file: "windProduction/simplified"  # Base directory, file inferred by turbineId
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"
 
@@ -965,6 +1067,11 @@ experiment_multi_dc_5:
       host_bw: 25000                   # 25 Gbps
       host_storage: 50000
 
+      # Heterogeneous host mix for edge DC (legacy +低功耗节点)
+      host_count_spec_acer_r520: 6
+      host_count_spec_acer_ar360: 4
+      host_count_low_power: 4
+
       # VM Configuration
       small_vm_pes: 2
       small_vm_ram: 4096
@@ -973,10 +1080,10 @@ experiment_multi_dc_5:
       medium_vm_multiplier: 2
       large_vm_multiplier: 3
 
-      # Initial VM Fleet
-      initial_s_vm_count: 4
-      initial_m_vm_count: 8
-      initial_l_vm_count: 4
+      # Initial VM Fleet (kept lighter for edge constraints)
+      initial_s_vm_count: 8    # 8 × 2 = 16 cores
+      initial_m_vm_count: 12   # 12 × 4 = 48 cores
+      initial_l_vm_count: 8    # 8 × 6 = 48 cores
 
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
@@ -984,8 +1091,8 @@ experiment_multi_dc_5:
     # Datacenter 3: Mid-Range DC (Balanced specs)
     - datacenter_id: 3
       name: "DC_MidRange"
-      turbine_id: 80                   # Wind turbine ID (Turbine 80)
-      wind_data_file: "windProduction/split/Turbine_80_2021.csv"
+      turbine_ids: [80]                # Wind turbine IDs (single turbine for now)
+      wind_data_file: "windProduction/simplified"  # Base directory, file inferred by turbineId
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"
 
@@ -1001,6 +1108,12 @@ experiment_multi_dc_5:
       host_bw: 75000                   # 75 Gbps
       host_storage: 150000
 
+      # Heterogeneous host mix (balanced性能+能耗)
+      host_count_spec_asus_rs720_e9: 5
+      host_count_spec_asus_rs500a: 3
+      host_count_medium: 6
+      host_count_high_performance: 4
+
       # VM Configuration
       small_vm_pes: 2
       small_vm_ram: 8192
@@ -1009,10 +1122,10 @@ experiment_multi_dc_5:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      # Initial VM Fleet
-      initial_s_vm_count: 7
-      initial_m_vm_count: 11
-      initial_l_vm_count: 9
+      # Initial VM Fleet (≈60% of host cores ≈ 400 cores)
+      initial_s_vm_count: 20   # 20 × 2 = 40 cores
+      initial_m_vm_count: 35   # 35 × 4 = 140 cores
+      initial_l_vm_count: 30   # 30 × 8 = 240 cores
 
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
@@ -1020,8 +1133,8 @@ experiment_multi_dc_5:
     # Datacenter 4: Regional DC (Good capacity, different location)
     - datacenter_id: 4
       name: "DC_Regional"
-      turbine_id: 100                  # Wind turbine ID (Turbine 100)
-      wind_data_file: "windProduction/split/Turbine_100_2021.csv"
+      turbine_ids: [100]               # Wind turbine IDs (single turbine for now)
+      wind_data_file: "windProduction/simplified"  # Base directory, file inferred by turbineId
       green_energy_enabled: true
       time_scaling_mode: "COMPRESSED"
 
@@ -1037,6 +1150,12 @@ experiment_multi_dc_5:
       host_bw: 60000                   # 60 Gbps
       host_storage: 120000
 
+      # Heterogeneous host mix (regional DC with legacy + modern nodes)
+      host_count_spec_acer_ar360: 6
+      host_count_spec_acer_r520: 4
+      host_count_spec_asus_rs500a: 4
+      host_count_medium: 2
+
       # VM Configuration
       small_vm_pes: 2
       small_vm_ram: 8192
@@ -1045,10 +1164,10 @@ experiment_multi_dc_5:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      # Initial VM Fleet
-      initial_s_vm_count: 6
-      initial_m_vm_count: 10
-      initial_l_vm_count: 7
+      # Initial VM Fleet (≈70% of host cores ≈ 290 cores)
+      initial_s_vm_count: 16   # 16 × 2 = 32 cores
+      initial_m_vm_count: 25   # 25 × 4 = 100 cores
+      initial_l_vm_count: 20   # 20 × 8 = 160 cores
 
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
@@ -1070,16 +1189,39 @@ experiment_multi_dc_5:
   # Coefficient for carbon emission penalty in global reward
   # Penalty = carbon_emission_penalty_coef × total_carbon_kg
   # 
-  # Observed values from training:
-  # - Local rewards magnitude: ~7,800 (negative)
-  # - Carbon emission: ~1.0 kg CO2 per episode
-  # - To achieve 1-5% penalty impact: coef should be 50-400
-  # - To achieve 10% penalty impact: coef should be 500-1000
+  # Observed values from training (experiment_multi_dc_5):
+  # - Local rewards magnitude: ~7,000 (negative, sum of 5 DCs)
+  # - Carbon emission: ~0.31 kg CO2 per episode
+  # - With coef=3000: penalty ~930, dominates reward → completion rate drops!
+  # - With coef=1000: penalty ~310, balanced → carbon decreases, completion stable
   # 
-  # Recommended starting point: 100 (gives ~1.3% impact on reward)
-  # If carbon doesn't decrease: increase to 300-500
-  # If reward decreases too much: decrease to 50-80
+  # Tuning guidelines:
+  # - Start at 800-1200 for 5 DCs with ~0.3kg carbon
+  # - Monitor completion_rate: if drops >5%, reduce coef
+  # - Monitor carbon: if no decrease after 100 episodes, increase coef
   carbon_emission_penalty_coef: 1000.0
+
+  # --- Completion Reward Configuration ---
+  # Coefficient for completion reward in LOCAL agent reward (positive reward)
+  # Formula: reward_completion = coef × completedThisStep
+  #
+  # Purpose: Prevent agents from sacrificing task completion for other objectives
+  # 
+  # Per-step magnitude analysis:
+  # - Wait time penalty:    ~-0.3 per step
+  # - Utilization penalty:  ~-0.4 per step
+  # - Queue penalty:        ~-0.03 per step
+  # - Total negative:       ~-0.73 per step
+  #
+  # Completion reward calculation (FIXED per-completion, no normalization):
+  # - completedThisStep: 0 or 1 (occasionally 2-3)
+  # - Each completion gives: coef × 1 = coef reward
+  #
+  # To achieve ~0.2 per completion (same magnitude as other penalties):
+  #   coef = 0.2
+  #
+  # Recommended: 0.1-0.3 for balanced contribution
+  reward_completion_coef: 0.2
 
   # --- Global Agent Configuration ---
   global_model:
@@ -1105,11 +1247,11 @@ experiment_multi_dc_5:
 
   # --- RLlib Training Configuration ---
   training:
-    total_timesteps: 32000           # Increased for 5 DCs
+    total_timesteps: 320000           # Increased for 5 DCs
     num_workers: 0                    # 0 for single-process (avoid Windows DLL issues)
     num_gpus: 1                       # Number of GPUs (RTX 5080 16GB)
     train_batch_size: 4000            # Increased for 5 DCs
-    sgd_minibatch_size: 512           # 🚀 增大到512（RTX 5080可以处理）
+    sgd_minibatch_size: 512           # 增大到512（RTX 5080可以处理）
     num_sgd_iter: 10
     checkpoint_freq_timesteps: 15000
 
@@ -1126,46 +1268,67 @@ experiment_multi_dc_5:
   verbose: 1
   device: "auto"
 
+
+
 # ===================================================================
-# TEST EXPERIMENT: Quick verification of bug fixes
+# EXPERIMENT: 10-Datacenter Hierarchical MARL for Green Scheduling
 # ===================================================================
-# Purpose: Test bug fixes with reduced training time
-# - Callback reward calculation fix
-# - Action masking fixes (GlobalAgentEnv + LocalAgentEnv)
-# Expected results:
-# - Episode rewards should be stable (not oscillating +201/-1300)
-# - No "VM not found" warnings in Java logs
+# Purpose: Large-scale multi-DC green scheduling with 10 diverse datacenters
+# Features:
+# - 10 datacenters spanning different regions and capabilities
+# - Diverse host configurations (SPEC-based real servers)
+# - 10 different wind turbines for realistic energy diversity
+# - Parameter sharing for local agents
+# - RLlib PPO training with PettingZoo
 # ===================================================================
 
-experiment_test_fixes:
+experiment_multi_dc_10:
   # --- Identification ---
-  simulation_name: "Test_Fixes_3DC"
-  experiment_name: "test_fixes"
-  experiment_type_dir: "Test_Fixes"
+  simulation_name: "Hierarchical_10DC_Green"
+  experiment_name: "hierarchical_10dc"
+  experiment_type_dir: "Multi_Datacenter"
 
   # --- Multi-Datacenter Configuration ---
   multi_datacenter_enabled: true
-  py4j_port: 25333
-  global_routing_batch_size: 5
+  py4j_port: 25333                    # Same port as Java gateway
 
-  # --- Datacenter Configurations (using optimized clean files) ---
+  # Global Routing Configuration
+  global_routing_batch_size: 10       # Increased batch size for 10 DCs
+
+  # --- Datacenter Configurations ---
+  # ========================================================================
+  # SINGLE HOST TYPE PER DC - Simplified for better resource management
+  # Each DC uses ONE host profile to avoid fragmentation and ensure
+  # predictable VM allocation. VM counts calculated to stay within:
+  # - Core capacity (70% utilization target)
+  # - Bandwidth capacity (95% utilization max)
+  # - RAM capacity (80% utilization target)
+  # ========================================================================
   datacenters:
-    # Datacenter 0: High-Performance DC
+    # ===============================
+    # Tier 1: Premium DCs (RS700A - 128 cores, 512GB RAM, 40Gbps BW)
+    # ===============================
+
+    # Datacenter 0: Premium High-Performance (US West)
+    # Host: SPEC_ASUS_RS700A - AMD EPYC 7742 x2 (128 cores, 512GB, 40Gbps)
+    # 80 hosts × 128 cores = 10,240 total cores
+    # VM allocation: 640 small + 320 medium + 160 large = 1120 VMs
+    # Core usage: 640×2 + 320×4 + 160×8 = 3,840 cores (38%)
+    # RAM/BW well under limits, no fragmentation risk
     - datacenter_id: 0
-      name: "DC_HighPerformance"
-      turbine_id: 1
-      wind_data_file: "windProduction/Turbine_1_2021_clean.csv"  # 7.1 MB optimized file
+      name: "DC_Premium_West"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/simplified"
       green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0            # Baseline (PST) - 0 hours offset
+      brown_carbon_factor: 0.7
+      green_carbon_factor: 0.01
 
-      # Infrastructure
-      hosts_count: 20
-      host_pes: 24
-      host_pe_mips: 60000
-      host_ram: 131072
-      host_bw: 100000
-      host_storage: 200000
+      # Single host type: RS700A (128 cores, 512GB RAM, 40Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs700a: 20
 
-      # VM Configuration
       small_vm_pes: 2
       small_vm_ram: 8192
       small_vm_bw: 1000
@@ -1173,27 +1336,31 @@ experiment_test_fixes:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      # Initial VM Fleet (Optimized)
-      initial_s_vm_count: 8
-      initial_m_vm_count: 12
-      initial_l_vm_count: 10
-
+      # VM counts moderately scaled up to increase utilization (was 64/32/16)
+      initial_s_vm_count: 128
+      initial_m_vm_count: 64
+      initial_l_vm_count: 32
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
 
-    # Datacenter 1: Energy-Efficient DC
+    # Datacenter 1: Premium High-Performance (US East)
+    # Host: SPEC_ASUS_RS700A - AMD EPYC 7742 x2 (128 cores, 512GB, 40Gbps)
+    # 60 hosts × 128 cores = 7,680 total cores
+    # VM allocation: 480 small + 240 medium + 120 large = 840 VMs
+    # Core usage: 480×2 + 240×4 + 120×8 = 2,880 cores (38%)
     - datacenter_id: 1
-      name: "DC_EnergyEfficient"
-      turbine_id: 57
-      wind_data_file: "windProduction/Turbine_57_2021_clean.csv"  # 7.1 MB optimized file
+      name: "DC_Premium_East"
+      turbine_ids: [15]
+      wind_data_file: "windProduction/simplified"
       green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18           # +3 hours (EST) - 18 rows × 10min = 3 hours
+      brown_carbon_factor: 0.65
+      green_carbon_factor: 0.01
 
-      hosts_count: 24
-      host_pes: 16
-      host_pe_mips: 50000
-      host_ram: 65536
-      host_bw: 50000
-      host_storage: 100000
+      # Single host type: RS700A (128 cores, 512GB RAM, 40Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs700a: 16
 
       small_vm_pes: 2
       small_vm_ram: 8192
@@ -1202,44 +1369,296 @@ experiment_test_fixes:
       medium_vm_multiplier: 2
       large_vm_multiplier: 4
 
-      initial_s_vm_count: 6
-      initial_m_vm_count: 10
-      initial_l_vm_count: 8
-
+      # VM counts moderately scaled up to increase utilization (was 48/24/12)
+      initial_s_vm_count: 96
+      initial_m_vm_count: 48
+      initial_l_vm_count: 24
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
 
-    # Datacenter 2: Edge DC
+    # ===============================
+    # Tier 2: Green Energy-Efficient DCs (RS500A - 64 cores, 256GB RAM, 25Gbps BW)
+    # ===============================
+
+    # Datacenter 2: Energy-Efficient (Nordic)
+    # Host: SPEC_ASUS_RS500A - AMD EPYC 7742 (64 cores, 256GB, 25Gbps)
+    # 100 hosts × 64 cores = 6,400 total cores
+    # VM allocation: 500 small + 250 medium + 125 large = 875 VMs
+    # Core usage: 500×2 + 250×4 + 125×8 = 3,000 cores (47%)
     - datacenter_id: 2
-      name: "DC_Edge"
-      turbine_id: 124
-      wind_data_file: "windProduction/Turbine_124_2021_clean.csv"  # 7.2 MB optimized file
+      name: "DC_Green_Nordic"
+      turbine_ids: [30]
+      wind_data_file: "windProduction/simplified"
       green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54           # +9 hours (CET) - 54 rows × 10min = 9 hours
+      brown_carbon_factor: 0.25         # Very clean grid (hydro+nuclear)
+      green_carbon_factor: 0.01
 
-      hosts_count: 12
-      host_pes: 12
-      host_pe_mips: 40000
-      host_ram: 32768
-      host_bw: 25000
-      host_storage: 50000
+      # Single host type: RS500A (64 cores, 256GB RAM, 25Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs500a: 24
 
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up to increase utilization (was 50/25/12)
+      initial_s_vm_count: 100
+      initial_m_vm_count: 50
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 3: Energy-Efficient (Germany) - SOLAR POWERED
+    # Host: SPEC_ASUS_RS500A - AMD EPYC 7742 (64 cores, 256GB, 25Gbps)
+    # 80 hosts × 64 cores = 5,120 total cores
+    # VM allocation: 400 small + 200 medium + 100 large = 700 VMs
+    # Core usage: 400×2 + 200×4 + 100×8 = 2,400 cores (47%)
+    - datacenter_id: 3
+      name: "DC_Green_Germany"
+      turbine_ids: [1]                         # Not used when full path specified
+      wind_data_file: "solarProduction/simplified/Solar_1_2020.csv"  # Solar Plant 1 (29.2 kW peak)
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54           # +9 hours (CET) - 54 rows × 10min = 9 hours
+      brown_carbon_factor: 0.4
+      green_carbon_factor: 0.02                # Solar lifecycle emissions slightly higher
+
+      # Single host type: RS500A (64 cores, 256GB RAM, 25Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs500a: 20
+
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up to increase utilization (was 40/20/10)
+      initial_s_vm_count: 80
+      initial_m_vm_count: 40
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # ===============================
+    # Tier 3: Regional DCs (RS720_E9 - 56 cores, 128GB RAM, 25Gbps BW)
+    # ===============================
+
+    # Datacenter 4: Regional (Central US)
+    # Host: SPEC_ASUS_RS720_E9 - Intel Xeon Platinum 8180 (56 cores, 128GB, 25Gbps)
+    # 50 hosts × 56 cores = 2,800 total cores, 6,400 GB RAM total
+    # VM allocation: 160 small + 80 medium + 40 large = 280 VMs
+    # Core usage: 160×2 + 80×4 + 40×8 = 960 cores (34%)
+    # RAM usage: 160×8 + 80×16 + 40×32 = 3,840 GB (60%)
+    - datacenter_id: 4
+      name: "DC_Regional_Central"
+      turbine_ids: [60]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12           # +2 hours (CST) - 12 rows × 10min = 2 hours
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+
+      # Single host type: RS720_E9 (56 cores, 128GB RAM, 25Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs720_e9: 10
+
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up to increase utilization (was 16/8/4)
+      initial_s_vm_count: 32
+      initial_m_vm_count: 16
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 5: Regional (Southern US) - SOLAR POWERED
+    # Host: SPEC_ASUS_RS720_E9 - Intel Xeon Platinum 8180 (56 cores, 128GB, 25Gbps)
+    # 40 hosts × 56 cores = 2,240 total cores, 5,120 GB RAM total
+    # VM allocation: 128 small + 64 medium + 32 large = 224 VMs
+    # Core usage: 128×2 + 64×4 + 32×8 = 768 cores (34%)
+    # RAM usage: 128×8 + 64×16 + 32×32 = 3,072 GB (60%)
+    - datacenter_id: 5
+      name: "DC_Regional_South"
+      turbine_ids: [1]                         # Not used when full path specified
+      wind_data_file: "solarProduction/simplified/Solar_2_2020.csv"  # Solar Plant 2 (26.0 kW peak)
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12           # +2 hours (CST) - 12 rows × 10min = 2 hours
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.02                # Solar lifecycle emissions slightly higher
+
+      # Single host type: RS720_E9 (56 cores, 128GB RAM, 25Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs720_e9: 8
+
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up to increase utilization (was 13/6/3)
+      initial_s_vm_count: 26
+      initial_m_vm_count: 12
+      initial_l_vm_count: 6
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 6: Regional (Asia Pacific)
+    # Host: SPEC_ASUS_RS500A - AMD EPYC 7742 (64 cores, 256GB, 25Gbps)
+    # 60 hosts × 64 cores = 3,840 total cores
+    # VM allocation: 300 small + 150 medium + 75 large = 525 VMs
+    # Core usage: 300×2 + 150×4 + 75×8 = 1,800 cores (47%)
+    - datacenter_id: 6
+      name: "DC_Regional_APAC"
+      turbine_ids: [90]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 96           # +16 hours (Asia) - 96 rows × 10min = 16 hours
+      brown_carbon_factor: 0.75         # Coal-heavy grid
+      green_carbon_factor: 0.01
+
+      # Single host type: RS500A (64 cores, 256GB RAM, 25Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_asus_rs500a: 12
+
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up to increase utilization (was 30/15/8)
+      initial_s_vm_count: 60
+      initial_m_vm_count: 30
+      initial_l_vm_count: 16
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # ===============================
+    # Tier 4: Edge DCs (AR360 - 16 cores, 32GB RAM, 10Gbps BW)
+    # ===============================
+
+    # Datacenter 7: Edge (West Coast)
+    # Host: SPEC_ACER_AR360 - Intel Xeon E5-2660 (16 cores, 32GB, 10Gbps)
+    # 30 hosts × 16 cores = 480 total cores, 960 GB RAM
+    # VM allocation: 48 small + 24 medium + 12 large = 84 VMs
+    # Core usage: 48×2 + 24×4 + 12×8 = 288 cores (60%)
+    # RAM usage: 48×4 + 24×8 + 12×16 = 576 GB (60%)
+    - datacenter_id: 7
+      name: "DC_Edge_West"
+      turbine_ids: [105]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0            # Baseline (PST) - 0 hours offset
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+
+      # Single host type: AR360 (16 cores, 32GB RAM, 10Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_acer_ar360: 6
+
+      # Smaller VMs for edge DC
       small_vm_pes: 2
       small_vm_ram: 4096
       small_vm_bw: 500
       small_vm_storage: 2000
       medium_vm_multiplier: 2
-      large_vm_multiplier: 3
+      large_vm_multiplier: 4
 
-      initial_s_vm_count: 4
-      initial_m_vm_count: 8
-      initial_l_vm_count: 4
+      # VM counts moderately scaled up but keep edge DC relatively small (was 5/2/1)
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
 
+    # Datacenter 8: Edge (East Coast)
+    # Host: SPEC_ACER_AR360 - Intel Xeon E5-2660 (16 cores, 32GB, 10Gbps)
+    # SCALED DOWN 10x: 3 hosts × 16 cores = 48 total cores
+    # VM allocation: 5 small + 2 medium + 1 large = 8 VMs
+    - datacenter_id: 8
+      name: "DC_Edge_East"
+      turbine_ids: [118]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18           # +3 hours (EST) - 18 rows × 10min = 3 hours
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+
+      # Single host type: AR360 (16 cores, 32GB RAM, 10Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_acer_ar360: 6
+
+      # Smaller VMs for edge DC
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up but keep edge DC relatively small (was 5/2/1)
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Datacenter 9: Edge (Europe)
+    # Host: SPEC_ACER_AR360 - Intel Xeon E5-2660 (16 cores, 32GB, 10Gbps)
+    # SCALED DOWN 10x: 3 hosts × 16 cores = 48 total cores
+    # VM allocation: 4 small + 2 medium + 1 large = 7 VMs
+    - datacenter_id: 9
+      name: "DC_Edge_Europe"
+      turbine_ids: [130]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54           # +9 hours (CET) - 54 rows × 10min = 9 hours
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+
+      # Single host type: AR360 (16 cores, 32GB RAM, 10Gbps BW per host)
+      # SCALED DOWN 10x for faster simulation
+      host_count_spec_acer_ar360: 6
+
+      # Smaller VMs for edge DC
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+
+      # VM counts moderately scaled up but keep edge DC relatively small (was 4/2/1)
+      initial_s_vm_count: 8
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
       vm_startup_delay: 0.0
       vm_shutdown_delay: 0.0
 
   # --- Workload Configuration ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/poisson_05_300.csv"
+  cloudlet_trace_file: "traces/dc10_fast.csv"  # Faster cloudlets (~1.8s avg exec time)
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
@@ -1248,110 +1667,46 @@ experiment_test_fixes:
   # --- Simulation Settings ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 1000
+  max_episode_length: 4000  # Reduced from 10000 (faster cloudlets complete sooner)
+
+  # --- Reward Configuration ---
+  carbon_emission_penalty_coef: 1500.0   # Increased for 10 DCs
+  reward_completion_coef: 0.3            # Slightly higher completion reward
+
+  # Local reward weights (used by Java)
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_queue_penalty_coef: 0.6
+  reward_invalid_action_coef: 2.0
 
   # --- Global Agent Configuration ---
-  global_agent:
-    algorithm: "PPO"
+  global_model:
     learning_rate: 0.0003
-    n_steps: 2048
-    batch_size: 64
-    n_epochs: 10
     gamma: 0.99
     gae_lambda: 0.95
 
-    reward_total_energy_coef: 2.0
-    reward_green_ratio_coef: 3.0
-    reward_load_balance_coef: 1.5
-    reward_global_queue_coef: 1.0
-
-  # --- Local Agents Configuration ---
-  local_agents:
-    algorithm: "MaskablePPO"
-    parameter_sharing: true
+  # --- Local Model Configuration ---
+  local_model:
     learning_rate: 0.0003
-    n_steps: 2048
-    batch_size: 64
-    n_epochs: 10
     gamma: 0.99
     gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
 
-    reward_wait_time_coef: 1.0
-    reward_utilization_coef: 0.8
-    reward_local_queue_coef: 0.5
-    reward_invalid_action_coef: 2.0
+  # --- Training Configuration (RLlib) ---
+  training:
+    total_timesteps: 500000 # More timesteps for 10 DCs
+    num_workers: 0
+    num_gpus: 1
+    train_batch_size: 8000            # Larger batch for more agents
+    sgd_minibatch_size: 256
+    num_sgd_iter: 10
+    checkpoint_freq_timesteps: 20000
 
-  # --- Training Configuration ---
-  mode: "train"
-  timesteps: 8000                     # REDUCED for quick test (2 cycles × 2000 × 2 agents)
-  seed: 2025
-  save_experiment: true
-  verbose: 1
-  device: "auto"
-
-  # --- Joint Training Configuration ---
-  joint_training:
-    enabled: true
-    strategy: "alternating"
-
-    # REDUCED for quick test
-    alternating:
-      num_cycles: 2                    # Only 2 cycles (vs 10)
-      global_steps_per_cycle: 2000     # Only 2000 steps (vs 10000)
-      local_steps_per_cycle: 2000      # Only 2000 steps (vs 10000)
-
-    simultaneous:
-      batch_size: 1000
-      global_weight: 0.5
-      local_weight: 0.5
-
-    checkpoint_freq: 2000
-    log_freq: 100
-    tensorboard_log: true
-
-    early_stopping:
-      enabled: false
-      metric: "green_ratio"
-      threshold: 0.80
-      patience: 5
-
-  # --- Wind Power Prediction Configuration ---
-wind_prediction:
-  enabled: false  # DISABLED for WSL (was true - set paths first if needed)
-  horizon: 8      # Number of future timesteps to predict
-  device: "cuda"   # Device for model inference ('cpu' or 'cuda')
-
-  # Model paths (DISABLED for WSL - Update paths if needed)
-  model_checkpoint: ""  # Was: D:/SWF_Prediction/experiments/improved_cvitrnn_20251117_075540/best_model.pth
-  scalers_path: ""      # Was: D:/SWF_Prediction/Data/sdwpf_scalers.pkl
-  data_path: ""         # Was: D:/SWF_Prediction/Data/sdwpf_data.npz
-
-  # Turbine ID mapping for each datacenter
-  # datacenter_0 -> turbine_1, datacenter_1 -> turbine_57, datacenter_2 -> turbine_124
-  turbine_ids: [1, 57, 124]
-
-  # Logging
-  enable_logging: true
-  log_interval: 100  # Log prediction statistics every N steps
-
-  # --- Time Alignment for COMPRESSED Mode (CRITICAL) ---
-  # Java GreenEnergyProvider skips first 12 CSV rows to ensure lookback availability
-  # Python predictor uses these rows for historical context
-  #
-  # Time Mapping:
-  #   Java:   simulation_step=0 → CSV row 12
-  #           simulation_step=1 → CSV row 13
-  #   Python: simulation_step=0 → CSV row 12 (lookback: rows 0-11)
-  #           simulation_step=1 → CSV row 13 (lookback: rows 1-12)
-  #
-  # This ensures:
-  #   - Java provides power from same row Python uses for features
-  #   - Perfect time alignment between simulation and prediction
-  #   - Always 12 rows available for CViTRNN lookback
-  #
-  csv_start_offset: 12  # DO NOT CHANGE (Java skips first 12 rows)
-
-  # --- Turbine CSV Paths (REQUIRED when enabled=true) ---
-  # MUST provide CSV files with 13 features for accurate prediction
-  # DISABLED for WSL - Update paths if needed
-  turbine_csv_paths:  {}  # Empty dict - was Windows paths
+  # --- Wind Prediction (disabled by default) ---
+  wind_prediction:
+    enabled: false
+    horizon: 8
+    device: "cuda"

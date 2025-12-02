@@ -44,7 +44,11 @@ public class DatacenterInstance {
     private List<Vm> vmPool;
 
     // === Green Energy ===
-    private GreenEnergyProvider greenEnergyProvider;
+    /**
+     * List of green energy providers (one per wind turbine).
+     * Multiple turbines can supply power to a single datacenter.
+     */
+    private List<GreenEnergyProvider> greenEnergyProviders = new ArrayList<>();
 
     // === Energy Tracking ===
     private double cumulativeGreenEnergyWh = 0.0;   // Total green energy consumed
@@ -103,17 +107,66 @@ public class DatacenterInstance {
      * Check if green energy is enabled for this datacenter.
      */
     public boolean isGreenEnergyEnabled() {
-        return config.isGreenEnergyEnabled() && greenEnergyProvider != null;
+        return config.isGreenEnergyEnabled() && !greenEnergyProviders.isEmpty();
     }
 
     /**
      * Get current green power availability in Watts.
+     * Aggregates power from all turbines.
      */
     public double getCurrentGreenPowerW(double simulationTime) {
         if (!isGreenEnergyEnabled()) {
             return 0.0;
         }
-        return greenEnergyProvider.getCurrentPowerW(simulationTime);
+        return greenEnergyProviders.stream()
+                .mapToDouble(p -> p.getCurrentPowerW(simulationTime))
+                .sum();
+    }
+
+    /**
+     * Add a green energy provider (turbine) to this datacenter.
+     */
+    public void addGreenEnergyProvider(GreenEnergyProvider provider) {
+        if (provider != null) {
+            greenEnergyProviders.add(provider);
+        }
+    }
+
+    /**
+     * Get all green energy providers.
+     */
+    public List<GreenEnergyProvider> getGreenEnergyProviders() {
+        return greenEnergyProviders;
+    }
+
+    /**
+     * Get single green energy provider (backward compatibility).
+     * Returns the first provider or null if none.
+     * @deprecated Use getGreenEnergyProviders() for multi-turbine support
+     */
+    @Deprecated
+    public GreenEnergyProvider getGreenEnergyProvider() {
+        return greenEnergyProviders.isEmpty() ? null : greenEnergyProviders.get(0);
+    }
+
+    /**
+     * Set single green energy provider (backward compatibility).
+     * Clears existing providers and adds the new one.
+     * @deprecated Use addGreenEnergyProvider() for multi-turbine support
+     */
+    @Deprecated
+    public void setGreenEnergyProvider(GreenEnergyProvider provider) {
+        greenEnergyProviders.clear();
+        if (provider != null) {
+            greenEnergyProviders.add(provider);
+        }
+    }
+
+    /**
+     * Get number of turbines supplying this datacenter.
+     */
+    public int getTurbineCount() {
+        return greenEnergyProviders.size();
     }
 
     /**
@@ -242,27 +295,33 @@ public class DatacenterInstance {
 
         // Allocate energy if green energy is enabled
         if (isGreenEnergyEnabled()) {
-            giu.edu.cspg.energy.EnergyAllocation allocation = greenEnergyProvider.allocateEnergy(
-                    currentPowerW, currentClock, timeDelta
-            );
+            // Calculate aggregated green power from all turbines
+            availableGreenPower = getCurrentGreenPowerW(currentClock);
+            double timeDeltaHours = timeDelta / 3600.0;
+
+            // Calculate energy amounts in Wh
+            double demandWh = currentPowerW * timeDeltaHours;
+            double greenAvailableWh = availableGreenPower * timeDeltaHours;
+
+            // Prioritize green energy, excess is wasted (no storage)
+            deltaGreenUsed = Math.min(demandWh, greenAvailableWh);
+            deltaBrownUsed = demandWh - deltaGreenUsed;
+            deltaGreenWasted = greenAvailableWh - deltaGreenUsed;
 
             // Update cumulative statistics
-            cumulativeGreenEnergyWh += allocation.getGreenEnergyWh();
-            cumulativeBrownEnergyWh += allocation.getBrownEnergyWh();
-            totalWastedGreenWh += allocation.getWastedGreenWh();
+            cumulativeGreenEnergyWh += deltaGreenUsed;
+            cumulativeBrownEnergyWh += deltaBrownUsed;
+            totalWastedGreenWh += deltaGreenWasted;
 
-            // Calculate deltas
-            deltaGreenUsed = allocation.getGreenEnergyWh();
-            deltaBrownUsed = allocation.getBrownEnergyWh();
-            deltaGreenWasted = allocation.getWastedGreenWh();
-            availableGreenPower = getCurrentGreenPowerW(currentClock);
+            // Update statistics in each provider (for internal tracking)
+            for (GreenEnergyProvider provider : greenEnergyProviders) {
+                provider.updateCumulativeStatistics(deltaGreenUsed / greenEnergyProviders.size(),
+                        deltaGreenWasted / greenEnergyProviders.size());
+            }
 
-            LOGGER.debug("{}: Energy allocated - Green: {}Wh ({}%), Brown: {}Wh, Wasted: {}Wh",
-                    getName(),
-                    allocation.getGreenEnergyWh(),
-                    allocation.getGreenRatio() * 100,
-                    allocation.getBrownEnergyWh(),
-                    allocation.getWastedGreenWh());
+            double greenRatio = demandWh > 0 ? deltaGreenUsed / demandWh * 100 : 0;
+            LOGGER.debug("{}: Energy allocated (multi-turbine) - Green: {:.2f}Wh ({:.1f}%), Brown: {:.2f}Wh, Wasted: {:.2f}Wh, Turbines: {}",
+                    getName(), deltaGreenUsed, greenRatio, deltaBrownUsed, deltaGreenWasted, getTurbineCount());
         } else {
             // No green energy - all brown
             double timeDeltaHours = timeDelta / 3600.0;
@@ -356,9 +415,11 @@ public class DatacenterInstance {
         previousCarbonEmissionKg = 0.0;
 
         if (isGreenEnergyEnabled()) {
-            greenEnergyProvider.resetStatistics();
+            for (GreenEnergyProvider provider : greenEnergyProviders) {
+                provider.resetStatistics();
+            }
         }
-        LOGGER.info("{}: Statistics reset", getName());
+        LOGGER.info("{}: Statistics reset (turbines: {})", getName(), getTurbineCount());
     }
 
     /**
@@ -391,9 +452,21 @@ public class DatacenterInstance {
 
     /**
      * Get count of cloudlets completed by this datacenter.
+     * Uses the broker's finished list for accurate count.
      */
     public int getCloudletsCompleted() {
-        return cloudletsCompleted;
+        if (localBroker != null) {
+            return localBroker.getCloudletFinishedList().size();
+        }
+        return cloudletsCompleted;  // Fallback to manual counter
+    }
+
+    /**
+     * Get the local broker for this datacenter.
+     * Used for accessing cloudlet statistics like finished list.
+     */
+    public LoadBalancingBroker getLocalBroker() {
+        return localBroker;
     }
 
     @Override

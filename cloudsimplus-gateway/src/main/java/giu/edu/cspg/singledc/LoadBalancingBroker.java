@@ -174,6 +174,10 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
         // Add cloudlet to waiting queue
         cloudletWaitingQueue.offer(cloudlet);
 
+        // IMPORTANT: Also track in inputCloudlets for hasUnfinishedCloudlets() check
+        // This ensures multi-DC mode correctly tracks all received cloudlets
+        inputCloudlets.add(cloudlet);
+
         // Add listeners if not already added
         addOnStartListener(cloudlet);
         addOnFinishListener(cloudlet);

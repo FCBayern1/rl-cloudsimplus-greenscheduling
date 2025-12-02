@@ -89,6 +89,7 @@ public class SimulationSettings {
     private final double rewardAssignmentCoef;
     private final double rewardInvalidActionCoef;
     private final double rewardEnergyCoef;
+    private final double rewardCompletionCoef;   // Coefficient for completion rate reward (positive reward)
     private final double greenWastePenaltyCoef;  // Base coefficient for green waste penalty (scaled by DC count)
     private final double carbonEmissionPenaltyCoef;  // Coefficient for carbon emission penalty
 
@@ -100,6 +101,10 @@ public class SimulationSettings {
     private final String predictionModelPath;
     private final double predictionCacheDuration;
     private final int predictionHorizon;
+    
+    // Future energy forecast configuration
+    private final int shortTermRows;   // Short-term forecast rows (default: 3 = 30 min)
+    private final int longTermRows;    // Long-term forecast rows (default: 144 = 24 hours)
 
     /**
      * Constructor that populates settings from a Map, providing defaults.
@@ -215,6 +220,7 @@ public class SimulationSettings {
         this.rewardAssignmentCoef = getDoubleParam(params, "reward_assignment_coef", 0.05);
         this.rewardInvalidActionCoef = getDoubleParam(params, "reward_invalid_action_coef", 1.0);
         this.rewardEnergyCoef = getDoubleParam(params, "reward_energy_coef", 0.0); // Default 0 = disabled
+        this.rewardCompletionCoef = getDoubleParam(params, "reward_completion_coef", 1.0); // Positive reward for completion
         this.greenWastePenaltyCoef = getDoubleParam(params, "green_waste_penalty_coef", 10.0); // Base coef per DC
         this.carbonEmissionPenaltyCoef = getDoubleParam(params, "carbon_emission_penalty_coef", 1.0); // Default 1.0, adjust based on data
 
@@ -233,6 +239,12 @@ public class SimulationSettings {
         this.predictionModelPath = getStringParam(predictionConfig, "model_path", "");
         this.predictionCacheDuration = getDoubleParam(predictionConfig, "cache_duration_seconds", 600.0);
         this.predictionHorizon = getIntParam(predictionConfig, "horizon", 8);
+
+        // Future energy forecast configuration (God's Eye features)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> forecastConfig = (Map<String, Object>) greenEnergyConfig.getOrDefault("future_energy_forecast", Map.of());
+        this.shortTermRows = getIntParam(forecastConfig, "short_term_rows", 3);   // Default: 3 rows = 30 min
+        this.longTermRows = getIntParam(forecastConfig, "long_term_rows", 144);    // Default: 144 rows = 24 hours
 
         if (this.greenEnergyEnabled) {
             LOGGER.info("Green Energy: enabled, turbine_id={}, data_file={}",
@@ -291,6 +303,7 @@ public class SimulationSettings {
                 "rewardAssignmentCoef=" + rewardAssignmentCoef + ",\n" +
                 "rewardInvalidActionCoef=" + rewardInvalidActionCoef + ",\n" +
                 "rewardEnergyCoef=" + rewardEnergyCoef + ",\n" +
+                "rewardCompletionCoef=" + rewardCompletionCoef + ",\n" +
                 "greenEnergyEnabled=" + greenEnergyEnabled + ",\n" +
                 "turbineId=" + turbineId + ",\n" +
                 "windDataFile='" + windDataFile + '\'' + ",\n" +

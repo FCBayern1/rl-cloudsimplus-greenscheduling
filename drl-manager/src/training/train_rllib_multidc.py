@@ -22,6 +22,7 @@ import sys
 import argparse
 import yaml
 import logging
+import warnings
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
@@ -41,7 +42,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
-from src.models.masked_action_model import MaskedActionModel
+from src.models.masked_action_model import MaskedActionModel, DictObsModel
 from ray.rllib.models import ModelCatalog
 
 # Setup logging
@@ -112,6 +113,21 @@ def create_rllib_config(
     Returns:
         Configured PPOConfig object
     """
+    # Register custom models
+    try:
+        ModelCatalog.register_custom_model("masked_action_model", MaskedActionModel)
+        logger.info("Registered custom RLlib model: masked_action_model")
+    except Exception as e:
+        if "You have already registered" not in str(e):
+            raise
+
+    try:
+        ModelCatalog.register_custom_model("dict_obs_model", DictObsModel)
+        logger.info("Registered custom RLlib model: dict_obs_model")
+    except Exception as e:
+        if "You have already registered" not in str(e):
+            raise
+
     # Create a sample environment to get spaces
     sample_env = HierarchicalMultiDCParallelEnv(env_config)
 
@@ -124,12 +140,33 @@ def create_rllib_config(
     logger.info(f"Global obs space: {global_obs_space}")
 
     # Define policies - SEPARATE POLICY FOR EACH DC (no parameter sharing)
-    # The PettingZoo environment now provides correct action spaces per DC
+    # The PettingZoo environment now provides correct action spaces per DC.
+    # _disable_preprocessor_api: Keep Dict obs space intact (don't flatten to Box).
+    # Local agents use MaskedActionModel (Discrete actions with action_mask).
+    masked_model_cfg = {
+        "model": {
+            "custom_model": "masked_action_model",
+        },
+        "_disable_preprocessor_api": True,  # Must be at policy config level, not inside model
+    }
+
+    # Global policy uses DictObsModel WITHOUT masking.
+    # - Global agent has MultiDiscrete([n]*batch_size) action space where n = num_datacenters.
+    # - Each element selects which DC to route a cloudlet to (0 to n-1).
+    # - No NoAssign option for global agent - all cloudlets must be routed.
+    global_model_cfg = {
+        "model": {
+            "custom_model": "dict_obs_model",
+        },
+        "_disable_preprocessor_api": True,
+    }
+
     policies = {
         "global_policy": PolicySpec(
             policy_class=None,
             observation_space=global_obs_space,
             action_space=global_action_space,
+            config=global_model_cfg,  # Use masked model for proper action masking
         ),
     }
 
@@ -147,6 +184,7 @@ def create_rllib_config(
             policy_class=None,
             observation_space=local_obs_space,
             action_space=local_action_space,  # Use environment's action space directly
+            config=masked_model_cfg,
         )
 
     sample_env.close()
@@ -196,6 +234,9 @@ def create_rllib_config(
         )
         .framework(
             framework="torch",
+        )
+        .experimental(
+            _disable_preprocessor_api=True,  # Keep Dict obs space intact for action masking
         )
     )
 

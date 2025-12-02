@@ -215,7 +215,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Extract per-agent rewards for hierarchical MARL analysis
         global_agent_reward = 0.0
-        local_agent_rewards = []
+        local_agent_rewards = {}  # Changed to dict for per-DC tracking
 
         # Access agent_rewards dict from episode
         # In RLlib, agent_rewards keys are tuples: (agent_id, policy_id)
@@ -230,11 +230,16 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     global_agent_reward = reward
                     logger.info(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
                 elif agent_id.startswith('local_agent_'):
-                    local_agent_rewards.append(reward)
-                    logger.info(f"[CALLBACK DEBUG] {agent_id} reward: {reward}")
+                    # Extract DC ID from agent_id (e.g., "local_agent_0" -> 0)
+                    try:
+                        dc_id = int(agent_id.split('_')[-1])
+                        local_agent_rewards[dc_id] = reward
+                        logger.info(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
+                    except (ValueError, IndexError):
+                        logger.warning(f"[CALLBACK DEBUG] Could not parse DC ID from {agent_id}")
 
         # Calculate average local agent reward
-        local_agents_avg_reward = sum(local_agent_rewards) / len(local_agent_rewards) if local_agent_rewards else 0.0
+        local_agents_avg_reward = sum(local_agent_rewards.values()) / len(local_agent_rewards) if local_agent_rewards else 0.0
         logger.info(f"[CALLBACK DEBUG] Average local agent reward: {local_agents_avg_reward} (from {len(local_agent_rewards)} agents)")
 
         # Calculate task completion rate
@@ -274,44 +279,13 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             }
             self._save_best_episode()
 
-        # Write to monitor.csv (episode-by-episode metrics)
-        try:
-            with open(self.csv_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    self.episode_counter,
-                    green_waste,
-                    green_used,
-                    brown_used,
-                    total_energy,
-                    green_ratio,
-                    waste_ratio,
-                    total_carbon_kg,
-                    carbon_intensity,
-                    episode_reward,
-                    episode_length,
-                    global_agent_reward,
-                    local_agents_avg_reward,
-                    completion_rate
-                ])
-        except Exception as e:
-            logger.error(f"Failed to write to monitor CSV: {e}")
-
-        # Add custom metrics to episode (will be aggregated by RLlib)
-        episode.custom_metrics["green_waste_wh"] = green_waste
-        episode.custom_metrics["green_used_wh"] = green_used
-        episode.custom_metrics["brown_used_wh"] = brown_used
-        episode.custom_metrics["green_ratio"] = green_ratio
-        episode.custom_metrics["waste_ratio"] = waste_ratio
-        episode.custom_metrics["total_carbon_kg"] = total_carbon_kg
-        episode.custom_metrics["carbon_intensity_kg_per_kwh"] = carbon_intensity
-        episode.custom_metrics["global_agent_reward"] = global_agent_reward
-        episode.custom_metrics["local_agents_avg_reward"] = local_agents_avg_reward
-        episode.custom_metrics["completion_rate"] = completion_rate
-
         # Add per-DC energy metrics for separate policy analysis
         dc_energy_metrics_raw = last_info.get('datacenter_energy_metrics', {})
         dc_energy_metrics = safe_convert_to_dict(dc_energy_metrics_raw, "datacenter_energy_metrics")
+
+        # Store per-DC metrics for CSV output
+        per_dc_mean_completion_times = {}
+        per_dc_cloudlets_finished = {}
 
         if dc_energy_metrics:
             for dc_id_str, dc_metrics_raw in dc_energy_metrics.items():
@@ -330,6 +304,14 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 dc_wasted = dc_metrics.get('total_wasted_green_wh', 0.0)
                 dc_green_ratio = dc_metrics.get('green_energy_ratio', 0.0)
 
+                # Extract cloudlet completion metrics (NEW)
+                dc_cloudlets_finished = dc_metrics.get('cloudlets_finished', 0)
+                dc_mean_completion_time = dc_metrics.get('mean_completion_time', 0.0)
+
+                # Store for CSV output
+                per_dc_mean_completion_times[dc_id] = dc_mean_completion_time
+                per_dc_cloudlets_finished[dc_id] = dc_cloudlets_finished
+
                 # Record per-DC metrics to TensorBoard
                 # These will show up as "dc_0/green_used_wh", "dc_1/green_used_wh", etc.
                 episode.custom_metrics[f"dc_{dc_id}/green_used_wh"] = dc_green
@@ -337,6 +319,61 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 episode.custom_metrics[f"dc_{dc_id}/green_wasted_wh"] = dc_wasted
                 episode.custom_metrics[f"dc_{dc_id}/green_ratio"] = dc_green_ratio
                 episode.custom_metrics[f"dc_{dc_id}/total_energy_wh"] = dc_green + dc_brown
+                episode.custom_metrics[f"dc_{dc_id}/cloudlets_finished"] = dc_cloudlets_finished
+                episode.custom_metrics[f"dc_{dc_id}/mean_completion_time"] = dc_mean_completion_time
+
+        # Write to monitor.csv (episode-by-episode metrics)
+        try:
+            # Determine number of DCs from available metrics
+            num_dcs = max(len(local_agent_rewards), len(per_dc_mean_completion_times), 10)
+
+            # Build row with base metrics
+            row = [
+                self.episode_counter,
+                green_waste,
+                green_used,
+                brown_used,
+                total_energy,
+                green_ratio,
+                waste_ratio,
+                total_carbon_kg,
+                carbon_intensity,
+                episode_reward,
+                episode_length,
+                global_agent_reward,
+                local_agents_avg_reward,
+                completion_rate
+            ]
+
+            # Add per-DC local rewards (local_reward_0, local_reward_1, ..., local_reward_9)
+            for dc_id in range(num_dcs):
+                row.append(local_agent_rewards.get(dc_id, 0.0))
+
+            # Add per-DC mean completion times (mean_completion_time_dc_0, ..., mean_completion_time_dc_9)
+            for dc_id in range(num_dcs):
+                row.append(per_dc_mean_completion_times.get(dc_id, 0.0))
+
+            # Add per-DC cloudlets finished (cloudlets_finished_dc_0, ..., cloudlets_finished_dc_9)
+            for dc_id in range(num_dcs):
+                row.append(per_dc_cloudlets_finished.get(dc_id, 0))
+
+            with open(self.csv_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
+        except Exception as e:
+            logger.error(f"Failed to write to monitor CSV: {e}")
+
+        # Add custom metrics to episode (will be aggregated by RLlib)
+        episode.custom_metrics["green_waste_wh"] = green_waste
+        episode.custom_metrics["green_used_wh"] = green_used
+        episode.custom_metrics["brown_used_wh"] = brown_used
+        episode.custom_metrics["green_ratio"] = green_ratio
+        episode.custom_metrics["waste_ratio"] = waste_ratio
+        episode.custom_metrics["total_carbon_kg"] = total_carbon_kg
+        episode.custom_metrics["carbon_intensity_kg_per_kwh"] = carbon_intensity
+        episode.custom_metrics["global_agent_reward"] = global_agent_reward
+        episode.custom_metrics["local_agents_avg_reward"] = local_agents_avg_reward
+        episode.custom_metrics["completion_rate"] = completion_rate
 
         # Log to console (only worker 0 to avoid spam)
         if worker.worker_index == 0:
@@ -383,25 +420,41 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Write monitor.csv headers
         try:
+            # Base headers
+            headers = [
+                'episode',
+                'green_waste_wh',
+                'green_used_wh',
+                'brown_used_wh',
+                'total_energy_wh',
+                'green_ratio',
+                'waste_ratio',
+                'total_carbon_kg',
+                'carbon_intensity_kg_per_kwh',
+                'episode_reward',
+                'episode_length',
+                'global_agent_reward',
+                'local_agents_avg_reward',
+                'completion_rate'
+            ]
+
+            # Add per-DC local reward headers
+            num_dcs = 10  # Default to 10 DCs
+            for dc_id in range(num_dcs):
+                headers.append(f'local_reward_{dc_id}')
+
+            # Add per-DC mean completion time headers
+            for dc_id in range(num_dcs):
+                headers.append(f'mean_completion_time_dc_{dc_id}')
+
+            # Add per-DC cloudlets finished headers
+            for dc_id in range(num_dcs):
+                headers.append(f'cloudlets_finished_dc_{dc_id}')
+
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    'episode',
-                    'green_waste_wh',
-                    'green_used_wh',
-                    'brown_used_wh',
-                    'total_energy_wh',
-                    'green_ratio',
-                    'waste_ratio',
-                    'total_carbon_kg',
-                    'carbon_intensity_kg_per_kwh',
-                    'episode_reward',
-                    'episode_length',
-                    'global_agent_reward',
-                    'local_agents_avg_reward',
-                    'completion_rate'  # Added completion rate header
-                ])
-            logger.info(f"Initialized monitor.csv: {self.csv_file}")
+                writer.writerow(headers)
+            logger.info(f"Initialized monitor.csv with {len(headers)} columns: {self.csv_file}")
         except Exception as e:
             logger.error(f"Failed to initialize monitor CSV: {e}")
 
@@ -478,9 +531,13 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         """
         Called at the end of Algorithm.train().
-        
-        Extracts and logs Policy Loss, Value Loss for TensorBoard.
-        Works properly when local_mode=False.
+
+        NOTE:
+        We now rely on RLlib/Ray Tune's built-in logging for policy/value losses,
+        and do NOT write additional loss metrics into the result dict.
+
+        This hook is kept only for optional console debugging, without touching
+        TensorBoard tags such as policy_loss/vf_loss.
 
         Args:
             algorithm: Current algorithm instance
@@ -488,48 +545,28 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         """
         try:
             iteration = result.get("training_iteration", 0)
-            
-            # ========== EXTRACT POLICY LOSS AND VALUE LOSS ==========
-            # Access learner stats from result["info"]["learner"]
+
+            # Optional: print loss stats for debugging without altering result dict
             learner_info = result.get("info", {}).get("learner", {})
-            
             if not learner_info:
                 return
-            
-            # Global agent
+
+            # Global agent (console only)
             if "global_policy" in learner_info:
                 stats = learner_info["global_policy"].get("learner_stats", {})
                 pl = stats.get("policy_loss", None)
                 vl = stats.get("vf_loss", None)
-                ent = stats.get("entropy", None)
-                
-                if pl is not None:
-                    result["global_agent/policy_loss"] = pl
-                    result["global_agent/value_loss"] = vl
-                    result["global_agent/entropy"] = ent
-                    logger.info(f"[{iteration}] Global: PL={pl:.5f}, VL={vl:.5f}")
-            
-            # Local agents
-            local_pl, local_vl = [], []
+                if pl is not None and vl is not None:
+                    logger.info(f"[{iteration}] GlobalPolicy: policy_loss={pl:.5f}, value_loss={vl:.5f}")
+
+            # Local agents (console only)
             for policy_id, policy_info in learner_info.items():
                 if policy_id.startswith("local_policy_"):
                     stats = policy_info.get("learner_stats", {})
                     pl = stats.get("policy_loss", None)
                     vl = stats.get("vf_loss", None)
-                    
-                    if pl is not None:
-                        local_pl.append(pl)
-                        local_vl.append(vl)
-                        dc_id = policy_id.split("_")[-1]
-                        result[f"local_agent_dc{dc_id}/policy_loss"] = pl
-                        result[f"local_agent_dc{dc_id}/value_loss"] = vl
-            
-            if local_pl:
-                avg_pl = sum(local_pl) / len(local_pl)
-                avg_vl = sum(local_vl) / len(local_vl)
-                result["local_agents_avg/policy_loss"] = avg_pl
-                result["local_agents_avg/value_loss"] = avg_vl
-                logger.info(f"[{iteration}] Local Avg: PL={avg_pl:.5f}, VL={avg_vl:.5f}")
+                    if pl is not None and vl is not None:
+                        logger.info(f"[{iteration}] {policy_id}: policy_loss={pl:.5f}, value_loss={vl:.5f}")
 
         except Exception as e:
-            logger.error(f"Failed to extract metrics: {e}", exc_info=True)
+            logger.error(f"Failed to read learner stats: {e}", exc_info=True)

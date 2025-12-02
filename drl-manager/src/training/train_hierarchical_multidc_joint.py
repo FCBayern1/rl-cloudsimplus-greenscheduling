@@ -150,6 +150,21 @@ class JointTrainingManager:
         else:
             self.base_env = self.env
 
+        # Determine usable devices for SB3 policies
+        self._cuda_usable = self._check_cuda_usable()
+        base_device_pref = self.config.get("device", "auto")
+        global_pref = self.config.get("global_agent", {}).get("device", base_device_pref)
+        local_pref = self.config.get("local_agents", {}).get("device", base_device_pref)
+
+        self.global_device = self._resolve_device(global_pref, agent_label="global")
+        self.local_device = self._resolve_device(local_pref, agent_label="local")
+
+        logger.info(
+            "Device selection -> global: %s | local: %s",
+            self.global_device,
+            self.local_device
+        )
+
         # Create models
         self.global_model = None
         self.local_model = None
@@ -198,6 +213,74 @@ class JointTrainingManager:
         logger.info(f"Monitor wrapper added, logging to {monitor_dir}")
 
         return env
+
+    def _resolve_device(self, preference: Any, agent_label: str) -> str:
+        """
+        Resolve desired torch device based on preference and CUDA availability.
+        """
+        pref = str(preference).strip().lower() if preference is not None else "auto"
+        if pref not in {"auto", "cpu", "cuda"}:
+            logger.warning(
+                "Unknown device preference '%s' for %s agent. Falling back to 'auto'.",
+                preference,
+                agent_label
+            )
+            pref = "auto"
+
+        if pref == "cpu":
+            return "cpu"
+
+        if pref == "cuda":
+            if self._cuda_usable:
+                return "cuda"
+            logger.warning(
+                "CUDA requested for %s agent but current PyTorch build cannot use the GPU. "
+                "Falling back to CPU.",
+                agent_label
+            )
+            return "cpu"
+
+        # auto: prefer CUDA when fully supported
+        return "cuda" if self._cuda_usable else "cpu"
+
+    def _check_cuda_usable(self) -> bool:
+        """
+        Determine whether the current PyTorch build can execute kernels on the detected GPU.
+        """
+        if not torch.cuda.is_available():
+            logger.info("CUDA not available; running entirely on CPU.")
+            return False
+
+        try:
+            device_name = torch.cuda.get_device_name(0)
+            major, minor = torch.cuda.get_device_capability(0)
+            device_capability = f"sm_{major}{minor}"
+            arch_list = getattr(torch.cuda, "get_arch_list", lambda: [])()
+            supported_caps = {arch.replace("sm_", "") for arch in arch_list}
+
+            if supported_caps and f"{major}{minor}" not in supported_caps:
+                logger.warning(
+                    "Detected GPU '%s' with capability %s, "
+                    "but this PyTorch build only includes kernels for: %s. "
+                    "GPU execution will be disabled.",
+                    device_name,
+                    device_capability,
+                    ", ".join(sorted(f"sm_{cap}" for cap in supported_caps)) or "unknown"
+                )
+                return False
+
+            logger.info(
+                "CUDA device detected: %s (capability %s). Using GPU for compatible agents.",
+                device_name,
+                device_capability
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Failed to inspect CUDA device (%s). Falling back to CPU execution.",
+                exc
+            )
+            return False
 
     def _create_models(self):
         """Create Global and Local agent models."""
@@ -320,7 +403,7 @@ class JointTrainingManager:
             batch_size=global_batch_size,
             verbose=1,
             tensorboard_log=str(self.output_dir / "tensorboard" / "global"),
-            device="cuda" if torch.cuda.is_available() else "cpu"
+            device=self.global_device
         )
 
         logger.info("Global Agent model created")
@@ -464,7 +547,7 @@ class JointTrainingManager:
             batch_size=local_batch_size,
             verbose=1,
             tensorboard_log=str(self.output_dir / "tensorboard" / "local"),
-            device="cuda" if torch.cuda.is_available() else "cpu"
+            device=self.local_device
         )
 
         logger.info("Local Agent model created")

@@ -72,29 +72,38 @@ def generate_bursty_arrivals(num_bursts, jobs_per_burst, burst_duration, inter_b
     return sorted(arrivals)
 
 
-def generate_cloudlet_properties(num_cloudlets, length_dist='uniform', pes_dist='uniform'):
+def generate_cloudlet_properties(num_cloudlets, length_dist='uniform', pes_dist='uniform',
+                                  min_length=100000, max_length=800000):
     """
     Generate cloudlet properties (length in MI, required PEs).
-    
+
     Args:
         num_cloudlets: Number of cloudlets to generate
         length_dist: Distribution for length ('uniform', 'normal', 'exponential')
         pes_dist: Distribution for PEs ('uniform', 'weighted')
-        
+        min_length: Minimum cloudlet length in MI (default: 100000)
+        max_length: Maximum cloudlet length in MI (default: 800000)
+
     Returns:
         Lists of (length, pes_required)
     """
+    # Calculate mean and std for normal distribution based on min/max
+    mean_length = (min_length + max_length) / 2
+    std_length = (max_length - min_length) / 4  # ~95% within range
+
     # Generate cloudlet lengths (MI - Million Instructions)
     if length_dist == 'uniform':
-        lengths = np.random.randint(100000, 800000, size=num_cloudlets)
+        lengths = np.random.randint(min_length, max_length + 1, size=num_cloudlets)
     elif length_dist == 'normal':
-        lengths = np.random.normal(400000, 150000, size=num_cloudlets)
-        lengths = np.clip(lengths, 50000, 1000000).astype(int)
+        lengths = np.random.normal(mean_length, std_length, size=num_cloudlets)
+        lengths = np.clip(lengths, min_length, max_length).astype(int)
     elif length_dist == 'exponential':
-        lengths = np.random.exponential(300000, size=num_cloudlets)
-        lengths = np.clip(lengths, 50000, 1000000).astype(int)
+        # Scale exponential to have mean at (max_length - min_length) / 3
+        scale = (max_length - min_length) / 3
+        lengths = np.random.exponential(scale, size=num_cloudlets) + min_length
+        lengths = np.clip(lengths, min_length, max_length).astype(int)
     else:
-        lengths = np.full(num_cloudlets, 400000)
+        lengths = np.full(num_cloudlets, int(mean_length))
     
     # Generate PE requirements (1-8 cores)
     if pes_dist == 'uniform':
@@ -116,12 +125,14 @@ def generate_workload(
     duration=3600,
     length_dist='uniform',
     pes_dist='weighted',
+    min_length=100000,
+    max_length=800000,
     output_file='workload.csv',
     seed=None
 ):
     """
     Main workload generation function.
-    
+
     Args:
         workload_type: 'poisson', 'uniform', 'bursty'
         num_jobs: Number of jobs (for uniform)
@@ -129,6 +140,8 @@ def generate_workload(
         duration: Total duration (seconds)
         length_dist: Distribution for job length
         pes_dist: Distribution for PE requirements
+        min_length: Minimum cloudlet length in MI
+        max_length: Maximum cloudlet length in MI
         output_file: Output CSV file path
         seed: Random seed for reproducibility
     """
@@ -164,7 +177,9 @@ def generate_workload(
         raise ValueError(f"Unknown workload type: {workload_type}")
     
     # Generate cloudlet properties
-    lengths, pes_required = generate_cloudlet_properties(num_jobs, length_dist, pes_dist)
+    lengths, pes_required = generate_cloudlet_properties(
+        num_jobs, length_dist, pes_dist, min_length, max_length
+    )
     
     # Generate file sizes (proportional to length)
     file_sizes = [int(length / 1000) for length in lengths]  # ~1KB per 1000 MI
@@ -179,7 +194,7 @@ def generate_workload(
         'file_size': file_sizes,
         'output_size': output_sizes
     })
-    
+
     # Save to CSV
     workload_df.to_csv(output_file, index=False)
     
@@ -188,7 +203,10 @@ def generate_workload(
     print(f"Total Jobs: {len(workload_df)}")
     print(f"Duration: {duration} seconds ({duration/60:.1f} minutes)")
     print(f"Arrival Times: {workload_df['arrival_time'].min():.1f}s - {workload_df['arrival_time'].max():.1f}s")
+    print(f"Length Range: {min_length} - {max_length} MI")
+    print(f"Actual Length: {workload_df['length'].min():.0f} - {workload_df['length'].max():.0f} MI")
     print(f"Average Length: {workload_df['length'].mean():.0f} MI")
+    print(f"Estimated Execution Time (MIPS=50000): {workload_df['length'].mean()/50000:.1f}s avg")
     print(f"Average PEs: {workload_df['pes_required'].mean():.2f}")
     print(f"\nPE Distribution:")
     print(workload_df['pes_required'].value_counts().sort_index())
@@ -205,13 +223,17 @@ def main():
 Examples:
   # Poisson arrivals (default)
   python generate_workload.py --type poisson --arrival-rate 0.5 --duration 3600
-  
+
   # Uniform arrivals
   python generate_workload.py --type uniform --num-jobs 200 --duration 1800
-  
+
   # Bursty pattern
   python generate_workload.py --type bursty --num-jobs 300 --duration 3600
-  
+
+  # Fast cloudlets (shorter execution time, ~1-3 seconds avg)
+  python generate_workload.py --type poisson --arrival-rate 7.0 --duration 2000 \\
+      --min-length 20000 --max-length 160000 --output traces/dc10_fast.csv
+
   # Custom distributions
   python generate_workload.py --type poisson --arrival-rate 1.0 \\
       --length-dist normal --pes-dist weighted --seed 42
@@ -238,10 +260,16 @@ Examples:
     parser.add_argument('--pes-dist', type=str, default='weighted',
                         choices=['uniform', 'weighted'],
                         help='Distribution for PE requirements')
-    
+
+    parser.add_argument('--min-length', type=int, default=100000,
+                        help='Minimum cloudlet length in MI (default: 100000)')
+
+    parser.add_argument('--max-length', type=int, default=800000,
+                        help='Maximum cloudlet length in MI (default: 800000)')
+
     parser.add_argument('--output', type=str, default='traces/synthetic_workload.csv',
                         help='Output CSV file path')
-    
+
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
     
@@ -260,6 +288,8 @@ Examples:
         duration=args.duration,
         length_dist=args.length_dist,
         pes_dist=args.pes_dist,
+        min_length=args.min_length,
+        max_length=args.max_length,
         output_file=args.output,
         seed=args.seed
     )
