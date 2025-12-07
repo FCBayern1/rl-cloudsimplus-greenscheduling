@@ -186,18 +186,18 @@ Examples:
     if args.num_gpus is not None:
         logger.info(f"Number of GPUs: {args.num_gpus}")
 
-    # Resolve output directory (same structure as Stable Baselines3)
+    # Resolve output directory (initial value, may be updated after loading config to include algorithm name)
     if args.output_dir is None:
         env_output = os.getenv('OUTPUT_DIR')
         if env_output:
             args.output_dir = env_output
         else:
-            # Auto-generate with timestamp: logs/experiment_name/timestamp/
+            # Temporary default; we'll update the experiment folder name after reading algorithm from config.yml
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             args.output_dir = f"../logs/{args.experiment}/{timestamp}"
 
-    logger.info(f"Output directory: {args.output_dir}")
-    logger.info(f"  (Multiple runs of the same experiment will be grouped under logs/{args.experiment}/)")
+    logger.info(f"Initial output directory: {args.output_dir}")
+    logger.info(f"  (Will be adjusted to include algorithm name after loading config, if using default logs path)")
     print()
 
     # Test mode - just verify environment
@@ -258,6 +258,22 @@ Examples:
     global_model_config = exp_config.get('global_model', {})
     local_model_config = exp_config.get('local_model', {})
     training_config = exp_config.get('training', {})
+
+    # Determine algorithm name for this experiment (used for logging + directory naming)
+    algorithm_name = training_config.get('algorithm', 'PPO').upper()
+
+    # If using the default logs path pattern, update experiment folder to include algorithm name.
+    # Example: logs/experiment_multi_dc_simple_PPO/<timestamp>/
+    default_prefix = f"../logs/{args.experiment}/"
+    if args.output_dir.startswith(default_prefix):
+        timestamp = args.output_dir.split("/")[-1]
+        experiment_with_algo = f"{args.experiment}_{algorithm_name}"
+        args.output_dir = f"../logs/{experiment_with_algo}/{timestamp}"
+        logger.info(f"Updated output directory with algorithm name: {args.output_dir}")
+        logger.info(f"  (Multiple runs will be grouped under logs/{experiment_with_algo}/)")
+    else:
+        # Respect user-specified or env-provided OUTPUT_DIR
+        logger.info(f"Using custom output directory (not modified): {args.output_dir}")
 
     # Override with command line arguments
     if args.num_workers is not None:

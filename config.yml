@@ -2432,12 +2432,23 @@ experiment_multi_dc_simple:
 
   # --- Global Agent Configuration ---
   global_model:
+    algorithm: "PPO"  # Optional: Algorithm for global agent (defaults to training.algorithm)
+    # Note: In RLlib, all policies must use the same algorithm TYPE (PPO/A2C/IMPALA),
+    # but you can specify different algorithms here for logging purposes.
+    # For example: Global=PPO, Local=MaskablePPO will both use PPO in RLlib,
+    # but the log directory will show "PPO_MaskablePPO" to indicate the intent.
+    # Local agents use action masking (via MaskedActionModel) which provides
+    # MaskablePPO-like functionality even though the base algorithm is PPO.
     learning_rate: 0.0003
     gamma: 0.99
     gae_lambda: 0.95
 
   # --- Local Model Configuration ---
   local_model:
+    algorithm: "MaskablePPO"  # Optional: Algorithm for local agents (defaults to training.algorithm)
+    # Note: RLlib doesn't have MaskablePPO, but local agents use PPO with action masking
+    # (via MaskedActionModel) which provides equivalent functionality.
+    # Specifying "MaskablePPO" here is for clarity and will be shown in log directory names.
     learning_rate: 0.0003
     gamma: 0.99
     gae_lambda: 0.95
@@ -2448,6 +2459,11 @@ experiment_multi_dc_simple:
 
   # --- Training Configuration (RLlib) ---
   training:
+    algorithm: "IMPALA"  # Options: "PPO", "IMPALA" (all support discrete action spaces)
+    # This is the actual algorithm used by RLlib for ALL agents.
+    # If global_model.algorithm or local_model.algorithm specify different algorithms,
+    # they will be normalized (MaskablePPO -> PPO) and this value will be used.
+    # The original algorithm names are preserved for logging directory names.
     total_timesteps: 400000  # 400k steps = 100 episodes × 4000 steps
     num_workers: 0
     num_gpus: 1

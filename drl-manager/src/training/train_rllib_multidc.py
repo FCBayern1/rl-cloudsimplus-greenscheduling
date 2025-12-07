@@ -33,6 +33,7 @@ from gymnasium import spaces
 import ray
 from ray import tune, air
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune.logger import pretty_print
@@ -167,19 +168,22 @@ def create_rllib_config(
     local_model_config: Dict[str, Any],
     training_config: Dict[str, Any],
     output_dir: str = None
-) -> PPOConfig:
+):
     """
-    Create RLlib PPO configuration.
+    Create RLlib algorithm configuration (supports PPO, A2C, IMPALA).
 
     Args:
         env_config: Environment configuration
         global_model_config: Global agent model configuration
         local_model_config: Local agent model configuration
-        training_config: Training hyperparameters
+        training_config: Training hyperparameters (must include 'algorithm' key)
 
     Returns:
-        Configured PPOConfig object
+        Configured algorithm config object (PPOConfig, A2CConfig, or ImpalaConfig)
     """
+    # Get algorithm name from training config, default to PPO
+    algorithm_name = training_config.get("algorithm", "PPO").upper()
+    logger.info(f"Using RL algorithm: {algorithm_name}")
     # Register custom models
     try:
         ModelCatalog.register_custom_model("masked_action_model", MaskedActionModel)
@@ -261,57 +265,105 @@ def create_rllib_config(
 
     sample_env.close()
 
-    # Create PPO config
-    config = (
-        PPOConfig()
-        # Use legacy API (new API has issues with nested Dict obs spaces)
-        .api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
-        )
-        .environment(
-            env="multidc_env",
-            env_config=env_config,
-        )
-        .multi_agent(
-            policies=policies,
-            policy_mapping_fn=policy_mapping_fn,
-            # Train all policies (global + all local DCs)
-            policies_to_train=list(policies.keys()),
-        )
-        .env_runners(
-            num_env_runners=training_config.get("num_workers", 0),
-            num_envs_per_env_runner=1,
-        )
-        .training(
-            train_batch_size_per_learner=training_config.get("train_batch_size", 4000),
-            minibatch_size=training_config.get("sgd_minibatch_size", 128),
-            num_epochs=training_config.get("num_sgd_iter", 10),
-            gamma=local_model_config.get("gamma", 0.99),
-            lr=local_model_config.get("learning_rate", 3e-4),
-            lambda_=local_model_config.get("gae_lambda", 0.95),
-            clip_param=local_model_config.get("clip_range", 0.2),
-            entropy_coeff=local_model_config.get("ent_coef", 0.01),
-            vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
-            grad_clip=local_model_config.get("max_grad_norm", 0.5),
-        )
-        .resources(
-            num_gpus=training_config.get("num_gpus", 0),
-        )
-        .callbacks(
-            lambda: GreenEnergyLoggerCallback(log_dir=output_dir)
-        )
-        .debugging(
-            log_level="INFO",
-        )
-        .framework(
-            framework="torch",
-        )
-        .experimental(
-            _disable_preprocessor_api=True,  # Keep Dict obs space intact for action masking
-        )
-    )
+    # Common configuration for all algorithms
+    common_config = {
+        "env": "multidc_env",
+        "env_config": env_config,
+        "multi_agent": {
+            "policies": policies,
+            "policy_mapping_fn": policy_mapping_fn,
+            "policies_to_train": list(policies.keys()),
+        },
+        "num_env_runners": training_config.get("num_workers", 0),
+        "num_envs_per_env_runner": 1,
+        "gamma": local_model_config.get("gamma", 0.99),
+        "lr": local_model_config.get("learning_rate", 3e-4),
+        "num_gpus": training_config.get("num_gpus", 0),
+        "callbacks": lambda: GreenEnergyLoggerCallback(log_dir=output_dir),
+        "log_level": "INFO",
+        "framework": "torch",
+        "experimental": {
+            "_disable_preprocessor_api": True,  # Keep Dict obs space intact for action masking
+        },
+    }
 
+    # Algorithm-specific configuration
+    if algorithm_name == "PPO":
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(env="multidc_env", env_config=env_config)
+            .multi_agent(
+                policies=policies,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies.keys()),
+            )
+            .env_runners(
+                num_env_runners=training_config.get("num_workers", 0),
+                num_envs_per_env_runner=1,
+            )
+            .training(
+                train_batch_size_per_learner=training_config.get("train_batch_size", 4000),
+                minibatch_size=training_config.get("sgd_minibatch_size", 128),
+                num_epochs=training_config.get("num_sgd_iter", 10),
+                gamma=local_model_config.get("gamma", 0.99),
+                lr=local_model_config.get("learning_rate", 3e-4),
+                lambda_=local_model_config.get("gae_lambda", 0.95),
+                clip_param=local_model_config.get("clip_range", 0.2),
+                entropy_coeff=local_model_config.get("ent_coef", 0.01),
+                vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
+                grad_clip=local_model_config.get("max_grad_norm", 0.5),
+            )
+            .resources(num_gpus=training_config.get("num_gpus", 0))
+            .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
+            .debugging(log_level="INFO")
+            .framework(framework="torch")
+            .experimental(_disable_preprocessor_api=True)
+        )
+
+    elif algorithm_name == "IMPALA":
+        config = (
+            ImpalaConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(env="multidc_env", env_config=env_config)
+            .multi_agent(
+                policies=policies,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies.keys()),
+            )
+            .env_runners(
+                num_env_runners=training_config.get("num_workers", 0),
+                num_envs_per_env_runner=1,
+            )
+            .training(
+                train_batch_size=training_config.get("train_batch_size", 4000),
+                gamma=local_model_config.get("gamma", 0.99),
+                lr=local_model_config.get("learning_rate", 3e-4),
+                entropy_coeff=local_model_config.get("ent_coef", 0.01),
+                vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
+                grad_clip=local_model_config.get("max_grad_norm", 0.5),
+            )
+            .resources(num_gpus=training_config.get("num_gpus", 0))
+            .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
+            .debugging(log_level="INFO")
+            .framework(framework="torch")
+            .experimental(_disable_preprocessor_api=True)
+        )
+    
+    else:
+        logger.warning(f"Unknown algorithm '{algorithm_name}', falling back to PPO")
+        algorithm_name = "PPO"
+        # Recursive call with PPO
+        training_config["algorithm"] = "PPO"
+        return create_rllib_config(env_config, global_model_config, local_model_config, training_config, output_dir)
+
+    logger.info(f"Successfully created {algorithm_name} configuration")
     return config
 
 
@@ -395,6 +447,16 @@ def train_rllib(
         max_report_frequency=5,  # Report every 5 seconds
     )
 
+    # Determine algorithm name from config type (for Ray Tune + logging)
+    if isinstance(config, PPOConfig):
+        algo_name = "PPO"
+    elif isinstance(config, ImpalaConfig):
+        algo_name = "IMPALA"
+    else:
+        # Fallback: default to PPO if type is unknown
+        algo_name = "PPO"
+        logger.warning(f"Unknown config type {type(config)}, defaulting algo_name to 'PPO' for Ray Tune.")
+
     # Configure run settings with automatic TensorBoard logging
     run_config = air.RunConfig(
         name="multidc_training",
@@ -404,20 +466,20 @@ def train_rllib(
         verbose=0,  # Reduce verbosity since we have tqdm
         progress_reporter=progress_reporter,
         # TensorBoard logging is enabled by default
-        # Logs will be saved to: {output_dir}/multidc_training/PPO_*/events.out.tfevents.*
+        # Logs will be saved to: {output_dir}/multidc_training/{algo_name}_*/events.out.tfevents.*
     )
 
-    # Create Tuner
+    # Create Tuner with the correct RLlib algorithm (PPO or IMPALA)
     tuner = tune.Tuner(
-        "PPO",
+        algo_name,
         param_space=config.to_dict(),
         run_config=run_config,
     )
 
     logger.info("\n" + "="*70)
     logger.info("Starting training with Ray Tune...")
-    logger.info(f"TensorBoard logs: {output_dir}/multidc_training/PPO_*/")
-    logger.info(f"Checkpoints: {output_dir}/multidc_training/PPO_*/checkpoint_*")
+    logger.info(f"TensorBoard logs: {output_dir}/multidc_training/{algo_name}_*/")
+    logger.info(f"Checkpoints: {output_dir}/multidc_training/{algo_name}_*/checkpoint_*")
     logger.info("="*70 + "\n")
 
     try:
