@@ -1,11 +1,13 @@
 package giu.edu.cspg.common;
 import giu.edu.cspg.common.DatacenterConfig;
+import giu.edu.cspg.energy.TimeScalingMode;
 
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.ToString;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -62,8 +64,57 @@ public class DatacenterConfig {
 
     // === Green Energy Configuration ===
     private final boolean greenEnergyEnabled;
-    private final int turbineId;           // Wind turbine ID for this datacenter
-    private final String windDataFile;     // Path to wind power CSV file
+
+    /**
+     * List of wind turbine IDs for this datacenter.
+     * Multiple turbines can supply power to a single datacenter.
+     * Use @Singular to enable builder.turbineId(57).turbineId(58) syntax.
+     */
+    @Singular("turbineId")
+    private final List<Integer> turbineIds;
+
+    private final String windDataFile;              // Path to wind power CSV file
+    @Builder.Default
+    private final TimeScalingMode timeScalingMode = TimeScalingMode.REAL_TIME;  // Time scaling mode (default: REAL_TIME)
+    
+    // Future energy forecast configuration
+    @Builder.Default
+    private final int shortTermRows = 3;            // Short-term forecast (default: 3 rows = 30 min)
+    @Builder.Default
+    private final int longTermRows = 144;           // Long-term forecast (default: 144 rows = 24 hours)
+
+    /**
+     * Time zone offset for geo-distributed simulation (in CSV rows).
+     * In COMPRESSED mode: 1 row = 10 min real time, so 6 hours = 36 rows.
+     * This simulates different geographic locations with different local times.
+     * Example offsets:
+     *   - US West (PST):     0 rows (baseline)
+     *   - US East (EST):    18 rows (+3 hours)
+     *   - Europe (CET):     54 rows (+9 hours)
+     *   - Asia Pacific:     96 rows (+16 hours)
+     */
+    @Builder.Default
+    private final int timeZoneOffsetRows = 0;
+
+    // === Carbon Emission Factors ===
+    /**
+     * Carbon emission factor for brown energy (kg CO2 per kWh).
+     * Represents the carbon intensity of the grid electricity at this datacenter's location.
+     * Typical values:
+     * - Coal-heavy grid: ~0.8 kg/kWh
+     * - Natural gas grid: ~0.5 kg/kWh
+     * - Clean grid (hydro/nuclear): ~0.3 kg/kWh
+     */
+    @Builder.Default
+    private final double brownCarbonFactor = 0.5;  // Default: 0.5 kg CO2/kWh (natural gas grid)
+
+    /**
+     * Carbon emission factor for green energy (kg CO2 per kWh).
+     * Represents lifecycle emissions from wind turbine manufacturing and maintenance.
+     * Typical value: ~0.01 kg/kWh
+     */
+    @Builder.Default
+    private final double greenCarbonFactor = 0.01;  // Default: 0.01 kg CO2/kWh (lifecycle emissions)
 
     // === VM Lifecycle Delays ===
     private final double vmStartupDelay;   // Time (sec) for VM to boot
@@ -171,6 +222,37 @@ public class DatacenterConfig {
      */
     public long getLargeVmRam() {
         return smallVmRam * largeVmMultiplier;
+    }
+
+    /**
+     * Get turbine IDs list.
+     * Returns the list of turbine IDs, or a default list with turbine 57 if not configured.
+     */
+    public List<Integer> getTurbineIds() {
+        if (turbineIds == null || turbineIds.isEmpty()) {
+            return List.of(57);  // Default turbine
+        }
+        return turbineIds;
+    }
+
+    /**
+     * Get single turbine ID (backward compatibility).
+     * Returns the first turbine ID from the list.
+     * @deprecated Use getTurbineIds() for multi-turbine support
+     */
+    @Deprecated
+    public int getTurbineId() {
+        if (turbineIds == null || turbineIds.isEmpty()) {
+            return 57;  // Default turbine
+        }
+        return turbineIds.get(0);
+    }
+
+    /**
+     * Get number of turbines configured for this datacenter.
+     */
+    public int getTurbineCount() {
+        return getTurbineIds().size();
     }
 
     /**

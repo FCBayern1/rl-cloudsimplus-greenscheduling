@@ -14,6 +14,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
 
 /**
  * Encapsulates all runtime state and components for a single datacenter
@@ -43,7 +44,11 @@ public class DatacenterInstance {
     private List<Vm> vmPool;
 
     // === Green Energy ===
-    private GreenEnergyProvider greenEnergyProvider;
+    /**
+     * List of green energy providers (one per wind turbine).
+     * Multiple turbines can supply power to a single datacenter.
+     */
+    private List<GreenEnergyProvider> greenEnergyProviders = new ArrayList<>();
 
     // === Energy Tracking ===
     private double cumulativeGreenEnergyWh = 0.0;   // Total green energy consumed
@@ -51,6 +56,18 @@ public class DatacenterInstance {
     private double totalWastedGreenWh = 0.0;        // Total wasted green energy
     private double currentPowerW = 0.0;             // Current power consumption
     private double previousClock = 0.0;             // Previous update time for delta calculation
+
+    // Track previous values for delta calculation
+    private double previousGreenEnergyWh = 0.0;     // Previous cumulative green energy
+    private double previousBrownEnergyWh = 0.0;     // Previous cumulative brown energy
+    private double previousWastedGreenWh = 0.0;     // Previous cumulative wasted green
+
+    // === Carbon Emission Tracking ===
+    private double cumulativeCarbonEmissionKg = 0.0;   // Total carbon emissions for episode (kg CO2)
+    private double previousCarbonEmissionKg = 0.0;     // Previous cumulative carbon emissions (for delta calculation)
+
+    // Latest timestep delta
+    private EnergyMetricsDelta latestEnergyDelta = null;
 
     // === Runtime State ===
     private int cloudletsReceived = 0;      // Total cloudlets assigned to this DC
@@ -90,17 +107,66 @@ public class DatacenterInstance {
      * Check if green energy is enabled for this datacenter.
      */
     public boolean isGreenEnergyEnabled() {
-        return config.isGreenEnergyEnabled() && greenEnergyProvider != null;
+        return config.isGreenEnergyEnabled() && !greenEnergyProviders.isEmpty();
     }
 
     /**
      * Get current green power availability in Watts.
+     * Aggregates power from all turbines.
      */
     public double getCurrentGreenPowerW(double simulationTime) {
         if (!isGreenEnergyEnabled()) {
             return 0.0;
         }
-        return greenEnergyProvider.getCurrentPowerW(simulationTime);
+        return greenEnergyProviders.stream()
+                .mapToDouble(p -> p.getCurrentPowerW(simulationTime))
+                .sum();
+    }
+
+    /**
+     * Add a green energy provider (turbine) to this datacenter.
+     */
+    public void addGreenEnergyProvider(GreenEnergyProvider provider) {
+        if (provider != null) {
+            greenEnergyProviders.add(provider);
+        }
+    }
+
+    /**
+     * Get all green energy providers.
+     */
+    public List<GreenEnergyProvider> getGreenEnergyProviders() {
+        return greenEnergyProviders;
+    }
+
+    /**
+     * Get single green energy provider (backward compatibility).
+     * Returns the first provider or null if none.
+     * @deprecated Use getGreenEnergyProviders() for multi-turbine support
+     */
+    @Deprecated
+    public GreenEnergyProvider getGreenEnergyProvider() {
+        return greenEnergyProviders.isEmpty() ? null : greenEnergyProviders.get(0);
+    }
+
+    /**
+     * Set single green energy provider (backward compatibility).
+     * Clears existing providers and adds the new one.
+     * @deprecated Use addGreenEnergyProvider() for multi-turbine support
+     */
+    @Deprecated
+    public void setGreenEnergyProvider(GreenEnergyProvider provider) {
+        greenEnergyProviders.clear();
+        if (provider != null) {
+            greenEnergyProviders.add(provider);
+        }
+    }
+
+    /**
+     * Get number of turbines supplying this datacenter.
+     */
+    public int getTurbineCount() {
+        return greenEnergyProviders.size();
     }
 
     /**
@@ -191,6 +257,7 @@ public class DatacenterInstance {
     /**
      * Update energy metrics for this datacenter at current timestep.
      * Calculates power consumption from all hosts and allocates energy between green and brown sources.
+     * Also tracks energy deltas for incremental reward calculation.
      *
      * @param currentClock Current simulation time in seconds
      */
@@ -205,6 +272,11 @@ public class DatacenterInstance {
             return;  // Skip if no time has passed
         }
 
+        // Store previous values for delta calculation
+        previousGreenEnergyWh = cumulativeGreenEnergyWh;
+        previousBrownEnergyWh = cumulativeBrownEnergyWh;
+        previousWastedGreenWh = totalWastedGreenWh;
+
         // Calculate total power consumption from all hosts
         currentPowerW = hostList.stream()
                 .mapToDouble(host -> {
@@ -216,29 +288,73 @@ public class DatacenterInstance {
                 })
                 .sum();
 
+        double deltaGreenUsed = 0.0;
+        double deltaBrownUsed = 0.0;
+        double deltaGreenWasted = 0.0;
+        double availableGreenPower = 0.0;
+
         // Allocate energy if green energy is enabled
         if (isGreenEnergyEnabled()) {
-            giu.edu.cspg.energy.EnergyAllocation allocation = greenEnergyProvider.allocateEnergy(
-                    currentPowerW, currentClock, timeDelta
-            );
+            // Calculate aggregated green power from all turbines
+            availableGreenPower = getCurrentGreenPowerW(currentClock);
+            double timeDeltaHours = timeDelta / 3600.0;
+
+            // Calculate energy amounts in Wh
+            double demandWh = currentPowerW * timeDeltaHours;
+            double greenAvailableWh = availableGreenPower * timeDeltaHours;
+
+            // Prioritize green energy, excess is wasted (no storage)
+            deltaGreenUsed = Math.min(demandWh, greenAvailableWh);
+            deltaBrownUsed = demandWh - deltaGreenUsed;
+            deltaGreenWasted = greenAvailableWh - deltaGreenUsed;
 
             // Update cumulative statistics
-            cumulativeGreenEnergyWh += allocation.getGreenEnergyWh();
-            cumulativeBrownEnergyWh += allocation.getBrownEnergyWh();
-            totalWastedGreenWh += allocation.getWastedGreenWh();
+            cumulativeGreenEnergyWh += deltaGreenUsed;
+            cumulativeBrownEnergyWh += deltaBrownUsed;
+            totalWastedGreenWh += deltaGreenWasted;
 
-            LOGGER.debug("{}: Energy allocated - Green: {}Wh ({}%), Brown: {}Wh, Wasted: {}Wh",
-                    getName(),
-                    allocation.getGreenEnergyWh(),
-                    allocation.getGreenRatio() * 100,
-                    allocation.getBrownEnergyWh(),
-                    allocation.getWastedGreenWh());
+            // Update statistics in each provider (for internal tracking)
+            for (GreenEnergyProvider provider : greenEnergyProviders) {
+                provider.updateCumulativeStatistics(deltaGreenUsed / greenEnergyProviders.size(),
+                        deltaGreenWasted / greenEnergyProviders.size());
+            }
+
+            double greenRatio = demandWh > 0 ? deltaGreenUsed / demandWh * 100 : 0;
+            LOGGER.debug("{}: Energy allocated (multi-turbine) - Green: {:.2f}Wh ({:.1f}%), Brown: {:.2f}Wh, Wasted: {:.2f}Wh, Turbines: {}",
+                    getName(), deltaGreenUsed, greenRatio, deltaBrownUsed, deltaGreenWasted, getTurbineCount());
         } else {
             // No green energy - all brown
             double timeDeltaHours = timeDelta / 3600.0;
             double energyWh = currentPowerW * timeDeltaHours;
             cumulativeBrownEnergyWh += energyWh;
+            deltaBrownUsed = energyWh;
         }
+
+        // Calculate carbon emissions for this timestep
+        // Carbon emission = green_energy × green_factor + brown_energy × brown_factor
+        double deltaGreenKWh = deltaGreenUsed / 1000.0;  // Wh to kWh
+        double deltaBrownKWh = deltaBrownUsed / 1000.0;  // Wh to kWh
+        double deltaCarbonKg = (deltaGreenKWh * config.getGreenCarbonFactor())
+                             + (deltaBrownKWh * config.getBrownCarbonFactor());
+
+        // Update cumulative carbon emissions
+        previousCarbonEmissionKg = cumulativeCarbonEmissionKg;
+        cumulativeCarbonEmissionKg += deltaCarbonKg;
+
+        // Create and store energy delta for this timestep
+        latestEnergyDelta = EnergyMetricsDelta.builder()
+                .deltaGreenEnergyUsedWh(deltaGreenUsed)
+                .deltaBrownEnergyUsedWh(deltaBrownUsed)
+                .deltaGreenEnergyWastedWh(deltaGreenWasted)
+                .deltaCarbonEmissionKg(deltaCarbonKg)
+                .currentPowerW(currentPowerW)
+                .availableGreenPowerW(availableGreenPower)
+                .greenUtilizationRatio(availableGreenPower > 0 ? deltaGreenUsed / (deltaGreenUsed + deltaGreenWasted) : 0.0)
+                .timestepDurationHours(timeDelta / 3600.0)
+                .build();
+
+        LOGGER.debug("{}: Carbon emission - Delta: {:.3f} kg CO2, Cumulative: {:.3f} kg CO2, Intensity: {:.3f} kg/kWh",
+                getName(), deltaCarbonKg, cumulativeCarbonEmissionKg, latestEnergyDelta.getCarbonIntensity());
 
         previousClock = currentClock;
     }
@@ -259,6 +375,21 @@ public class DatacenterInstance {
     }
 
     /**
+     * Get cumulative carbon emissions (kg CO2).
+     */
+    public double getCumulativeCarbonEmissionKg() {
+        return cumulativeCarbonEmissionKg;
+    }
+
+    /**
+     * Get carbon intensity (kg CO2 per kWh) for the entire episode.
+     */
+    public double getCarbonIntensity() {
+        double totalEnergyKWh = getTotalEnergyWh() / 1000.0;
+        return totalEnergyKWh > 0 ? cumulativeCarbonEmissionKg / totalEnergyKWh : 0.0;
+    }
+
+    /**
      * Reset statistics for this datacenter instance.
      */
     public void resetStatistics() {
@@ -273,10 +404,69 @@ public class DatacenterInstance {
         currentPowerW = 0.0;
         previousClock = 0.0;
 
+        // Reset delta tracking
+        previousGreenEnergyWh = 0.0;
+        previousBrownEnergyWh = 0.0;
+        previousWastedGreenWh = 0.0;
+        latestEnergyDelta = null;
+
+        // Reset carbon emissions
+        cumulativeCarbonEmissionKg = 0.0;
+        previousCarbonEmissionKg = 0.0;
+
         if (isGreenEnergyEnabled()) {
-            greenEnergyProvider.resetStatistics();
+            for (GreenEnergyProvider provider : greenEnergyProviders) {
+                provider.resetStatistics();
+            }
         }
-        LOGGER.info("{}: Statistics reset", getName());
+        LOGGER.info("{}: Statistics reset (turbines: {})", getName(), getTurbineCount());
+    }
+
+    /**
+     * Get the latest energy delta for the most recent timestep.
+     * Returns null if no timestep has been processed yet.
+     */
+    public EnergyMetricsDelta getLatestEnergyDelta() {
+        return latestEnergyDelta;
+    }
+
+    /**
+     * Get list of current host CPU utilizations.
+     */
+    public List<Double> getHostUtilizations() {
+        List<Double> utils = new ArrayList<>();
+        if (hostList != null) {
+            for (Host host : hostList) {
+                utils.add(host.getCpuPercentUtilization());
+            }
+        }
+        return utils;
+    }
+
+    /**
+     * Get count of cloudlets received by this datacenter.
+     */
+    public int getCloudletsReceived() {
+        return cloudletsReceived;
+    }
+
+    /**
+     * Get count of cloudlets completed by this datacenter.
+     * Uses the broker's finished list for accurate count.
+     */
+    public int getCloudletsCompleted() {
+        if (localBroker != null) {
+            return localBroker.getCloudletFinishedList().size();
+        }
+        return cloudletsCompleted;  // Fallback to manual counter
+    }
+
+    /**
+     * Get the local broker for this datacenter.
+     * Used for accessing cloudlet statistics like finished list.
+     */
+    public LoadBalancingBroker getLocalBroker() {
+        return localBroker;
     }
 
     @Override

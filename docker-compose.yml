@@ -1,0 +1,119 @@
+# ==============================================================================
+# Docker Compose Configuration for RL Training
+# ==============================================================================
+# Usage:
+#   docker-compose up                    # Start training with default config
+#   docker-compose run train-gpu         # Interactive training
+#   docker-compose run tensorboard       # Start TensorBoard
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Main training service
+  # ===========================================================================
+  train-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rl-multidc:latest
+    container_name: rl-multidc-training
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Environment variables
+    environment:
+      - EXPERIMENT_ID=experiment_multi_dc_3
+      - NUM_WORKERS=4
+      - NUM_GPUS=1
+      - TOTAL_TIMESTEPS=100000
+      - PYTHONUNBUFFERED=1
+
+    # Mount volumes for persistent data
+    volumes:
+      # Logs (readable from Windows)
+      - ./logs:/workspace/logs
+      # Checkpoints (save trained models)
+      - ./checkpoints:/workspace/checkpoints
+      # TensorBoard logs
+      - ./tensorboard:/workspace/tensorboard
+      # Config file (can edit without rebuild)
+      - ./config.yml:/workspace/config.yml:ro
+
+    # Network
+    ports:
+      - "25333:25333"  # Py4J gateway
+      - "6006:6006"    # TensorBoard
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Command
+    command: train
+
+  # ===========================================================================
+  # TensorBoard service (optional)
+  # ===========================================================================
+  tensorboard:
+    image: rl-multidc:latest
+    container_name: rl-multidc-tensorboard
+
+    volumes:
+      - ./tensorboard:/workspace/tensorboard:ro
+
+    ports:
+      - "6006:6006"
+
+    command: tensorboard
+
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Development/Debug service
+  # ===========================================================================
+  dev:
+    image: rl-multidc:latest
+    container_name: rl-multidc-dev
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    volumes:
+      - .:/workspace
+      - ./logs:/workspace/logs
+      - ./checkpoints:/workspace/checkpoints
+
+    ports:
+      - "25333:25333"
+      - "6006:6006"
+      - "8888:8888"  # Jupyter (if needed)
+
+    # Keep container running
+    command: bash -c "tail -f /dev/null"
+
+    stdin_open: true
+    tty: true
+
+# ==============================================================================
+# Named volumes (optional)
+# ==============================================================================
+volumes:
+  logs:
+    driver: local
+  checkpoints:
+    driver: local
+  tensorboard:
+    driver: local

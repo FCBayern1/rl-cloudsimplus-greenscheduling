@@ -157,9 +157,10 @@ def main():
     # --- Check for Multi-Datacenter Mode ---
     is_multi_dc = params.get("multi_datacenter_enabled", False)
     if is_multi_dc and mode == "train":
-        logger.info("Multi-datacenter mode detected, using hierarchical training module")
-        mode_module = "src.training.train_hierarchical_multidc"
-        func_name = "train_hierarchical_multidc"
+        logger.error("Multi-datacenter mode detected!")
+        logger.error("Please use 'entrypoint_pettingzoo.py' for multi-DC training with RLlib.")
+        logger.error("Example: python entrypoint_pettingzoo.py")
+        sys.exit(1)
     else:
         # Map mode to new module structure
         mode_mapping = {
@@ -179,7 +180,7 @@ def main():
             logger.info(f"Successfully imported module: {mode_module}")
         except ModuleNotFoundError as e:
             logger.error(f"Mode script '{mode_module}.py' not found in src/training/ directory.")
-            logger.error(f"Available modes are: 'train', 'transfer', 'test', 'train_hierarchical_multidc'.")
+            logger.error(f"Available modes are: 'train', 'transfer', 'test'.")
             logger.error(f"Error details: {e}")
             sys.exit(1)
 

@@ -36,7 +36,10 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
         super(simulation);
         this.inputCloudlets = new ArrayList<>(inputCloudlets);
         initializeCloudletListeners();
-        this.cloudletsQueue = new PriorityQueue<>(inputCloudlets.size(),
+        // PriorityQueue requires capacity >= 1. Local brokers in multi-DC mode
+        // start empty (cloudlets arrive later), so guard against zero.
+        final int initialCapacity = Math.max(1, inputCloudlets.size());
+        this.cloudletsQueue = new PriorityQueue<>(initialCapacity,
                 (c1, c2) -> Double.compare(c1.getSubmissionDelay(), c2.getSubmissionDelay()));
         this.cloudletsQueue.addAll(inputCloudlets);
         this.cloudletArrivalTimeMap = cloudletsQueue.stream()
@@ -95,8 +98,12 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
                         cloudlet.getVm().getHost(), cloudlet.getVm().getHost().getVmList().size(),
                         getSimulation().clockStr(), String.format("%.2f", cloudlet.getTotalExecutionTime()));
                 cloudletsFinishedLastTimestep.add(cloudlet);
-                final double waitTime = Math
-                        .ceil(cloudlet.getStartTime() - cloudletArrivalTimeMap.get(cloudlet.getId()));
+                
+                // Safe null-check for arrival time
+                final Double arrivalTime = cloudletArrivalTimeMap.get(cloudlet.getId());
+                final double waitTime = (arrivalTime != null) 
+                    ? Math.ceil(cloudlet.getStartTime() - arrivalTime)
+                    : 0.0;
                 cloudletsFinishedWaitTimeLastTimestep.add(waitTime);
                 LOGGER.info("{}: CloudletWaitTime: {}", getSimulation().clockStr(), waitTime);
             }
@@ -160,8 +167,16 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
             return false;
         }
 
+        // Record arrival time for wait time calculation
+        final double arrivalTime = getSimulation().clock();
+        cloudletArrivalTimeMap.put(cloudlet.getId(), arrivalTime);
+
         // Add cloudlet to waiting queue
         cloudletWaitingQueue.offer(cloudlet);
+
+        // IMPORTANT: Also track in inputCloudlets for hasUnfinishedCloudlets() check
+        // This ensures multi-DC mode correctly tracks all received cloudlets
+        inputCloudlets.add(cloudlet);
 
         // Add listeners if not already added
         addOnStartListener(cloudlet);
@@ -184,14 +199,18 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
      * @return true if a cloudlet was successfully assigned and sent for submission,
      *         false otherwise.
      */
-    public boolean assignCloudletToVm(int vmId) {
+    public boolean assignCloudletToVm(long vmId) {
         if (cloudletWaitingQueue.isEmpty()) {
             logger.warn("{}: {} No cloudlets in queue to assign.", getSimulation().clockStr(), getName());
             return false;
         }
 
         // Find the target VM within the broker's currently known execution list
-        Vm vm = getVmFromCreatedList(vmId); // Use internal method
+        // Use stream().filter() to find by long ID instead of getVmFromCreatedList(int)
+        Vm vm = getVmCreatedList().stream()
+                .filter(v -> v.getId() == vmId)
+                .findFirst()
+                .orElse(Vm.NULL);
 
         if (vm == Vm.NULL) {
             logger.warn("{}: {} Cannot assign cloudlet: Target VM {} not found in broker's list.",

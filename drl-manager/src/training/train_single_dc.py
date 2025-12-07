@@ -310,3 +310,12 @@ def train(params: dict):
         # Delete the model from memory
         if 'model' in locals():
             del model
+
+
+def main(params: dict):
+    """Entrypoint wrapper for compatibility with src.training package.
+
+    Args:
+        params: Configuration dictionary passed from callers (e.g., entrypoint).
+    """
+    return train(params)

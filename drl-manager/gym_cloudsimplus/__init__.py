@@ -13,3 +13,10 @@ register(
     # Multi-datacenter hierarchical MARL environment
     # max_episode_steps=2000,
 )
+
+register(
+    id="HierarchicalMultiDCSimple-v0",
+    entry_point="gym_cloudsimplus.envs:HierarchicalMultiDCEnvSimple",
+    # Simplified multi-DC environment WITHOUT God's Eye future prediction features
+    # Suitable for fair comparison and standard RL algorithms (PPO, A2C, DQN)
+)

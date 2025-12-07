@@ -493,7 +493,7 @@ public class LoadBalancerGateway {
         simulationCore.runOneTimestep(); // Run one timestep (default: 1 second)
         double currentClock = simulationCore.getClock();
 
-        // 🔍 DIAGNOSTIC: Log progress every 50 steps to understand why episodes don't finish
+        //  DIAGNOSTIC: Log progress every 50 steps to understand why episodes don't finish
         if (currentStep % 50 == 0 || currentStep == 1) {
             int waiting = simulationCore.getBroker() != null ?
                          simulationCore.getBroker().getWaitingCloudletCount() : 0;

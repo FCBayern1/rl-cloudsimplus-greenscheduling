@@ -19,36 +19,9 @@ Modern cloud computing environments face unprecedented challenges in resource ma
 
 Traditional load balancing algorithms rely on static heuristics that fail to adapt to these complex, evolving conditions. This project introduces a **revolutionary Deep Reinforcement Learning approach** that learns optimal scheduling policies through continuous interaction with the cloud environment.
 
-### � Key Achievements
-
-Our DRL-based approach demonstrates **significant performance improvements** over traditional methods:
-
-| Algorithm          | Mean Completion Time | CPU Utilization | Total Cost Reduction |
-| ------------------ | -------------------- | --------------- | -------------------- |
-| **DRL (Ours)**     | **57.39s**           | **3.28%**       | **$70,277**          |
-| Random             | 57.58s               | 4.60%           | $83,234              |
-| Round Robin        | 70.95s               | 3.39%           | $140,322             |
-| Least Connections  | 70.95s               | 3.39%           | $140,322             |
-| Horizontal Scaling | 4.24s                | 10.13%          | $107,254\*           |
-
 \*Higher infrastructure cost due to aggressive VM scaling
 
-### 🔬 Technical Innovation
-
-- **Adaptive Policy Learning**: Learns optimal task-to-VM assignments through trial-and-error
-- **Multi-Objective Optimization**: Balances completion time, cost, and resource utilization
-- **Real-time Adaptation**: Responds to changing workload patterns within simulation timesteps
-- **Comprehensive Evaluation**: Rigorous comparison with 4 traditional algorithms
-- **Production-Ready**: Scalable architecture suitable for real cloud deployments
-
-### 📈 Research Impact
-
-This framework enables breakthrough research in:
-
-- **Cloud Computing Optimization** - Novel RL formulations for resource management
-- **AI for Systems** - Practical applications of deep learning in distributed systems
-- **Performance Analysis** - Rigorous benchmarking methodologies
-- **Algorithm Development** - Rapid prototyping of new load balancing strategies
+- 
 
 ## 🏗️ Architecture & Design
 
@@ -64,7 +37,7 @@ graph TB
     end
 
     subgraph "Communication Layer"
-        F[Py4J Gateway<br/>Java ↔ Python Bridge]
+        F[Py4J Gateway<br/>Java Python Bridge]
     end
 
     subgraph "Java Simulation Engine (cloudsimplus-gateway)"
@@ -82,7 +55,7 @@ graph TB
 
     B <--> F
     F <--> G
-    H --> M
+    H <--> M
     M --> L
     L --> N
 ```
@@ -100,50 +73,10 @@ graph TB
 ### Directory Structure
 
 ```
-rl-cloudsim-loadbalancer/
-├── 📁 cloudsimplus-gateway/          # Java simulation engine
-│   ├── 📁 src/main/java/giu/edu/cspg/
-│   │   ├── 📄 LoadBalancerGateway.java      # Main Py4J interface
-│   │   ├── 📄 SimulationCore.java           # Core simulation logic
-│   │   ├── 📄 LoadBalancingBroker.java      # Custom CloudSim broker
-│   │   ├── 📄 DatacenterSetup.java          # Infrastructure configuration
-│   │   └── 📁 loadbalancers/                # Traditional algorithms
-│   │       ├── 📄 RandomLoadBalancer.java
-│   │       ├── 📄 RoundRobinLoadBalancer.java
-│   │       ├── 📄 LeastConnectionsLoadBalancer.java
-│   │       └── 📄 HorizontalVmScalingLoadBalancer.java
-│   ├── 📄 build.gradle                      # Build configuration
-│   └── 📁 gradle/                           # Gradle wrapper
-├── 📁 drl-manager/                          # Python RL environment
-│   ├── 📁 gym_cloudsimplus/                 # Custom Gymnasium env
-│   │   └── 📁 envs/
-│   │       └── 📄 loadbalancing_env.py      # Main RL environment
-│   ├── 📁 mnt/                              # Training/testing scripts
-│   │   ├── 📄 train.py                      # Agent training
-│   │   ├── 📄 test.py                       # Agent evaluation
-│   │   └── 📁 callbacks/                    # Training callbacks
-│   ├── 📁 tests/                            # Integration tests
-│   └── 📄 setup.py                          # Python package setup
-├── 📁 data-analysis/                        # Results analysis
-│   ├── 📄 analysis.ipynb                    # Main analysis notebook
-│   ├── 📁 data/                             # Experimental results
-│   └── 📁 figs/                             # Generated visualizations
-├── 📁 logs/                                 # Simulation logs
-├── 📁 results/                              # Experimental outputs
-├── 📄 config.yml                            # Global configuration
-├── 📄 README.md                             # This file
-├── 📄 CONTRIBUTING.md                       # Contribution guidelines
-├── 📄 INSTALL.md                            # Detailed installation guide
-└── 📄 LICENSE                               # GPL v3 license
+
 ```
 
-### Key Design Principles
 
-1. **Modularity**: Separates simulation engine, RL framework, and analysis tools
-2. **Extensibility**: Easy addition of new algorithms and metrics
-3. **Reproducibility**: Comprehensive logging and deterministic seeding
-4. **Performance**: Optimized for large-scale experiments
-5. **Research-First**: Built for academic rigor and publication quality
 
 ## 🚀 Quick Start
 
@@ -151,7 +84,7 @@ rl-cloudsim-loadbalancer/
 
 | Requirement | Version | Installation                                       |
 | ----------- | ------- | -------------------------------------------------- |
-| **Java**    | 11+     | [OpenJDK](https://openjdk.org/)                    |
+| **Java**    | 17+     | [OpenJDK](https://openjdk.org/)                    |
 | **Python**  | 3.12+   | [Python.org](https://python.org/)                  |
 | **Gradle**  | 8.0+    | [Gradle.org](https://gradle.org/) (or use wrapper) |
 | **Git**     | Latest  | [Git-SCM](https://git-scm.com/)                    |
@@ -214,6 +147,187 @@ python train.py --timesteps 1000
 ```
 
 Expected results: DRL achieves **18% lower completion time** and **15% cost reduction** compared to traditional methods.
+
+# Linux环境配置
+
+
+
+```zsh
+
+# 前置要求检查
+uname -a
+
+cat /etc/os-release
+```
+
+
+
+```zsh
+
+# 检查是否已安装Java
+
+java -version
+# 检查是否已安装Python*
+
+python3 --version
+```
+
+
+
+```bash
+
+# 1. 安装 Java 21
+
+# 更新包管理器
+
+sudo apt update
+
+
+# 安装 OpenJDK 21
+
+sudo apt install -y openjdk-21-jdk
+
+
+# 验证安装
+
+java -version
+
+# 应该显示: openjdk version "21.x.x"*
+
+
+
+# 设置JAVA_HOME（添加到~/.bashrc）
+
+echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.zshrc
+
+echo 'export PATH=$JAVA_HOME/bin:$PATH' >> ~/.zshrc
+
+source ~/.zshrc
+
+
+# 验证JAVA_HOME
+
+echo $JAVA_HOME
+
+```
+
+
+
+
+
+```bash
+# 2. 配置 Python 环境
+
+
+# 安装Python和pip（如果没有
+
+sudo apt update
+
+sudo apt install -y python3 python3-pip python3-venv
+
+
+# 进入项目目录
+
+cd ~/projects/rl-cloudsimplus-greenscheduling/drl-manager
+
+
+# 创建虚拟环境
+
+python3 -m venv .venv
+
+
+# 激活虚拟环境
+
+source .venv/bin/activate
+
+
+
+# 升级pip
+
+pip install --upgrade pip
+
+
+# 安装依赖
+
+pip install -r requirements_rllib.txt
+
+```
+
+
+
+```zsh
+# 编译 Java Gateway
+
+cd ~/projects/rl-cloudsimplus-greenscheduling/cloudsimplus-gateway
+
+
+# 修复gradlew权限和行尾符（如果需要)
+
+sed -i 's/\r$//' gradlew
+
+chmod +x gradlew
+
+
+# 编译项目
+
+./gradlew build
+
+
+
+# 验证编译成功*
+
+ls -lh build/libs/
+
+
+```
+
+
+
+```zsh
+# 4. GPU配置（可选，如果有NVIDIA GPU）
+
+
+
+*# 检查GPU*
+
+lspci | grep -i nvidia
+
+
+*# 检查NVIDIA驱动*
+
+nvidia-smi
+
+
+# 如果没有nvidia-smi，需要安装驱动*
+
+# Ubuntu 22.04/24.04:
+
+sudo apt update
+sudo apt install -y nvidia-driver-535  *# 或更新版本
+
+
+
+# 重启系统
+
+sudo reboot
+
+
+
+# 重启后验证
+
+nvidia-smi
+
+
+# 验证PyTorch CUDA支持
+
+cd ~/projects/rl-cloudsimplus-greenscheduling/drl-manager
+
+source .venv/bin/activate
+
+python -c "import torch; print(f'CUDA可用: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+```
+
+
 
 ## 📖 Usage Guide
 

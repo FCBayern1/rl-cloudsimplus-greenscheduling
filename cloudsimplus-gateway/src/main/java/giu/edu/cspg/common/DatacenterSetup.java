@@ -18,6 +18,8 @@ import org.cloudsimplus.provisioners.PeProvisionerSimple;
 import org.cloudsimplus.provisioners.ResourceProvisionerSimple;
 import org.cloudsimplus.resources.Pe;
 import org.cloudsimplus.resources.PeSimple;
+import org.cloudsimplus.schedulers.cloudlet.CloudletSchedulerSpaceShared;
+import org.cloudsimplus.schedulers.vm.VmSchedulerSpaceShared;
 import org.cloudsimplus.schedulers.vm.VmSchedulerTimeShared;
 import org.cloudsimplus.vms.Vm;
 import org.cloudsimplus.vms.VmSimple;
@@ -27,6 +29,15 @@ import org.slf4j.LoggerFactory;
 public class DatacenterSetup {
     private static final Logger LOGGER = LoggerFactory.getLogger(DatacenterSetup.class.getSimpleName());
     private static int vmIdCounter = 0; // Counter to ensure unique VM IDs across resets if needed
+
+    /**
+     * Reset the VM ID counter to 0.
+     * Should be called at the beginning of each simulation reset.
+     */
+    public static void resetVmIdCounter() {
+        vmIdCounter = 0;
+        LOGGER.debug("VM ID counter reset to 0");
+    }
 
     /**
      * Creates a Datacenter with a fixed number of Hosts based on settings.
@@ -140,7 +151,7 @@ public class DatacenterSetup {
                 settings.getHostBw(), settings.getHostStorage(), peList)
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerTimeShared()) // Simple time-shared scheduler for Host PEs
+                .setVmScheduler(new VmSchedulerSpaceShared())
                 .setStateHistoryEnabled(true);
 
         // Set power model for energy consumption tracking
@@ -169,7 +180,7 @@ public class DatacenterSetup {
                 profile.getBw(), profile.getStorage(), peList)
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerTimeShared())
+                .setVmScheduler(new VmSchedulerSpaceShared())
                 .setStateHistoryEnabled(true);
 
         // Set power model based on real server characteristics
@@ -233,9 +244,8 @@ public class DatacenterSetup {
                 .setRam(vmRam)
                 .setBw(vmBw)
                 .setSize(vmStorage)
-                // Use OptimizedCloudletScheduler if available & desired
+                // Use OptimizedCloudletScheduler for better fault tolerance and accurate time estimation
                 .setCloudletScheduler(new OptimizedCloudletScheduler())
-                // .setCloudletScheduler(new CloudletSchedulerTimeShared())
                 .setDescription(type); // Set description to S, M, or L initially
 
         // Set startup/shutdown delays specified in settings
@@ -321,7 +331,7 @@ public class DatacenterSetup {
                 )
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerTimeShared())
+                .setVmScheduler(new VmSchedulerSpaceShared())
                 .setStateHistoryEnabled(true);
 
                 // Add default power model
@@ -429,7 +439,8 @@ public class DatacenterSetup {
         Vm vm = new VmSimple(id, 1000, pes);  // 1000 MIPS per PE
         vm.setRam(ram)
                 .setBw(bw)
-                .setSize(storage);
+                .setSize(storage)
+                .setCloudletScheduler(new OptimizedCloudletScheduler());
         return vm;
     }
 }

@@ -1,5 +1,6 @@
 package giu.edu.cspg.multidc;
 import giu.edu.cspg.common.DatacenterConfig;
+import giu.edu.cspg.energy.TimeScalingMode;
 import giu.edu.cspg.singledc.ObservationState;
 import giu.edu.cspg.common.SimulationSettings;
 
@@ -27,6 +28,7 @@ import py4j.GatewayServer;
  */
 public class HierarchicalMultiDCGateway {
     private static final Logger LOGGER = LoggerFactory.getLogger(HierarchicalMultiDCGateway.class.getSimpleName());
+    private static final HierarchicalMultiDCGateway INSTANCE = new HierarchicalMultiDCGateway();
 
     private MultiDatacenterSimulationCore simulationCore;
     private SimulationSettings settings;
@@ -37,6 +39,13 @@ public class HierarchicalMultiDCGateway {
 
     public HierarchicalMultiDCGateway() {
         LOGGER.info("HierarchicalMultiDCGateway created");
+    }
+
+    /**
+     * Singleton accessor used by MainMultiDC/py4j bootstrap.
+     */
+    public static HierarchicalMultiDCGateway getInstance() {
+        return INSTANCE;
     }
 
     /**
@@ -52,6 +61,14 @@ public class HierarchicalMultiDCGateway {
 
         // Parse datacenter configurations
         this.datacenterConfigs = parseDatacenterConfigs(params);
+
+        // Reset existing simulation core so that new settings take effect on next reset().
+        // This is important when Python calls configureSimulation() multiple times
+        // (e.g., training with one config, then evaluation with another).
+        if (this.simulationCore != null) {
+            LOGGER.info("Reconfiguring simulation: clearing existing MultiDatacenterSimulationCore instance.");
+            this.simulationCore = null;
+        }
 
         LOGGER.info("Configuration complete: {} datacenters", datacenterConfigs.size());
         configured = true;
@@ -114,17 +131,20 @@ public class HierarchicalMultiDCGateway {
 
     /**
      * Parse a single datacenter configuration.
+     * Supports heterogeneous host profiles via individual host_count_* fields.
      */
     private DatacenterConfig parseDatacenterConfig(Map<String, Object> dcParams) {
-        return DatacenterConfig.builder()
+        DatacenterConfig.DatacenterConfigBuilder builder = DatacenterConfig.builder()
                 .datacenterId(getIntParam(dcParams, "datacenter_id", 0))
                 .datacenterName(getStringParam(dcParams, "name", "DC_0"))
+                // Legacy homogeneous fields (used as fallback if no profiles specified)
                 .hostsCount(getIntParam(dcParams, "hosts_count", 16))
                 .hostPes(getIntParam(dcParams, "host_pes", 16))
                 .hostPeMips(getLongParam(dcParams, "host_pe_mips", 50000))
                 .hostRam(getLongParam(dcParams, "host_ram", 65536))
                 .hostBw(getLongParam(dcParams, "host_bw", 50000))
                 .hostStorage(getLongParam(dcParams, "host_storage", 100000))
+                // VM configuration
                 .smallVmPes(getIntParam(dcParams, "small_vm_pes", 2))
                 .smallVmRam(getLongParam(dcParams, "small_vm_ram", 8192))
                 .smallVmBw(getLongParam(dcParams, "small_vm_bw", 1000))
@@ -134,22 +154,115 @@ public class HierarchicalMultiDCGateway {
                 .initialSmallVmCount(getIntParam(dcParams, "initial_s_vm_count", 10))
                 .initialMediumVmCount(getIntParam(dcParams, "initial_m_vm_count", 5))
                 .initialLargeVmCount(getIntParam(dcParams, "initial_l_vm_count", 3))
+                // Green energy configuration
                 .greenEnergyEnabled(getBooleanParam(dcParams, "green_energy_enabled", true))
-                .turbineId(getIntParam(dcParams, "turbine_id", 57))
+                // Note: turbine_ids will be added after builder chain
                 .windDataFile(getStringParam(dcParams, "wind_data_file",
                         "windProduction/sdwpf_2001_2112_full.csv"))
+                .timeScalingMode(parseTimeScalingMode(
+                        getStringParam(dcParams, "time_scaling_mode", "REAL_TIME")))
+                // Future energy forecast configuration
+                .shortTermRows(getIntParam(dcParams, "short_term_rows", 3))
+                .longTermRows(getIntParam(dcParams, "long_term_rows", 144))
+                // Timezone offset for geo-distributed simulation (in CSV rows)
+                // 6 rows = 1 hour (each row = 10 min real time)
+                .timeZoneOffsetRows(getIntParam(dcParams, "time_zone_offset_rows", 0))
+                // Carbon emission factors
+                .brownCarbonFactor(getDoubleParam(dcParams, "brown_carbon_factor", 0.5))
+                .greenCarbonFactor(getDoubleParam(dcParams, "green_carbon_factor", 0.01))
+                // VM lifecycle delays
                 .vmStartupDelay(getDoubleParam(dcParams, "vm_startup_delay", 0.0))
-                .vmShutdownDelay(getDoubleParam(dcParams, "vm_shutdown_delay", 0.0))
-                .build();
+                .vmShutdownDelay(getDoubleParam(dcParams, "vm_shutdown_delay", 0.0));
+
+        // Parse heterogeneous host profiles (SPEC servers)
+        int specAcerR520 = getIntParam(dcParams, "host_count_spec_acer_r520", 0);
+        int specAcerAR360 = getIntParam(dcParams, "host_count_spec_acer_ar360", 0);
+        int specAsusRS720E9 = getIntParam(dcParams, "host_count_spec_asus_rs720_e9", 0);
+        int specAsusRS500A = getIntParam(dcParams, "host_count_spec_asus_rs500a", 0);
+        int specAsusRS700A = getIntParam(dcParams, "host_count_spec_asus_rs700a", 0);
+
+        // Parse generic host profiles
+        int lowPower = getIntParam(dcParams, "host_count_low_power", 0);
+        int medium = getIntParam(dcParams, "host_count_medium", 0);
+        int highPerf = getIntParam(dcParams, "host_count_high_performance", 0);
+        int ultraHigh = getIntParam(dcParams, "host_count_ultra_high", 0);
+
+        // Check if any heterogeneous profiles are specified
+        int totalHeterogeneousHosts = specAcerR520 + specAcerAR360 + specAsusRS720E9 +
+                specAsusRS500A + specAsusRS700A + lowPower + medium + highPerf + ultraHigh;
+
+        if (totalHeterogeneousHosts > 0) {
+            // Add host profiles using @Singular builder pattern
+            if (specAcerR520 > 0) builder.hostProfile("SPEC_ACER_R520", specAcerR520);
+            if (specAcerAR360 > 0) builder.hostProfile("SPEC_ACER_AR360", specAcerAR360);
+            if (specAsusRS720E9 > 0) builder.hostProfile("SPEC_ASUS_RS720_E9", specAsusRS720E9);
+            if (specAsusRS500A > 0) builder.hostProfile("SPEC_ASUS_RS500A", specAsusRS500A);
+            if (specAsusRS700A > 0) builder.hostProfile("SPEC_ASUS_RS700A", specAsusRS700A);
+            if (lowPower > 0) builder.hostProfile("LOW_POWER", lowPower);
+            if (medium > 0) builder.hostProfile("MEDIUM", medium);
+            if (highPerf > 0) builder.hostProfile("HIGH_PERFORMANCE", highPerf);
+            if (ultraHigh > 0) builder.hostProfile("ULTRA_HIGH", ultraHigh);
+
+            LOGGER.info("DC {} using heterogeneous hosts: total {} hosts",
+                    getStringParam(dcParams, "name", "DC_?"), totalHeterogeneousHosts);
+        }
+
+        // Parse turbine_ids (multi-turbine support)
+        // Supports both new format (turbine_ids: [57, 58]) and legacy format (turbine_id: 57)
+        List<Integer> turbineIds = parseTurbineIds(dcParams);
+        for (int turbineId : turbineIds) {
+            builder.turbineId(turbineId);  // Uses @Singular to collect into list
+        }
+        LOGGER.debug("DC {} configured with turbines: {}",
+                getStringParam(dcParams, "name", "DC_?"), turbineIds);
+
+        return builder.build();
+    }
+
+    /**
+     * Parse turbine IDs from datacenter configuration.
+     * Supports both new format (turbine_ids: [57, 58]) and legacy format (turbine_id: 57).
+     *
+     * @param dcParams Datacenter parameters
+     * @return List of turbine IDs
+     */
+    @SuppressWarnings("unchecked")
+    private List<Integer> parseTurbineIds(Map<String, Object> dcParams) {
+        List<Integer> turbineIds = new ArrayList<>();
+
+        // Try new format first: turbine_ids: [57, 58, 59]
+        Object turbineIdsObj = dcParams.get("turbine_ids");
+        if (turbineIdsObj instanceof List) {
+            List<?> idList = (List<?>) turbineIdsObj;
+            for (Object idObj : idList) {
+                if (idObj instanceof Integer) {
+                    turbineIds.add((Integer) idObj);
+                } else if (idObj instanceof Number) {
+                    turbineIds.add(((Number) idObj).intValue());
+                } else if (idObj != null) {
+                    turbineIds.add(Integer.parseInt(idObj.toString()));
+                }
+            }
+        }
+
+        // If no turbine_ids found, fall back to legacy single turbine_id
+        if (turbineIds.isEmpty()) {
+            int singleId = getIntParam(dcParams, "turbine_id", 57);
+            turbineIds.add(singleId);
+        }
+
+        return turbineIds;
     }
 
     /**
      * Reset the simulation environment.
+     * Following Gymnasium convention, reset() returns only observations and info,
+     * without rewards or termination flags.
      *
      * @param seed Random seed
      * @return Initial observation state
      */
-    public HierarchicalStepResult reset(int seed) {
+    public HierarchicalResetResult reset(int seed) {
         if (!configured) {
             throw new IllegalStateException("Simulation not configured. Call configureSimulation() first.");
         }
@@ -169,11 +282,13 @@ public class HierarchicalMultiDCGateway {
         GlobalObservationState globalObs = simulationCore.getGlobalObservation();
         Map<Integer, ObservationState> localObs = simulationCore.getLocalObservations();
 
-        return new HierarchicalStepResult(
-                globalObs, localObs,
-                0.0, new HashMap<>(),
-                false, false, new HashMap<>()
-        );
+        // Create info dict with initial metadata
+        Map<String, Object> info = new HashMap<>();
+        info.put("num_datacenters", datacenterConfigs.size());
+        info.put("seed", seed);
+        info.put("episode_start", true);
+
+        return new HierarchicalResetResult(globalObs, localObs, info);
     }
 
     /**
@@ -195,9 +310,11 @@ public class HierarchicalMultiDCGateway {
     /**
      * Get the number of cloudlets arriving in the current time window.
      * Python needs this to know how many global actions to generate.
+     * @deprecated Use getGlobalWaitingCloudletsCount() instead for batch routing mode.
      *
      * @return Number of arriving cloudlets
      */
+    @Deprecated
     public int getArrivingCloudletsCount() {
         if (simulationCore == null) {
             return 0;
@@ -208,6 +325,19 @@ public class HierarchicalMultiDCGateway {
                         simulationCore.getTimestepSize()
                 );
         return arriving.size();
+    }
+
+    /**
+     * Get the number of cloudlets currently in the global waiting queue.
+     * This is the total number of cloudlets available for routing.
+     *
+     * @return Number of cloudlets in global waiting queue
+     */
+    public int getGlobalWaitingCloudletsCount() {
+        if (simulationCore == null) {
+            return 0;
+        }
+        return simulationCore.getGlobalBroker().getGlobalWaitingCloudletsCount();
     }
 
     /**
@@ -271,10 +401,33 @@ public class HierarchicalMultiDCGateway {
         return value != null ? value.toString() : defaultValue;
     }
 
+    /**
+     * Parse TimeScalingMode from string value.
+     *
+     * @param modeStr Mode string ("REAL_TIME" or "COMPRESSED")
+     * @return TimeScalingMode enum value
+     */
+    private TimeScalingMode parseTimeScalingMode(String modeStr) {
+        if (modeStr == null || modeStr.isEmpty()) {
+            return TimeScalingMode.REAL_TIME;  // Default
+        }
+
+        String upperMode = modeStr.trim().toUpperCase();
+        switch (upperMode) {
+            case "COMPRESSED":
+                return TimeScalingMode.COMPRESSED;
+            case "REAL_TIME":
+                return TimeScalingMode.REAL_TIME;
+            default:
+                LOGGER.warn("Unknown time_scaling_mode '{}', defaulting to REAL_TIME", modeStr);
+                return TimeScalingMode.REAL_TIME;
+        }
+    }
+
     // === Main method to start Py4J server ===
 
     public static void main(String[] args) {
-        HierarchicalMultiDCGateway gateway = new HierarchicalMultiDCGateway();
+        HierarchicalMultiDCGateway gateway = HierarchicalMultiDCGateway.getInstance();
         GatewayServer server = new GatewayServer(gateway);
         server.start();
         LOGGER.info("Hierarchical MultiDC Gateway Server started on port 25333");

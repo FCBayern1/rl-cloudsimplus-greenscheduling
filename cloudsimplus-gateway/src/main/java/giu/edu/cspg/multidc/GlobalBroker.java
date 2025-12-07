@@ -2,6 +2,7 @@ package giu.edu.cspg.multidc;
 import giu.edu.cspg.singledc.LoadBalancingBroker;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -13,14 +14,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- *   Global Broker for multi-datacenter environment (Smart Router Mode).
+ *   Global Broker for multi-datacenter environment (Batch Routing Mode).
  *
- *   Instead of maintaining a global queue, this broker acts as an intelligent router:
+ *   This broker implements a batch routing strategy:
  * - Stores all cloudlets with their arrival times (from workload trace)
- * - Provides cloudlets that arrive in the current time window
- * - Routes cloudlets to target datacenters based on Global Agent's decisions
+ * - Maintains a waiting queue for cloudlets to be routed
+ * - Each timestep, provides a fixed-size batch of cloudlets for routing
+ * - Newly arriving cloudlets are added to the waiting queue
  *
- * Design: No queuing delay - cloudlets are routed immediately upon arrival
+ * Design: Fixed batch size per step for stable action space
  */
 public class GlobalBroker extends DatacenterBrokerSimple {
     private static final Logger logger = LoggerFactory.getLogger(GlobalBroker.class.getSimpleName());
@@ -28,11 +30,15 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     // === All Cloudlets (sorted by arrival time) ===
     private final List<Cloudlet> allCloudlets;
 
+    // === Global Waiting Queue ===
+    // Use LinkedList for efficient O(1) removal from head
+    private final LinkedList<Cloudlet> globalWaitingQueue = new LinkedList<>();
+
     // === Datacenter Instances ===
     private final List<DatacenterInstance> datacenterInstances;
 
     // === Routing State ===
-    private int nextCloudletIndex = 0;  // Index of next cloudlet to process
+    private int nextCloudletIndex = 0;  // Index of next cloudlet to process from allCloudlets
 
     /**
      * -- GETTER --
@@ -73,7 +79,51 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     }
 
     /**
+     * Process newly arriving cloudlets for the current time window.
+     * Adds arriving cloudlets to the global waiting queue.
+     *
+     * @param currentTime Current simulation time (seconds)
+     * @param timestep Time window size (seconds)
+     */
+    public void processArrivingCloudlets(double currentTime, double timestep) {
+        double windowEnd = currentTime + timestep;
+        
+        // For the first step, CloudSim clock starts at minTimeBetweenEvents (e.g., 0.1),
+        // but cloudlets may have arrival time starting from 0.0.
+        // Use 0.0 as window start if this appears to be the first step.
+        double windowStart = (currentTime < timestep) ? 0.0 : currentTime;
+
+        int arrivedCount = 0;
+        // Scan from nextCloudletIndex onwards
+        while (nextCloudletIndex < allCloudlets.size()) {
+            Cloudlet cloudlet = allCloudlets.get(nextCloudletIndex);
+            double arrivalTime = cloudlet.getSubmissionDelay();
+
+            // Check if cloudlet arrives in current window
+            if (arrivalTime >= windowStart && arrivalTime < windowEnd) {
+                globalWaitingQueue.add(cloudlet);
+                nextCloudletIndex++;
+                arrivedCount++;
+            } else if (arrivalTime >= windowEnd) {
+                // Future cloudlet, stop scanning
+                break;
+            } else {
+                // Cloudlet arrived in the past (should not happen if sorted)
+                logger.warn("Cloudlet {} has arrival time {} < window start {}. Skipping.",
+                        cloudlet.getId(), arrivalTime, windowStart);
+                nextCloudletIndex++;
+            }
+        }
+
+        if (arrivedCount > 0) {
+            logger.debug("{}: {} cloudlets arrived, global queue size now: {}",
+                    getSimulation().clockStr(), arrivedCount, globalWaitingQueue.size());
+        }
+    }
+
+    /**
      * Get cloudlets that arrive in the time window [currentTime, currentTime + timestep).
+     * (Legacy method for backward compatibility - use processArrivingCloudlets instead)
      *
      * @param currentTime Current simulation time (seconds)
      * @param timestep Time window size (seconds)
@@ -82,33 +132,120 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     public List<Cloudlet> getArrivingCloudlets(double currentTime, double timestep) {
         List<Cloudlet> arriving = new ArrayList<>();
         double windowEnd = currentTime + timestep;
+        
+        double windowStart = (currentTime < timestep) ? 0.0 : currentTime;
 
-        // Scan from nextCloudletIndex onwards
-        while (nextCloudletIndex < allCloudlets.size()) {
-            Cloudlet cloudlet = allCloudlets.get(nextCloudletIndex);
+        // Peek at arriving cloudlets without removing them from allCloudlets
+        for (int i = nextCloudletIndex; i < allCloudlets.size(); i++) {
+            Cloudlet cloudlet = allCloudlets.get(i);
             double arrivalTime = cloudlet.getSubmissionDelay();
 
-            // Check if cloudlet arrives in current window
-            if (arrivalTime >= currentTime && arrivalTime < windowEnd) {
+            if (arrivalTime >= windowStart && arrivalTime < windowEnd) {
                 arriving.add(cloudlet);
-                nextCloudletIndex++;
             } else if (arrivalTime >= windowEnd) {
-                // Future cloudlet, stop scanning
                 break;
-            } else {
-                // Cloudlet arrived in the past (should not happen if sorted)
-                logger.warn("Cloudlet {} has arrival time {} < current time {}. Skipping.",
-                        cloudlet.getId(), arrivalTime, currentTime);
-                nextCloudletIndex++;
             }
         }
 
-        if (!arriving.isEmpty()) {
-            logger.debug("{}: {} cloudlets arriving in window [{}, {})",
-                    getSimulation().clockStr(), arriving.size(), currentTime, windowEnd);
+        return arriving;
+    }
+
+    /**
+     * Get a batch of cloudlets from the waiting queue for routing.
+     * Returns up to batchSize cloudlets (or fewer if queue has less).
+     *
+     * @param batchSize Maximum number of cloudlets to return
+     * @return List of cloudlets to be routed (removed from waiting queue)
+     */
+    public List<Cloudlet> getBatchForRouting(int batchSize) {
+        if (batchSize <= 0 || globalWaitingQueue.isEmpty()) {
+            return new ArrayList<>();
         }
 
-        return arriving;
+        int actualSize = Math.min(batchSize, globalWaitingQueue.size());
+        List<Cloudlet> batch = new ArrayList<>(actualSize);
+        
+        // Remove cloudlets from head of queue (O(1) per removal with LinkedList)
+        for (int i = 0; i < actualSize; i++) {
+            batch.add(globalWaitingQueue.removeFirst());
+        }
+        
+        logger.debug("Provided batch of {} cloudlets for routing, {} remaining in queue",
+                actualSize, globalWaitingQueue.size());
+        
+        return batch;
+    }
+
+    /**
+     * Get the number of cloudlets currently in the global waiting queue.
+     *
+     * @return Number of cloudlets waiting to be routed
+     */
+    public int getGlobalWaitingCloudletsCount() {
+        return globalWaitingQueue.size();
+    }
+
+    /**
+     * Peek at the next cloudlet in the waiting queue without removing it.
+     *
+     * @return Next cloudlet or null if queue is empty
+     */
+    public Cloudlet peekNextCloudlet() {
+        return globalWaitingQueue.peekFirst();  // Returns null if empty
+    }
+
+    /**
+     * Peek at the next batch of cloudlets without removing them from the queue.
+     * Returns up to batchSize cloudlets from the head of the queue.
+     *
+     * @param batchSize Maximum number of cloudlets to peek
+     * @return List of cloudlets (may be smaller than batchSize if queue has fewer cloudlets)
+     */
+    public List<Cloudlet> peekBatch(int batchSize) {
+        List<Cloudlet> batch = new ArrayList<>();
+        int count = Math.min(batchSize, globalWaitingQueue.size());
+
+        // Use iterator to peek without modifying the queue
+        int i = 0;
+        for (Cloudlet cloudlet : globalWaitingQueue) {
+            if (i >= count) break;
+            batch.add(cloudlet);
+            i++;
+        }
+
+        return batch;
+    }
+
+    /**
+     * Calculate the REAL distribution of cloudlets in the waiting queue by PE requirements.
+     * Categories: Small (1-2 PEs), Medium (3-4 PEs), Large (5+ PEs)
+     *
+     * @return Array of [smallCount, mediumCount, largeCount]
+     */
+    public int[] calculatePesDistribution() {
+        int[] distribution = new int[3];  // [small, medium, large]
+        
+        if (globalWaitingQueue.isEmpty()) {
+            return distribution;  // All zeros
+        }
+        
+        // Iterate through the queue and classify each cloudlet
+        for (Cloudlet cloudlet : globalWaitingQueue) {
+            long pesCount = cloudlet.getPesNumber();
+            
+            if (pesCount <= 2) {
+                distribution[0]++;  // Small (1-2 PEs)
+            } else if (pesCount <= 4) {
+                distribution[1]++;  // Medium (3-4 PEs)
+            } else {
+                distribution[2]++;  // Large (5+ PEs)
+            }
+        }
+        
+        logger.trace("Queue PE distribution: Small={}, Medium={}, Large={}", 
+                distribution[0], distribution[1], distribution[2]);
+        
+        return distribution;
     }
 
     /**
@@ -249,14 +386,15 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     }
 
     /**
-     * Reset all statistics.
+     * Reset all statistics and queues.
      */
     public void resetStatistics() {
         totalCloudletsRouted = 0;
         totalCloudletsCompleted = 0;
         nextCloudletIndex = 0;
+        globalWaitingQueue.clear();
         datacenterInstances.forEach(DatacenterInstance::resetStatistics);
-        logger.info("GlobalBroker statistics reset");
+        logger.info("GlobalBroker statistics and waiting queue reset");
     }
 
     /**

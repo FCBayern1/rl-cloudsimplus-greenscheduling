@@ -12,15 +12,22 @@
 
 1. [项目概述](#-项目概述)
 2. [快速开始](#-快速开始)
+   - [单数据中心快速运行](#5分钟快速运行)
+   - [🆕 PettingZoo 多数据中心并行训练](#-5分钟快速运行---pettingzoo-多数据中心并行训练推荐)
 3. [系统架构](#-系统架构)
 4. [强化学习设计](#-强化学习设计)
 5. [配置详解](#-配置详解)
 6. [训练模型](#-训练模型)
+   - [基本训练流程](#基本训练流程)
+   - [多数据中心层次化MARL训练](#多数据中心层次化marl训练)
+   - [🆕 PettingZoo 并行训练](#-pettingzoo-并行训练推荐---真正的同时执行)
+   - [创建自定义实验](#创建自定义实验)
 7. [评估模型](#-评估模型)
 8. [工作负载管理](#-工作负载管理)
 9. [结果分析](#-结果分析)
 10. [常见问题](#-常见问题)
 11. [最佳实践](#-最佳实践)
+12. [快速命令参考](#-快速命令参考)
 
 ---
 
@@ -32,6 +39,10 @@
 
 - ✅ **绿色调度优化** - 能源效率感知的任务调度
 - ✅ **深度强化学习** - 支持 PPO、MaskablePPO、A2C 等算法
+- ✅ **多数据中心层次化 MARL** - 全局路由 + 本地调度的两层智能体系统
+- ✅ **联合训练框架** - Alternating 和 Simultaneous 两种训练策略
+- ✅ **完整的监控和日志** - 实时训练进度、TensorBoard 可视化、自动保存最佳模型
+- ✅ **可重复性保证** - 随机种子管理、配置自动保存
 - ✅ **灵活的工作负载** - 支持 SWF 和 CSV 格式
 - ✅ **完整的实验框架** - 从训练到评估的完整流程
 - ✅ **详细的性能分析** - 能源消耗、成本、利用率等多维度指标
@@ -121,11 +132,154 @@ tensorboard --logdir=logs
 .venv/Scripts/python.exe analyze_training.py --log_dir D:\rl-cloudsimplus-greenscheduling\logs\QuickTests\exp3_csv_quick
 
 .venv/Scripts/python.exe monitor_success_rate.py --log_dir D:\rl-cloudsimplus-greenscheduling\logs\QuickTests\exp3_csv_quick
-
-
 ```
 
+---
 
+### 🆕 5分钟快速运行 - PettingZoo 多数据中心并行训练（推荐）
+
+**适用场景：** 多数据中心层次化 MARL、真正的并行训练、风力预测集成、碳排放优化
+
+**可用实验：**
+- `experiment_multi_dc_3` - 3个数据中心（快速测试）
+- `experiment_multi_dc_5` - 5个数据中心（完整实验，推荐）⭐
+
+#### 步骤 1: 启动 MultiDC Java Gateway
+
+```bash
+# Git Bash（推荐）
+cd cloudsimplus-gateway
+./gradlew build -x test  # 首次运行需要构建
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+
+# 等待看到: "Gateway Server Started on 0.0.0.0:25333"
+```
+
+```powershell
+# PowerShell
+cd cloudsimplus-gateway
+.\gradlew.bat build -x test
+.\gradlew.bat run "-PappMainClass=giu.edu.cspg.MainMultiDC"
+```
+
+#### 步骤 2: 激活 Python 虚拟环境并安装依赖
+
+```bash
+# Git Bash
+cd drl-manager
+source .venv/Scripts/activate  # Windows
+# source .venv/bin/activate    # Linux/Mac
+
+# 安装 RLlib 依赖（首次运行）
+pip install -r requirements_rllib.txt
+```
+
+```powershell
+# PowerShell
+cd drl-manager
+.venv\Scripts\Activate.ps1
+
+# 安装 RLlib 依赖（首次运行）
+pip install -r requirements_rllib.txt
+```
+
+#### 步骤 3: 运行 PettingZoo 并行训练
+
+##### 🌟 运行实验5（5个数据中心 - 推荐）
+
+```bash
+# Git Bash - 方式 A: 使用默认配置（最简单）
+python entrypoint_pettingzoo.py
+
+# 方式 B: 运行实验5（5个数据中心 + 碳排放优化）⭐
+export EXPERIMENT_ID="experiment_multi_dc_5"
+export NUM_WORKERS=0        # Windows建议设为0
+export TOTAL_TIMESTEPS=32000
+python entrypoint_pettingzoo.py
+
+# 方式 C: 使用命令行参数（完整控制）
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_5 \
+    --num-workers 0 \
+    --total-timesteps 32000 \
+    --num-gpus 1
+
+# 方式 D: 快速测试实验5环境
+python entrypoint_pettingzoo.py --test --experiment experiment_multi_dc_5
+```
+
+```powershell
+# PowerShell - 运行实验5（推荐）
+$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+$env:NUM_WORKERS = 0
+$env:TOTAL_TIMESTEPS = 32000
+python entrypoint_pettingzoo.py
+
+# 或使用命令行参数
+python entrypoint_pettingzoo.py `
+    --experiment experiment_multi_dc_5 `
+    --num-workers 0 `
+    --total-timesteps 32000 `
+    --num-gpus 1
+```
+
+##### 运行实验3（3个数据中心 - 快速测试）
+
+```bash
+# Git Bash
+export EXPERIMENT_ID="experiment_multi_dc_3"
+export NUM_WORKERS=0
+export TOTAL_TIMESTEPS=100000
+python entrypoint_pettingzoo.py
+```
+
+```powershell
+# PowerShell
+$env:EXPERIMENT_ID = "experiment_multi_dc_3"
+python entrypoint_pettingzoo.py
+```
+
+#### 步骤 4: 监控训练进度
+
+```bash
+# 查看实时训练日志
+tail -f logs/experiment_multi_dc_3_*/current_run.log
+
+# TensorBoard 可视化
+tensorboard --logdir=logs/experiment_multi_dc_3_*
+
+# 浏览器打开 http://localhost:6006
+```
+
+```powershell
+# PowerShell - 查看实时日志
+Get-Content logs\experiment_multi_dc_3_*\current_run.log -Wait -Tail 50
+
+# TensorBoard
+tensorboard --logdir=logs\experiment_multi_dc_3_*
+```
+
+#### PettingZoo 训练特点：
+
+- ✅ **真正的并行执行** - Global 和 Local 智能体同时训练
+- ✅ **自动参数共享** - Local 智能体共享神经网络
+- ✅ **风力预测集成** - 提供未来 8 步功率预测
+- ✅ **Action Masking** - 智能动作掩码
+- ✅ **RLlib 框架** - 专业 MARL 训练框架
+- ✅ **自动检查点** - 定期保存模型
+
+#### 训练输出位置：
+
+```
+logs/experiment_multi_dc_3_<timestamp>/
+├── checkpoints/              # RLlib 检查点
+├── tensorboard/              # TensorBoard 日志
+├── config_used.yml           # 使用的配置
+├── seed_used.txt             # 随机种子
+└── current_run.log           # 训练日志
+```
+
+---
 
 ## 🏗️ 系统架构
 
@@ -165,39 +319,91 @@ CloudSim Plus Simulation (Java)
 ```
 rl-cloudsimplus-greenscheduling/
 ├── 📄 config.yml                          # 主配置文件
+├── 📄 docker-compose.yml                  # Docker编排配置
+├── 📄 Dockerfile                          # Docker镜像定义
 ├── 📄 README.md                           # 英文文档
 ├── 📄 README_CN.md                        # 中文文档（本文件）
-├── 📄 QUICK_REFERENCE.md                  # 快速参考
+├── 📄 WSL_SETUP_COMPLETED.md              # WSL安装指南
 │
 ├── 📁 cloudsimplus-gateway/               # Java模拟引擎
 │   ├── 📁 src/main/java/giu/edu/cspg/
-│   │   ├── LoadBalancerGateway.java      # Py4J接口
-│   │   ├── SimulationCore.java           # 核心模拟逻辑
+│   │   ├── LoadBalancerGateway.java      # 单DC Py4J接口
+│   │   ├── MainMultiDC.java              # 🆕 多DC主入口
+│   │   ├── SimulationCore.java           # 单DC模拟核心
+│   │   ├── MultiDCSimulation.java        # 🆕 多DC模拟核心
 │   │   └── ...
 │   ├── 📁 src/main/resources/
-│   │   └── 📁 traces/                    # 工作负载文件
+│   │   └── 📁 traces/                    # 工作负载文件（CSV/SWF）
+│   ├── 📁 build/                         # 编译输出
+│   ├── 📁 logs/cloudsimplus/             # Java端日志
+│   ├── 📁 results/                       # Java端仿真结果
 │   ├── build.gradle
 │   └── gradlew / gradlew.bat
 │
-├── 📁 drl-manager/                        # Python RL环境
+├── 📁 drl-manager/                        # Python RL训练管理
 │   ├── 📁 .venv/                         # Python虚拟环境
-│   ├── 📁 gym_cloudsimplus/
-│   │   └── 📁 envs/
-│   │       └── loadbalancing_env.py      # RL环境实现
-│   ├── 📁 mnt/
-│   │   ├── entrypoint.py                 # 🚀 主入口
-│   │   ├── train.py                      # 训练模块
-│   │   ├── test.py                       # 评估模块
-│   │   └── 📁 utils/
-│   │       └── config_loader.py          # 配置加载器
+│   │
+│   ├── 📁 gym_cloudsimplus/              # Gymnasium环境
+│   │   ├── 📁 envs/
+│   │   │   ├── loadbalancing_env.py      # 单DC环境
+│   │   │   ├── multidc_routing_env.py    # 🆕 多DC路由环境
+│   │   │   ├── multidc_pettingzoo_env.py # 🆕 PettingZoo并行环境
+│   │   │   └── ...
+│   │   └── 📁 wrappers/                  # 环境包装器
+│   │
+│   ├── 📁 src/                           # 核心源代码
+│   │   ├── 📁 callbacks/                 # 训练回调（日志、检查点）
+│   │   ├── 📁 evaluation/                # 评估脚本
+│   │   ├── 📁 models/                    # 模型定义
+│   │   ├── 📁 networks/                  # 神经网络架构
+│   │   ├── 📁 prediction/                # 🆕 风力预测模块
+│   │   ├── 📁 training/                  # 训练脚本
+│   │   │   ├── train_hierarchical_multidc_joint.py  # 层次化联合训练
+│   │   │   ├── train_rllib_multidc.py               # 🆕 RLlib并行训练
+│   │   │   └── ...
+│   │   └── 📁 utils/                     # 工具函数
+│   │
+│   ├── 📁 scripts/                       # 辅助脚本
+│   │   ├── analyze_training.py           # 训练分析
+│   │   ├── generate_workload.py          # 工作负载生成
+│   │   ├── monitor_success_rate.py       # 成功率监控
+│   │   └── ...
+│   │
+│   ├── 📁 tests/                         # 单元测试
+│   │   ├── test_pettingzoo_wind_prediction.py  # 🆕 PettingZoo测试
+│   │   └── ...
+│   │
+│   ├── 📁 docs/                          # 详细文档
+│   │   ├── MARL_REFACTORING_PLAN.md      # MARL重构计划
+│   │   ├── MULTI_DC_ARCHITECTURE_GUIDE.md  # 多DC架构指南
+│   │   ├── TENSORBOARD_METRICS_GUIDE.md    # TensorBoard指标说明
+│   │   └── ...
+│   │
+│   ├── entrypoint.py                     # 🚀 单DC主入口
+│   ├── entrypoint_multidc.py             # 🚀 多DC层次化训练入口
+│   ├── entrypoint_pettingzoo.py          # 🚀 PettingZoo并行训练入口
+│   ├── requirements_rllib.txt            # RLlib依赖
 │   └── setup.py
 │
 ├── 📁 data-analysis/                      # 数据分析
 │   ├── analysis.ipynb                    # Jupyter分析笔记本
-│   └── generate_workload.py             # 工作负载生成器
+│   ├── generate_workload.py             # 工作负载生成器
+│   ├── 📁 data/                          # 分析数据
+│   └── 📁 figs/                          # 可视化图表
 │
-├── 📁 logs/                              # 实验日志（自动生成）
-└── 📁 results/                           # 结果文件（自动生成）
+├── 📁 SWF_Prediction/                     # 🆕 风力预测模块
+│   ├── 📁 Data/                          # SDWPF数据集
+│   ├── 📁 models/                        # 预测模型（CViTRNN）
+│   ├── 📁 scripts/                       # 数据处理脚本
+│   └── PROJECT_GUIDE.md
+│
+├── 📁 logs/                              # 训练日志（自动生成）
+│   ├── 📁 CSV_Train/                     # 单DC CSV训练
+│   ├── 📁 multi_dc_training/             # 多DC层次化训练
+│   ├── 📁 experiment_multi_dc_*/         # PettingZoo并行训练
+│   └── ...
+│
+└── 📁 results/                           # 仿真结果（Java端生成）
 ```
 
 ---
@@ -525,32 +731,65 @@ python ./drl-manager/mnt/entrypoint.py  # 默认使用 experiment_1
 
 ### 多数据中心层次化MARL训练
 
-训练一个层次化多智能体系统，包含全局路由智能体和多个数据中心的本地调度智能体：
+训练一个层次化多智能体系统，包含全局路由智能体和多个数据中心的本地调度智能体。
+
+#### 方法 1: 使用 entrypoint_multidc.py（推荐）✅
+
+最简单的启动方式，自动管理配置、种子和日志：
 
 ```bash
 # 步骤 1: 启动 Java Gateway (终端1)
 cd cloudsimplus-gateway
-./gradlew run
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC          # Bash/Git Bash
+.\gradlew.bat run "-PappMainClass=giu.edu.cspg.MainMultiDC"     # PowerShell/Windows
 
 # 步骤 2: 运行 Multi-DC 训练 (终端2)
 cd drl-manager
+source .venv/bin/activate   # Linux/Mac
+.venv\Scripts\activate      # Windows
 
-# 激活虚拟环境
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows
+# 方式 A: 直接运行（使用默认配置）
+#$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+export EXPERIMENT_ID="experiment_multi_dc_5"
 
-# 运行3数据中心层次化实验
-export EXPERIMENT_ID="experiment_multi_dc_3"  # Linux/Mac
-# $env:EXPERIMENT_ID="experiment_multi_dc_3"  # PowerShell
+python drl-manager/entrypoint_multidc.py
 
-python mnt/entrypoint.py
+# 方式 B: 使用环境变量配置
+export CONFIG_FILE="../config.yml"
+export EXPERIMENT_ID="experiment_multi_dc_5"
+export SEED="2025"
+python entrypoint_pettingzoo.py
+```
 
-# 或在PowerShell中直接指定
-$env:EXPERIMENT_ID="experiment_multi_dc_3"
-python mnt/entrypoint.py
+```powershell
+# PowerShell
+$env:CONFIG_FILE = "..\config.yml"
+$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+$env:SEED = "2025"
+python entrypoint_pettingzoo.py
+```
+
+#### 方法 2: 直接调用训练脚本
+
+```bash
+cd drl-manager
+python -m src.training.train_hierarchical_multidc_joint \
+    --config ../config.yml \
+    --experiment experiment_multi_dc_3 \
+    --strategy alternating \
+    --seed 2025
+```
+
+#### 方法 3: 使用旧版 entrypoint（已过时）
+
+```bash
+# 不推荐：旧版 entrypoint.py 调用的是独立训练脚本
+export EXPERIMENT_ID="experiment_multi_dc_3"
+python entrypoint.py
 ```
 
 **Multi-DC 特性：**
+
 - **全局智能体（Global Agent）**：将到达的任务路由到最优数据中心，基于：
   - 所有数据中心的总能耗
   - 绿色能源可用性和使用比例
@@ -564,54 +803,758 @@ python mnt/entrypoint.py
 - **独立绿色能源**：每个DC使用不同的风力涡轮机（ID: 57, 58, 59）
 
 **训练配置示例：**
+
 ```yaml
 experiment_multi_dc_3:
+  # === 基础配置 ===
   multi_datacenter_enabled: true  # 启用多数据中心模式
-  max_arriving_cloudlets: 50      # 每时间步最多到达任务数
-  timesteps: 150000               # 总训练步数
-  max_episode_length: 2000        # Episode最大长度
+  mode: "train"
+  timesteps: 50000                # ✅ 总训练步数（会自动分配到 cycles）
+  seed: 2025                      # ✅ 随机种子（或 "random"）
+  max_episode_length: 1000        # Episode 最大长度
+  save_experiment: true
+  verbose: 1
+  device: "auto"
 
-  # 全局智能体配置
+  # === 联合训练配置（可选，提供更精细控制）===
+  joint_training:
+    enabled: true
+    strategy: "alternating"       # "alternating" 或 "simultaneous"
+
+    # Alternating 策略参数
+    alternating:
+      num_cycles: 10                     # 训练周期数
+      global_steps_per_cycle: 2500       # 每周期 Global Agent 训练步数
+      local_steps_per_cycle: 2500        # 每周期 Local Agent 训练步数
+      # 总步数 = num_cycles × (global_steps + local_steps) = 50000
+
+    checkpoint_freq: 5000          # 每 N 步保存检查点
+    log_freq: 100                  # 每 N 步记录日志
+
+  # === 数据中心配置 ===
+  datacenters:
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      hosts_count: 30
+      initial_s_vm_count: 20       # 小型 VM 数量
+      initial_m_vm_count: 10       # 中型 VM 数量
+      initial_l_vm_count: 6        # 大型 VM 数量
+      # ... 其他配置
+
+  # === 全局智能体奖励权重 ===
   global_agent:
-    algorithm: "PPO"
     reward_total_energy_coef: 2.0      # 最小化总能耗
     reward_green_ratio_coef: 3.0       # 最大化绿色能源使用比例
     reward_load_balance_coef: 1.5      # DC间负载均衡
 
-  # 本地智能体配置
+  # === 本地智能体奖励权重 ===
   local_agents:
-    algorithm: "MaskablePPO"
     parameter_sharing: true            # 参数共享
     reward_wait_time_coef: 1.0         # 最小化本地等待时间
     reward_utilization_coef: 0.8       # 最大化本地利用率
 ```
 
+**配置参数说明：**
+
+| 参数 | 说明 | 默认值 | 优先级 |
+|------|------|--------|--------|
+| `timesteps` | 总训练步数 | 100000 | 如果没有 `joint_training.alternating`，会自动计算 cycles |
+| `seed` | 随机种子 | 随机生成 | 命令行 > 配置文件 > 自动生成 |
+| `joint_training.alternating.num_cycles` | 训练周期数 | 10 | 最高优先级（如果配置） |
+| `joint_training.alternating.global_steps_per_cycle` | 每周期 Global 步数 | 10000 | - |
+| `joint_training.alternating.local_steps_per_cycle` | 每周期 Local 步数 | 10000 | - |
+
+**两种配置方式：**
+
+1. **简单模式**：只指定 `timesteps`，系统自动分配
+   ```yaml
+   timesteps: 50000  # 自动分配为 10 cycles × 2500 步/agent
+   ```
+
+2. **精细模式**：完全控制 cycles 和每周期步数
+   ```yaml
+   joint_training:
+     alternating:
+       num_cycles: 5
+       global_steps_per_cycle: 6000
+       local_steps_per_cycle: 4000
+   # 总计：5 × (6000 + 4000) = 50000 步
+   ```
+
 **监控 Multi-DC 训练：**
+
 ```bash
-# TensorBoard可视化
-tensorboard --logdir=logs/Multi_Datacenter
-
 # 查看实时日志
-tail -f logs/Multi_Datacenter/hierarchical_3dc/current_run.log
+tail -f logs/multi_dc_training/20250110_143022/current_run.log
 
-# 查看绿色能源指标
-cd logs/Multi_Datacenter/hierarchical_3dc
-cat monitor.csv | grep "green_ratio\|cumulative_energy"
+# TensorBoard 可视化
+tensorboard --logdir=logs/multi_dc_training/20250110_143022/tensorboard
+
+# 查看训练进度
+cat logs/multi_dc_training/20250110_143022/training_progress.csv
+
+# 查看绿色能源指标（从 monitor 目录）
+cat logs/multi_dc_training/20250110_143022/monitor/0.monitor.csv | grep "green_ratio"
 ```
 
-**训练结果位置：**
+### 🆕 PettingZoo 并行训练（推荐 - 真正的同时执行）
+
+使用 PettingZoo ParallelEnv 实现所有智能体的**真正并行执行**，与RLlib等高级MARL框架无缝集成。
+
+#### 什么是PettingZoo并行训练？
+
+**对比传统训练方式：**
+
+| 特性 | 顺序训练 (Sequential) | PettingZoo 并行训练 |
+|------|---------------------|-------------------|
+| **执行方式** | 两阶段轮流训练（先Local后Global） | 所有智能体同时执行 |
+| **协同优化** | ❌ 无法协同（一个固定时另一个才能学） | ✅ 真正的协同优化 |
+| **收敛速度** | 较慢（需要多次迭代） | 更快（并行学习） |
+| **智能体数量** | 1 Global + N Local（分开训练） | 1 Global + N Local（同时训练） |
+| **API标准** | Stable-Baselines3 | PettingZoo（兼容RLlib等） |
+| **适用场景** | 简单实验、快速原型 | 生产级MARL、复杂协同 |
+
+**并行训练的优势：**
+- ✅ **真正的同时执行**：所有智能体在每个时间步同时选择动作
+- ✅ **协同优化**：Global和Local智能体可以互相学习对方的策略
+- ✅ **框架兼容**：支持RLlib、CleanRL等先进MARL框架
+- ✅ **参数共享**：Local智能体自动共享神经网络参数
+- ✅ **Action Masking**：完整支持动作掩码
+
+#### 前置准备
+
+1. **安装RLlib依赖（如果使用RLlib训练）**：
+
+```bash
+cd drl-manager
+.venv/Scripts/python.exe -m pip install -r requirements_rllib.txt
 ```
-logs/Multi_Datacenter/hierarchical_3dc/
-├── global_agent_model/           # 全局智能体模型
-│   ├── best_model.zip           # 最佳全局模型
-│   └── final_model.zip          # 最终全局模型
-├── local_agent_model/           # 本地智能体模型（参数共享）
-│   ├── best_model.zip           # 最佳本地模型
-│   └── final_model.zip          # 最终本地模型
-├── monitor.csv                  # Episode级别统计
-├── progress.csv                 # 训练进度
-└── current_run.log              # 训练日志
+
+2. **配置风力预测（可选但推荐）**：
+
+在 `config.yml` 中启用风力预测：
+
+```yaml
+experiment_multi_dc_3:
+  # ... 其他配置 ...
+
+  # 风力预测配置
+  wind_prediction:
+    enabled: true  # 启用风力预测（提供未来8步功率预测）
+    model_checkpoint: "D:/SWF_Prediction/CViTRNN/checkpoints/cvit_rnn_best_20241115.pth"
+    scalers_path: "D:/SWF_Prediction/CViTRNN/scalers"
+    data_path: "D:/SWF_Prediction/Data/sdwpf_baidukddcup2022_full.npz"
+    turbine_ids: [1, 57, 124]  # 每个数据中心的风机ID
+    turbine_csv_paths:
+      1: "D:/SWF_Prediction/Data/by_turbid/turbine_001.csv"
+      57: "D:/SWF_Prediction/Data/by_turbid/turbine_057.csv"
+      124: "D:/SWF_Prediction/Data/by_turbid/turbine_124.csv"
+    horizon: 8  # 预测未来8步（8秒 in COMPRESSED mode）
+    device: 'cpu'  # 或 'cuda'
+    csv_start_offset: 12  # 时间对齐偏移（不要修改）
 ```
+
+#### 方法 1: 使用 entrypoint_pettingzoo.py（最简单 ⭐推荐）
+
+最简单的一键启动方式，自动处理所有配置：
+
+**步骤 1: 构建并启动 Java Gateway（终端1）**
+
+```bash
+# Git Bash（推荐）
+cd cloudsimplus-gateway
+./gradlew build -x test  # 首次运行或代码修改后需要构建
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+```
+
+```powershell
+# PowerShell
+cd cloudsimplus-gateway
+.\gradlew.bat build -x test
+.\gradlew.bat run "-PappMainClass=giu.edu.cspg.MainMultiDC"
+```
+
+**等待看到：**
+```
+INFO  [GatewayServer] Gateway Server Started on 0.0.0.0:25333
+```
+
+**步骤 2: 启动 PettingZoo 训练（终端2 - 新终端）**
+
+```bash
+# Git Bash - 使用默认配置
+cd drl-manager
+source .venv/Scripts/activate
+python entrypoint_pettingzoo.py
+```
+
+```powershell
+# PowerShell - 使用默认配置
+cd drl-manager
+.venv\Scripts\Activate.ps1
+python entrypoint_pettingzoo.py
+```
+
+**进阶用法：**
+
+```bash
+# 方式 A: 使用环境变量
+export EXPERIMENT_ID="experiment_multi_dc_3"
+export NUM_WORKERS=8
+export TOTAL_TIMESTEPS=200000
+python entrypoint_pettingzoo.py
+
+# 方式 B: 使用命令行参数
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_3 \
+    --num-workers 8 \
+    --total-timesteps 200000 \
+    --num-gpus 1
+
+# 方式 C: 仅测试环境（不训练）
+python entrypoint_pettingzoo.py --test
+```
+
+```powershell
+# PowerShell - 环境变量
+$env:EXPERIMENT_ID = "experiment_multi_dc_3"
+$env:NUM_WORKERS = 8
+$env:TOTAL_TIMESTEPS = 200000
+python entrypoint_pettingzoo.py
+
+# PowerShell - 命令行参数
+python entrypoint_pettingzoo.py `
+    --experiment experiment_multi_dc_3 `
+    --num-workers 8 `
+    --total-timesteps 200000 `
+    --num-gpus 1
+```
+
+**entrypoint_pettingzoo.py 特性：**
+- ✅ **一键启动**：无需记忆复杂的命令路径
+- ✅ **自动配置**：从 config.yml 读取所有设置
+- ✅ **智能检查**：启动前验证 Java Gateway 连接
+- ✅ **灵活配置**：支持环境变量、命令行参数、配置文件三种方式
+- ✅ **测试模式**：`--test` 快速验证环境配置
+- ✅ **详细日志**：清晰的进度和错误提示
+
+---
+
+#### 方法 2: 直接调用 train_rllib_multidc.py
+
+如果您需要更多控制，可以直接调用训练脚本：
+
+**步骤 1: 构建并启动 Java Gateway**
+
+```bash
+# Git Bash（推荐）
+cd cloudsimplus-gateway
+./gradlew build -x test  # 首次运行或代码修改后需要构建
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+```
+
+```powershell
+# PowerShell
+cd cloudsimplus-gateway
+.\gradlew.bat build -x test
+.\gradlew.bat run "-PappMainClass=giu.edu.cspg.MainMultiDC"
+```
+
+**等待看到：**
+```
+INFO  [GatewayServer] Gateway Server Started on 0.0.0.0:25333
+```
+
+**步骤 2: 启动 RLlib 并行训练（新终端）**
+
+```bash
+# Git Bash
+cd drl-manager
+source .venv/Scripts/activate  # Windows
+# source .venv/bin/activate    # Linux/Mac
+
+# 使用RLlib训练
+python src/training/train_rllib_multidc.py \
+    --config ../config.yml \
+    --experiment experiment_multi_dc_3 \
+    --num-workers 4 \
+    --total-timesteps 100000 \
+    --num-gpus 0
+```
+
+```powershell
+# PowerShell
+cd drl-manager
+.venv\Scripts\Activate.ps1
+
+# 使用RLlib训练
+.venv\Scripts\python.exe src\training\train_rllib_multidc.py `
+    --config ..\config.yml `
+    --experiment experiment_multi_dc_3 `
+    --num-workers 4 `
+    --total-timesteps 100000 `
+    --num-gpus 0
+```
+
+**命令行参数说明：**
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--config` | 配置文件路径 | `../../config.yml` |
+| `--experiment` | 实验名称（config.yml中的key） | `experiment_multi_dc_3` |
+| `--num-workers` | 并行工作进程数 | 4 |
+| `--total-timesteps` | 总训练步数 | 100000 |
+| `--num-gpus` | GPU数量 | 0 |
+| `--output-dir` | 输出目录 | 自动生成（带时间戳） |
+
+**步骤 3: 监控训练进度**
+
+训练日志会实时输出，包括：
+- ✓ 每个iteration的平均episode reward
+- ✓ Global Agent和Local Agents的分别奖励
+- ✓ Episode长度统计
+- ✓ 自动checkpoint保存
+
+```bash
+# 示例输出：
+======================================================================
+Iteration: 10
+Timesteps: 8000 / 100000
+Episode reward mean: 156.32
+Episode length mean: 245.7
+  global_policy reward: 89.45
+  local_policy reward: 66.87
+======================================================================
+```
+
+#### 方法 3: 测试 PettingZoo 环境（不训练）
+
+**方式 A: 使用 entrypoint 测试模式（推荐）**
+
+```bash
+cd drl-manager
+python entrypoint_pettingzoo.py --test
+```
+
+**方式 B: 直接运行测试脚本**
+
+```bash
+cd drl-manager
+.venv/Scripts/python.exe tests/test_pettingzoo_wind_prediction.py
+```
+
+**测试内容：**
+1. ✓ 创建PettingZoo环境
+2. ✓ 验证风力预测集成
+3. ✓ 检查观察空间中的 `dc_predicted_green_power_w`
+4. ✓ 运行几个步骤验证功能
+
+**成功输出示例：**
+```
+✓ Wind prediction is ENABLED in config
+✓ Environment created successfully
+  Agents: ['global_agent', 'local_agent_0', 'local_agent_1', 'local_agent_2']
+✓ Wind predictions found in observation!
+  Prediction shape: (3, 8)
+  Prediction range: [0.00, 850000.00] W
+✓ ALL TESTS PASSED
+```
+
+#### PettingZoo 环境的观察空间
+
+在PettingZoo并行环境中，每个智能体都有独立的观察：
+
+**Global Agent 观察：**
+```python
+observations['global_agent'] = {
+    'simulation_time': 120.0,  # 当前仿真时间
+    'dc_queue_lengths': [5, 3, 7],  # 各DC等待队列长度
+    'dc_active_cloudlets': [12, 8, 15],  # 各DC运行中任务数
+    'dc_predicted_green_power_w': [  # 🆕 风力预测（如果启用）
+        [120000, 125000, 118000, ...],  # DC 0未来8步预测
+        [230000, 235000, 228000, ...],  # DC 1未来8步预测
+        [180000, 182000, 179000, ...]   # DC 2未来8步预测
+    ],
+    # ... 更多全局观察
+}
+```
+
+**Local Agent 观察（每个DC）：**
+```python
+observations['local_agent_0'] = {
+    'vm_loads': [0.75, 0.32, 0.88, ...],  # VM负载
+    'vm_available_pes': [0, 2, 0, ...],   # VM可用核心
+    'waiting_cloudlets': 5,
+    # ... 更多本地观察
+}
+```
+
+#### 智能体行动结构
+
+在每个时间步，所有智能体同时提供动作：
+
+```python
+actions = {
+    'global_agent': np.array([0, 1, 2, 0, 1]),  # 路由5个cloudlet到DC
+    'local_agent_0': 3,  # DC 0: 分配到VM 3
+    'local_agent_1': 1,  # DC 1: 分配到VM 1
+    'local_agent_2': 5   # DC 2: 分配到VM 5
+}
+
+observations, rewards, terminations, truncations, infos = env.step(actions)
+```
+
+#### 常见问题排查
+
+**Q1: RLlib 导入错误**
+```bash
+ImportError: cannot import name 'PPOConfig' from 'ray.rllib.algorithms.ppo'
+```
+**解决方案：**
+```bash
+pip install -r requirements_rllib.txt  # 安装正确的RLlib版本
+```
+
+**Q2: Java Gateway 连接失败**
+```
+Py4JNetworkError: An error occurred while trying to connect to the Java server
+```
+**解决方案：**
+- 确保 Java Gateway 已启动并显示 "Gateway Server Started"
+- 检查端口 25333 是否被占用
+- 确认 `config.yml` 中的 `py4j_port: 25333` 与Java端口一致
+
+**Q3: 风力预测数据不出现**
+```
+✗ Wind predictions NOT found in observation (but enabled in config)
+```
+**解决方案：**
+- 检查 `config.yml` 中 `wind_prediction.enabled: true`
+- 确认 `turbine_csv_paths` 路径正确
+- 检查 CSV 文件是否存在且格式正确
+
+**Q4: 训练速度慢**
+**优化方案：**
+- 增加 `--num-workers`（CPU核心数允许的情况下）
+- 使用 GPU：`--num-gpus 1`
+- 减少 episode 长度：`max_episode_length: 500`
+
+#### 🌟 实验5配置详解（experiment_multi_dc_5）
+
+实验5是一个**大规模5数据中心绿色调度实验**，包含碳排放优化。
+
+##### 数据中心配置
+
+| DC ID | 名称 | 风机ID | 主机数 | 核心/主机 | MIPS | 碳排放因子 (kg CO₂/kWh) |
+|-------|------|--------|--------|----------|------|-------------------------|
+| 0 | DC_HighPerformance | 1 | 20 | 24 | 60000 | Brown:0.8 / Green:0.01 (煤炭重型) |
+| 1 | DC_EnergyEfficient | 57 | 24 | 16 | 50000 | Brown:0.5 / Green:0.01 (天然气) |
+| 2 | DC_Edge | 124 | 12 | 12 | 40000 | Brown:0.6 / Green:0.01 (混合电网) |
+| 3 | DC_MidRange | 80 | 18 | 20 | 55000 | Brown:0.3 / Green:0.01 (清洁电网) |
+| 4 | DC_Regional | 100 | 16 | 18 | 52000 | Brown:0.45 / Green:0.01 (天然气混合) |
+
+**总容量：**
+- 总主机数：90台
+- 总核心数：1,656核
+- 总VM数：154个（初始）
+
+##### 风力数据配置
+
+每个数据中心使用独立的风力涡轮机数据：
+
+```yaml
+datacenters:
+  - turbine_id: 1
+    wind_data_file: "windProduction/split/Turbine_1_2021.csv"
+  - turbine_id: 57
+    wind_data_file: "windProduction/split/Turbine_57_2021.csv"
+  - turbine_id: 124
+    wind_data_file: "windProduction/split/Turbine_124_2021.csv"
+  - turbine_id: 80
+    wind_data_file: "windProduction/split/Turbine_80_2021.csv"
+  - turbine_id: 100
+    wind_data_file: "windProduction/split/Turbine_100_2021.csv"
+```
+
+##### 碳排放优化配置
+
+**碳排放惩罚系数：1000.0** （重要参数）
+
+```yaml
+carbon_emission_penalty_coef: 1000.0
+```
+
+**作用机制：**
+- 总惩罚 = `carbon_emission_penalty_coef × total_carbon_kg`
+- 观察值参考：
+  - 本地奖励量级：~7,800（负值）
+  - 每episode碳排放：~1.0 kg CO₂
+  - 系数1000 → 约13%的惩罚影响
+
+**调优建议：**
+- 如果碳排放不下降：增加到 1500-2000
+- 如果奖励下降太多：减少到 500-800
+- 推荐范围：100-2000
+
+##### 工作负载
+
+```yaml
+workload_mode: "CSV"
+cloudlet_trace_file: "traces/my_uniform.csv"
+```
+
+**生成工作负载：**
+```bash
+cd data-analysis
+python generate_workload.py \
+  --arrival-rate 1\
+  --type uniform \
+  --num-jobs 3000 \
+  --duration 1000 \
+  --output ../cloudsimplus-gateway/src/main/resources/traces/dc10_3000.csv
+```
+
+##### 训练配置
+
+```yaml
+training:
+  total_timesteps: 32000              # 总训练步数（适合5DC规模）
+  num_workers: 0                      # Windows建议0（避免DLL问题）
+  num_gpus: 1                         # 使用GPU加速（RTX 5080）
+  train_batch_size: 4000              # 训练批次大小
+  sgd_minibatch_size: 512             # SGD mini-batch（利用RTX 5080）
+  num_sgd_iter: 10
+  checkpoint_freq_timesteps: 15000    # 每15000步保存检查点
+```
+
+##### 运行实验5（完整命令）
+
+```bash
+# === 终端1: 启动 Java Gateway ===
+cd cloudsimplus-gateway
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+
+# === 终端2: 运行训练 ===
+cd drl-manager
+source .venv/Scripts/activate  # Windows
+
+# 运行实验5
+export EXPERIMENT_ID="experiment_multi_dc_5"
+export NUM_WORKERS=0
+export TOTAL_TIMESTEPS=32000
+python entrypoint_pettingzoo.py
+
+# 或使用命令行参数
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_5 \
+    --num-workers 0 \
+    --total-timesteps 32000 \
+    --num-gpus 1
+```
+
+```powershell
+# PowerShell
+cd drl-manager
+.venv\Scripts\Activate.ps1
+
+$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+$env:NUM_WORKERS = 0
+$env:TOTAL_TIMESTEPS = 32000
+python entrypoint_pettingzoo.py
+```
+
+##### 监控实验5
+
+```bash
+# 实时日志
+tail -f logs/experiment_multi_dc_5_*/current_run.log
+
+# TensorBoard（查看碳排放趋势）
+tensorboard --logdir="logs/experiment_multi_dc_10_*"
+# 浏览器打开 http://localhost:6006
+# 查看指标：
+#   - global_policy/carbon_emission
+#   - global_policy/green_ratio
+#   - local_policy/utilization
+```
+
+##### 实验5的关键指标
+
+训练过程中重点关注：
+
+1. **碳排放（Carbon Emission）**
+   - 目标：逐步下降
+   - 典型值：0.5-2.0 kg CO₂/episode
+
+2. **绿色能源比例（Green Ratio）**
+   - 目标：逐步上升
+   - 理想值：> 60%
+
+3. **负载均衡（Load Balance）**
+   - 各DC的队列长度方差
+   - 目标：保持较低方差
+
+4. **DC利用率分布**
+   - 观察哪些DC被优先使用
+   - 是否学会选择低碳排放的DC
+
+##### 预期训练时间
+
+- **单次episode**：约5-15分钟（取决于工作负载）
+- **32000步**：约2-4小时（RTX 5080 + num_workers=0）
+- **建议**：
+  - 首次测试：TOTAL_TIMESTEPS=5000（约30分钟）
+  - 完整训练：TOTAL_TIMESTEPS=32000-50000
+
+#### 下一步
+
+训练完成后，可以：
+1. **查看训练日志**：`logs/experiment_multi_dc_5_<timestamp>/`
+2. **加载最佳模型**：使用RLlib的checkpoint恢复
+3. **分析碳排放**：对比训练前后的碳排放变化
+4. **评估性能**：编写评估脚本测试训练好的策略
+5. **调整超参数**：修改 `carbon_emission_penalty_coef` 和奖励权重
+
+**训练结果目录结构：**
+
+```
+logs/multi_dc_training/20250110_143022/
+├── config_used.yml              # 使用的配置文件副本
+├── seed_used.txt                # 使用的随机种子
+├── environment_info.txt         # 环境信息（Python/PyTorch 版本）
+├── current_run.log              # 当前运行日志
+├── 2025-01-10_14-30/           # 时间戳目录
+│   └── run.log                  # 详细运行日志
+│
+├── monitor/                     # Episode 统计（Stable-Baselines3 Monitor）
+│   └── 0.monitor.csv           # Episode 级别指标
+│
+├── tensorboard/                 # TensorBoard 日志
+│   ├── global/                 # Global Agent 训练曲线
+│   └── local/                  # Local Agent 训练曲线
+│
+├── training_progress.csv        # ✅ 训练进度（每个 episode）
+├── best_episode_details.csv    # ✅ 最佳 episode 详细数据
+│
+├── best_global_model.zip        # ⭐ 最佳 Global 模型
+├── best_local_model.zip         # ⭐ 最佳 Local 模型
+│
+├── checkpoints/                 # 定期检查点
+│   ├── model_5000_steps.zip
+│   ├── model_10000_steps.zip
+│   └── ...
+│
+├── global_cycle_1.zip          # 每个 cycle 的 Global 模型检查点
+├── local_cycle_1.zip           # 每个 cycle 的 Local 模型检查点
+├── global_cycle_2.zip
+├── local_cycle_2.zip
+├── ...
+│
+└── final_global_model.zip      # 最终 Global 模型
+    final_local_model.zip        # 最终 Local 模型
+```
+
+**训练日志示例：**
+
+```
+======================================================================
+  Cycle 1/10
+======================================================================
+Training Global Agent...
+
+Episode 1 completed (Timestep: 512)
+  Episode Reward: 142.350
+  Global Agent Reward: 85.120
+  Local Agent Reward: 57.230
+  Mean Reward (last 1 eps): 142.350
+  Best Mean Reward: -inf
+============================================================
+🎉 New best mean reward! Saving models...
+  ✅ Saved best global model to best_global_model.zip
+  ✅ Saved best local model to best_local_model.zip
+  ✅ Saved best episode details to best_episode_details.csv
+============================================================
+
+Training Local Agents...
+...
+
+======================================================================
+  Cycle 2/10
+======================================================================
+...
+```
+
+#### 环境变量配置参数
+
+使用 `entrypoint_multidc.py` 时可配置的环境变量：
+
+| 环境变量 | 说明 | 默认值 | 示例 |
+|---------|------|--------|------|
+| `CONFIG_FILE` | 配置文件路径 | `config.yml` | `../config.yml` |
+| `EXPERIMENT_ID` | 实验 ID | `experiment_multi_dc_3` | `experiment_test` |
+| `STRATEGY` | 训练策略 | `alternating` | `alternating` 或 `simultaneous` |
+| `SEED` | 随机种子 | 自动生成 | `2025` 或 `random` |
+| `OUTPUT_DIR` | 输出目录 | `logs/multi_dc_training` | `../logs/my_exp` |
+| `TOTAL_TIMESTEPS` | 总训练步数（覆盖配置） | 从配置文件 | `50000` |
+
+#### 命令行参数（直接调用训练脚本时）
+
+```bash
+python -m src.training.train_hierarchical_multidc_joint \
+    --config ../config.yml          # 配置文件路径
+    --experiment experiment_multi_dc_3  # 实验 ID
+    --strategy alternating          # 训练策略
+    --seed 2025                     # 随机种子
+    --total_timesteps 50000         # 总训练步数
+    --output_dir ../logs/my_exp     # 输出目录
+```
+
+#### 训练策略说明
+
+**Alternating（交替训练）** - 推荐 ✅
+- 先训练 Global Agent，再训练 Local Agent
+- 交替进行多个 cycles
+- 更稳定，收敛更快
+- 适合大多数场景
+
+**Simultaneous（同时训练）** - 实验性 ⚠️
+- 在同一 mini-batch 中同时更新两个智能体
+- 理论上更快收敛
+- 训练不稳定，可能震荡
+- 仅用于研究和实验
+
+#### 常见使用场景
+
+**场景 1: 快速测试**
+```bash
+export TOTAL_TIMESTEPS=5000
+export SEED=2025
+python entrypoint_multidc.py
+```
+
+**场景 2: 批量实验（不同种子）**
+```bash
+for seed in 2025 2026 2027; do
+    export SEED=$seed
+    export OUTPUT_DIR="logs/seed_$seed"
+    python entrypoint_multidc.py
+done
+```
+
+**场景 3: 对比不同策略**
+```bash
+# Alternating
+export STRATEGY=alternating
+export OUTPUT_DIR=logs/alternating
+python entrypoint_multidc.py
+
+# Simultaneous
+export STRATEGY=simultaneous
+export OUTPUT_DIR=logs/simultaneous
+python entrypoint_multidc.py
+```
+
+> **提示：** 联合训练会自动读取 `experiment_multi_dc_3` 中的数据中心配置。若更改数据中心规模，只需修改 `config.yml`，环境会自动调整观测空间维度。
 
 ### 创建自定义实验
 
@@ -926,11 +1869,7 @@ python generate_workload.py \
   --seed 42
 
 # 均匀分布工作负载（用于调试）
-python generate_workload.py \
-  --type uniform \
-  --num-jobs 150 \
-  --duration 300 \
-  --output ../cloudsimplus-gateway/src/main/resources/traces/my_uniform.csv
+python generate_workload.py --type uniform --num-jobs 10000 --duration 2000 --output ../cloudsimplus-gateway/src/main/resources/traces/my_uniform.csv
 
 # 突发型工作负载（压力测试）
 python generate_workload.py \
@@ -1257,6 +2196,110 @@ tensorboard --logdir=logs
 tail -f logs/MyExp/current_run.log
 ```
 
+### 实验5（Multi-DC）问题
+
+**Q: 实验5训练时间过长怎么办？**
+
+减少训练步数用于快速测试：
+```bash
+# 快速测试（约30分钟）
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_5 \
+    --total-timesteps 5000 \
+    --num-gpus 1
+```
+
+**Q: Windows上num_workers应该设置为多少？**
+
+Windows建议设置为0以避免DLL问题：
+```bash
+export NUM_WORKERS=0  # Linux/Mac可以设置为4-8
+```
+
+**Q: 如何调整碳排放惩罚强度？**
+
+修改 `config.yml` 中的系数：
+```yaml
+experiment_multi_dc_5:
+  carbon_emission_penalty_coef: 1000.0  # 默认值
+  
+  # 如果碳排放不下降，增加到：
+  # carbon_emission_penalty_coef: 1500.0 - 2000.0
+  
+  # 如果奖励下降太多，减少到：
+  # carbon_emission_penalty_coef: 500.0 - 800.0
+```
+
+**Q: 如何查看碳排放指标？**
+
+```bash
+# 在日志中搜索碳排放
+grep "carbon" logs/experiment_multi_dc_5_*/current_run.log
+
+# 在TensorBoard中查看
+tensorboard --logdir=logs/experiment_multi_dc_5_*
+# 打开 http://localhost:6006
+# 查看：global_policy/carbon_emission
+```
+
+**Q: 实验5需要哪些风力数据文件？**
+
+需要5个风机的CSV文件（已预处理）：
+```
+cloudsimplus-gateway/src/main/resources/windProduction/split/
+├── Turbine_1_2021.csv    # DC 0
+├── Turbine_57_2021.csv   # DC 1
+├── Turbine_124_2021.csv  # DC 2
+├── Turbine_80_2021.csv   # DC 3
+└── Turbine_100_2021.csv  # DC 4
+```
+
+如果文件缺失，检查：
+```bash
+ls -lh cloudsimplus-gateway/src/main/resources/windProduction/split/
+```
+
+**Q: RLlib安装失败？**
+
+确保安装正确的依赖：
+```bash
+cd drl-manager
+pip install -r requirements_rllib.txt
+
+# 如果仍有问题，手动安装：
+pip install ray[rllib]==2.9.0
+pip install pettingzoo==1.24.3
+```
+
+**Q: 训练中断如何恢复？**
+
+RLlib会自动保存检查点：
+```bash
+# 查看检查点
+ls -lh logs/experiment_multi_dc_5_*/checkpoints/
+
+# 恢复训练（功能开发中）
+# TODO: 添加checkpoint恢复功能
+```
+
+**Q: 如何对比不同碳排放系数的效果？**
+
+运行多个实验并对比：
+```bash
+# 实验A：低惩罚
+# 修改config.yml: carbon_emission_penalty_coef: 500
+export OUTPUT_DIR="logs/carbon_500"
+python entrypoint_pettingzoo.py --experiment experiment_multi_dc_5
+
+# 实验B：高惩罚
+# 修改config.yml: carbon_emission_penalty_coef: 2000
+export OUTPUT_DIR="logs/carbon_2000"
+python entrypoint_pettingzoo.py --experiment experiment_multi_dc_5
+
+# 对比TensorBoard
+tensorboard --logdir=logs/
+```
+
 ---
 
 ## 💡 最佳实践
@@ -1473,16 +2516,16 @@ experiment_quick_test:
 
 ## 📝 快速命令参考
 
-### 常用命令
+### 单数据中心训练（传统方式）
 
 ```bash
 # === 启动系统 ===
-# Java Gateway
+# Java Gateway（单DC）
 cd cloudsimplus-gateway && ./gradlew run
 
-# Python训练
+# Python训练（单DC）
 export EXPERIMENT_ID="experiment_1"
-python ./drl-manager/mnt/entrypoint.py
+python ./drl-manager/entrypoint.py
 
 # === 查看结果 ===
 # TensorBoard
@@ -1497,6 +2540,144 @@ cat logs/Evaluations/my_eval/evaluation_summary.csv
 # === 生成工作负载 ===
 cd data-analysis
 python generate_workload.py --type poisson --duration 600 --output ../cloudsimplus-gateway/src/main/resources/traces/my_workload.csv
+```
+
+### 🆕 多数据中心 PettingZoo 并行训练（推荐）
+
+```bash
+# === 启动 MultiDC Java Gateway ===
+cd cloudsimplus-gateway
+./gradlew build -x test
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+
+# === 安装 RLlib 依赖（首次运行）===
+cd drl-manager
+source .venv/Scripts/activate  # Windows: .venv/Scripts/activate
+pip install -r requirements_rllib.txt
+
+# === 运行实验5（5个数据中心 + 碳排放优化）⭐推荐 ===
+# 方式 1: 使用环境变量（最简单）
+export EXPERIMENT_ID="experiment_multi_dc_5"
+export NUM_WORKERS=0        # Windows建议设为0
+export TOTAL_TIMESTEPS=32000
+python entrypoint_pettingzoo.py
+
+# 方式 2: 使用命令行参数（完整控制）
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_5 \
+    --num-workers 0 \
+    --total-timesteps 32000 \
+    --num-gpus 1
+
+# 方式 3: 快速测试（5000步，约30分钟）
+python entrypoint_pettingzoo.py \
+    --experiment experiment_multi_dc_5 \
+    --num-workers 0 \
+    --total-timesteps 5000 \
+    --num-gpus 1
+
+# === 运行实验3（3个数据中心，快速测试）===
+export EXPERIMENT_ID="experiment_multi_dc_3"
+export TOTAL_TIMESTEPS=100000
+python entrypoint_pettingzoo.py
+
+# === 仅测试环境（不训练）===
+python entrypoint_pettingzoo.py --test --experiment experiment_multi_dc_5
+
+# === 监控训练（实验5）===
+# 实时日志
+tail -f logs/experiment_multi_dc_5_*/current_run.log
+
+# TensorBoard 可视化（查看碳排放、绿色能源比例）
+tensorboard --logdir=logs/experiment_multi_dc_5_*
+
+# === 查看训练结果 ===
+# 查看最终检查点
+ls -lh logs/experiment_multi_dc_5_*/checkpoints/
+
+# 查看配置和种子
+cat logs/experiment_multi_dc_5_*/config_used.yml
+cat logs/experiment_multi_dc_5_*/seed_used.txt
+
+# 查看碳排放统计
+grep "carbon" logs/experiment_multi_dc_5_*/current_run.log
+```
+
+### PowerShell 版本（Windows）
+
+```powershell
+# === 启动 MultiDC Java Gateway ===
+cd cloudsimplus-gateway
+.\gradlew.bat build -x test
+.\gradlew.bat run "-PappMainClass=giu.edu.cspg.MainMultiDC"
+
+# === 运行实验5（5个数据中心 + 碳排放优化）⭐推荐 ===
+cd drl-manager
+.venv\Scripts\Activate.ps1
+
+# 方式 1: 使用环境变量（最简单）
+$env:EXPERIMENT_ID = "experiment_multi_dc_5"
+$env:NUM_WORKERS = 0
+$env:TOTAL_TIMESTEPS = 32000
+python entrypoint_pettingzoo.py
+
+# 方式 2: 使用命令行参数
+python entrypoint_pettingzoo.py `
+    --experiment experiment_multi_dc_5 `
+    --num-workers 0 `
+    --total-timesteps 32000 `
+    --num-gpus 1
+
+# 方式 3: 快速测试（5000步）
+python entrypoint_pettingzoo.py `
+    --experiment experiment_multi_dc_5 `
+    --num-workers 0 `
+    --total-timesteps 5000 `
+    --num-gpus 1
+
+# === 运行实验3（3个数据中心）===
+$env:EXPERIMENT_ID = "experiment_multi_dc_3"
+$env:TOTAL_TIMESTEPS = 100000
+python entrypoint_pettingzoo.py
+
+# === 监控训练（实验5）===
+# 实时日志
+Get-Content logs\experiment_multi_dc_5_*\current_run.log -Wait -Tail 50
+
+# TensorBoard
+tensorboard --logdir=logs\experiment_multi_dc_5_*
+
+# 查看碳排放
+Select-String -Path "logs\experiment_multi_dc_5_*\current_run.log" -Pattern "carbon"
+```
+
+### 多数据中心层次化训练（Alternating/Simultaneous）
+
+```bash
+# === 启动 MultiDC Java Gateway ===
+cd cloudsimplus-gateway
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+
+# === 运行层次化联合训练 ===
+cd drl-manager
+source .venv/Scripts/activate
+
+# 方式 1: 使用 entrypoint（推荐）
+export EXPERIMENT_ID="experiment_multi_dc_3"
+export STRATEGY="alternating"  # 或 "simultaneous"
+export SEED="2025"
+python entrypoint_multidc.py
+
+# 方式 2: 直接调用训练脚本
+python -m src.training.train_hierarchical_multidc_joint \
+    --config ../config.yml \
+    --experiment experiment_multi_dc_3 \
+    --strategy alternating \
+    --seed 2025
+
+# === 监控训练 ===
+tail -f logs/multi_dc_training/*/current_run.log
+tensorboard --logdir=logs/multi_dc_training/*/tensorboard
 ```
 
 ---

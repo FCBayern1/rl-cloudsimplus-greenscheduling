@@ -65,10 +65,14 @@ public class CloudletDescriptor {
     }
 
     public Cloudlet toCloudlet() {
+        // Use UtilizationModelDynamic for realistic resource usage
+        // Lower RAM/BW requests to reduce resource contention on VMs
         Cloudlet cloudlet = new CloudletSimple(cloudletId, mi, numberOfCores)
                 .setFileSize(DataCloudTags.DEFAULT_MTU)
                 .setOutputSize(DataCloudTags.DEFAULT_MTU)
-                .setUtilizationModel(new UtilizationModelFull());
+                .setUtilizationModelCpu(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.5))
+                .setUtilizationModelRam(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.15))
+                .setUtilizationModelBw(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.1));
         cloudlet.setSubmissionDelay(submissionDelay);
         return cloudlet;
     }

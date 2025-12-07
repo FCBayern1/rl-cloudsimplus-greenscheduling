@@ -1,5 +1,6 @@
 package giu.edu.cspg.multidc;
 import giu.edu.cspg.singledc.ObservationState;
+import lombok.Getter;
 
 import java.util.Arrays;
 
@@ -18,12 +19,6 @@ import java.util.Arrays;
 public class GlobalObservationState {
 
     // === Datacenter-level Resource Metrics ===
-
-    /**
-     * Green energy power available at each datacenter (kW).
-     * Index corresponds to datacenter ID.
-     */
-    private final double[] dcGreenPower;
 
     /**
      * Current green power available at each datacenter (W).
@@ -52,6 +47,36 @@ public class GlobalObservationState {
      * Index corresponds to datacenter ID.
      */
     private final double[] dcCumulativeWastedGreenWh;
+
+    // === Future Energy Trend Features (God's Eye) ===
+
+    /**
+     * Short-term (30 min) mean green power at each datacenter, normalized [0, 1].
+     * Higher values indicate more green energy available in the near future.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcFutureShortMean;
+
+    /**
+     * Short-term (30 min) trend direction at each datacenter, normalized [-1, 1].
+     * Positive values indicate increasing green energy, negative indicates decreasing.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcFutureShortTrend;
+
+    /**
+     * Long-term (24 hours) mean green power at each datacenter, normalized [0, 1].
+     * Higher values indicate better overall green energy availability for the day.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcFutureLongMean;
+
+    /**
+     * Long-term (24 hours) peak timing at each datacenter, normalized [0, 1].
+     * 0 = peak is now, 0.5 = peak in 12 hours, 1 = peak at end of 24h window.
+     * Index corresponds to datacenter ID.
+     */
+    private final double[] dcFutureLongPeakTiming;
 
     /**
      * Number of cloudlets waiting in each datacenter's local queue.
@@ -83,19 +108,20 @@ public class GlobalObservationState {
      * Number of cloudlets arriving in the upcoming time window.
      * These cloudlets need to be routed to datacenters.
      */
+    @Getter
     private final int upcomingCloudletsCount;
 
     /**
-     * PEs (cores) required by the next arriving cloudlet.
-     * 0 if no cloudlets are arriving.
+     * PEs (cores) required by each cloudlet in the batch to be routed.
+     * Array length = batch size. Values are 0 if no cloudlet at that position.
      */
-    private final int nextCloudletPes;
+    private final int[] batchCloudletPes;
 
     /**
-     * Million Instructions (MI) of the next arriving cloudlet.
-     * 0 if no cloudlets are arriving.
+     * Million Instructions (MI) of each cloudlet in the batch to be routed.
+     * Array length = batch size. Values are 0 if no cloudlet at that position.
      */
-    private final long nextCloudletMi;
+    private final long[] batchCloudletMi;
 
     /**
      * Distribution of PEs requirements in upcoming cloudlets.
@@ -109,12 +135,14 @@ public class GlobalObservationState {
      * Load imbalance metric across datacenters.
      * Higher values indicate more uneven load distribution.
      */
+    @Getter
     private final double loadImbalance;
 
     /**
      * Total number of cloudlets completed across all datacenters
      * in the last time window.
      */
+    @Getter
     private final int recentCompletedCloudlets;
 
     // === Metadata ===
@@ -122,28 +150,33 @@ public class GlobalObservationState {
     /**
      * Number of datacenters in the system.
      */
+    @Getter
     private final int numDatacenters;
 
     /**
      * Current simulation clock (seconds).
      */
+    @Getter
     private final double currentClock;
 
     /**
      * Constructor for GlobalObservationState.
      *
-     * @param dcGreenPower Green power available at each DC (kW)
      * @param dcCurrentGreenPowerW Current green power at each DC (W)
      * @param dcCurrentPowerW Current total power consumption at each DC (W)
      * @param dcGreenRatio Green energy usage ratio at each DC [0, 1]
      * @param dcCumulativeWastedGreenWh Cumulative wasted green energy at each DC (Wh)
+     * @param dcFutureShortMean Short-term (30min) mean green power, normalized [0, 1]
+     * @param dcFutureShortTrend Short-term (30min) trend direction [-1, 1]
+     * @param dcFutureLongMean Long-term (24h) mean green power, normalized [0, 1]
+     * @param dcFutureLongPeakTiming Long-term (24h) peak timing [0, 1]
      * @param dcQueueSizes Queue sizes at each DC
      * @param dcUtilizations CPU utilization at each DC [0, 1]
      * @param dcAvailablePes Available PEs at each DC
      * @param dcRamUtilizations RAM utilization at each DC [0, 1]
      * @param upcomingCloudletsCount Number of arriving cloudlets
-     * @param nextCloudletPes PEs required by next cloudlet
-     * @param nextCloudletMi MI of next cloudlet
+     * @param batchCloudletPes Array of PEs required by each cloudlet in the batch
+     * @param batchCloudletMi Array of MI for each cloudlet in the batch
      * @param upcomingCloudletsPesDistribution Distribution of PEs in upcoming cloudlets [small, medium, large]
      * @param loadImbalance Load imbalance metric across DCs
      * @param recentCompletedCloudlets Cloudlets completed recently
@@ -151,18 +184,21 @@ public class GlobalObservationState {
      * @param currentClock Current simulation time
      */
     public GlobalObservationState(
-            double[] dcGreenPower,
             double[] dcCurrentGreenPowerW,
             double[] dcCurrentPowerW,
             double[] dcGreenRatio,
             double[] dcCumulativeWastedGreenWh,
+            double[] dcFutureShortMean,
+            double[] dcFutureShortTrend,
+            double[] dcFutureLongMean,
+            double[] dcFutureLongPeakTiming,
             int[] dcQueueSizes,
             double[] dcUtilizations,
             int[] dcAvailablePes,
             double[] dcRamUtilizations,
             int upcomingCloudletsCount,
-            int nextCloudletPes,
-            long nextCloudletMi,
+            int[] batchCloudletPes,
+            long[] batchCloudletMi,
             int[] upcomingCloudletsPesDistribution,
             double loadImbalance,
             int recentCompletedCloudlets,
@@ -170,11 +206,17 @@ public class GlobalObservationState {
             double currentClock) {
 
         // Defensive copies for arrays
-        this.dcGreenPower = Arrays.copyOf(dcGreenPower, dcGreenPower.length);
         this.dcCurrentGreenPowerW = Arrays.copyOf(dcCurrentGreenPowerW, dcCurrentGreenPowerW.length);
         this.dcCurrentPowerW = Arrays.copyOf(dcCurrentPowerW, dcCurrentPowerW.length);
         this.dcGreenRatio = Arrays.copyOf(dcGreenRatio, dcGreenRatio.length);
         this.dcCumulativeWastedGreenWh = Arrays.copyOf(dcCumulativeWastedGreenWh, dcCumulativeWastedGreenWh.length);
+
+        // Future energy trend features (God's Eye)
+        this.dcFutureShortMean = Arrays.copyOf(dcFutureShortMean, dcFutureShortMean.length);
+        this.dcFutureShortTrend = Arrays.copyOf(dcFutureShortTrend, dcFutureShortTrend.length);
+        this.dcFutureLongMean = Arrays.copyOf(dcFutureLongMean, dcFutureLongMean.length);
+        this.dcFutureLongPeakTiming = Arrays.copyOf(dcFutureLongPeakTiming, dcFutureLongPeakTiming.length);
+
         this.dcQueueSizes = Arrays.copyOf(dcQueueSizes, dcQueueSizes.length);
         this.dcUtilizations = Arrays.copyOf(dcUtilizations, dcUtilizations.length);
         this.dcAvailablePes = Arrays.copyOf(dcAvailablePes, dcAvailablePes.length);
@@ -182,8 +224,8 @@ public class GlobalObservationState {
 
         // Scalar values
         this.upcomingCloudletsCount = upcomingCloudletsCount;
-        this.nextCloudletPes = nextCloudletPes;
-        this.nextCloudletMi = nextCloudletMi;
+        this.batchCloudletPes = Arrays.copyOf(batchCloudletPes, batchCloudletPes.length);
+        this.batchCloudletMi = Arrays.copyOf(batchCloudletMi, batchCloudletMi.length);
         this.upcomingCloudletsPesDistribution = Arrays.copyOf(
                 upcomingCloudletsPesDistribution,
                 upcomingCloudletsPesDistribution.length
@@ -196,10 +238,6 @@ public class GlobalObservationState {
     }
 
     // === Getters (Return copies for immutability) ===
-
-    public double[] getDcGreenPower() {
-        return Arrays.copyOf(dcGreenPower, dcGreenPower.length);
-    }
 
     public double[] getDcCurrentGreenPowerW() {
         return Arrays.copyOf(dcCurrentGreenPowerW, dcCurrentGreenPowerW.length);
@@ -215,6 +253,24 @@ public class GlobalObservationState {
 
     public double[] getDcCumulativeWastedGreenWh() {
         return Arrays.copyOf(dcCumulativeWastedGreenWh, dcCumulativeWastedGreenWh.length);
+    }
+
+    // === Future Energy Trend Feature Getters ===
+
+    public double[] getDcFutureShortMean() {
+        return Arrays.copyOf(dcFutureShortMean, dcFutureShortMean.length);
+    }
+
+    public double[] getDcFutureShortTrend() {
+        return Arrays.copyOf(dcFutureShortTrend, dcFutureShortTrend.length);
+    }
+
+    public double[] getDcFutureLongMean() {
+        return Arrays.copyOf(dcFutureLongMean, dcFutureLongMean.length);
+    }
+
+    public double[] getDcFutureLongPeakTiming() {
+        return Arrays.copyOf(dcFutureLongPeakTiming, dcFutureLongPeakTiming.length);
     }
 
     public int[] getDcQueueSizes() {
@@ -233,36 +289,16 @@ public class GlobalObservationState {
         return Arrays.copyOf(dcRamUtilizations, dcRamUtilizations.length);
     }
 
-    public int getUpcomingCloudletsCount() {
-        return upcomingCloudletsCount;
+    public int[] getBatchCloudletPes() {
+        return Arrays.copyOf(batchCloudletPes, batchCloudletPes.length);
     }
 
-    public int getNextCloudletPes() {
-        return nextCloudletPes;
-    }
-
-    public long getNextCloudletMi() {
-        return nextCloudletMi;
+    public long[] getBatchCloudletMi() {
+        return Arrays.copyOf(batchCloudletMi, batchCloudletMi.length);
     }
 
     public int[] getUpcomingCloudletsPesDistribution() {
         return Arrays.copyOf(upcomingCloudletsPesDistribution, upcomingCloudletsPesDistribution.length);
-    }
-
-    public double getLoadImbalance() {
-        return loadImbalance;
-    }
-
-    public int getRecentCompletedCloudlets() {
-        return recentCompletedCloudlets;
-    }
-
-    public int getNumDatacenters() {
-        return numDatacenters;
-    }
-
-    public double getCurrentClock() {
-        return currentClock;
     }
 
     // === Helper Methods ===
@@ -274,10 +310,10 @@ public class GlobalObservationState {
      */
     public int getDatacenterWithMaxGreenPower() {
         int maxIndex = 0;
-        double maxPower = dcGreenPower[0];
-        for (int i = 1; i < dcGreenPower.length; i++) {
-            if (dcGreenPower[i] > maxPower) {
-                maxPower = dcGreenPower[i];
+        double maxPower = dcCurrentGreenPowerW[0];
+        for (int i = 1; i < dcCurrentGreenPowerW.length; i++) {
+            if (dcCurrentGreenPowerW[i] > maxPower) {
+                maxPower = dcCurrentGreenPowerW[i];
                 maxIndex = i;
             }
         }
@@ -319,25 +355,27 @@ public class GlobalObservationState {
     }
 
     /**
-     * Check if a specific datacenter has sufficient resources for the next cloudlet.
+     * Check if a specific datacenter has sufficient resources for the first cloudlet in batch.
      *
      * @param dcIndex Datacenter index
-     * @return true if datacenter has enough available PEs
+     * @return true if datacenter has enough available PEs for first cloudlet
      */
     public boolean datacenterCanAcceptNextCloudlet(int dcIndex) {
         if (dcIndex < 0 || dcIndex >= numDatacenters) {
             return false;
         }
-        return dcAvailablePes[dcIndex] >= nextCloudletPes;
+        // Check against first cloudlet in batch (if any)
+        int firstCloudletPes = (batchCloudletPes != null && batchCloudletPes.length > 0) ? batchCloudletPes[0] : 0;
+        return dcAvailablePes[dcIndex] >= firstCloudletPes;
     }
 
     /**
      * Get total green power across all datacenters.
      *
-     * @return Total green power (kW)
+     * @return Total green power (W)
      */
     public double getTotalGreenPower() {
-        return Arrays.stream(dcGreenPower).sum();
+        return Arrays.stream(dcCurrentGreenPowerW).sum();
     }
 
     /**
@@ -360,18 +398,18 @@ public class GlobalObservationState {
                 "dcUtilizations=%s, " +
                 "dcAvailablePes=%s, " +
                 "upcomingCloudlets=%d, " +
-                "nextCloudletPes=%d, " +
+                "batchCloudletPes=%s, " +
                 "loadImbalance=%.3f, " +
                 "recentCompleted=%d" +
                 "}",
                 numDatacenters,
                 currentClock,
-                Arrays.toString(dcGreenPower),
+                Arrays.toString(dcCurrentGreenPowerW),
                 Arrays.toString(dcQueueSizes),
                 Arrays.toString(dcUtilizations),
                 Arrays.toString(dcAvailablePes),
                 upcomingCloudletsCount,
-                nextCloudletPes,
+                Arrays.toString(batchCloudletPes),
                 loadImbalance,
                 recentCompletedCloudlets
         );
@@ -382,27 +420,49 @@ public class GlobalObservationState {
      * Useful for testing and initialization.
      *
      * @param numDatacenters Number of datacenters
+     * @param batchSize Batch size for global routing
      * @return Empty GlobalObservationState
      */
-    public static GlobalObservationState createEmpty(int numDatacenters) {
+    public static GlobalObservationState createEmpty(int numDatacenters, int batchSize) {
+        // Default future trend features (0.5 for normalized values, 0.0 for trend)
+        double[] defaultShortMean = new double[numDatacenters];
+        double[] defaultShortTrend = new double[numDatacenters];
+        double[] defaultLongMean = new double[numDatacenters];
+        double[] defaultLongPeakTiming = new double[numDatacenters];
+        Arrays.fill(defaultShortMean, 0.5);
+        Arrays.fill(defaultLongMean, 0.5);
+        Arrays.fill(defaultLongPeakTiming, 0.5);
+
         return new GlobalObservationState(
-                new double[numDatacenters],  // dcGreenPower
                 new double[numDatacenters],  // dcCurrentGreenPowerW
                 new double[numDatacenters],  // dcCurrentPowerW
                 new double[numDatacenters],  // dcGreenRatio
                 new double[numDatacenters],  // dcCumulativeWastedGreenWh
+                defaultShortMean,            // dcFutureShortMean
+                defaultShortTrend,           // dcFutureShortTrend
+                defaultLongMean,             // dcFutureLongMean
+                defaultLongPeakTiming,       // dcFutureLongPeakTiming
                 new int[numDatacenters],     // dcQueueSizes
                 new double[numDatacenters],  // dcUtilizations
                 new int[numDatacenters],     // dcAvailablePes
                 new double[numDatacenters],  // dcRamUtilizations
                 0,                           // upcomingCloudletsCount
-                0,                           // nextCloudletPes
-                0L,                          // nextCloudletMi
+                new int[batchSize],          // batchCloudletPes
+                new long[batchSize],         // batchCloudletMi
                 new int[3],                  // upcomingCloudletsPesDistribution
                 0.0,                         // loadImbalance
                 0,                           // recentCompletedCloudlets
                 numDatacenters,
                 0.0                          // currentClock
         );
+    }
+
+    /**
+     * Create empty observation with default batch size of 5.
+     * @deprecated Use createEmpty(int numDatacenters, int batchSize) instead
+     */
+    @Deprecated
+    public static GlobalObservationState createEmpty(int numDatacenters) {
+        return createEmpty(numDatacenters, 5);
     }
 }

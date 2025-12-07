@@ -54,8 +54,10 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
+def requestedMainClass = project.findProperty("appMainClass")
+
 application {
-    mainClass = 'giu.edu.cspg.Main'
+    mainClass = requestedMainClass ?: 'giu.edu.cspg.Main'
 }
 
 test {

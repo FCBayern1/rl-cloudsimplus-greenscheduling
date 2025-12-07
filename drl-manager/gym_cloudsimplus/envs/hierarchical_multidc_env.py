@@ -50,7 +50,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 - multi_datacenter_enabled: bool
                 - datacenters: List[dict] of datacenter configurations
                 - py4j_port: int (default 25333)
-                - max_arriving_cloudlets: int (for action space sizing)
+                - global_routing_batch_size: int (cloudlets to route per step, default 5)
+                - max_arriving_cloudlets: int (deprecated, for backward compatibility)
                 - ... other CloudSim Plus settings
         """
         super(HierarchicalMultiDCEnv, self).__init__()
@@ -58,7 +59,16 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.config = config
         self.py4j_port = config.get("py4j_port", 25333)
         self.num_datacenters = len(config.get("datacenters", [{"datacenter_id": 0}]))
-        self.max_arriving_cloudlets = config.get("max_arriving_cloudlets", 50)
+        
+        # Fixed batch size for global routing decisions (key parameter)
+        self.global_routing_batch_size = config.get("global_routing_batch_size", 5)
+        
+        # Backward compatibility: if max_arriving_cloudlets is set, use it as batch size
+        if "max_arriving_cloudlets" in config and "global_routing_batch_size" not in config:
+            logger.warning(
+                "'max_arriving_cloudlets' is deprecated. Use 'global_routing_batch_size' instead."
+            )
+            self.global_routing_batch_size = config.get("max_arriving_cloudlets", 5)
 
         # Py4J Gateway connection
         self.gateway = None
@@ -74,6 +84,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         self._setup_action_spaces()
 
         logger.info(f"HierarchicalMultiDCEnv initialized with {self.num_datacenters} datacenters")
+        logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
 
     def _setup_observation_spaces(self):
         """
@@ -81,14 +92,9 @@ class HierarchicalMultiDCEnv(gym.Env):
         """
         # Global observation space (aggregated DC-level metrics)
         self.global_observation_space = spaces.Dict({
-            "dc_green_power": spaces.Box(
-                low=0.0, high=10000.0,
-                shape=(self.num_datacenters,),
-                dtype=np.float32
-            ),
-            # New green energy metrics
+            # Green energy metrics (W - Watts)
             "dc_current_green_power_w": spaces.Box(
-                low=0.0, high=10000.0,
+                low=0.0, high=5000000.0,  # 5 MW max (increased to accommodate high wind power)
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
@@ -104,6 +110,27 @@ class HierarchicalMultiDCEnv(gym.Env):
             ),
             "dc_cumulative_wasted_green_wh": spaces.Box(
                 low=0.0, high=1e6,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            # Future energy trend features (God's Eye mode)
+            "dc_future_short_mean": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_short_trend": spaces.Box(
+                low=-1.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_long_mean": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "dc_future_long_peak_timing": spaces.Box(
+                low=0.0, high=1.0,
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
@@ -127,11 +154,15 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
-            "upcoming_cloudlets_count": spaces.Discrete(self.max_arriving_cloudlets + 1),
-            "next_cloudlet_pes": spaces.Discrete(100),  # Max PEs for a cloudlet
-            "next_cloudlet_mi": spaces.Box(
+            "upcoming_cloudlets_count": spaces.Discrete(100000),  # Total cloudlets in global waiting queue (increased for large workloads)
+            "batch_cloudlet_pes": spaces.Box(
+                low=0, high=100,  # Max PEs for a cloudlet
+                shape=(self.global_routing_batch_size,),
+                dtype=np.int32
+            ),
+            "batch_cloudlet_mi": spaces.Box(
                 low=0, high=1000000,  # Max MI for a cloudlet
-                shape=(1,),
+                shape=(self.global_routing_batch_size,),
                 dtype=np.int64
             ),
             "upcoming_pes_distribution": spaces.Box(
@@ -144,70 +175,95 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(1,),
                 dtype=np.float32
             ),
-            "recent_completed": spaces.Discrete(10000),
+            "recent_completed": spaces.Discrete(100000),  # Increased for large workloads
         })
 
         # Local observation spaces (per datacenter)
-        # Dynamically sized based on DC configs, but we'll use max sizes for now
-        # Todo: This should be dynamic host number for different DC
-        max_hosts = max([dc.get("hosts_count", 16) for dc in self.config.get("datacenters", [{"hosts_count": 16}])])
-        max_vms = max([
-            dc.get("initial_s_vm_count", 10) +
-            dc.get("initial_m_vm_count", 5) +
-            dc.get("initial_l_vm_count", 3)
-            for dc in self.config.get("datacenters", [{"initial_s_vm_count": 10, "initial_m_vm_count": 5, "initial_l_vm_count": 3}])
-        ])
+        # Track per-DC sizes but expose a shared max-sized space for SB3 compatibility
+        dc_defaults = {
+            "hosts_count": 16,
+            "initial_s_vm_count": 10,
+            "initial_m_vm_count": 5,
+            "initial_l_vm_count": 3,
+        }
+        dc_configs = self.config.get("datacenters")
+        if not dc_configs:
+            dc_configs = [dc_defaults.copy()]
+
+        self.dc_host_counts: List[int] = [
+            int(dc.get("hosts_count", dc_defaults["hosts_count"])) for dc in dc_configs
+        ]
+        self.max_hosts = max(self.dc_host_counts) if self.dc_host_counts else dc_defaults["hosts_count"]
+
+        self.dc_vm_counts: List[int] = [
+            int(
+                dc.get("initial_s_vm_count", dc_defaults["initial_s_vm_count"]) +
+                dc.get("initial_m_vm_count", dc_defaults["initial_m_vm_count"]) +
+                dc.get("initial_l_vm_count", dc_defaults["initial_l_vm_count"])
+            )
+            for dc in dc_configs
+        ]
+        self.max_vms = max(self.dc_vm_counts) if self.dc_vm_counts else (
+            dc_defaults["initial_s_vm_count"] +
+            dc_defaults["initial_m_vm_count"] +
+            dc_defaults["initial_l_vm_count"]
+        )
 
         self.local_observation_space = spaces.Dict({
             "host_loads": spaces.Box(
                 low=0.0, high=1.0,
-                shape=(max_hosts,),
+                shape=(self.max_hosts,),
                 dtype=np.float32
             ),
             "host_ram_usage": spaces.Box(
                 low=0.0, high=1.0,
-                shape=(max_hosts,),
+                shape=(self.max_hosts,),
                 dtype=np.float32
             ),
             "vm_loads": spaces.Box(
                 low=0.0, high=1.0,
-                shape=(max_vms,),
+                shape=(self.max_vms,),
                 dtype=np.float32
             ),
             "vm_types": spaces.Box(
                 low=0, high=3,  # 0=Off, 1=Small, 2=Medium, 3=Large
-                shape=(max_vms,),
+                shape=(self.max_vms,),
                 dtype=np.int32
             ),
             "vm_available_pes": spaces.Box(
                 low=0, high=100,
-                shape=(max_vms,),
+                shape=(self.max_vms,),
                 dtype=np.int32
             ),
-            "waiting_cloudlets": spaces.Discrete(10000),
-            "next_cloudlet_pes": spaces.Discrete(100),
+            "waiting_cloudlets": spaces.Discrete(100000),  # Increased for large workloads
+            "next_cloudlet_pes": spaces.Discrete(256),  # Increased for cloudlets with more PEs
         })
 
     def _setup_action_spaces(self):
         """
         Define action spaces for global and local agents.
+        
+        Global Agent: Routes a fixed batch of cloudlets per step.
+        - Each action is a datacenter index in [0, num_datacenters - 1]
+        - If fewer cloudlets are available than the routing batch size,
+          extra actions are simply ignored (trimmed to queue length).
+        - If more cloudlets are available,未被选中的继续在全局队列中等待。
+        
+        Local Agents: Assign one cloudlet per DC per step.
         """
-        # Global action space: Select datacenter for each arriving cloudlet
-        # Dynamic size based on actual arriving cloudlets
+        # Global action space: fixed-size batch of routing decisions.
+        # Each element is a DC index ∈ {0, ..., num_datacenters-1}.
+        # We no longer use an explicit "NoAssign" action for the global agent;
+        # extra actions beyond the current queue length are ignored downstream.
         self.global_action_space = spaces.MultiDiscrete(
-            [self.num_datacenters] * self.max_arriving_cloudlets
+            [self.num_datacenters] * self.global_routing_batch_size
         )
 
         # Local action spaces: Select VM for each datacenter's next cloudlet
         # Each datacenter has its own action space
-        # For simplicity, we use a fixed max VM count
-        max_vms = max([
-            dc.get("initial_s_vm_count", 10) +
-            dc.get("initial_m_vm_count", 5) +
-            dc.get("initial_l_vm_count", 3)
-            for dc in self.config.get("datacenters", [{"initial_s_vm_count": 10, "initial_m_vm_count": 5, "initial_l_vm_count": 3}])
-        ])
-        self.local_action_space = spaces.Discrete(max_vms)
+        # Action space includes: 0 = NoAssign, 1 to max_vms = VM indices
+        max_vms = getattr(self, "max_vms", 1)
+        self.local_action_space = spaces.Discrete(max_vms + 1)  # +1 for NoAssign option
 
         # Gymnasium requires self.action_space and self.observation_space
         # Combine global and local spaces into a Dict space
@@ -351,16 +407,20 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.episode_reward = 0.0
         self.done = False
 
-        # Parse observations
+        # Parse observations from HierarchicalResetResult
         try:
-            observations = self._parse_hierarchical_observation(result)
-            info = self._parse_info(result)
+            # Reset returns HierarchicalResetResult (only observations and info)
+            observations = self._parse_hierarchical_observation_from_reset(result)
+            info = self._parse_info_from_reset(result)
         except Exception as e:
             logger.error(f"Failed to parse reset result: {e}")
             raise RuntimeError(
                 f"Failed to parse observations from Java. "
                 f"Check observation structure compatibility."
             ) from e
+
+        # Store observations for action masking
+        self.last_observations = observations
 
         logger.info(f"Environment reset successfully for episode (seed={seed})")
         return observations, info
@@ -410,17 +470,34 @@ class HierarchicalMultiDCEnv(gym.Env):
             logger.error(f"Invalid action format: {e}")
             raise ValueError(f"Invalid action format. Expected dict with 'global' and 'local' keys.") from e
 
-        # Get actual number of arriving cloudlets
+        # Get actual number of cloudlets in global waiting queue (batch routing mode)
         try:
-            num_arriving = self.java_env.getArrivingCloudletsCount()
+            num_available = self.java_env.getGlobalWaitingCloudletsCount()
         except Exception as e:
-            logger.error(f"Failed to get arriving cloudlets count: {e}")
+            logger.error(f"Failed to get global waiting cloudlets count: {e}")
             # Continue with 0 if this fails
-            num_arriving = 0
+            num_available = 0
 
-        # Trim global actions to actual arriving count
-        if len(global_actions) > num_arriving:
-            global_actions = global_actions[:num_arriving]
+        # Process global actions:
+        # - Each element is a datacenter index in [0, num_datacenters - 1]
+        # - Actions are one-to-one mapped to DC indices; there is no explicit NoAssign.
+        # - If there are more actions than available cloudlets, extra actions are ignored.
+        # Convert actions to DC indices and drop out-of-range values
+        global_actions_filtered = []
+        for i, action_val in enumerate(global_actions):
+            action_int = int(action_val)
+            dc_index = action_int
+            if 0 <= dc_index < self.num_datacenters:
+                global_actions_filtered.append(dc_index)
+            else:
+                logger.warning(f"Global action[{i}] = {action_int} out of range, skipping")
+        
+        # Trim to available cloudlets
+        if len(global_actions_filtered) > num_available:
+            logger.debug(f"Trimming global actions from {len(global_actions_filtered)} to {num_available} (queue size)")
+            global_actions_filtered = global_actions_filtered[:num_available]
+        
+        global_actions = global_actions_filtered
 
         # Convert local actions dict to Java-compatible format
         # Apply action mapping: agent outputs 0 to num_vms -> Java expects -1 to num_vms-1
@@ -433,17 +510,27 @@ class HierarchicalMultiDCEnv(gym.Env):
                 # Map agent action to Java targetVmId
                 target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
                 local_actions_java[int(dc_id)] = target_vm_id
-                logger.trace(f"DC {dc_id}: agent_action={agent_action} → targetVmId={target_vm_id}")
+                logger.debug(f"DC {dc_id}: agent_action={agent_action} → targetVmId={target_vm_id}")
         except Exception as e:
             logger.error(f"Failed to convert local actions: {e}")
             raise ValueError(f"Invalid local action format. DC IDs and VM IDs must be integers.") from e
 
+        # Convert numpy types to Python native types for Py4J compatibility
+        # Py4J cannot serialize numpy.int64, numpy.ndarray, etc.
+        if isinstance(global_actions, np.ndarray):
+            global_actions = global_actions.tolist()
+        global_actions_python = [int(x) for x in global_actions]  # Ensure all elements are Python int
+        local_actions_python = {int(k): int(v) for k, v in local_actions_java.items()}
+
         # Execute step in Java simulation
         try:
-            logger.debug(f"Executing step {self.current_step + 1}...")
-            result = self.java_env.step(global_actions, local_actions_java)
+            logger.info(f"[STEP {self.current_step + 1}] Calling Java with global_actions={global_actions_python}, local_actions={local_actions_python}")
+            print(f"[DEBUG HierarchicalMultiDCEnv] Calling Java step with {len(global_actions_python)} global actions")
+            result = self.java_env.step(global_actions_python, local_actions_python)
+            print(f"[DEBUG HierarchicalMultiDCEnv] Java step returned successfully")
         except Exception as e:
             logger.error(f"Failed to execute step in Java simulation: {e}")
+            print(f"[DEBUG HierarchicalMultiDCEnv] Java step FAILED: {e}")
             raise RuntimeError(
                 f"Failed to execute simulation step. Check Java logs for details."
             ) from e
@@ -467,6 +554,9 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.episode_reward += rewards["global"]
         self.done = terminated or truncated
 
+        # Store observations for action masking
+        self.last_observations = observations
+
         logger.debug(
             f"Step {self.current_step}: Global reward={rewards['global']:.3f}, "
             f"Terminated={terminated}, Truncated={truncated}"
@@ -474,56 +564,153 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         return observations, rewards, terminated, truncated, info
 
-    def _parse_hierarchical_observation(
+    def _parse_hierarchical_observation_from_reset(
         self,
-        result
+        result  # HierarchicalResetResult from Java
     ) -> Dict[str, Any]:
         """
-        Parse hierarchical step result into observation dict.
-
-        Returns:
-            {
-                'global': global observation dict,
-                'local': {dc_id: local observation dict}
-            }
+        Parse HierarchicalResetResult into observation dict.
+        This is specifically for reset() which returns HierarchicalResetResult.
         """
         # Parse global observation (GlobalObservationState)
         global_obs_java = result.getGlobalObservation()
-        global_obs = {
-            "dc_green_power": np.array(global_obs_java.getDcGreenPower(), dtype=np.float32),
-            # New green energy metrics
+        global_obs = self._convert_global_observation(global_obs_java)
+
+        # Parse local observations (Map<Integer, ObservationState>)
+        local_obs_java = result.getLocalObservations()
+        local_obs = {}
+        for dc_id in local_obs_java:
+            obs_state = local_obs_java[dc_id]
+            if obs_state is not None:
+                dc_index = int(dc_id)
+                local_obs[dc_index] = self._convert_local_observation(dc_index, obs_state)
+
+        return {
+            "global": global_obs,
+            "local": local_obs
+        }
+
+    def _parse_info_from_reset(
+        self,
+        result  # HierarchicalResetResult from Java
+    ) -> Dict[str, Any]:
+        """
+        Parse info from HierarchicalResetResult.
+        This is specifically for reset() which returns HierarchicalResetResult.
+        Ensures all values are Python native types (serializable).
+        """
+        info_java = result.getInfo()
+        info = {}
+        for key in info_java:
+            value = info_java[key]
+            # Convert Java objects to Python native types
+            info[str(key)] = self._convert_java_value(value)
+        return info
+
+    def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
+        """
+        Convert Java GlobalObservationState to Python dict.
+        """
+        return {
+            # Green energy metrics
             "dc_current_green_power_w": np.array(global_obs_java.getDcCurrentGreenPowerW(), dtype=np.float32),
             "dc_current_power_w": np.array(global_obs_java.getDcCurrentPowerW(), dtype=np.float32),
             "dc_green_ratio": np.array(global_obs_java.getDcGreenRatio(), dtype=np.float32),
             "dc_cumulative_wasted_green_wh": np.array(global_obs_java.getDcCumulativeWastedGreenWh(), dtype=np.float32),
+            # Future energy trend features (God's Eye mode)
+            "dc_future_short_mean": np.array(global_obs_java.getDcFutureShortMean(), dtype=np.float32),
+            "dc_future_short_trend": np.array(global_obs_java.getDcFutureShortTrend(), dtype=np.float32),
+            "dc_future_long_mean": np.array(global_obs_java.getDcFutureLongMean(), dtype=np.float32),
+            "dc_future_long_peak_timing": np.array(global_obs_java.getDcFutureLongPeakTiming(), dtype=np.float32),
+            # Resource metrics
             "dc_queue_sizes": np.array(global_obs_java.getDcQueueSizes(), dtype=np.int32),
             "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
             "dc_available_pes": np.array(global_obs_java.getDcAvailablePes(), dtype=np.int32),
             "dc_ram_utilizations": np.array(global_obs_java.getDcRamUtilizations(), dtype=np.float32),
-            "upcoming_cloudlets_count": global_obs_java.getUpcomingCloudletsCount(),
-            "next_cloudlet_pes": global_obs_java.getNextCloudletPes(),
-            "next_cloudlet_mi": np.array([global_obs_java.getNextCloudletMi()], dtype=np.int64),
+            # Clamp Discrete values to valid range to prevent one_hot errors
+            "upcoming_cloudlets_count": min(global_obs_java.getUpcomingCloudletsCount(), 99999),
+            "batch_cloudlet_pes": np.array(global_obs_java.getBatchCloudletPes(), dtype=np.int32),
+            "batch_cloudlet_mi": np.array(global_obs_java.getBatchCloudletMi(), dtype=np.int64),
             "upcoming_pes_distribution": np.array(global_obs_java.getUpcomingCloudletsPesDistribution(), dtype=np.int32),
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
-            "recent_completed": global_obs_java.getRecentCompletedCloudlets(),
+            "recent_completed": min(global_obs_java.getRecentCompletedCloudlets(), 99999),
         }
+
+    def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
+        """
+        Convert Java ObservationState to Python dict, padding/trimming so each DC
+        matches the shared observation space while preserving its own host/VM count.
+        """
+        host_target = self._get_dc_host_count(dc_id)
+        vm_target = self._get_dc_vm_count(dc_id)
+
+        host_loads = np.array(local_obs_java.getHostLoads(), dtype=np.float32)[:host_target]
+        host_ram_usage = np.array(local_obs_java.getHostRamUsageRatio(), dtype=np.float32)[:host_target]
+        vm_loads = np.array(local_obs_java.getVmLoads(), dtype=np.float32)[:vm_target]
+        vm_types = np.array(local_obs_java.getVmTypes(), dtype=np.int32)[:vm_target]
+        vm_available_pes = np.array(local_obs_java.getVmAvailablePes(), dtype=np.int32)[:vm_target]
+
+        return {
+            "host_loads": self._pad_vector(host_loads, self.max_hosts, 0.0),
+            "host_ram_usage": self._pad_vector(host_ram_usage, self.max_hosts, 0.0),
+            "vm_loads": self._pad_vector(vm_loads, self.max_vms, 0.0),
+            "vm_types": self._pad_vector(vm_types, self.max_vms, 0),
+            "vm_available_pes": self._pad_vector(vm_available_pes, self.max_vms, 0),
+            # Clamp Discrete values to valid range to prevent one_hot errors
+            "waiting_cloudlets": min(local_obs_java.getWaitingCloudlets(), 99999),
+            "next_cloudlet_pes": min(local_obs_java.getNextCloudletPes(), 255),
+        }
+
+    def _get_dc_host_count(self, dc_id: int) -> int:
+        """Return configured host count for a datacenter (fallback to max_hosts)."""
+        if hasattr(self, "dc_host_counts") and 0 <= dc_id < len(self.dc_host_counts):
+            return self.dc_host_counts[dc_id]
+        return getattr(self, "max_hosts", 1)
+
+    def _get_dc_vm_count(self, dc_id: int) -> int:
+        """Return configured VM count for a datacenter (fallback to max_vms)."""
+        if hasattr(self, "dc_vm_counts") and 0 <= dc_id < len(self.dc_vm_counts):
+            return self.dc_vm_counts[dc_id]
+        return getattr(self, "max_vms", 1)
+
+    @staticmethod
+    def _pad_vector(values: np.ndarray, target_len: int, fill_value: float) -> np.ndarray:
+        """
+        Ensure vectors share a consistent length by trimming overflow and padding
+        the tail with a provided fill_value.
+        """
+        current_len = values.shape[0]
+        if current_len == target_len:
+            return values
+
+        if current_len > target_len:
+            return values[:target_len]
+
+        padded = np.full((target_len,), fill_value, dtype=values.dtype)
+        if current_len > 0:
+            padded[:current_len] = values
+        return padded
+
+    def _parse_hierarchical_observation(
+        self,
+        result  # HierarchicalStepResult from Java
+    ) -> Dict[str, Any]:
+        """
+        Parse HierarchicalStepResult into observation dict.
+        This is specifically for step() which returns HierarchicalStepResult.
+        """
+        # Parse global observation
+        global_obs_java = result.getGlobalObservation()
+        global_obs = self._convert_global_observation(global_obs_java)
 
         # Parse local observations
         local_obs_map_java = result.getLocalObservations()
         local_obs = {}
-
         for dc_id in range(self.num_datacenters):
             if dc_id in local_obs_map_java:
-                local_obs_java = local_obs_map_java[dc_id]
-                local_obs[dc_id] = {
-                    "host_loads": np.array(local_obs_java.getHostLoads(), dtype=np.float32),
-                    "host_ram_usage": np.array(local_obs_java.getHostRamUsageRatio(), dtype=np.float32),
-                    "vm_loads": np.array(local_obs_java.getVmLoads(), dtype=np.float32),
-                    "vm_types": np.array(local_obs_java.getVmTypes(), dtype=np.int32),
-                    "vm_available_pes": np.array(local_obs_java.getVmAvailablePes(), dtype=np.int32),
-                    "waiting_cloudlets": local_obs_java.getWaitingCloudlets(),
-                    "next_cloudlet_pes": local_obs_java.getNextCloudletPes(),
-                }
+                obs_state = local_obs_map_java[dc_id]
+                if obs_state is not None:
+                    local_obs[dc_id] = self._convert_local_observation(dc_id, obs_state)
 
         return {
             "global": global_obs,
@@ -559,18 +746,90 @@ class HierarchicalMultiDCEnv(gym.Env):
     def _parse_info(self, result) -> Dict[str, Any]:
         """
         Parse additional info from step result.
+        Ensures all values are Python native types (serializable).
         """
         info_java = result.getInfo()
 
-        # Convert Java Map to Python dict
+        # Convert Java Map to Python dict with serializable values
         info = {}
         for key in info_java.keySet():
-            info[str(key)] = info_java.get(key)
+            value = info_java.get(key)
+            # Convert Java objects to Python native types
+            info[str(key)] = self._convert_java_value(value)
 
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
 
         return info
+    
+    def _convert_java_value(self, value):
+        """
+        Convert a Java value (from Py4J) to a Python native type.
+
+        IMPORTANT:
+        - Preserves nested Maps/Lists by converting them recursively to dict/list
+        - Avoids stringifying complex objects such as energy metrics maps
+        """
+        if value is None:
+            return None
+
+        # Already plain Python scalar
+        if isinstance(value, (bool, int, float, str)):
+            return value
+
+        # Handle Java Maps (e.g., HashMap) exposed via Py4J:
+        # They usually have keySet() and get() methods.
+        try:
+            if hasattr(value, "keySet") and hasattr(value, "get"):
+                py_dict = {}
+                for k in value.keySet():
+                    # Try to keep numeric keys as int (e.g., DC id 0..N-1),
+                    # fall back to string for non-numeric keys.
+                    try:
+                        py_key = int(k)
+                    except (TypeError, ValueError):
+                        py_key = str(k)
+                    py_dict[py_key] = self._convert_java_value(value.get(k))
+                return py_dict
+        except Exception:
+            # If anything goes wrong, fall through to other heuristics
+            pass
+
+        # Handle Java Lists or other iterable collections
+        try:
+            # Many Py4J Java collections are iterable but not sequences
+            iterator = iter(value)
+        except TypeError:
+            iterator = None
+
+        if iterator is not None:
+            try:
+                return [self._convert_java_value(v) for v in list(iterator)]
+            except Exception:
+                # If iteration fails, continue to scalar conversion attempts
+                pass
+
+        # Try numeric conversions (Integer, Long, Double, etc.)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            pass
+
+        # Try boolean from string representation
+        try:
+            s = str(value).lower()
+            if s in ("true", "false"):
+                return s == "true"
+        except Exception:
+            pass
+
+        # Fallback: string representation for unknown complex types
+        return str(value)
 
     def render(self):
         """
@@ -594,14 +853,15 @@ class HierarchicalMultiDCEnv(gym.Env):
             except Exception as e:
                 logger.warning(f"Error closing Java simulation environment: {e}")
 
-        # Shutdown Py4J gateway
+        # Close Py4J gateway client connection (do NOT shutdown the Java server,
+        # so that multiple evaluations / combinations can reuse the same JVM)
         if self.gateway is not None:
             try:
-                logger.info("Shutting down Py4J gateway...")
-                self.gateway.shutdown()
-                logger.info("Py4J gateway shutdown successfully")
+                logger.info("Closing Py4J gateway client connection...")
+                self.gateway.close()
+                logger.info("Py4J gateway client closed successfully")
             except Exception as e:
-                logger.warning(f"Error shutting down Py4J gateway: {e}")
+                logger.warning(f"Error closing Py4J gateway client: {e}")
             finally:
                 self.gateway = None
                 self.java_env = None
@@ -611,10 +871,19 @@ class HierarchicalMultiDCEnv(gym.Env):
         return self.num_datacenters
 
     def get_arriving_cloudlets_count(self) -> int:
-        """Get the number of cloudlets arriving in the current timestep."""
+        """
+        Get the number of cloudlets in global waiting queue.
+        
+        DEPRECATED: This method name is misleading. Use get_global_waiting_cloudlets_count() instead.
+        Kept for backward compatibility with tests.
+        """
+        return self.get_global_waiting_cloudlets_count()
+    
+    def get_global_waiting_cloudlets_count(self) -> int:
+        """Get the number of cloudlets in the global waiting queue (batch routing mode)."""
         if self.java_env is None:
             return 0
-        return self.java_env.getArrivingCloudletsCount()
+        return self.java_env.getGlobalWaitingCloudletsCount()
 
     def get_local_action_masks(self, dc_id: int) -> np.ndarray:
         """
@@ -655,30 +924,35 @@ class HierarchicalMultiDCEnv(gym.Env):
             logger.error(f"Failed to extract state for DC {dc_id}: {e}, allowing all actions")
             return np.ones(self.local_action_space.n, dtype=bool)
 
+        # Get actual VM count for this DC
+        dc_vm_count = self._get_dc_vm_count(dc_id)
+        
         # Initialize mask (all False)
         mask = np.zeros(self.local_action_space.n, dtype=bool)
 
         # Case 1: Queue is empty or next task invalid
         if waiting_cloudlets == 0 or next_cloudlet_pes == 0:
             mask[0] = True  # Only allow action 0 (NoAssign)
-            logger.trace(f"DC {dc_id}: Queue empty, only NoAssign allowed")
+            logger.debug(f"DC {dc_id}: Queue empty, only NoAssign allowed")
             return mask
 
         # Case 2: Queue has tasks
         mask[0] = False  # Forbid explicit NoAssign (encourage assignment)
 
-        # Check each VM's resources
+        # Check each VM's resources (only actual VMs, not padding)
         has_valid_vm = False
-        for vm_idx, available_pes in enumerate(vm_available_pes):
+        for vm_idx in range(min(len(vm_available_pes), dc_vm_count)):
+            available_pes = vm_available_pes[vm_idx]
             if available_pes >= next_cloudlet_pes:
                 mask[vm_idx + 1] = True  # action (vm_idx+1) → targetVmId (vm_idx)
                 has_valid_vm = True
 
-        # Case 3: No VM has enough resources (fallback: allow all VMs, Java handles penalty)
+        # Case 3: No VM has enough resources
+        # Align with loadbalancing_env.py: Force assignment (disallow NoAssign)
         if not has_valid_vm:
-            logger.trace(f"DC {dc_id}: No VM has {next_cloudlet_pes} PEs, allowing all VMs")
-            mask[1:] = True  # Allow all VM actions
-            mask[0] = False  # Still forbid NoAssign
+            logger.debug(f"DC {dc_id}: No VM has {next_cloudlet_pes} PEs, allowing all VMs (forcing assignment)")
+            mask[0] = False  # Disallow NoAssign
+            mask[1:dc_vm_count+1] = True  # Allow all VMs
 
-        logger.trace(f"DC {dc_id}: Mask generated - {np.sum(mask)}/{len(mask)} actions allowed")
+        logger.debug(f"DC {dc_id}: Mask generated - {np.sum(mask)}/{len(mask)} actions allowed")
         return mask
