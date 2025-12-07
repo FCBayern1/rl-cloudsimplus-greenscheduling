@@ -1,4 +1,7 @@
 <configuration>
+  <!-- Disable Logback internal status messages on console -->
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+
   <!-- Minute-precision timestamp (matches Python format) -->
   <timestamp key="runTimestamp" datePattern="yyyy-MM-dd_HH-mm"/>
 
@@ -27,9 +30,8 @@
     </encoder>
   </appender>
 
-  <!-- Increase root log level to WARN to reduce console output.
-       Change to ERROR for even less logging, or back to INFO/DEBUG if needed. -->
-  <root level="WARN">
+  <!-- Root logger: set to ERROR so只在发生错误时才打印到控制台 -->
+  <root level="ERROR">
     <appender-ref ref="STDOUT"/>
     <appender-ref ref="CURRENT_FILE"/>
     <appender-ref ref="RUN_FILE"/>
