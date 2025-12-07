@@ -1370,7 +1370,7 @@ python entrypoint_pettingzoo.py
 tail -f logs/experiment_multi_dc_5_*/current_run.log
 
 # TensorBoard（查看碳排放趋势）
-tensorboard --logdir=logs/experiment_multi_dc_5_*
+tensorboard --logdir="logs/experiment_multi_dc_10_*"
 # 浏览器打开 http://localhost:6006
 # 查看指标：
 #   - global_policy/carbon_emission

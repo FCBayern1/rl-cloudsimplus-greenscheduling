@@ -11,20 +11,23 @@ drl-manager/
 │   └── envs/
 │       ├── __init__.py
 │       ├── loadbalancing_env.py              # Single-datacenter environment
-│       ├── hierarchical_multidc_env.py       # Multi-datacenter environment
-│       └── joint_training_env.py             # Joint training wrapper for MARL
+│       ├── hierarchical_multidc_env.py       # Multi-datacenter base environment
+│       └── hierarchical_multidc_pettingzoo.py # PettingZoo wrapper for MARL
 │
 ├── src/                       # Source code for training and utilities
 │   ├── __init__.py
 │   ├── training/              # Training scripts
 │   │   ├── __init__.py
-│   │   ├── train_single_dc.py                # Single-DC training
-│   │   ├── train_hierarchical_multidc.py     # Multi-DC training
-│   │   └── train_hierarchical_multidc_joint.py  # Joint MARL training
+│   │   ├── train_single_dc.py                # Single-DC training (SB3)
+│   │   └── train_rllib_multidc.py            # Multi-DC training (RLlib + PettingZoo)
 │   ├── callbacks/             # Custom callbacks for training
 │   │   ├── __init__.py
 │   │   ├── save_on_best_reward.py            # Checkpoint on best reward
+│   │   ├── rllib_green_energy_logger.py      # RLlib green energy callback
 │   │   └── monitoring.py                     # Green energy monitoring
+│   ├── models/                # Custom models
+│   │   ├── __init__.py
+│   │   └── masked_action_model.py            # Action masking for RLlib
 │   ├── networks/              # Custom neural networks
 │   │   ├── __init__.py
 │   │   └── custom_networks.py
@@ -41,12 +44,12 @@ drl-manager/
 │
 ├── tests/                     # Test suite
 │   ├── __init__.py
-│   ├── test_joint_training_integration.py    # Integration tests
 │   ├── test_green_energy.py                  # Green energy tests
 │   ├── cuda_test.py                          # CUDA availability test
 │   └── gateway_test.py                       # Py4J gateway test
 │
-├── entrypoint.py              # Main entry point
+├── entrypoint.py              # Single-DC entry point (SB3)
+├── entrypoint_pettingzoo.py   # Multi-DC entry point (RLlib + PettingZoo)
 ├── setup.py                   # Package configuration
 ├── Dockerfile                 # Docker configuration
 └── README.md                  # This file
@@ -83,18 +86,11 @@ python entrypoint.py --config ../config.yml --experiment experiment_1
 You can also run training scripts directly:
 
 ```bash
-# Single-DC training
+# Single-DC training (Stable-Baselines3)
 python -m src.training.train_single_dc
 
-# Multi-DC hierarchical training
-python -m src.training.train_hierarchical_multidc
-
-# Joint MARL training
-python -m src.training.train_hierarchical_multidc_joint \
-    --config ../config.yml \
-    --output_dir ../logs/joint_training \
-    --total_timesteps 100000 \
-    --strategy alternating
+# Multi-DC training (RLlib + PettingZoo)
+python entrypoint_pettingzoo.py
 ```
 
 ### Running Tests

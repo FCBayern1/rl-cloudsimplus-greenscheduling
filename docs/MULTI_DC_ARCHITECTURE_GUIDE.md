@@ -765,7 +765,503 @@ global_actions = [agent_choice] * num_arriving  # 长度不固定
 
 ---
 
-## 10. 下一步
+## 10. 本系统的形式化定义（状态 / 动作 / 回报 / 绿色能源特征）
+
+> 本节给出 Multi-DC 分层 RL 中 **Global / Local Agents 的状态、动作和奖励** 以及 **绿色能源未来趋势特征** 的数学形式定义，方便论文/技术文档引用。
+
+### 10.1 记号约定
+
+- \(D\)：数据中心数量（`num_datacenters`）。  
+- 第 \(i\) 个 DC 记为 \(\text{DC}_i, \; i \in \{1,\dots,D\}\)。  
+- 每步时间为 \(t\)；全局环境观测记为 \(s_t\)，local agent 在 DC \(i\) 的观测记为 \(s_i(t)\)。  
+- Global agent 每步处理固定 batch 大小 \(B\)（`global_routing_batch_size`），即每步最多路由 \(B\) 个 cloudlet。  
+- 绿色能源时间序列功率为 \(P[k]\)（单位 kW），最大功率为 \(P_{\max}\)。  
+
+---
+
+### 10.2 Local Agent（每个 DC 内部调度）
+
+#### 10.2.1 Local 状态 \(s_i(t)\)
+
+对第 \(i\) 个 DC，设其 host 数量为 \(H_i\)，VM 数量为 \(V_i\)。在时间步 \(t\) 的本地观测为：
+
+\[
+s_i(t) \;=\;
+\bigl(
+\mathbf{h}^{\text{load}}_i(t),
+\mathbf{h}^{\text{ram}}_i(t),
+\mathbf{v}^{\text{load}}_i(t),
+\mathbf{v}^{\text{type}}_i(t),
+\mathbf{v}^{\text{avail}}_i(t),
+w_i(t),
+p_i^{\text{next}}(t)
+\bigr)
+\]
+
+- Host 相关（维度 \(H_i\)）：
+\[
+\mathbf{h}^{\text{load}}_i(t) \in [0,1]^{H_i},\quad
+h^{\text{load}}_{i,j}(t) = \text{Host}_j \text{ 的 CPU 利用率}
+\]
+\[
+\mathbf{h}^{\text{ram}}_i(t) \in [0,1]^{H_i},\quad
+h^{\text{ram}}_{i,j}(t) = \text{Host}_j \text{ 的 RAM 利用率}
+\]
+
+- VM 相关（维度 \(V_i\)）：
+\[
+\mathbf{v}^{\text{load}}_i(t) \in [0,1]^{V_i},\quad
+v^{\text{load}}_{i,k}(t) = \text{VM}_k \text{ 的 CPU 利用率}
+\]
+\[
+\mathbf{v}^{\text{type}}_i(t) \in \{0,1,2,3\}^{V_i},\quad
+v^{\text{type}}_{i,k}(t) =
+\begin{cases}
+0 & \text{Off}\\
+1 & \text{Small}\\
+2 & \text{Medium}\\
+3 & \text{Large}
+\end{cases}
+\]
+\[
+\mathbf{v}^{\text{avail}}_i(t) \in \mathbb{N}_0^{V_i},\quad
+v^{\text{avail}}_{i,k}(t) = \text{VM}_k \text{ 当前可用 PEs 数}
+\]
+
+- 队列信息：
+\[
+w_i(t) \in \mathbb{N}_0 \quad (\text{本 DC 等待队列中的 cloudlet 数})
+\]
+\[
+p_i^{\text{next}}(t) \in \mathbb{N}_0 \quad (\text{队首 cloudlet 所需 PEs，若队列空则为 }0)
+\]
+
+在 PettingZoo / RLlib 中，local agent 实际观测为：
+
+\[
+\text{obs}^{\text{local}}_i(t)
+=\bigl\{
+\text{"observation"}: s_i(t),\;
+\text{"action\_mask"}: m_i(t)
+\bigr\}
+\]
+
+其中动作掩码 \(m_i(t) \in \{0,1\}^{V_i+1}\)，由 Python 侧根据队列和 VM 资源计算（1=允许，0=屏蔽）。
+
+#### 10.2.2 Local 动作 \(a_i(t)\)
+
+每个 local agent 的动作空间为：
+
+\[
+\mathcal{A}_i = \{0,1,\dots,V_i\}
+\]
+
+动作语义：
+
+\[
+a_i(t) =
+\begin{cases}
+0, & \text{NoAssign：本步不从队列取任务}\\[2pt]
+k\in\{1,\dots,V_i\}, & \text{将一个 cloudlet 分配给 VM }(k-1)
+\end{cases}
+\]
+
+Python → Java 映射为：
+
+\[
+\text{targetVmId} = a_i(t) - 1
+\]
+
+- \(a_i(t)=0 \Rightarrow \text{targetVmId}=-1\)：显式 NoAssign；  
+- \(a_i(t)=k>0 \Rightarrow \text{targetVmId}=k-1\)：选择本 DC 第 \(k-1\) 个 VM。
+
+#### 10.2.3 Local 奖励 \(r_i(t)\)
+
+单个 DC 的 local reward 由以下几部分组成：
+
+\[
+r_i(t) \;=\;
+R^{\text{wait}}_i(t)
+ + R^{\text{util}}_i(t)
+ + R^{\text{queue}}_i(t)
+ + R^{\text{invalid}}_i(t)
+ + R^{\text{compl}}_i(t)
+\]
+
+其中目前实现中 \(R^{\text{compl}}_i(t)=0\)（completion 奖励暂时禁用）。
+
+**(1) 等待时间惩罚 \(R^{\text{wait}}_i(t)\)**  
+设本步在 \(\text{DC}_i\) 完成的 cloudlet 等待时间集合为 \(\mathcal{W}_i(t)\)（秒）：
+
+\[
+\bar{w}_i(t) =
+\begin{cases}
+\dfrac{1}{|\mathcal{W}_i(t)|} \sum\limits_{w\in \mathcal{W}_i(t)} w, & |\mathcal{W}_i(t)|>0\\[4pt]
+0, & \text{否则}
+\end{cases}
+\]
+
+系数 \(\alpha_{\text{wait}} = \texttt{reward\_wait\_time\_coef}\)：
+
+\[
+R^{\text{wait}}_i(t) =
+\begin{cases}
+-\alpha_{\text{wait}} \cdot \log\!\bigl(1 + \bar{w}_i(t)\bigr), & |\mathcal{W}_i(t)|>0\\[4pt]
+0, & \text{否则}
+\end{cases}
+\]
+
+**(2) 利用率与负载均衡惩罚 \(R^{\text{util}}_i(t)\)**  
+对 \(\text{DC}_i\) 的活跃 VM 集合 \(\mathcal{V}_i\)，记每个 VM 的 CPU 利用率为 \(u_v(t)\in[0,1]\)：
+
+\[
+\mu_i(t) = \frac{1}{|\mathcal{V}_i|} \sum_{v\in\mathcal{V}_i} u_v(t)
+\]
+\[
+\sigma_i^2(t) = \frac{1}{|\mathcal{V}_i|} \sum_{v\in\mathcal{V}_i} \bigl(u_v(t)-\mu_i(t)\bigr)^2
+\]
+
+目标利用率 \(u^* = 0.75\)，系数 \(\alpha_{\text{util}} = \texttt{reward\_unutilization\_coef}\)：
+
+\[
+R^{\text{util}}_i(t)
+= -\alpha_{\text{util}} \left(
+\sqrt{\sigma_i^2(t)} + \bigl|\mu_i(t) - u^*\bigr|
+\right)
+\]
+
+**(3) 队列长度惩罚 \(R^{\text{queue}}_i(t)\)**  
+设本 DC 当前等待队列长度为 \(q_i(t)\)，自 episode 开始以来接收的 cloudlet 数为 \(N^{\text{recv}}_i(t)\)，系数 \(\alpha_{\text{queue}} = \texttt{reward\_queue\_penalty\_coef}\)：
+
+\[
+R^{\text{queue}}_i(t) =
+\begin{cases}
+-\alpha_{\text{queue}} \cdot \dfrac{q_i(t)}{N^{\text{recv}}_i(t)}, & N^{\text{recv}}_i(t) > 0\\[6pt]
+0, & \text{否则}
+\end{cases}
+\]
+
+**(4) 非法动作惩罚 \(R^{\text{invalid}}_i(t)\)**  
+设指示变量：
+
+\[
+\mathbb{I}^{\text{inv}}_i(t) =
+\begin{cases}
+1, & \text{本步 local 动作被判定为 invalid}\\
+0, & \text{否则}
+\end{cases}
+\]
+
+例如：队列非空却选 NoAssign、VM index 越界等。系数 \(\alpha_{\text{inv}} = \texttt{reward\_invalid\_action\_coef}\)：
+
+\[
+R^{\text{invalid}}_i(t)
+= -\alpha_{\text{inv}} \cdot \mathbb{I}^{\text{inv}}_i(t)
+\]
+
+**(5) 完成奖励 \(R^{\text{compl}}_i(t)\)**  
+设计上：若 \(C_i(t)\) 为本步完成的 cloudlet 数，系数 \(\alpha_{\text{compl}} = \texttt{reward\_completion\_coef}\)，则：
+
+\[
+R^{\text{compl}}_i(t) = \alpha_{\text{compl}} \cdot C_i(t)
+\]
+
+当前实现中该项被禁用：\(R^{\text{compl}}_i(t) = 0\)。  
+
+---
+
+### 10.3 Global Agent（跨 DC 路由）
+
+#### 10.3.1 Global 状态 \(s^{(g)}_t\)
+
+记全局观测为：
+
+\[
+s^{(g)}_t
+=
+\bigl(
+\mathbf{g}_1(t), \dots, \mathbf{g}_D(t),
+ C_{\text{up}}(t),
+ \mathbf{p}^{\text{batch}}(t),
+ \mathbf{m}^{\text{batch}}(t),
+ \mathbf{d}^{\text{pes}}(t),
+ L_{\text{imb}}(t),
+ C_{\text{recent}}(t)
+\bigr)
+\]
+
+对第 \(i\) 个 DC，其聚合状态为：
+
+\[
+\mathbf{g}_i(t)
+=
+\bigl(
+P^{\text{green}}_i(t),
+P^{\text{tot}}_i(t),
+\rho^{\text{green}}_i(t),
+W^{\text{green}}_i(t),
+\mu^{\text{short}}_i(t),
+\tau^{\text{short}}_i(t),
+\mu^{\text{long}}_i(t),
+\phi^{\text{peak}}_i(t),
+Q_i(t),
+U^{\text{cpu}}_i(t),
+A^{\text{pes}}_i(t),
+U^{\text{ram}}_i(t)
+\bigr)
+\]
+
+含义：
+
+- \(P^{\text{green}}_i(t)\)：当前绿色电力（W）  
+- \(P^{\text{tot}}_i(t)\)：当前总功率（W）  
+- \(\rho^{\text{green}}_i(t)\in[0,1]\)：绿色能耗占比  
+- \(W^{\text{green}}_i(t)\)：累计浪费绿色电量（Wh）  
+- \(\mu^{\text{short}}_i,\tau^{\text{short}}_i,\mu^{\text{long}}_i,\phi^{\text{peak}}_i\)：未来绿色功率趋势特征（见 10.4）  
+- \(Q_i(t)\)：该 DC 全局队列中的等待 cloudlet 数  
+- \(U^{\text{cpu}}_i(t)\in[0,1]\)：平均 host CPU 利用率  
+- \(A^{\text{pes}}_i(t)\in\mathbb{N}_0\)：该 DC 所有 VM 当前可用 PEs 总数  
+- \(U^{\text{ram}}_i(t)\in[0,1]\)：平均 host RAM 利用率  
+
+全局队列与 batch 信息：
+
+- \(C_{\text{up}}(t)\in\mathbb{N}_0\)：全局等待队列中的 cloudlet 总数；  
+- Batch 大小 \(B\)：
+\[
+\mathbf{p}^{\text{batch}}(t) = (p^{\text{batch}}_1(t),\dots,p^{\text{batch}}_B(t)),
+\quad p^{\text{batch}}_j(t)\in\mathbb{N}_0
+\]
+\[
+\mathbf{m}^{\text{batch}}(t) = (m^{\text{batch}}_1(t),\dots,m^{\text{batch}}_B(t)),
+\quad m^{\text{batch}}_j(t)\in\mathbb{N}_0
+\]
+分别为 batch 中每个位置的 PEs 和 MI（没有 cloudlet 时为 0）。  
+
+- PES 分布（小/中/大任务数）：
+\[
+\mathbf{d}^{\text{pes}}(t) =
+\bigl(d^{\text{small}}(t), d^{\text{med}}(t), d^{\text{large}}(t)\bigr) \in \mathbb{N}_0^3
+\]
+
+- 负载不均衡度（DC CPU 利用率的标准差）：
+\[
+L_{\text{imb}}(t) = \sqrt{\frac{1}{D}\sum_{i=1}^D \bigl(U^{\text{cpu}}_i(t)-\bar{U}(t)\bigr)^2}
+\]
+其中 \(\bar{U}(t)\) 为所有 DC 平均 CPU 利用率。  
+
+- 已完成 cloudlet 计数（近似）：
+\[
+C_{\text{recent}}(t)
+= \sum_{i=1}^{D} |\mathcal{C}^{\text{finished}}_i(t)|
+\]
+
+#### 10.3.2 Global 动作 \(a^{(g)}_t\)
+
+Global agent 的动作空间为 MultiDiscrete：
+
+\[
+a^{(g)}_t = \bigl(a^{(g)}_{t,1}, \dots, a^{(g)}_{t,B}\bigr),
+\qquad
+a^{(g)}_{t,j} \in \{0,1,\dots,D\}
+\]
+
+每个位置 \(j\) 的含义：
+
+\[
+a^{(g)}_{t,j} =
+\begin{cases}
+0, & \text{NoAssign：该位置不路由 cloudlet}\\[2pt]
+k\in\{1,\dots,D\}, & \text{将该位置的 cloudlet 路由到 DC }(k-1)
+\end{cases}
+\]
+
+Python 侧首先过滤掉 NoAssign，得到：
+
+\[
+\tilde{L}_t = \bigl\{\,k-1 \;\big|\; a^{(g)}_{t,j}=k>0,\ 1\le j\le B\,\bigr\}
+\]
+
+记当前全局等待队列长度为 \(C_{\text{up}}(t)\)，则真正传给 Java 的路由列表为：
+
+\[
+L_t = \tilde{L}_t[0:\,C_{\text{up}}(t)]
+\]
+
+即：
+
+- 若非 0 动作数大于队列长度，多余部分被截断丢弃；  
+- 若队列为空（\(C_{\text{up}}(t)=0\)），则 \(L_t\) 为空列表（等价于本步不路由任何 cloudlet）。  
+
+#### 10.3.3 Global 奖励 \(r^{(g)}_t\)
+
+在每个时间步 \(t\)：
+
+1. 对每个 DC \(i\) 计算 local 奖励 \(r^{\text{loc}}_i(t)\)（见 10.2.3）。  
+2. 汇总 local 奖励：
+\[
+R_{\text{local-sum}}(t) = \sum_{i=1}^{D} r^{\text{loc}}_i(t)
+\]
+3. 计算碳排放惩罚：  
+   - 能耗增量（Wh）：\(\Delta E^{\text{green}}_i(t),\;\Delta E^{\text{brown}}_i(t)\)；  
+   - 使用 DC 配置中的碳因子 \(f^{\text{green}}_i,f^{\text{brown}}_i\)：
+\[
+\Delta C_i(t) =
+\frac{\Delta E^{\text{green}}_i(t)}{1000}\cdot f^{\text{green}}_i
+ +
+\frac{\Delta E^{\text{brown}}_i(t)}{1000}\cdot f^{\text{brown}}_i
+\]
+\[
+\Delta C_{\text{tot}}(t) = \sum_{i=1}^{D} \Delta C_i(t)
+\]
+   - 碳惩罚（系数 \(\alpha_{\text{carbon}} = \texttt{carbon\_emission\_penalty\_coef}\)）：
+\[
+P_{\text{carbon}}(t) = \alpha_{\text{carbon}} \cdot \Delta C_{\text{tot}}(t)
+\]
+
+4. Global agent 的奖励：
+
+\[
+r^{(g)}_t
+=
+R_{\text{local-sum}}(t)
+ - P_{\text{carbon}}(t)
+=
+\sum_{i=1}^{D} r^{\text{loc}}_i(t)
+ - \alpha_{\text{carbon}} \sum_{i=1}^{D} \Delta C_i(t)
+\]
+
+---
+
+### 10.4 绿色能源未来趋势特征（God’s Eye）
+
+对某个 `GreenEnergyProvider`，其历史/未来功率时间序列为 \(\{P[k]\}_{k=0}^{N-1}\)（单位 kW），最大功率：
+
+\[
+P_{\max} = \max_k P[k]
+\]
+
+仿真时间 \(t\) 通过 `simTimeToRowIndex()` 映射到当前行索引 \(\text{currentIdx}\)，并考虑时区偏移 `time_zone_offset_rows` 以及压缩/真实时间模式（COMPRESSED/REAL_TIME）。
+
+#### 10.4.1 短期窗口特征（short-term）
+
+窗口长度为 `short_term_rows`，索引区间：
+
+\[
+i \in [\text{currentIdx},\, \text{shortEndIdx}-1],\quad
+\text{shortEndIdx} = \min(\text{currentIdx}+\text{shortTermRows}, N)
+\]
+\[
+\text{shortAvailable} = \text{shortEndIdx} - \text{currentIdx}
+\]
+
+**短期均值 \(\mu_i^{\text{short}}(t)\)**：
+
+\[
+\text{shortMean} =
+\frac{1}{\text{shortAvailable}}
+\sum_{k=\text{currentIdx}}^{\text{shortEndIdx}-1} P[k]
+\]
+\[
+\mu_i^{\text{short}}(t)
+= \min\!\left(1,\; \max\!\left(0,\; \frac{\text{shortMean}}{P_{\max}}\right)\right)
+\]
+
+**短期趋势 \(\tau_i^{\text{short}}(t)\)**：
+
+\[
+P_{\text{start}} = P[\text{currentIdx}],\quad
+P_{\text{end}} = P[\text{shortEndIdx}-1]
+\]
+\[
+\text{shortTrend} = \frac{P_{\text{end}} - P_{\text{start}}}{P_{\max}}
+\]
+\[
+\tau_i^{\text{short}}(t)
+= \min\!\left(1,\; \max\!\left(-1,\; \text{shortTrend}\right)\right)
+\]
+
+#### 10.4.2 长期窗口特征（long-term）
+
+窗口长度为 `long_term_rows`，索引区间：
+
+\[
+i \in [\text{currentIdx},\, \text{longEndIdx}-1],\quad
+\text{longEndIdx} = \min(\text{currentIdx}+\text{longTermRows}, N)
+\]
+\[
+\text{longAvailable} = \text{longEndIdx} - \text{currentIdx}
+\]
+
+**长期均值 \(\mu_i^{\text{long}}(t)\)**：
+
+\[
+\text{longMean} =
+\frac{1}{\text{longAvailable}}
+\sum_{k=\text{currentIdx}}^{\text{longEndIdx}-1} P[k]
+\]
+\[
+\mu_i^{\text{long}}(t)
+= \min\!\left(1,\; \max\!\left(0,\; \frac{\text{longMean}}{P_{\max}}\right)\right)
+\]
+
+**峰值时间 \(\phi_i^{\text{peak}}(t)\)**：
+
+\[
+k^* = \arg\max_{k \in [\text{currentIdx},\,\text{longEndIdx}-1]} P[k]
+\]
+\[
+\phi_i^{\text{peak}}(t)
+= \min\!\left(1,\; \max\!\left(0,\;
+ \frac{k^* - \text{currentIdx}}{\text{longAvailable}}
+\right)\right)
+\]
+
+#### 10.4.3 多风机聚合到 DC 级别
+
+若某个 DC 有多台风机（多个 `GreenEnergyProvider`），每个 provider \(p\) 具有特征：
+
+\[
+(\mu^{\text{short}}_p,\; \tau^{\text{short}}_p,\;
+ \mu^{\text{long}}_p,\; \phi^{\text{peak}}_p)
+\]
+
+和最大功率 \(P_{\max,p}\)。DC 级别的聚合特征（`computeAggregatedFutureTrendFeatures`）：
+
+- 加权短期均值：
+\[
+\mu^{\text{short}}_{\text{DC}}(t)
+= \min\!\left(1,\;
+  \frac{\sum_p P_{\max,p}\,\mu^{\text{short}}_p(t)}{\sum_p P_{\max,p}}
+\right)
+\]
+
+- 加权短期趋势：
+\[
+\tau^{\text{short}}_{\text{DC}}(t)
+= \text{clip}_{[-1,1]}\!\left(
+  \frac{\sum_p P_{\max,p}\,\tau^{\text{short}}_p(t)}{\sum_p P_{\max,p}}
+\right)
+\]
+
+- 加权长期均值：
+\[
+\mu^{\text{long}}_{\text{DC}}(t)
+= \min\!\left(1,\;
+  \frac{\sum_p P_{\max,p}\,\mu^{\text{long}}_p(t)}{\sum_p P_{\max,p}}
+\right)
+\]
+
+- 峰值时间取“最早”的一台：
+\[
+\phi^{\text{peak}}_{\text{DC}}(t)
+= \min_p \phi^{\text{peak}}_p(t)
+\]
+
+若一个 DC 没有任何 green provider，则使用默认值：\(\mu^{\text{short}}=\mu^{\text{long}}=0.5,\ \tau^{\text{short}}=0,\ \phi^{\text{peak}}=0.5\)。
+
+---
+
+## 11. 下一步
 
 1. **运行训练**:
    ```bash

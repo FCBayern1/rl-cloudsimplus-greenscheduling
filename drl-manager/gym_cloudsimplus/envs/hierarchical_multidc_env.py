@@ -764,36 +764,71 @@ class HierarchicalMultiDCEnv(gym.Env):
     
     def _convert_java_value(self, value):
         """
-        Convert a Java value to a Python native type (for serialization).
+        Convert a Java value (from Py4J) to a Python native type.
+
+        IMPORTANT:
+        - Preserves nested Maps/Lists by converting them recursively to dict/list
+        - Avoids stringifying complex objects such as energy metrics maps
         """
         if value is None:
             return None
-        
-        # Already Python type
+
+        # Already plain Python scalar
         if isinstance(value, (bool, int, float, str)):
             return value
-        
-        # Try to convert using Python type constructors
+
+        # Handle Java Maps (e.g., HashMap) exposed via Py4J:
+        # They usually have keySet() and get() methods.
         try:
-            # Try as int first (for Integer, Long, etc.)
+            if hasattr(value, "keySet") and hasattr(value, "get"):
+                py_dict = {}
+                for k in value.keySet():
+                    # Try to keep numeric keys as int (e.g., DC id 0..N-1),
+                    # fall back to string for non-numeric keys.
+                    try:
+                        py_key = int(k)
+                    except (TypeError, ValueError):
+                        py_key = str(k)
+                    py_dict[py_key] = self._convert_java_value(value.get(k))
+                return py_dict
+        except Exception:
+            # If anything goes wrong, fall through to other heuristics
+            pass
+
+        # Handle Java Lists or other iterable collections
+        try:
+            # Many Py4J Java collections are iterable but not sequences
+            iterator = iter(value)
+        except TypeError:
+            iterator = None
+
+        if iterator is not None:
+            try:
+                return [self._convert_java_value(v) for v in list(iterator)]
+            except Exception:
+                # If iteration fails, continue to scalar conversion attempts
+                pass
+
+        # Try numeric conversions (Integer, Long, Double, etc.)
+        try:
             return int(value)
         except (TypeError, ValueError):
             pass
-        
+
         try:
-            # Try as float (for Double, Float, etc.)
             return float(value)
         except (TypeError, ValueError):
             pass
-        
+
+        # Try boolean from string representation
         try:
-            # Try as bool (for Boolean)
-            if str(value).lower() in ('true', 'false'):
-                return str(value).lower() == 'true'
-        except:
+            s = str(value).lower()
+            if s in ("true", "false"):
+                return s == "true"
+        except Exception:
             pass
-        
-        # For complex objects (Maps, Lists), convert to string
+
+        # Fallback: string representation for unknown complex types
         return str(value)
 
     def render(self):
@@ -818,14 +853,15 @@ class HierarchicalMultiDCEnv(gym.Env):
             except Exception as e:
                 logger.warning(f"Error closing Java simulation environment: {e}")
 
-        # Shutdown Py4J gateway
+        # Close Py4J gateway client connection (do NOT shutdown the Java server,
+        # so that multiple evaluations / combinations can reuse the same JVM)
         if self.gateway is not None:
             try:
-                logger.info("Shutting down Py4J gateway...")
-                self.gateway.shutdown()
-                logger.info("Py4J gateway shutdown successfully")
+                logger.info("Closing Py4J gateway client connection...")
+                self.gateway.close()
+                logger.info("Py4J gateway client closed successfully")
             except Exception as e:
-                logger.warning(f"Error shutting down Py4J gateway: {e}")
+                logger.warning(f"Error closing Py4J gateway client: {e}")
             finally:
                 self.gateway = None
                 self.java_env = None

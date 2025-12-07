@@ -54,7 +54,6 @@ def create_visualization(csv_path: str, output_path: str = None, show: bool = Tr
     print(f"  Green ratio:     {df['green_ratio'].mean():.4f} ({df['green_ratio'].mean()*100:.2f}%)")
     print(f"  Waste ratio:     {df['waste_ratio'].mean():.4f} ({df['waste_ratio'].mean()*100:.2f}%)")
     print(f"  Carbon intensity: {df['carbon_intensity_kg_per_kwh'].mean():.4f} kg/kWh")
-    print(f"\nCompletion rate:   {df['completion_rate'].mean():.4f} ({df['completion_rate'].mean()*100:.2f}%)")
     print("=" * 60)
 
     # Create figure with subplots
@@ -65,6 +64,10 @@ def create_visualization(csv_path: str, output_path: str = None, show: bool = Tr
     gs = fig.add_gridspec(4, 3, hspace=0.35, wspace=0.3)
 
     episodes = df['episode'].values
+
+    # Identify local agent reward columns and datacenter completion columns (if present)
+    local_reward_cols = [col for col in df.columns if col.startswith('local_reward_')]
+    dc_cloudlet_cols = [col for col in df.columns if col.startswith('cloudlets_finished_dc_')]
 
     # ===== Row 1: Rewards =====
 
@@ -167,22 +170,22 @@ def create_visualization(csv_path: str, output_path: str = None, show: bool = Tr
     ax8.legend(loc='upper right', fontsize=8)
     ax8.grid(True, alpha=0.3)
 
-    # 3.3 Completion Rate
+    # 3.3 (reserved for per-DC cloudlets; shown in separate figure)
     ax9 = fig.add_subplot(gs[2, 2])
-    ax9.plot(episodes, df['completion_rate'] * 100, alpha=0.3, color='teal')
-    ax9.plot(episodes, smooth(df['completion_rate'] * 100, 20), color='teal', linewidth=2, label='Smoothed')
-    ax9.axhline(y=df['completion_rate'].mean() * 100, color='darkcyan', linestyle='--',
-                label=f'Mean: {df["completion_rate"].mean()*100:.1f}%')
-    ax9.set_xlabel('Episode')
-    ax9.set_ylabel('Completion Rate (%)')
-    ax9.set_title('Cloudlet Completion Rate')
-    ax9.set_ylim(0, 100)
-    ax9.legend(loc='lower right', fontsize=8)
-    ax9.grid(True, alpha=0.3)
+    ax9.axis('off')
+    ax9.text(
+        0.5,
+        0.5,
+        'Per-DC cloudlets\nshown in separate figure',
+        ha='center',
+        va='center',
+        fontsize=10,
+        transform=ax9.transAxes,
+    )
 
     # ===== Row 4: Combined Views =====
 
-    # 4.1 All Rewards Comparison
+    # 4.1 All Rewards Comparison (Smoothed)
     ax10 = fig.add_subplot(gs[3, 0:2])
     ax10.plot(episodes, smooth(df['episode_reward'], 20), label='Episode Reward', linewidth=2)
     ax10.plot(episodes, smooth(df['global_agent_reward'], 20), label='Global Agent', linewidth=2)
@@ -211,7 +214,6 @@ def create_visualization(csv_path: str, output_path: str = None, show: bool = Tr
 
     reward_improvement = calc_improvement('episode_reward')
     green_improvement = calc_improvement('green_ratio')
-    completion_improvement = calc_improvement('completion_rate')
 
     summary_text = f"""
     TRAINING PROGRESS
@@ -222,24 +224,98 @@ def create_visualization(csv_path: str, output_path: str = None, show: bool = Tr
     Final Metrics (last 10%):
     • Episode Reward: {df['episode_reward'].iloc[last_10pct:].mean():.1f}
     • Green Ratio: {df['green_ratio'].iloc[last_10pct:].mean()*100:.1f}%
-    • Completion: {df['completion_rate'].iloc[last_10pct:].mean()*100:.1f}%
 
     Improvement vs Start:
     • Reward: {reward_improvement:+.1f}%
     • Green Ratio: {green_improvement:+.1f}%
-    • Completion: {completion_improvement:+.1f}%
     """
 
     ax11.text(0.1, 0.9, summary_text, transform=ax11.transAxes,
               fontsize=11, verticalalignment='top', fontfamily='monospace',
               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    # ===== Separate Figure: Local Agents & Per-DC Cloudlets =====
+    fig2 = plt.figure(figsize=(16, 6))
+    fig2.suptitle('Local Agents Rewards & Final Cloudlets per Datacenter',
+                  fontsize=16, fontweight='bold')
+
+    gs2 = fig2.add_gridspec(1, 2, wspace=0.3)
+
+    # Left: Local agents rewards
+    ax_local = fig2.add_subplot(gs2[0, 0])
+    if local_reward_cols:
+        for col in sorted(local_reward_cols, key=lambda c: int(c.split('_')[-1])):
+            agent_id = col.split('_')[-1]
+            ax_local.plot(
+                episodes,
+                smooth(df[col], 20),
+                linewidth=1.5,
+                label=f'Local {agent_id}',
+            )
+        ax_local.set_xlabel('Episode')
+        ax_local.set_ylabel('Reward')
+        ax_local.set_title('Local Agents Rewards (Smoothed)')
+        ax_local.legend(loc='lower right', fontsize=7, ncol=2)
+        ax_local.grid(True, alpha=0.3)
+    else:
+        ax_local.text(
+            0.5,
+            0.5,
+            'No local agent reward data\n(found columns local_reward_*)',
+            ha='center',
+            va='center',
+            fontsize=10,
+            transform=ax_local.transAxes,
+        )
+        ax_local.set_axis_off()
+
+    # Right: Final cloudlets per Datacenter (last episode)
+    ax_dc = fig2.add_subplot(gs2[0, 1])
+    if dc_cloudlet_cols:
+        last_dc_counts = df[dc_cloudlet_cols].iloc[-1].values
+        dc_indices = list(range(len(dc_cloudlet_cols)))
+        ax_dc.bar(dc_indices, last_dc_counts, color='#3498db', alpha=0.8)
+        ax_dc.set_xticks(dc_indices)
+        ax_dc.set_xticklabels(
+            [col.split('_')[-1] for col in dc_cloudlet_cols],
+            rotation=0,
+        )
+        ax_dc.set_xlabel('Datacenter ID')
+        ax_dc.set_ylabel('Cloudlets Finished (last episode)')
+        ax_dc.set_title('Final Cloudlets per Datacenter')
+        for i, v in enumerate(last_dc_counts):
+            ax_dc.text(i, v, f'{int(v)}', ha='center', va='bottom', fontsize=8)
+        ax_dc.grid(True, alpha=0.3)
+    else:
+        ax_dc.text(
+            0.5,
+            0.5,
+            'No per-DC cloudlet data\n(found columns cloudlets_finished_dc_*)',
+            ha='center',
+            va='center',
+            fontsize=10,
+            transform=ax_dc.transAxes,
+        )
+        ax_dc.set_axis_off()
+
+    fig2.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     # Save if output path specified
     if output_path:
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        # Save main dashboard
+        fig.savefig(output_path, dpi=150, bbox_inches='tight')
         print(f"\nFigure saved to: {output_path}")
+
+        # Save secondary figure for local agents & per-DC cloudlets
+        from pathlib import Path as _Path
+
+        out_path_obj = _Path(output_path)
+        second_name = out_path_obj.stem + '_local_dc' + out_path_obj.suffix
+        second_path = str(out_path_obj.with_name(second_name))
+        fig2.savefig(second_path, dpi=150, bbox_inches='tight')
+        print(f"Second figure saved to: {second_path}")
 
     # Show plot
     if show:

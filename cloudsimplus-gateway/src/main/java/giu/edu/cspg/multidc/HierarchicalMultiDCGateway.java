@@ -62,6 +62,14 @@ public class HierarchicalMultiDCGateway {
         // Parse datacenter configurations
         this.datacenterConfigs = parseDatacenterConfigs(params);
 
+        // Reset existing simulation core so that new settings take effect on next reset().
+        // This is important when Python calls configureSimulation() multiple times
+        // (e.g., training with one config, then evaluation with another).
+        if (this.simulationCore != null) {
+            LOGGER.info("Reconfiguring simulation: clearing existing MultiDatacenterSimulationCore instance.");
+            this.simulationCore = null;
+        }
+
         LOGGER.info("Configuration complete: {} datacenters", datacenterConfigs.size());
         configured = true;
     }

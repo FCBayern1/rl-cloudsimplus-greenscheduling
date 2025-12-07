@@ -91,7 +91,13 @@ public class SimulationSettings {
     private final double rewardEnergyCoef;
     private final double rewardCompletionCoef;   // Coefficient for completion rate reward (positive reward)
     private final double greenWastePenaltyCoef;  // Base coefficient for green waste penalty (scaled by DC count)
-    private final double carbonEmissionPenaltyCoef;  // Coefficient for carbon emission penalty
+    private final double carbonEmissionPenaltyCoef;  // Coefficient for carbon emission penalty (OLD, kept for reference)
+
+    // Global Reward Coefficients (NEW normalized reward scheme)
+    // r_global = α·L - β·Ĉ - γ·R_w
+    private final double globalRewardAlpha;  // α: Local performance weight (default: 1.0)
+    private final double globalRewardBeta;   // β: Carbon penalty weight (default: 0.5)
+    private final double globalRewardGamma;  // γ: Green waste penalty weight (default: 0.3)
 
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
@@ -222,7 +228,15 @@ public class SimulationSettings {
         this.rewardEnergyCoef = getDoubleParam(params, "reward_energy_coef", 0.0); // Default 0 = disabled
         this.rewardCompletionCoef = getDoubleParam(params, "reward_completion_coef", 1.0); // Positive reward for completion
         this.greenWastePenaltyCoef = getDoubleParam(params, "green_waste_penalty_coef", 10.0); // Base coef per DC
-        this.carbonEmissionPenaltyCoef = getDoubleParam(params, "carbon_emission_penalty_coef", 1.0); // Default 1.0, adjust based on data
+        this.carbonEmissionPenaltyCoef = getDoubleParam(params, "carbon_emission_penalty_coef", 1.0); // Default 1.0 (OLD, kept for reference)
+
+        // Global Reward Coefficients (NEW normalized reward scheme)
+        // r_global = α·L - β·Ĉ - γ·R_w
+        this.globalRewardAlpha = getDoubleParam(params, "global_reward_alpha", 1.0);  // α: Local performance weight
+        this.globalRewardBeta = getDoubleParam(params, "global_reward_beta", 0.5);    // β: Carbon penalty weight
+        this.globalRewardGamma = getDoubleParam(params, "global_reward_gamma", 0.3);  // γ: Green waste penalty weight
+        LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
+                this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
 
         // Green Energy Configuration
         @SuppressWarnings("unchecked")
@@ -407,12 +421,41 @@ public class SimulationSettings {
     }
 
     /**
-     * Gets the carbon emission penalty coefficient.
+     * Gets the carbon emission penalty coefficient (OLD, kept for reference).
      * Penalty = coefficient × total carbon emissions (kg CO2).
      *
      * @return Coefficient for carbon emission penalty
      */
     public double getCarbonEmissionPenaltyCoef() {
         return carbonEmissionPenaltyCoef;
+    }
+
+    // ============================================================================
+    // Global Reward Coefficients (NEW normalized reward scheme)
+    // r_global = α·L - β·Ĉ - γ·R_w
+    // ============================================================================
+
+    /**
+     * Get global reward alpha coefficient (local performance weight).
+     * @return α coefficient (default: 1.0)
+     */
+    public double getGlobalRewardAlpha() {
+        return globalRewardAlpha;
+    }
+
+    /**
+     * Get global reward beta coefficient (carbon penalty weight).
+     * @return β coefficient (default: 0.5)
+     */
+    public double getGlobalRewardBeta() {
+        return globalRewardBeta;
+    }
+
+    /**
+     * Get global reward gamma coefficient (green waste penalty weight).
+     * @return γ coefficient (default: 0.3)
+     */
+    public double getGlobalRewardGamma() {
+        return globalRewardGamma;
     }
 }

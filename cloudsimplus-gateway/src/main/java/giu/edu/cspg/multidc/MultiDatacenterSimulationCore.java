@@ -66,6 +66,12 @@ public class MultiDatacenterSimulationCore {
     private boolean firstStep = true;
     private boolean firstReset = true;  // Track if this is the first reset
 
+    // === Running Statistics for Reward Normalization ===
+    // Running max for carbon emission normalization (persists across episodes)
+    private double runningMaxCarbon = 1e-3;  // Initial small value to avoid division by zero
+    private static final double EPSILON = 1e-8;
+    private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalized carbon ratio
+
     /**
      * Initialise the multi-datacenter simulation core.
      *
@@ -884,44 +890,76 @@ public class MultiDatacenterSimulationCore {
     /**
      * Calculate global reward as sum of local rewards minus green waste penalty.
      *
-     * NEW DESIGN:
-     * Global Reward = Σ(Local Rewards) - Carbon Emission Penalty
+     * NEW DESIGN (v2 - Normalized Hierarchical Reward):
      *
-     * This design encourages:
-     * - Global agent to consider local scheduling efficiency (via sum of local rewards)
-     * - Minimizing carbon emissions by routing to low-carbon datacenters
+     * r_global = α·L - β·Ĉ - γ·R_w
+     *
+     * Where:
+     * - L = Average local reward (1/N × Σ r_local)
+     * - Ĉ = Running-max normalized carbon (C / M_C, capped at CARBON_RATIO_MAX)
+     * - R_w = Green waste ratio (G_waste / (G_waste + G_used))
+     *
+     * Coefficients (from config):
+     * - α (alpha): Local performance weight (default: 1.0)
+     * - β (beta): Carbon penalty weight (default: 0.5)
+     * - γ (gamma): Green waste penalty weight (default: 0.3)
      *
      * @param localRewards Map of DC_ID -> local reward
      */
     private double calculateGlobalReward(Map<Integer, Double> localRewards) {
-        // === Component 1: Sum of Local Rewards ===
-        double sumLocalRewards = localRewards.values().stream()
-                .mapToDouble(Double::doubleValue)
-                .sum();
+        int N = datacenterInstances.size();
+        if (N == 0) return 0.0;
 
-        // === Component 2: Carbon Emission Penalty (current timestep) ===
-        double carbonEmissionPenalty = calculateCarbonEmissionPenalty();
+        // Get coefficients from settings
+        double alpha = settings.getGlobalRewardAlpha();  // Local performance weight
+        double beta = settings.getGlobalRewardBeta();    // Carbon penalty weight
+        double gamma = settings.getGlobalRewardGamma();  // Green waste penalty weight
+
+        // === Component 1: Average Local Reward (L) ===
+        double avgLocalReward = localRewards.values().stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+
+        // === Component 2: Normalized Carbon Penalty (Ĉ) ===
+        double normalizedCarbon = calculateNormalizedCarbonPenalty();
+
+        // === Component 3: Green Waste Ratio (R_w) ===
+        double wasteRatio = calculateGreenWasteRatio();
 
         // === Final Global Reward ===
-        double reward = sumLocalRewards - carbonEmissionPenalty;
+        double reward = alpha * avgLocalReward
+                      - beta * normalizedCarbon
+                      - gamma * wasteRatio;
 
-        LOGGER.debug("Global Reward: total={} (sumLocal={}, carbonEmissionPenalty={})",
-                reward, sumLocalRewards, carbonEmissionPenalty);
+        LOGGER.debug("Global Reward: total={} (α·L={}, β·Ĉ={}, γ·Rw={})",
+                String.format("%.4f", reward),
+                String.format("%.4f", alpha * avgLocalReward),
+                String.format("%.4f", beta * normalizedCarbon),
+                String.format("%.4f", gamma * wasteRatio));
+        LOGGER.debug("  Components: L={}, Ĉ={}, Rw={} | Coeffs: α={}, β={}, γ={}",
+                String.format("%.4f", avgLocalReward),
+                String.format("%.4f", normalizedCarbon),
+                String.format("%.4f", wasteRatio),
+                alpha, beta, gamma);
 
         return reward;
     }
 
     /**
-     * Calculate carbon emission penalty for the current timestep.
+     * Calculate normalized carbon penalty using running maximum.
      *
-     * Penalty is based on the total carbon emissions (kg CO2) across all datacenters.
-     * Higher carbon emissions = higher penalty.
+     * Formula: Ĉ = min(C / (M_C + ε), c_max)
      *
-     * Formula: penalty = carbonEmissionPenaltyCoef × totalCarbonKg
+     * Where:
+     * - C = current timestep total carbon (kg)
+     * - M_C = running maximum carbon (updated each step)
+     * - ε = small constant to avoid division by zero
+     * - c_max = cap to prevent extreme ratios
      *
-     * @return Carbon emission penalty (non-negative value to be subtracted from reward)
+     * @return Normalized carbon penalty in range [0, CARBON_RATIO_MAX]
      */
-    private double calculateCarbonEmissionPenalty() {
+    private double calculateNormalizedCarbonPenalty() {
         double totalCarbonKg = 0.0;
         int validDatacenters = 0;
 
@@ -939,18 +977,96 @@ public class MultiDatacenterSimulationCore {
             return 0.0;
         }
 
-        // Apply penalty coefficient
-        double penaltyCoef = settings.getCarbonEmissionPenaltyCoef();  // To be configured
-        double penalty = penaltyCoef * totalCarbonKg;
+        // Update running maximum
+        runningMaxCarbon = Math.max(runningMaxCarbon, totalCarbonKg);
 
-        LOGGER.debug("  Carbon Emission: totalCarbonKg={}, validDCs={}, penaltyCoef={}, penalty={}",
-                String.format("%.3f", totalCarbonKg),
-                validDatacenters,
-                penaltyCoef,
-                String.format("%.3f", penalty));
+        // Normalize by running max
+        double normalizedCarbon = Math.min(
+            totalCarbonKg / (runningMaxCarbon + EPSILON),
+            CARBON_RATIO_MAX
+        );
 
-        return penalty;
+        LOGGER.trace("  Carbon: total={}kg, runningMax={}kg, normalized={}",
+                String.format("%.6f", totalCarbonKg),
+                String.format("%.6f", runningMaxCarbon),
+                String.format("%.4f", normalizedCarbon));
+
+        return normalizedCarbon;
     }
+
+    /**
+     * Calculate green energy waste ratio.
+     *
+     * Formula: R_w = G_waste / (G_waste + G_used)
+     *
+     * Range: [0, 1] where 0 = no waste, 1 = all green energy wasted
+     *
+     * @return Waste ratio in range [0, 1]
+     */
+    private double calculateGreenWasteRatio() {
+        double totalGreenUsed = 0.0;
+        double totalGreenWasted = 0.0;
+
+        for (DatacenterInstance dc : datacenterInstances) {
+            EnergyMetricsDelta delta = dc.getLatestEnergyDelta();
+            if (delta == null) {
+                continue;
+            }
+            totalGreenUsed += delta.getDeltaGreenEnergyUsedWh();
+            totalGreenWasted += delta.getDeltaGreenEnergyWastedWh();
+        }
+
+        double total = totalGreenUsed + totalGreenWasted;
+        if (total <= 0) {
+            return 0.0;
+        }
+
+        double wasteRatio = totalGreenWasted / total;
+
+        LOGGER.trace("  Green Waste: used={}Wh, wasted={}Wh, ratio={}",
+                String.format("%.2f", totalGreenUsed),
+                String.format("%.2f", totalGreenWasted),
+                String.format("%.4f", wasteRatio));
+
+        return wasteRatio;
+    }
+
+    // ============================================================================
+    // OLD REWARD FUNCTION (COMMENTED OUT FOR REFERENCE)
+    // ============================================================================
+    /*
+    // OLD: calculateGlobalReward - used sum of local rewards + raw carbon penalty
+    private double calculateGlobalReward_OLD(Map<Integer, Double> localRewards) {
+        double sumLocalRewards = localRewards.values().stream()
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        double carbonEmissionPenalty = calculateCarbonEmissionPenalty_OLD();
+        double reward = sumLocalRewards - carbonEmissionPenalty;
+
+        LOGGER.debug("Global Reward (OLD): total={} (sumLocal={}, carbonPenalty={})",
+                reward, sumLocalRewards, carbonEmissionPenalty);
+        return reward;
+    }
+
+    // OLD: calculateCarbonEmissionPenalty - used raw penalty coefficient × carbon
+    private double calculateCarbonEmissionPenalty_OLD() {
+        double totalCarbonKg = 0.0;
+        int validDatacenters = 0;
+
+        for (DatacenterInstance dc : datacenterInstances) {
+            EnergyMetricsDelta delta = dc.getLatestEnergyDelta();
+            if (delta == null) continue;
+            validDatacenters++;
+            totalCarbonKg += delta.getDeltaCarbonEmissionKg();
+        }
+
+        if (validDatacenters == 0) return 0.0;
+
+        double penaltyCoef = settings.getCarbonEmissionPenaltyCoef();
+        return penaltyCoef * totalCarbonKg;
+    }
+    */
 
     /**
      * Calculate green energy component of global reward using INCREMENTAL metrics.

@@ -36,11 +36,14 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune.logger import pretty_print
+from ray.tune import CLIReporter
+from tqdm import tqdm
+import time
 
 # Add drl-manager root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv
+from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.models.masked_action_model import MaskedActionModel, DictObsModel
 from ray.rllib.models import ModelCatalog
@@ -53,11 +56,67 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class TqdmProgressReporter(CLIReporter):
+    """
+    Custom Ray Tune reporter with tqdm progress bar.
+    Shows training progress similar to SB3's progress bar.
+    """
+
+    def __init__(self, total_timesteps: int, **kwargs):
+        super().__init__(**kwargs)
+        self.total_timesteps = total_timesteps
+        self.pbar = None
+        self.last_timesteps = 0
+
+    def report(self, trials, done, *sys_info):
+        """Called by Ray Tune to report progress."""
+        # Initialize progress bar on first call
+        if self.pbar is None:
+            self.pbar = tqdm(
+                total=self.total_timesteps,
+                desc="Training",
+                unit=" steps",
+                dynamic_ncols=True,
+                bar_format="{percentage:3.0f}% {bar} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
+            )
+
+        # Get current timesteps from the first trial
+        if trials:
+            trial = trials[0]
+            if trial.last_result:
+                # RLlib 2.x uses num_env_steps_sampled
+                current_timesteps = trial.last_result.get(
+                    "num_env_steps_sampled",
+                    trial.last_result.get("timesteps_total", 0)
+                )
+
+                # Update progress bar
+                delta = current_timesteps - self.last_timesteps
+                if delta > 0:
+                    self.pbar.update(delta)
+                    self.last_timesteps = current_timesteps
+
+                # Show reward info in description
+                reward = trial.last_result.get("episode_reward_mean", None)
+                if reward is not None:
+                    self.pbar.set_postfix({
+                        "reward": f"{reward:.2f}",
+                    })
+
+        # Close progress bar when done
+        if done and self.pbar is not None:
+            self.pbar.close()
+
+        # Still call parent's report for logging
+        return super().report(trials, done, *sys_info)
+
+
 def env_creator(config: Dict[str, Any]):
     """
     Environment creator function for RLlib.
 
     RLlib calls this function to create environment instances.
+    Automatically selects simplified environment if env_id indicates so.
 
     Args:
         config: Environment configuration dictionary
@@ -65,8 +124,16 @@ def env_creator(config: Dict[str, Any]):
     Returns:
         RLlib-wrapped PettingZoo environment
     """
-    # Create PettingZoo environment
-    env = HierarchicalMultiDCParallelEnv(config)
+    # Check if simplified environment (no God's Eye features) is requested
+    env_id = config.get("env_id", "")
+    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
+    if use_simple:
+        logger.info("Creating SIMPLIFIED PettingZoo environment (no God's Eye features)")
+        env = HierarchicalMultiDCParallelEnvSimple(config)
+    else:
+        logger.info("Creating standard PettingZoo environment (with God's Eye features)")
+        env = HierarchicalMultiDCParallelEnv(config)
 
     # Wrap for RLlib (converts PettingZoo to RLlib format)
     return ParallelPettingZooEnv(env)
@@ -129,7 +196,12 @@ def create_rllib_config(
             raise
 
     # Create a sample environment to get spaces
-    sample_env = HierarchicalMultiDCParallelEnv(env_config)
+    env_id = env_config.get("env_id", "")
+    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+    if use_simple:
+        sample_env = HierarchicalMultiDCParallelEnvSimple(env_config)
+    else:
+        sample_env = HierarchicalMultiDCParallelEnv(env_config)
 
     # Get observation and action spaces
     global_obs_space = sample_env.observation_space("global_agent")
@@ -285,7 +357,7 @@ def train_rllib(
     logger.info("RLlib Multi-Agent Training with Ray Tune")
     logger.info("="*70)
     logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Num workers: {training_config.get('num_workers', 4)}")
+    logger.info(f"Num workers: {training_config.get('num_workers', 0)}")
     logger.info(f"Total timesteps: {training_config.get('total_timesteps', 100000)}")
     logger.info("="*70)
 
@@ -316,13 +388,21 @@ def train_rllib(
         num_to_keep=3,  # Keep last 3 checkpoints
     )
 
+    # Create progress reporter with tqdm
+    progress_reporter = TqdmProgressReporter(
+        total_timesteps=total_timesteps,
+        metric_columns=["episode_reward_mean", "num_env_steps_sampled"],
+        max_report_frequency=5,  # Report every 5 seconds
+    )
+
     # Configure run settings with automatic TensorBoard logging
     run_config = air.RunConfig(
         name="multidc_training",
         storage_path=output_dir,  # Ray 2.x uses storage_path instead of local_dir
         stop=stop_criteria,
         checkpoint_config=checkpoint_config,
-        verbose=1,
+        verbose=0,  # Reduce verbosity since we have tqdm
+        progress_reporter=progress_reporter,
         # TensorBoard logging is enabled by default
         # Logs will be saved to: {output_dir}/multidc_training/PPO_*/events.out.tfevents.*
     )
