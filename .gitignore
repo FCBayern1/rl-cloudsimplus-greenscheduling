@@ -149,3 +149,6 @@ SWF_Prediction/**/*.ckpt
 **/windProduction/processed_data/*.pkl
 **/windProduction/processed_data_turbine_wise/*.csv
 **/windProduction/processed_data_turbine_wise/*.pkl
+
+# Logback configuration (local only)
+cloudsimplus-gateway/src/main/resources/logback.xml
