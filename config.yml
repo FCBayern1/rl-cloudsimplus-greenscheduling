@@ -2452,9 +2452,10 @@ experiment_multi_dc_simple:
     total_timesteps: 400000
     num_workers: 0
     num_gpus: 1
-    train_batch_size: 8000
-    sgd_minibatch_size: 256
-    num_sgd_iter: 10
+    # Smaller batches for 12GB GPU (RTX 3060) to避免显存爆掉
+    train_batch_size: 2000
+    sgd_minibatch_size: 128
+    num_sgd_iter: 5
     checkpoint_freq_timesteps: 40000
     
   # --- Wind Prediction (disabled) ---

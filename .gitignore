@@ -152,3 +152,6 @@ SWF_Prediction/**/*.ckpt
 
 # Logback configuration (local only)
 cloudsimplus-gateway/src/main/resources/logback.xml
+
+# Local experiment config (do not track future local tweaks)
+config.yml
