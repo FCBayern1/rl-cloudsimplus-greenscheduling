@@ -262,12 +262,29 @@ Examples:
     # Determine algorithm name for this experiment (used for logging + directory naming)
     algorithm_name = training_config.get('algorithm', 'PPO').upper()
 
-    # If using the default logs path pattern, update experiment folder to include algorithm name.
-    # Example: logs/experiment_multi_dc_simple_PPO/<timestamp>/
+    # Detect whether local-agent parameter sharing is enabled for this experiment.
+    # This is used only for naming the log directory (for easier comparison).
+    ps_flag = False
+    # Check training section (recommended place)
+    if 'parameter_sharing' in training_config:
+        ps_flag = bool(training_config.get('parameter_sharing'))
+    else:
+        # Fallback: check top-level/env-style config if present
+        ps_cfg = exp_config.get('parameter_sharing', {})
+        if isinstance(ps_cfg, dict):
+            ps_flag = bool(ps_cfg.get('local_agents', ps_cfg.get('enabled', False)))
+        else:
+            ps_flag = bool(ps_cfg)
+
+    # If using the default logs path pattern, update experiment folder to include algorithm
+    # and (optionally) a ParameterSharing suffix, e.g.:
+    #   logs/experiment_multi_dc_10_PPO_ParameterSharing/<timestamp>/
     default_prefix = f"../logs/{args.experiment}/"
     if args.output_dir.startswith(default_prefix):
         timestamp = args.output_dir.split("/")[-1]
         experiment_with_algo = f"{args.experiment}_{algorithm_name}"
+        if ps_flag:
+            experiment_with_algo = f"{experiment_with_algo}_ParameterSharing"
         args.output_dir = f"../logs/{experiment_with_algo}/{timestamp}"
         logger.info(f"Updated output directory with algorithm name: {args.output_dir}")
         logger.info(f"  (Multiple runs will be grouped under logs/{experiment_with_algo}/)")

@@ -6,10 +6,10 @@ with the PettingZoo ParallelEnv wrapper.
 
 Features:
 - Native PettingZoo support via RLlib
-- Global Agent: PPO for datacenter routing
-- Local Agents: PPO with parameter sharing for VM scheduling
+- Supports PPO algorithm (A3C removed in RLlib 2.x)
+- Global Agent: Policy gradient for datacenter routing
+- Local Agents: Policy gradient with action masking for VM scheduling
 - Action masking support
-- Distributed training capable
 - TensorBoard logging
 - Checkpoint management
 
@@ -33,7 +33,6 @@ from gymnasium import spaces
 import ray
 from ray import tune, air
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune.logger import pretty_print
@@ -47,6 +46,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.models.masked_action_model import MaskedActionModel, DictObsModel
+from src.models.trxl_obsrec_model import TransformerXLObsRecModel
 from ray.rllib.models import ModelCatalog
 
 # Setup logging
@@ -156,10 +156,23 @@ def policy_mapping_fn(agent_id, episode, **kwargs):
     if agent_id == "global_agent":
         return "global_policy"
     else:
-        # Each local agent gets its own policy
+        # Each local agent gets its own policy (no parameter sharing)
         # Extract DC ID from agent_id (e.g., "local_agent_0" -> 0)
         dc_id = int(agent_id.split("_")[-1])
         return f"local_policy_{dc_id}"
+
+
+def shared_policy_mapping_fn(agent_id, episode, **kwargs):
+    """
+    Policy mapping function when local agents share a single policy.
+
+    - global_agent -> global_policy
+    - local_agent_* -> shared_local_policy
+    """
+    if agent_id == "global_agent":
+        return "global_policy"
+    else:
+        return "shared_local_policy"
 
 
 def create_rllib_config(
@@ -170,7 +183,7 @@ def create_rllib_config(
     output_dir: str = None
 ):
     """
-    Create RLlib algorithm configuration (supports PPO, A2C, IMPALA).
+    Create RLlib PPO algorithm configuration.
 
     Args:
         env_config: Environment configuration
@@ -179,7 +192,7 @@ def create_rllib_config(
         training_config: Training hyperparameters (must include 'algorithm' key)
 
     Returns:
-        Configured algorithm config object (PPOConfig, A2CConfig, or ImpalaConfig)
+        Configured PPOConfig object
     """
     # Get algorithm name from training config, default to PPO
     algorithm_name = training_config.get("algorithm", "PPO").upper()
@@ -195,6 +208,13 @@ def create_rllib_config(
     try:
         ModelCatalog.register_custom_model("dict_obs_model", DictObsModel)
         logger.info("Registered custom RLlib model: dict_obs_model")
+    except Exception as e:
+        if "You have already registered" not in str(e):
+            raise
+
+    try:
+        ModelCatalog.register_custom_model("trxl_obsrec_model", TransformerXLObsRecModel)
+        logger.info("Registered custom RLlib model: trxl_obsrec_model")
     except Exception as e:
         if "You have already registered" not in str(e):
             raise
@@ -215,8 +235,25 @@ def create_rllib_config(
     logger.info(f"Global obs space type: {type(global_obs_space)}")
     logger.info(f"Global obs space: {global_obs_space}")
 
-    # Define policies - SEPARATE POLICY FOR EACH DC (no parameter sharing)
-    # The PettingZoo environment now provides correct action spaces per DC.
+    # Whether to enable parameter sharing for local agents.
+    # Config options (any one of以下为 True 即打开):
+    # - environment.parameter_sharing: true
+    # - environment.parameter_sharing.local_agents: true
+    # - training.parameter_sharing: true
+    ps_cfg = env_config.get("parameter_sharing", {})
+    if isinstance(ps_cfg, dict):
+        use_parameter_sharing = bool(
+            ps_cfg.get("local_agents", ps_cfg.get("enabled", False))
+        )
+    else:
+        use_parameter_sharing = bool(ps_cfg)
+    # Allow overriding from training config if needed
+    if "parameter_sharing" in training_config:
+        use_parameter_sharing = bool(training_config.get("parameter_sharing"))
+
+    logger.info(f"Local agent parameter sharing enabled: {use_parameter_sharing}")
+
+    # Define policies
     # _disable_preprocessor_api: Keep Dict obs space intact (don't flatten to Box).
     # Local agents use MaskedActionModel (Discrete actions with action_mask).
     masked_model_cfg = {
@@ -230,38 +267,80 @@ def create_rllib_config(
     # - Global agent has MultiDiscrete([n]*batch_size) action space where n = num_datacenters.
     # - Each element selects which DC to route a cloudlet to (0 to n-1).
     # - No NoAssign option for global agent - all cloudlets must be routed.
-    global_model_cfg = {
-        "model": {
-            "custom_model": "dict_obs_model",
-        },
-        "_disable_preprocessor_api": True,
-    }
+    if "model" in global_model_config:
+        global_model_cfg = {
+            "model": global_model_config["model"],
+            "_disable_preprocessor_api": global_model_config.get(
+                "_disable_preprocessor_api", True
+            ),
+        }
+    else:
+        global_model_cfg = {
+            "model": {
+                "custom_model": "dict_obs_model",
+            },
+            "_disable_preprocessor_api": True,
+        }
 
     policies = {
         "global_policy": PolicySpec(
             policy_class=None,
             observation_space=global_obs_space,
             action_space=global_action_space,
-            config=global_model_cfg,  # Use masked model for proper action masking
+            config=global_model_cfg,
         ),
     }
 
-    # Create individual policy for each datacenter with correct action space
-    # The environment already provides the correct action space for each DC
+    # Multi-DC count helper
     num_dcs = env_config.get("multi_datacenter_enabled") and len(env_config.get("datacenters", []))
-    for dc_id in range(num_dcs):
-        agent_name = f"local_agent_{dc_id}"
-        local_obs_space = sample_env.observation_space(agent_name)
-        local_action_space = sample_env.action_space(agent_name)
 
-        logger.info(f"DC {dc_id}: action space {local_action_space}")
+    if use_parameter_sharing:
+        # Parameter sharing: all local agents use a single shared_local_policy
+        if not num_dcs:
+            raise ValueError(
+                "Parameter sharing enabled but no datacenters configured in env_config."
+            )
 
-        policies[f"local_policy_{dc_id}"] = PolicySpec(
+        # All local agents now expose the same (padded) observation/action space
+        # from the PettingZoo wrapper; we can safely use local_agent_0 as template.
+        sample_local_agent = "local_agent_0"
+        unified_local_obs_space = sample_env.observation_space(sample_local_agent)
+        unified_local_action_space = sample_env.action_space(sample_local_agent)
+
+        logger.info(f"Unified local obs space: {unified_local_obs_space}")
+        logger.info(f"Unified local action space: {unified_local_action_space}")
+
+        policies["shared_local_policy"] = PolicySpec(
             policy_class=None,
-            observation_space=local_obs_space,
-            action_space=local_action_space,  # Use environment's action space directly
+            observation_space=unified_local_obs_space,
+            action_space=unified_local_action_space,
             config=masked_model_cfg,
         )
+
+        selected_policy_mapping_fn = shared_policy_mapping_fn
+    else:
+        # No parameter sharing: create individual policy for each datacenter
+        if not num_dcs:
+            logger.warning(
+                "multi_datacenter_enabled is False or no datacenters configured; "
+                "no local policies will be created."
+            )
+
+        for dc_id in range(num_dcs):
+            agent_name = f"local_agent_{dc_id}"
+            local_obs_space = sample_env.observation_space(agent_name)
+            local_action_space = sample_env.action_space(agent_name)
+
+            logger.info(f"DC {dc_id}: action space {local_action_space}")
+
+            policies[f"local_policy_{dc_id}"] = PolicySpec(
+                policy_class=None,
+                observation_space=local_obs_space,
+                action_space=local_action_space,
+                config=masked_model_cfg,
+            )
+
+        selected_policy_mapping_fn = policy_mapping_fn
 
     sample_env.close()
 
@@ -271,7 +350,7 @@ def create_rllib_config(
         "env_config": env_config,
         "multi_agent": {
             "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
+            "policy_mapping_fn": selected_policy_mapping_fn,
             "policies_to_train": list(policies.keys()),
         },
         "num_env_runners": training_config.get("num_workers", 0),
@@ -298,7 +377,7 @@ def create_rllib_config(
             .environment(env="multidc_env", env_config=env_config)
             .multi_agent(
                 policies=policies,
-                policy_mapping_fn=policy_mapping_fn,
+                policy_mapping_fn=selected_policy_mapping_fn,
                 policies_to_train=list(policies.keys()),
             )
             .env_runners(
@@ -324,38 +403,6 @@ def create_rllib_config(
             .experimental(_disable_preprocessor_api=True)
         )
 
-    elif algorithm_name == "IMPALA":
-        config = (
-            ImpalaConfig()
-            .api_stack(
-                enable_rl_module_and_learner=False,
-                enable_env_runner_and_connector_v2=False,
-            )
-            .environment(env="multidc_env", env_config=env_config)
-            .multi_agent(
-                policies=policies,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=list(policies.keys()),
-            )
-            .env_runners(
-                num_env_runners=training_config.get("num_workers", 0),
-                num_envs_per_env_runner=1,
-            )
-            .training(
-                train_batch_size=training_config.get("train_batch_size", 4000),
-                gamma=local_model_config.get("gamma", 0.99),
-                lr=local_model_config.get("learning_rate", 3e-4),
-                entropy_coeff=local_model_config.get("ent_coef", 0.01),
-                vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
-                grad_clip=local_model_config.get("max_grad_norm", 0.5),
-            )
-            .resources(num_gpus=training_config.get("num_gpus", 0))
-            .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
-            .debugging(log_level="INFO")
-            .framework(framework="torch")
-            .experimental(_disable_preprocessor_api=True)
-        )
-    
     else:
         logger.warning(f"Unknown algorithm '{algorithm_name}', falling back to PPO")
         algorithm_name = "PPO"
@@ -450,8 +497,6 @@ def train_rllib(
     # Determine algorithm name from config type (for Ray Tune + logging)
     if isinstance(config, PPOConfig):
         algo_name = "PPO"
-    elif isinstance(config, ImpalaConfig):
-        algo_name = "IMPALA"
     else:
         # Fallback: default to PPO if type is unknown
         algo_name = "PPO"
@@ -469,7 +514,7 @@ def train_rllib(
         # Logs will be saved to: {output_dir}/multidc_training/{algo_name}_*/events.out.tfevents.*
     )
 
-    # Create Tuner with the correct RLlib algorithm (PPO or IMPALA)
+    # Create Tuner with PPO algorithm
     tuner = tune.Tuner(
         algo_name,
         param_space=config.to_dict(),

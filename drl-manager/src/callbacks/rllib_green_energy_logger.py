@@ -286,6 +286,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # Store per-DC metrics for CSV output
         per_dc_mean_completion_times = {}
         per_dc_cloudlets_finished = {}
+        per_dc_cloudlets_received = {}
 
         if dc_energy_metrics:
             for dc_id_str, dc_metrics_raw in dc_energy_metrics.items():
@@ -304,13 +305,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 dc_wasted = dc_metrics.get('total_wasted_green_wh', 0.0)
                 dc_green_ratio = dc_metrics.get('green_energy_ratio', 0.0)
 
-                # Extract cloudlet completion metrics (NEW)
+                # Extract cloudlet completion metrics (per-DC)
+                dc_cloudlets_received = dc_metrics.get('cloudlets_received', 0)
                 dc_cloudlets_finished = dc_metrics.get('cloudlets_finished', 0)
                 dc_mean_completion_time = dc_metrics.get('mean_completion_time', 0.0)
 
                 # Store for CSV output
                 per_dc_mean_completion_times[dc_id] = dc_mean_completion_time
                 per_dc_cloudlets_finished[dc_id] = dc_cloudlets_finished
+                per_dc_cloudlets_received[dc_id] = dc_cloudlets_received
 
                 # Record per-DC metrics to TensorBoard
                 # These will show up as "dc_0/green_used_wh", "dc_1/green_used_wh", etc.
@@ -356,6 +359,13 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             # Add per-DC cloudlets finished (cloudlets_finished_dc_0, ..., cloudlets_finished_dc_9)
             for dc_id in range(num_dcs):
                 row.append(per_dc_cloudlets_finished.get(dc_id, 0))
+
+            # Add per-DC cloudlet completion rates (completion_rate_dc_0, ..., completion_rate_dc_9)
+            for dc_id in range(num_dcs):
+                finished = per_dc_cloudlets_finished.get(dc_id, 0)
+                received = per_dc_cloudlets_received.get(dc_id, 0)
+                rate = finished / received if received and received > 0 else 0.0
+                row.append(rate)
 
             with open(self.csv_file, 'a', newline='') as f:
                 writer = csv.writer(f)
@@ -450,6 +460,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             # Add per-DC cloudlets finished headers
             for dc_id in range(num_dcs):
                 headers.append(f'cloudlets_finished_dc_{dc_id}')
+
+            # Add per-DC cloudlet completion rate headers
+            for dc_id in range(num_dcs):
+                headers.append(f'completion_rate_dc_{dc_id}')
 
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)

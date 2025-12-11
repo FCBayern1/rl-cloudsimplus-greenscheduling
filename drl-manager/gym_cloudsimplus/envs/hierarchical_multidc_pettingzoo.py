@@ -85,13 +85,32 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         logger.info("Creating base HierarchicalMultiDCEnv...")
         base_env = HierarchicalMultiDCEnv(config=config)
 
-        # Wrap with wind prediction if enabled
-        base_env = self._wrap_with_prediction_if_enabled(base_env, config)
+        # # Wrap with wind prediction if enabled
+        # base_env = self._wrap_with_prediction_if_enabled(base_env, config)
 
         self.base_env = base_env
 
         self.num_datacenters = self.base_env.num_datacenters
         self.global_routing_batch_size = self.base_env.global_routing_batch_size
+
+        # Shared max dimensions from base env (already computed there)
+        # These will be used to define a unified observation/action space
+        # for all local agents to enable parameter sharing.
+        self.max_hosts = getattr(self.base_env, "max_hosts", None)
+        self.max_vms = getattr(self.base_env, "max_vms", None)
+        if self.max_hosts is None or self.max_vms is None:
+            # Fallback: derive from per-DC counts if max_* are not available
+            dc_host_counts = [self.base_env._get_dc_host_count(i) for i in range(self.num_datacenters)]
+            dc_vm_counts = [self.base_env._get_dc_vm_count(i) for i in range(self.num_datacenters)]
+            self.max_hosts = max(dc_host_counts) if dc_host_counts else 1
+            self.max_vms = max(dc_vm_counts) if dc_vm_counts else 1
+
+        # Local action space in base env is Discrete(max_vms + 1)
+        self.max_actions = getattr(self.base_env, "local_action_space", None)
+        if self.max_actions is not None:
+            self.max_actions = self.base_env.local_action_space.n
+        else:
+            self.max_actions = self.max_vms + 1
 
         # Define agent names (PettingZoo requirement: flat namespace)
         self.possible_agents = self._create_agent_list()
@@ -140,51 +159,59 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "observation": self.base_env.global_observation_space,
         })
 
-        # Local agents observation spaces (each DC has its own obs and action mask size)
+        # Local agents observation spaces
+        # NOTE: We expose a UNIFIED padded observation space for all local agents
+        # to enable parameter sharing in RLlib. Heterogeneity is represented via
+        # dc_id_onehot and valid_vm_mask.
+        unified_local_obs_space = spaces.Dict({
+            "host_loads": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.max_hosts,),
+                dtype=np.float32
+            ),
+            "host_ram_usage": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.max_hosts,),
+                dtype=np.float32
+            ),
+            "vm_loads": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.max_vms,),
+                dtype=np.float32
+            ),
+            "vm_types": spaces.Box(
+                low=0, high=3,  # 0=Off, 1=Small, 2=Medium, 3=Large
+                shape=(self.max_vms,),
+                dtype=np.int32
+            ),
+            "vm_available_pes": spaces.Box(
+                low=0, high=100,
+                shape=(self.max_vms,),
+                dtype=np.int32
+            ),
+            "waiting_cloudlets": spaces.Discrete(100000),
+            "next_cloudlet_pes": spaces.Discrete(256),
+            # Extra context features for parameter sharing
+            "dc_id_onehot": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.num_datacenters,),
+                dtype=np.float32
+            ),
+            "valid_vm_mask": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.max_vms,),
+                dtype=np.float32
+            ),
+        })
+
         for i in range(self.num_datacenters):
-            dc_vm_count = self.base_env._get_dc_vm_count(i)
-            dc_host_count = self.base_env._get_dc_host_count(i)
-            num_local_actions = dc_vm_count + 1  # NoAssign + VMs
-
-            # Each DC has different number of VMs/hosts, so create custom obs space
-
-            local_obs_space = spaces.Dict({
-                "host_loads": spaces.Box(
-                    low=0.0, high=1.0,
-                    shape=(dc_host_count,),
-                    dtype=np.float32
-                ),
-                "host_ram_usage": spaces.Box(
-                    low=0.0, high=1.0,
-                    shape=(dc_host_count,),
-                    dtype=np.float32
-                ),
-                "vm_loads": spaces.Box(
-                    low=0.0, high=1.0,
-                    shape=(dc_vm_count,),
-                    dtype=np.float32
-                ),
-                "vm_types": spaces.Box(
-                    low=0, high=3,  # 0=Off, 1=Small, 2=Medium, 3=Large
-                    shape=(dc_vm_count,),
-                    dtype=np.int32
-                ),
-                "vm_available_pes": spaces.Box(
-                    low=0, high=100,
-                    shape=(dc_vm_count,),
-                    dtype=np.int32
-                ),
-                "waiting_cloudlets": spaces.Discrete(100000),  # Increased for large workloads
-                "next_cloudlet_pes": spaces.Discrete(256),  # Increased for cloudlets with more PEs
-            })
-
             obs_spaces[f"local_agent_{i}"] = spaces.Dict({
-                "observation": local_obs_space,
+                "observation": unified_local_obs_space,
                 "action_mask": spaces.Box(
-                    low=0, high=1,
-                    shape=(num_local_actions,),
+                    low=0.0, high=1.0,
+                    shape=(self.max_actions,),
                     dtype=np.float32
-                )
+                ),
             })
 
         return obs_spaces
@@ -203,12 +230,15 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "global_agent": self.base_env.global_action_space
         }
 
-        # Each local agent gets its own action space based on actual VM count
+        # All local agents share the same (padded) action space:
+        # Discrete(max_vms + 1). Valid actions per-DC are controlled by
+        # the action_mask and valid_vm_mask in the observation.
         for i in range(self.num_datacenters):
-            dc_vm_count = self.base_env._get_dc_vm_count(i)
-            # Action space: NoAssign (0) + VM indices (1 to dc_vm_count)
-            action_spaces[f"local_agent_{i}"] = spaces.Discrete(dc_vm_count + 1)
-            logger.info(f"DC {i}: {dc_vm_count} VMs -> action space Discrete({dc_vm_count + 1})")
+            action_spaces[f"local_agent_{i}"] = spaces.Discrete(self.max_actions)
+            logger.info(
+                f"DC {i}: unified action space Discrete({self.max_actions}) "
+                f"(base DC VMs: {self.base_env._get_dc_vm_count(i)})"
+            )
 
         return action_spaces
 
@@ -390,62 +420,59 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "observation": hierarchical_obs["global"],
         }
 
-        # Local agents observations with action masks
+        # Local agents observations with action masks (UNIFIED padded format)
         for dc_id_raw, local_obs in hierarchical_obs["local"].items():
             # Ensure dc_id is Python int (Java may return Integer object)
             dc_id = int(dc_id_raw)
             agent_name = f"local_agent_{dc_id}"
 
-            # Get actual VM and host counts for this DC
             dc_vm_count = self.base_env._get_dc_vm_count(dc_id)
             dc_host_count = self.base_env._get_dc_host_count(dc_id)
 
-            # Debug: log observation sizes before trimming
-            logger.debug(
-                f"{agent_name}: Original obs sizes - "
-                f"hosts={len(local_obs['host_loads'])}, vms={len(local_obs['vm_loads'])}, "
-                f"Expected - hosts={dc_host_count}, vms={dc_vm_count}"
-            )
+            # Build valid_vm_mask (1 for real VMs, 0 for padding)
+            valid_vm_mask = np.zeros(self.max_vms, dtype=np.float32)
+            valid_vm_mask[:dc_vm_count] = 1.0
 
-            # Trim padded observation arrays to actual DC size
-            # The base env pads to max_vms/max_hosts, we need to trim to actual size
-            trimmed_obs = {
-                "host_loads": local_obs["host_loads"][:dc_host_count],
-                "host_ram_usage": local_obs["host_ram_usage"][:dc_host_count],
-                "vm_loads": local_obs["vm_loads"][:dc_vm_count],
-                "vm_types": local_obs["vm_types"][:dc_vm_count],
-                "vm_available_pes": local_obs["vm_available_pes"][:dc_vm_count],
+            # DC ID one-hot
+            dc_id_onehot = np.zeros(self.num_datacenters, dtype=np.float32)
+            if 0 <= dc_id < self.num_datacenters:
+                dc_id_onehot[dc_id] = 1.0
+
+            # Use padded observations directly from base_env (already length max_*)
+            unified_obs = {
+                "host_loads": local_obs["host_loads"],
+                "host_ram_usage": local_obs["host_ram_usage"],
+                "vm_loads": local_obs["vm_loads"],
+                "vm_types": local_obs["vm_types"],
+                "vm_available_pes": local_obs["vm_available_pes"],
                 "waiting_cloudlets": local_obs["waiting_cloudlets"],
                 "next_cloudlet_pes": local_obs["next_cloudlet_pes"],
+                "dc_id_onehot": dc_id_onehot,
+                "valid_vm_mask": valid_vm_mask,
             }
 
-            # Verify trimmed sizes match expected
-            if len(trimmed_obs["host_loads"]) != dc_host_count:
-                logger.error(
-                    f"{agent_name}: Trimmed host_loads size mismatch! "
-                    f"Got {len(trimmed_obs['host_loads'])}, expected {dc_host_count}"
-                )
-            if len(trimmed_obs["vm_loads"]) != dc_vm_count:
-                logger.error(
-                    f"{agent_name}: Trimmed vm_loads size mismatch! "
-                    f"Got {len(trimmed_obs['vm_loads'])}, expected {dc_vm_count}"
-                )
-
-            # Get action mask for this local agent
+            # Get action mask for this local agent from base env (already size max_vms+1)
             try:
                 action_mask = self.base_env.get_local_action_masks(dc_id)
-                # Trim action mask to actual DC action space size
-                action_mask = action_mask[:dc_vm_count + 1]  # +1 for NoAssign
-                # Convert to float32 for RLlib compatibility
+                # Ensure correct length and dtype
+                if action_mask.shape[0] != self.max_actions:
+                    logger.warning(
+                        f"{agent_name}: base_env action_mask length {action_mask.shape[0]} "
+                        f"!= expected {self.max_actions}, padding/trimming accordingly"
+                    )
+                    padded_mask = np.zeros(self.max_actions, dtype=bool)
+                    copy_len = min(self.max_actions, action_mask.shape[0])
+                    padded_mask[:copy_len] = action_mask[:copy_len]
+                    action_mask = padded_mask
                 action_mask = action_mask.astype(np.float32)
             except Exception as e:
                 logger.error(f"Failed to get action mask for {agent_name}: {e}")
-                # Fallback: allow all actions (with correct size)
-                action_mask = np.ones(dc_vm_count + 1, dtype=np.float32)
+                # Fallback: allow all actions (with unified size)
+                action_mask = np.ones(self.max_actions, dtype=np.float32)
 
             flat_obs[agent_name] = {
-                "observation": trimmed_obs,
-                "action_mask": action_mask
+                "observation": unified_obs,
+                "action_mask": action_mask,
             }
 
         return flat_obs
@@ -474,16 +501,27 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # Extract global action
         global_action = flat_actions.get("global_agent")
 
-        # Extract local actions
+        # Extract local actions with safety checks (avoid selecting padding-only VMs)
         local_actions = {}
         for i in range(self.num_datacenters):
             agent_name = f"local_agent_{i}"
             if agent_name in flat_actions:
-                local_actions[i] = flat_actions[agent_name]
+                raw_action = int(flat_actions[agent_name])
+                dc_vm_count = self.base_env._get_dc_vm_count(i)
+
+                # Safety check: action must be within [0, dc_vm_count]
+                if raw_action > dc_vm_count:
+                    logger.warning(
+                        f"Action {raw_action} for {agent_name} exceeds vm_count={dc_vm_count}, "
+                        f"clamping to 0 (NoAssign)."
+                    )
+                    raw_action = 0  # Fallback to NoAssign
+
+                local_actions[i] = raw_action
 
         hierarchical_actions = {
             "global": global_action,
-            "local": local_actions
+            "local": local_actions,
         }
 
         return hierarchical_actions

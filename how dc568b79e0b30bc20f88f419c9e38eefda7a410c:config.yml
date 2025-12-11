@@ -1,0 +1,65 @@
+[33mcommit 89642cb9d74274b6bbcbe7f78534b289a3b4d7d3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Mon Dec 8 00:15:10 2025 +0000
+
+    update gitignore
+
+[33mcommit bfe7092f3d60704ad95bbadc92545564e3f2cf46[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Mon Dec 8 00:13:16 2025 +0000
+
+    Ignore local config.yml and update experiment settings
+
+[33mcommit 0091eb46dddafd0070e572b94c0161a4373a28a9[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Sun Dec 7 23:36:19 2025 +0000
+
+    Update logging config and multiDC simple experiment settings
+
+[33mcommit 8736c202b2e420c4070b901aefdfd68fe8093428[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Sun Dec 7 20:48:02 2025 +0000
+
+    Othe Ray RL Arlgorithms
+
+[33mcommit dc568b79e0b30bc20f88f419c9e38eefda7a410c[m[33m ([m[1;31morigin/develop[m[33m, [m[1;32mdevelop[m[33m)[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Sun Dec 7 01:13:08 2025 +0000
+
+    Add simplified multi-DC environment for fair comparison experiments
+    
+    - Add HierarchicalMultiDCEnvSimple: Gymnasium env without God's Eye features
+    - Add HierarchicalMultiDCParallelEnvSimple: PettingZoo MARL wrapper
+    - Add progress bar (TqdmProgressReporter) to RLlib training
+    - Add experiment_multi_dc_simple config for ablation study
+    - Remove deprecated SB3 training scripts and joint training code
+    - Update config.yml with proper RLlib training structure
+    - Add baseline algorithms and comparison scripts
+    
+    🤖 Generated with [Claude Code](https://claude.com/claude-code)
+    
+    Co-Authored-By: Claude <noreply@anthropic.com>
+
+[33mcommit bfa86d3a745611c622a77fed2b98665b5ee15f48[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Tue Dec 2 14:10:35 2025 +0000
+
+    new experiments with 10 heterogenous datacenters and solar energy embedded
+
+[33mcommit 6606e75b73c7c810b6e7462026d5d9afb36d585e[m
+Author: FCBayern1 <292387082@qq.com>
+Date:   Tue Nov 25 01:03:29 2025 +0000
+
+    Initial commit: Multi-DC DRL-based green energy scheduling framework
+    
+    - CloudSimPlus gateway with Py4J integration for Java-Python communication
+    - DRL manager with Gymnasium/PettingZoo environments for RL training
+    - Hierarchical multi-datacenter architecture support
+    - Green energy (wind) integration with prediction capabilities
+    - Multiple load balancing strategies (Round-Robin, Least Connections, Random, etc.)
+    - Docker support for containerized deployment
+    - Data analysis tools and workload generators
+    
+    🤖 Generated with [Claude Code](https://claude.com/claude-code)
+    
+    Co-Authored-By: Claude <noreply@anthropic.com>
