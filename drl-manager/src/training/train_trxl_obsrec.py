@@ -65,7 +65,7 @@ def run_trxl_obsrec_training(
     env_cfg.pop("training", None)
 
     global_model_cfg = dict(exp_cfg.get("global_model", {}))
-    local_model_cfg = exp_cfg.get("local_model", {})
+    local_model_cfg = dict(exp_cfg.get("local_model", {}))
     training_cfg = exp_cfg.get("training", {})
 
     if num_workers is not None:
@@ -84,11 +84,17 @@ def run_trxl_obsrec_training(
         "reconstruction_coef": reconstruction_coef,
     }
     global_model_cfg["model"] = _build_trxl_model_config(hparams)
+    global_model_cfg["model"]["max_seq_len"] = memory_len  # Match sequence length to memory
     global_model_cfg["_disable_preprocessor_api"] = True
+
+    # Also configure local agents to use Transformer-XL with action masking
+    local_model_cfg["model"] = _build_trxl_model_config(hparams)
+    local_model_cfg["model"]["max_seq_len"] = memory_len  # Match sequence length to memory
+    local_model_cfg["_disable_preprocessor_api"] = True
 
     if output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"../../logs/trxl_obsrec/{experiment}/{timestamp}"
+        output_dir = f"../../logs/transformer_xl/{experiment}/{timestamp}"
 
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)

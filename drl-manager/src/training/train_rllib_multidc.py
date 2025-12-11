@@ -26,6 +26,7 @@ import warnings
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
+import copy
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -236,7 +237,7 @@ def create_rllib_config(
     logger.info(f"Global obs space: {global_obs_space}")
 
     # Whether to enable parameter sharing for local agents.
-    # Config options (any one of以下为 True 即打开):
+    # Config options:
     # - environment.parameter_sharing: true
     # - environment.parameter_sharing.local_agents: true
     # - training.parameter_sharing: true
@@ -255,32 +256,20 @@ def create_rllib_config(
 
     # Define policies
     # _disable_preprocessor_api: Keep Dict obs space intact (don't flatten to Box).
-    # Local agents use MaskedActionModel (Discrete actions with action_mask).
-    masked_model_cfg = {
-        "model": {
-            "custom_model": "masked_action_model",
-        },
-        "_disable_preprocessor_api": True,  # Must be at policy config level, not inside model
-    }
+    def build_policy_model_cfg(source_cfg: Dict[str, Any], default_model: str) -> Dict[str, Any]:
+        model_cfg = source_cfg.get("model")
+        if model_cfg is None:
+            model_cfg = {"custom_model": default_model}
+        else:
+            model_cfg = copy.deepcopy(model_cfg)
+        disable_preproc = source_cfg.get("_disable_preprocessor_api", True)
+        return {
+            "model": model_cfg,
+            "_disable_preprocessor_api": disable_preproc,
+        }
 
-    # Global policy uses DictObsModel WITHOUT masking.
-    # - Global agent has MultiDiscrete([n]*batch_size) action space where n = num_datacenters.
-    # - Each element selects which DC to route a cloudlet to (0 to n-1).
-    # - No NoAssign option for global agent - all cloudlets must be routed.
-    if "model" in global_model_config:
-        global_model_cfg = {
-            "model": global_model_config["model"],
-            "_disable_preprocessor_api": global_model_config.get(
-                "_disable_preprocessor_api", True
-            ),
-        }
-    else:
-        global_model_cfg = {
-            "model": {
-                "custom_model": "dict_obs_model",
-            },
-            "_disable_preprocessor_api": True,
-        }
+    global_model_cfg = build_policy_model_cfg(global_model_config, "dict_obs_model")
+    local_policy_cfg = build_policy_model_cfg(local_model_config, "masked_action_model")
 
     policies = {
         "global_policy": PolicySpec(
@@ -314,7 +303,7 @@ def create_rllib_config(
             policy_class=None,
             observation_space=unified_local_obs_space,
             action_space=unified_local_action_space,
-            config=masked_model_cfg,
+            config=copy.deepcopy(local_policy_cfg),
         )
 
         selected_policy_mapping_fn = shared_policy_mapping_fn
@@ -337,7 +326,7 @@ def create_rllib_config(
                 policy_class=None,
                 observation_space=local_obs_space,
                 action_space=local_action_space,
-                config=masked_model_cfg,
+                config=copy.deepcopy(local_policy_cfg),
             )
 
         selected_policy_mapping_fn = policy_mapping_fn

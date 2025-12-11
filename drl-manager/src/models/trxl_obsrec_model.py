@@ -88,8 +88,14 @@ class TransformerXLObsRecModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         # Extract the actual observation dict (ignoring optional action_mask keys)
-        if isinstance(obs_space, gym.spaces.Dict) and "observation" in obs_space.spaces:
-            self.true_obs_space = obs_space.spaces["observation"]
+        self.uses_action_mask = False
+        if isinstance(obs_space, gym.spaces.Dict):
+            if "action_mask" in obs_space.spaces:
+                self.uses_action_mask = True
+            if "observation" in obs_space.spaces:
+                self.true_obs_space = obs_space.spaces["observation"]
+            else:
+                self.true_obs_space = obs_space
         else:
             self.true_obs_space = obs_space
 
@@ -144,14 +150,30 @@ class TransformerXLObsRecModel(TorchModelV2, nn.Module):
         state: List[TensorType],
         seq_lens: TensorType,
     ) -> Tuple[TensorType, List[TensorType]]:
-        obs_dict = input_dict["obs"]
-        if isinstance(obs_dict, dict) and "observation" in obs_dict:
-            obs_dict = obs_dict["observation"]
+        obs_container = input_dict["obs"]
+        action_mask = None
+        if isinstance(obs_container, dict):
+            action_mask = obs_container.get("action_mask")
+            obs_dict = obs_container.get("observation", obs_container)
+        else:
+            obs_dict = obs_container
 
         flat_obs = self._flatten_obs(obs_dict)
         features, new_state = self._transform(flat_obs, state)
 
         logits = self.policy_head(features)
+        if action_mask is not None and self.uses_action_mask:
+            if not isinstance(action_mask, torch.Tensor):
+                action_mask = torch.as_tensor(action_mask)
+            mask = action_mask.to(logits.device, dtype=logits.dtype)
+            mask = mask.view_as(logits)
+            invalid_mask = (mask < 0.5)
+            if invalid_mask.any():
+                logits = logits.masked_fill(
+                    invalid_mask,
+                    torch.finfo(logits.dtype).min,
+                )
+
         self._value_out = self.value_head(features).squeeze(-1)
 
         if self.training:
@@ -190,23 +212,60 @@ class TransformerXLObsRecModel(TorchModelV2, nn.Module):
         flat_obs: torch.Tensor,
         state: List[TensorType],
     ) -> Tuple[torch.Tensor, List[TensorType]]:
-        batch = flat_obs.size(0)
         device = flat_obs.device
-        tokens = self.input_projection(flat_obs).unsqueeze(1)  # (B, 1, d_model)
+        total_obs = flat_obs.size(0)  # This is B*T during training, B during inference
+        state_size = self.mem_len * self.d_model
 
+        # Derive actual batch size from state tensor
         if state and state[0] is not None:
-            mem_tensor = state[0].to(device).view(batch, self.mem_len, self.d_model)
+            state_tensor = state[0].to(device)
+            if state_tensor.dim() == 1:
+                # State is flattened: [B * mem_len * d_model]
+                batch = state_tensor.size(0) // state_size
+                mem_tensor = state_tensor.view(batch, self.mem_len, self.d_model)
+            else:
+                # State is [B, mem_len * d_model]
+                batch = state_tensor.size(0)
+                mem_tensor = state_tensor.view(batch, self.mem_len, self.d_model)
         else:
+            batch = total_obs
             mem_tensor = torch.zeros(batch, self.mem_len, self.d_model, device=device)
 
-        tokens = self.transformer_block(tokens, mem_tensor)
+        # If we have sequences (total_obs > batch), process timestep by timestep
+        if total_obs > batch:
+            seq_len = total_obs // batch
+            obs_dim = flat_obs.size(1)
+            flat_obs_seq = flat_obs.view(batch, seq_len, obs_dim)  # [B, T, obs_dim]
 
-        new_mem = torch.cat([mem_tensor, tokens], dim=1)
-        if new_mem.size(1) > self.mem_len:
-            new_mem = new_mem[:, -self.mem_len :, :]
-        new_state = [new_mem.reshape(batch, -1)]
+            all_features = []
+            for t in range(seq_len):
+                obs_t = flat_obs_seq[:, t, :]  # [B, obs_dim]
+                tokens = self.input_projection(obs_t).unsqueeze(1)  # [B, 1, d_model]
+                tokens = self.transformer_block(tokens, mem_tensor)
 
-        return tokens.squeeze(1), new_state
+                # Update memory with sliding window
+                new_mem = torch.cat([mem_tensor, tokens], dim=1)
+                if new_mem.size(1) > self.mem_len:
+                    new_mem = new_mem[:, -self.mem_len:, :]
+                mem_tensor = new_mem
+
+                all_features.append(tokens.squeeze(1))
+
+            # Stack features: [T, B, d_model] -> [B, T, d_model] -> [B*T, d_model]
+            features = torch.stack(all_features, dim=1).view(total_obs, -1)
+            new_state = [mem_tensor.reshape(batch, -1)]
+        else:
+            # Single timestep per sequence (inference)
+            tokens = self.input_projection(flat_obs).unsqueeze(1)  # [B, 1, d_model]
+            tokens = self.transformer_block(tokens, mem_tensor)
+
+            new_mem = torch.cat([mem_tensor, tokens], dim=1)
+            if new_mem.size(1) > self.mem_len:
+                new_mem = new_mem[:, -self.mem_len:, :]
+            new_state = [new_mem.reshape(batch, -1)]
+            features = tokens.squeeze(1)
+
+        return features, new_state
 
     def _flatten_obs(self, obs_dict: Dict[str, TensorType]) -> torch.Tensor:
         """Flatten observation dict into a single float tensor."""
