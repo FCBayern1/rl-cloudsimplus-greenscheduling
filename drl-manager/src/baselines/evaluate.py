@@ -20,7 +20,7 @@ from typing import Dict, List, Any, Optional
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
+from gym_cloudsimplus.envs import HierarchicalMultiDCEnv, HierarchicalMultiDCEnvSimple
 from src.baselines.global_schedulers import GLOBAL_SCHEDULERS
 from src.baselines.local_schedulers import LOCAL_SCHEDULERS
 
@@ -165,7 +165,15 @@ def run_evaluation(
     np.random.seed(seed)
 
     # Create environment
-    env = HierarchicalMultiDCEnv(config=config)
+    # If env_id indicates the simplified (no God's Eye) env, use the Simple version.
+    env_id = config.get("env_id", "")
+    use_simple_env = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
+    if use_simple_env:
+        logger.info("Creating HierarchicalMultiDCEnvSimple for evaluation (no God's Eye features)")
+        env = HierarchicalMultiDCEnvSimple(config=config)
+    else:
+        env = HierarchicalMultiDCEnv(config=config)
     num_dcs = env.num_datacenters
     batch_size = env.global_routing_batch_size
     max_vms = env.max_vms
@@ -437,10 +445,16 @@ def run_rllib_evaluation(
     num_episodes: int = 1,
     seed: int = 42,
     output_csv: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    shared_local: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）
+    使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
+
+    - 标准模式：每个 DC 有独立的本地策略（local_policy_{dc_id}），使用
+      `create_rllib_schedulers` 创建全局/本地调度器；
+    - 参数共享模式：如果传入 `shared_local=True`，则所有 DC 使用同一个
+      `"shared_local_policy"` 作为本地调度器（适用于 parameter sharing 训练）。
 
     Args:
         checkpoint_path: RLlib checkpoint 路径
@@ -449,9 +463,10 @@ def run_rllib_evaluation(
         seed: 随机种子
         output_csv: 结果保存路径
         verbose: 是否打印详情
+        shared_local: 是否将所有本地调度器绑定到同一个 shared_local_policy
     """
-    from src.baselines.global_schedulers import load_rllib_algorithm
-    from src.baselines.local_schedulers import create_rllib_schedulers
+    from src.baselines.global_schedulers import load_rllib_algorithm, RLlibGlobalScheduler
+    from src.baselines.local_schedulers import create_rllib_schedulers, RLlibLocalScheduler
 
     np.random.seed(seed)
 
@@ -468,8 +483,16 @@ def run_rllib_evaluation(
     if verbose:
         print("✓ Model loaded!")
 
-    # 2. 创建环境
-    env = HierarchicalMultiDCEnv(config=config)
+    # 2. 创建环境（根据 env_id 选择是否使用简化版，无 God's Eye 特征）
+    env_id = config.get("env_id", "")
+    use_simple_env = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
+    if use_simple_env:
+        if verbose:
+            print("Creating HierarchicalMultiDCEnvSimple for RLlib evaluation (no God's Eye features)")
+        env = HierarchicalMultiDCEnvSimple(config=config)
+    else:
+        env = HierarchicalMultiDCEnv(config=config)
     num_dcs = env.num_datacenters
     batch_size = env.global_routing_batch_size
     max_vms = env.max_vms
@@ -479,14 +502,35 @@ def run_rllib_evaluation(
         print(f"Episodes: {num_episodes}")
         print(f"{'='*60}\n")
 
-    # 3. 创建调度器（传入 env，用于在推理时裁剪观测到各 DC 实际规模）
-    global_scheduler, local_schedulers = create_rllib_schedulers(
-        algo=algo,
-        env=env,
-        num_dcs=num_dcs,
-        batch_size=batch_size,
-        num_vms=max_vms,
-    )
+    # Get max_hosts from env (for parameter sharing observations)
+    max_hosts = getattr(env, 'max_hosts', 16)
+
+    # 3. 创建调度器
+    if shared_local:
+        # 所有 DC 显式使用同一个本地策略 "shared_local_policy"
+        if verbose:
+            print("Using shared_local_policy for all local agents (parameter sharing mode).")
+        global_scheduler = RLlibGlobalScheduler(num_dcs, batch_size, algo)
+        local_schedulers = {
+            dc_id: RLlibLocalScheduler(
+                max_vms, algo, dc_id, env=env, policy_id="shared_local_policy",
+                use_parameter_sharing=True,
+                num_datacenters=num_dcs,
+                max_hosts=max_hosts,
+                max_vms=max_vms,
+            )
+            for dc_id in range(num_dcs)
+        }
+    else:
+        # 标准多策略情形：每个 DC 有自己的 local_policy_{dc_id}
+        global_scheduler, local_schedulers = create_rllib_schedulers(
+            algo=algo,
+            env=env,
+            num_dcs=num_dcs,
+            batch_size=batch_size,
+            num_vms=max_vms,
+            max_hosts=max_hosts,
+        )
 
     all_results = []
 
@@ -567,7 +611,11 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="RLlib checkpoint path (for rllib scheduler)")
     parser.add_argument("--output", type=str, default=None,
-                        help="Path to save results CSV")
+                        help="Path to save results CSV (for single run or rllib evaluation)")
+    parser.add_argument("--output-dir", type=str, default=None,
+                        help="Base directory to save compare_result outputs when using --compare")
+    parser.add_argument("--shared-local", action="store_true",
+                        help="For RLlib evaluation: treat all local agents as sharing 'shared_local_policy'")
     parser.add_argument("--compare", action="store_true",
                         help="Run comparison of multiple baseline combinations")
 
@@ -586,7 +634,8 @@ if __name__ == "__main__":
             config=config,
             num_episodes=args.episodes,
             seed=args.seed,
-            output_csv=args.output
+            output_csv=args.output,
+            shared_local=args.shared_local,
         )
     elif args.compare:
         # 比较多个组合
@@ -598,9 +647,13 @@ if __name__ == "__main__":
             ('green_queue_balanced', 'min_load'),
         ]
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = Path(__file__).parent.parent.parent / "compare_result"
-        output_dir = base_dir / timestamp
+        # If user provides --output-dir, use it; otherwise create a timestamped folder
+        if args.output_dir:
+            output_dir = Path(args.output_dir)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_dir = Path(__file__).parent.parent.parent / "compare_result"
+            output_dir = base_dir / timestamp
 
         # 1) 先跑所有 heuristic 组合，结果写到同一 timestamp 目录下
         all_results = compare_baselines(
@@ -621,6 +674,7 @@ if __name__ == "__main__":
                 num_episodes=args.episodes,
                 seed=args.seed,
                 output_csv=rllib_csv,
+                shared_local=args.shared_local,
             )
             all_results["rllib_rllib"] = rllib_results
 

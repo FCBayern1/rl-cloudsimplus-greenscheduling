@@ -148,6 +148,75 @@ python -m src.baselines.load_rllib_model \
 
 ---
 
+### 3.3 将 3 条 PPO 策略作为调度器接入基线对比（与 `rllib_rllib` 风格一致）
+
+下面是 3 条 PPO 算法如何以“Global + Local 都用 RLlib 策略”的方式，接入 Java 环境做对比实验的示例命令。
+
+> 注意：请将示例中的时间戳和 checkpoint 路径替换为你自己实际训练得到的目录。
+
+- **(1) PPO_baseline（有 God's Eye，使用 `experiment_multi_dc_10`）**
+
+```bash
+cd /home/joshua/rl-cloudsimplus-greenscheduling
+
+# 启动 Java Multi-DC 网关（一个终端）
+cd cloudsimplus-gateway
+./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+
+# 另一个终端，在 drl-manager 中运行 RLlib 评估
+cd /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager
+
+python -m src.baselines.evaluate \
+  --global rllib \
+  --local rllib \
+  --experiment experiment_multi_dc_10 \
+  --episodes 3 \
+  --seed 42 \
+  --checkpoint ../logs/experiment_multi_dc_10/20251203_105113/multidc_training/PPO_multidc_env_*/checkpoint_000006 \
+  --output /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/compare_result/ppo_baseline_rllib_$(date +%Y%m%d_%H%M%S).csv
+```
+
+- **(2) PPO_ParameterSharing（局部参数共享，仍然是 `experiment_multi_dc_10`，但训练配置里开启了 parameter_sharing）**
+
+```bash
+cd /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager
+
+python -m src.baselines.evaluate \
+  --global rllib \
+  --local rllib \
+  --experiment experiment_multi_dc_10 \
+  --episodes 3 \
+  --seed 42 \
+  --checkpoint ../logs/experiment_multi_dc_10_PPO_ParameterSharing/20251212_140553/multidc_training/PPO_multidc_env_*/checkpoint_000062 \
+  --output /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/compare_result/ppo_param_sharing_rllib_$(date +%Y%m%d_%H%M%S).csv
+```
+
+> 说明：虽然训练时启用了“本地 agent 共享策略”，但对 `evaluate.py` 而言，这些细节已经封装在 RLlib checkpoint 里，
+> 仍然通过 `--global rllib --local rllib` 这条路径统一接入环境。
+
+- **(3) PPO_simple_no_god_eye（使用简化环境 `experiment_multi_dc_simple`，无 God's Eye 特征）**
+
+`experiment_multi_dc_simple` 在 `config.yml` 中使用 `env_id: "HierarchicalMultiDCSimple-v0"`，评估时脚本会自动使用简化版 Java 环境 `HierarchicalMultiDCEnvSimple`（不包含未来预测特征）。
+
+```bash
+cd /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager
+
+python -m src.baselines.evaluate \
+  --global rllib \
+  --local rllib \
+  --experiment experiment_multi_dc_simple \
+  --episodes 3 \
+  --seed 42 \
+  --checkpoint ../logs/experiment_multi_dc_simple/20251206_223544/multidc_training/PPO_multidc_env_*/checkpoint_000019 \
+  --output /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/compare_result/ppo_simple_no_god_eye_rllib_$(date +%Y%m%d_%H%M%S).csv
+```
+
+> 小结：通过以上命令，你可以将 3 条 PPO 策略（baseline / parameter sharing / simple 无 God-eye）都以
+> “Global + Local = RLlib scheduler” 的方式接入 Java 仿真环境，得到与 `rllib_rllib` 同结构的 CSV 结果文件，
+> 方便和 heuristics 以及其他 RL 策略一起做统一对比。
+
+---
+
 ## 4. 结果分析与可视化
 
 无论是 heuristic baseline 还是 RLlib 推理评估，`evaluate.py` 都会输出 CSV 文件（每一行是一个 episode 的聚合指标），包括：

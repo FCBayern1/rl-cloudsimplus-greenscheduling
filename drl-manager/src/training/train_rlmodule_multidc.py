@@ -1,20 +1,23 @@
 """
-RLlib Training Script for Hierarchical Multi-Datacenter MARL with PettingZoo.
+RLlib Training Script using New RLModule API for Multi-Datacenter MARL.
 
 This script trains both the Global Agent and Local Agents using Ray RLlib
-with the PettingZoo ParallelEnv wrapper.
+with the new RLModule API (enable_rl_module_and_learner=True).
+
+Key differences from train_rllib_multidc.py:
+- Uses RLModuleSpec instead of ModelCatalog.register_custom_model
+- Uses MultiRLModuleSpec for multi-agent setup
+- Uses new API stack with Connectors V2
+- Cleaner separation of training/inference/exploration logic
 
 Features:
-- Native PettingZoo support via RLlib
-- Supports PPO algorithm (A3C removed in RLlib 2.x)
-- Global Agent: Policy gradient for datacenter routing
-- Local Agents: Policy gradient with action masking for VM scheduling
-- Action masking support
-- TensorBoard logging
-- Checkpoint management
+- Native RLModule support for action masking
+- Parameter sharing via shared RLModuleSpec
+- New connector system for observation preprocessing
+- Compatible with RLlib 2.5+
 
 Usage:
-    python train_rllib_multidc.py --experiment experiment_multi_dc_3 --num-workers 4
+    python entrypoint_rlmodule.py --experiment experiment_multi_dc_10 --total-timesteps 100000
 """
 
 import os
@@ -25,7 +28,7 @@ import logging
 import warnings
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import copy
 
 import gymnasium as gym
@@ -35,20 +38,18 @@ import ray
 from ray import tune, air
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.tune.logger import pretty_print
 from ray.tune import CLIReporter
 from tqdm import tqdm
-import time
 
 # Add drl-manager root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
-from src.models.masked_action_model import MaskedActionModel, DictObsModel
-from src.models.trxl_obsrec_model import TransformerXLObsRecModel
-from ray.rllib.models import ModelCatalog
+from src.models.rlmodule_models import MaskedActionRLModule, DictObsRLModule
 
 # Setup logging
 logging.basicConfig(
@@ -61,7 +62,6 @@ logger = logging.getLogger(__name__)
 class TqdmProgressReporter(CLIReporter):
     """
     Custom Ray Tune reporter with tqdm progress bar.
-    Shows training progress similar to SB3's progress bar.
     """
 
     def __init__(self, total_timesteps: int, **kwargs):
@@ -72,7 +72,6 @@ class TqdmProgressReporter(CLIReporter):
 
     def report(self, trials, done, *sys_info):
         """Called by Ray Tune to report progress."""
-        # Initialize progress bar on first call
         if self.pbar is None:
             self.pbar = tqdm(
                 total=self.total_timesteps,
@@ -82,43 +81,61 @@ class TqdmProgressReporter(CLIReporter):
                 bar_format="{percentage:3.0f}% {bar} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
             )
 
-        # Get current timesteps from the first trial
         if trials:
             trial = trials[0]
             if trial.last_result:
-                # RLlib 2.x uses num_env_steps_sampled
                 current_timesteps = trial.last_result.get(
                     "num_env_steps_sampled",
                     trial.last_result.get("timesteps_total", 0)
                 )
 
-                # Update progress bar
                 delta = current_timesteps - self.last_timesteps
                 if delta > 0:
                     self.pbar.update(delta)
                     self.last_timesteps = current_timesteps
 
-                # Show reward info in description
                 reward = trial.last_result.get("episode_reward_mean", None)
                 if reward is not None:
-                    self.pbar.set_postfix({
-                        "reward": f"{reward:.2f}",
-                    })
+                    self.pbar.set_postfix({"reward": f"{reward:.2f}"})
 
-        # Close progress bar when done
         if done and self.pbar is not None:
             self.pbar.close()
 
-        # Still call parent's report for logging
         return super().report(trials, done, *sys_info)
+
+
+class RLModulePettingZooEnv(ParallelPettingZooEnv):
+    """
+    Custom PettingZoo wrapper for the new RLlib API stack.
+
+    Ensures that `agents` and `possible_agents` attributes are properly
+    exposed for the new API stack (enable_env_runner_and_connector_v2=True).
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        # Store reference to underlying PettingZoo env
+        self._pz_env = env
+        # Set agents and possible_agents from the underlying env
+        self.possible_agents = list(env.possible_agents)
+        self.agents = list(env.agents)
+
+    def reset(self, *, seed=None, options=None):
+        result = super().reset(seed=seed, options=options)
+        # Update agents after reset
+        self.agents = list(self._pz_env.agents)
+        return result
+
+    def step(self, action_dict):
+        result = super().step(action_dict)
+        # Update agents after step
+        self.agents = list(self._pz_env.agents)
+        return result
 
 
 def env_creator(config: Dict[str, Any]):
     """
     Environment creator function for RLlib.
-
-    RLlib calls this function to create environment instances.
-    Automatically selects simplified environment if env_id indicates so.
 
     Args:
         config: Environment configuration dictionary
@@ -126,7 +143,6 @@ def env_creator(config: Dict[str, Any]):
     Returns:
         RLlib-wrapped PettingZoo environment
     """
-    # Check if simplified environment (no God's Eye features) is requested
     env_id = config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
 
@@ -137,35 +153,12 @@ def env_creator(config: Dict[str, Any]):
         logger.info("Creating standard PettingZoo environment (with God's Eye features)")
         env = HierarchicalMultiDCParallelEnv(config)
 
-    # Wrap for RLlib (converts PettingZoo to RLlib format)
-    return ParallelPettingZooEnv(env)
-
-
-def policy_mapping_fn(agent_id, episode, **kwargs):
-    """
-    Map agents to policies.
-
-    Each DC gets its own policy with correct action space size.
-
-    Args:
-        agent_id: Agent identifier string (e.g., "global_agent", "local_agent_0")
-        episode: Current episode object
-
-    Returns:
-        Policy ID string
-    """
-    if agent_id == "global_agent":
-        return "global_policy"
-    else:
-        # Each local agent gets its own policy (no parameter sharing)
-        # Extract DC ID from agent_id (e.g., "local_agent_0" -> 0)
-        dc_id = int(agent_id.split("_")[-1])
-        return f"local_policy_{dc_id}"
+    return RLModulePettingZooEnv(env)
 
 
 def shared_policy_mapping_fn(agent_id, episode, **kwargs):
     """
-    Policy mapping function when local agents share a single policy.
+    Policy mapping function for parameter sharing.
 
     - global_agent -> global_policy
     - local_agent_* -> shared_local_policy
@@ -176,53 +169,44 @@ def shared_policy_mapping_fn(agent_id, episode, **kwargs):
         return "shared_local_policy"
 
 
-def create_rllib_config(
+def independent_policy_mapping_fn(agent_id, episode, **kwargs):
+    """
+    Policy mapping function without parameter sharing.
+
+    - global_agent -> global_policy
+    - local_agent_N -> local_policy_N
+    """
+    if agent_id == "global_agent":
+        return "global_policy"
+    else:
+        dc_id = int(agent_id.split("_")[-1])
+        return f"local_policy_{dc_id}"
+
+
+def create_rlmodule_config(
     env_config: Dict[str, Any],
     global_model_config: Dict[str, Any],
     local_model_config: Dict[str, Any],
     training_config: Dict[str, Any],
-    output_dir: str = None
+    output_dir: Optional[str] = None
 ):
     """
-    Create RLlib PPO algorithm configuration.
+    Create RLlib PPO configuration with new RLModule API.
 
     Args:
         env_config: Environment configuration
         global_model_config: Global agent model configuration
         local_model_config: Local agent model configuration
-        training_config: Training hyperparameters (must include 'algorithm' key)
+        training_config: Training hyperparameters
+        output_dir: Output directory for logs
 
     Returns:
         Configured PPOConfig object
     """
-    # Get algorithm name from training config, default to PPO
-    algorithm_name = training_config.get("algorithm", "PPO").upper()
-    logger.info(f"Using RL algorithm: {algorithm_name}")
-    # Register custom models
-    try:
-        ModelCatalog.register_custom_model("masked_action_model", MaskedActionModel)
-        logger.info("Registered custom RLlib model: masked_action_model")
-    except Exception as e:
-        if "You have already registered" not in str(e):
-            raise
-
-    try:
-        ModelCatalog.register_custom_model("dict_obs_model", DictObsModel)
-        logger.info("Registered custom RLlib model: dict_obs_model")
-    except Exception as e:
-        if "You have already registered" not in str(e):
-            raise
-
-    try:
-        ModelCatalog.register_custom_model("trxl_obsrec_model", TransformerXLObsRecModel)
-        logger.info("Registered custom RLlib model: trxl_obsrec_model")
-    except Exception as e:
-        if "You have already registered" not in str(e):
-            raise
-
     # Create a sample environment to get spaces
     env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
     if use_simple:
         sample_env = HierarchicalMultiDCParallelEnvSimple(env_config)
     else:
@@ -232,66 +216,44 @@ def create_rllib_config(
     global_obs_space = sample_env.observation_space("global_agent")
     global_action_space = sample_env.action_space("global_agent")
 
-    # Debug: Print observation space types
-    logger.info(f"Global obs space type: {type(global_obs_space)}")
     logger.info(f"Global obs space: {global_obs_space}")
+    logger.info(f"Global action space: {global_action_space}")
 
-    # Whether to enable parameter sharing for local agents.
-    # Config options:
-    # - environment.parameter_sharing: true
-    # - environment.parameter_sharing.local_agents: true
-    # - training.parameter_sharing: true
+    # Check parameter sharing configuration
     ps_cfg = env_config.get("parameter_sharing", {})
     if isinstance(ps_cfg, dict):
-        use_parameter_sharing = bool(
-            ps_cfg.get("local_agents", ps_cfg.get("enabled", False))
-        )
+        use_parameter_sharing = bool(ps_cfg.get("local_agents", ps_cfg.get("enabled", False)))
     else:
         use_parameter_sharing = bool(ps_cfg)
-    # Allow overriding from training config if needed
+
     if "parameter_sharing" in training_config:
         use_parameter_sharing = bool(training_config.get("parameter_sharing"))
 
-    logger.info(f"Local agent parameter sharing enabled: {use_parameter_sharing}")
+    logger.info(f"Parameter sharing enabled: {use_parameter_sharing}")
 
-    # Define policies
-    # _disable_preprocessor_api: Keep Dict obs space intact (don't flatten to Box).
-    def build_policy_model_cfg(source_cfg: Dict[str, Any], default_model: str) -> Dict[str, Any]:
-        model_cfg = source_cfg.get("model")
-        if model_cfg is None:
-            model_cfg = {"custom_model": default_model}
-        else:
-            model_cfg = copy.deepcopy(model_cfg)
-        disable_preproc = source_cfg.get("_disable_preprocessor_api", True)
-        return {
-            "model": model_cfg,
-            "_disable_preprocessor_api": disable_preproc,
-        }
+    # Get number of datacenters from the sample environment
+    # Count local_agent_* entries in the environment's possible_agents
+    num_dcs = len([a for a in sample_env.possible_agents if a.startswith("local_agent_")])
+    if not num_dcs:
+        # Fallback to config
+        num_dcs = len(env_config.get("datacenters", []))
+    if not num_dcs:
+        raise ValueError("No datacenters detected in environment or config")
 
-    global_model_cfg = build_policy_model_cfg(global_model_config, "dict_obs_model")
-    local_policy_cfg = build_policy_model_cfg(local_model_config, "masked_action_model")
+    logger.info(f"Number of datacenters: {num_dcs}")
 
-    policies = {
-        "global_policy": PolicySpec(
-            policy_class=None,
-            observation_space=global_obs_space,
-            action_space=global_action_space,
-            config=global_model_cfg,
-        ),
+    # Build RLModule network configuration
+    fcnet_hiddens = local_model_config.get("model", {}).get("fcnet_hiddens", [256, 256])
+    fcnet_activation = local_model_config.get("model", {}).get("fcnet_activation", "relu")
+
+    model_config = {
+        "fcnet_hiddens": fcnet_hiddens,
+        "fcnet_activation": fcnet_activation,
     }
 
-    # Multi-DC count helper
-    num_dcs = env_config.get("multi_datacenter_enabled") and len(env_config.get("datacenters", []))
-
+    # Build MultiRLModuleSpec
     if use_parameter_sharing:
-        # Parameter sharing: all local agents use a single shared_local_policy
-        if not num_dcs:
-            raise ValueError(
-                "Parameter sharing enabled but no datacenters configured in env_config."
-            )
-
-        # All local agents now expose the same (padded) observation/action space
-        # from the PettingZoo wrapper; we can safely use local_agent_0 as template.
+        # All local agents share the same policy
         sample_local_agent = "local_agent_0"
         unified_local_obs_space = sample_env.observation_space(sample_local_agent)
         unified_local_action_space = sample_env.action_space(sample_local_agent)
@@ -299,90 +261,103 @@ def create_rllib_config(
         logger.info(f"Unified local obs space: {unified_local_obs_space}")
         logger.info(f"Unified local action space: {unified_local_action_space}")
 
-        policies["shared_local_policy"] = PolicySpec(
-            policy_class=None,
-            observation_space=unified_local_obs_space,
-            action_space=unified_local_action_space,
-            config=copy.deepcopy(local_policy_cfg),
+        rl_module_spec = MultiRLModuleSpec(
+            rl_module_specs={
+                "global_policy": RLModuleSpec(
+                    module_class=DictObsRLModule,
+                    observation_space=global_obs_space,
+                    action_space=global_action_space,
+                    model_config=model_config,
+                ),
+                "shared_local_policy": RLModuleSpec(
+                    module_class=MaskedActionRLModule,
+                    observation_space=unified_local_obs_space,
+                    action_space=unified_local_action_space,
+                    model_config=model_config,
+                ),
+            }
         )
 
-        selected_policy_mapping_fn = shared_policy_mapping_fn
+        policies = {"global_policy", "shared_local_policy"}
+        policy_mapping_fn = shared_policy_mapping_fn
+
     else:
-        # No parameter sharing: create individual policy for each datacenter
-        if not num_dcs:
-            logger.warning(
-                "multi_datacenter_enabled is False or no datacenters configured; "
-                "no local policies will be created."
-            )
+        # Each local agent has its own policy
+        rl_module_specs = {
+            "global_policy": RLModuleSpec(
+                module_class=DictObsRLModule,
+                observation_space=global_obs_space,
+                action_space=global_action_space,
+                model_config=model_config,
+            ),
+        }
 
         for dc_id in range(num_dcs):
             agent_name = f"local_agent_{dc_id}"
             local_obs_space = sample_env.observation_space(agent_name)
             local_action_space = sample_env.action_space(agent_name)
 
-            logger.info(f"DC {dc_id}: action space {local_action_space}")
+            logger.info(f"DC {dc_id}: obs space {local_obs_space}, action space {local_action_space}")
 
-            policies[f"local_policy_{dc_id}"] = PolicySpec(
-                policy_class=None,
+            rl_module_specs[f"local_policy_{dc_id}"] = RLModuleSpec(
+                module_class=MaskedActionRLModule,
                 observation_space=local_obs_space,
                 action_space=local_action_space,
-                config=copy.deepcopy(local_policy_cfg),
+                model_config=model_config,
             )
 
-        selected_policy_mapping_fn = policy_mapping_fn
+        rl_module_spec = MultiRLModuleSpec(rl_module_specs=rl_module_specs)
+        policies = set(rl_module_specs.keys())
+        policy_mapping_fn = independent_policy_mapping_fn
 
     sample_env.close()
 
-    # Algorithm-specific configuration
-    if algorithm_name == "PPO":
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=False,
-                enable_env_runner_and_connector_v2=False,
-            )
-            .environment(env="multidc_env", env_config=env_config)
-            .multi_agent(
-                policies=policies,
-                policy_mapping_fn=selected_policy_mapping_fn,
-                policies_to_train=list(policies.keys()),
-            )
-            .env_runners(
-                num_env_runners=training_config.get("num_workers", 0),
-                num_envs_per_env_runner=1,
-            )
-            .training(
-                # RLlib 2.40+ uses train_batch_size and minibatch_size
-                train_batch_size=training_config.get("train_batch_size", 4000),
-                minibatch_size=training_config.get("sgd_minibatch_size", 128),
-                num_sgd_iter=training_config.get("num_sgd_iter", 10),
-                gamma=local_model_config.get("gamma", 0.99),
-                lr=local_model_config.get("learning_rate", 3e-4),
-                lambda_=local_model_config.get("gae_lambda", 0.95),
-                clip_param=local_model_config.get("clip_range", 0.2),
-                entropy_coeff=local_model_config.get("ent_coef", 0.01),
-                vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
-                grad_clip=local_model_config.get("max_grad_norm", 0.5),
-            )
-            .resources(num_gpus=training_config.get("num_gpus", 0))
-            .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
-            .debugging(log_level="INFO")
-            .framework(framework="torch")
-            .experimental(_disable_preprocessor_api=True)
+    # Build PPO configuration with new API stack
+    config = (
+        PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
         )
+        .environment(
+            env="multidc_env",
+            env_config=env_config,
+        )
+        .rl_module(
+            rl_module_spec=rl_module_spec,
+        )
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=list(policies),
+        )
+        .env_runners(
+            num_env_runners=training_config.get("num_workers", 0),
+            num_envs_per_env_runner=1,
+        )
+        .training(
+            train_batch_size=training_config.get("train_batch_size", 4000),
+            minibatch_size=training_config.get("sgd_minibatch_size", 128),
+            num_sgd_iter=training_config.get("num_sgd_iter", 10),
+            gamma=local_model_config.get("gamma", 0.99),
+            lr=local_model_config.get("learning_rate", 3e-4),
+            lambda_=local_model_config.get("gae_lambda", 0.95),
+            clip_param=local_model_config.get("clip_range", 0.2),
+            entropy_coeff=local_model_config.get("ent_coef", 0.01),
+            vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
+            grad_clip=local_model_config.get("max_grad_norm", 0.5),
+        )
+        .resources(num_gpus=training_config.get("num_gpus", 0))
+        .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
+        .debugging(log_level="INFO")
+        .framework(framework="torch")
+    )
 
-    else:
-        logger.warning(f"Unknown algorithm '{algorithm_name}', falling back to PPO")
-        algorithm_name = "PPO"
-        # Recursive call with PPO
-        training_config["algorithm"] = "PPO"
-        return create_rllib_config(env_config, global_model_config, local_model_config, training_config, output_dir)
-
-    logger.info(f"Successfully created {algorithm_name} configuration")
+    logger.info("Successfully created PPO configuration with RLModule API")
     return config
 
 
-def train_rllib(
+def train_rlmodule(
     env_config: Dict[str, Any],
     global_model_config: Dict[str, Any],
     local_model_config: Dict[str, Any],
@@ -390,10 +365,7 @@ def train_rllib(
     output_dir: str
 ):
     """
-    Main training function using RLlib with Ray Tune.
-
-    Uses Ray Tune's Tuner API for automatic TensorBoard logging,
-    checkpoint management, and experiment tracking.
+    Main training function using RLlib with new RLModule API.
 
     Args:
         env_config: Environment configuration
@@ -404,36 +376,33 @@ def train_rllib(
     """
     # Initialize Ray
     if not ray.is_initialized():
-        # Set environment variables before Ray init
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
         os.environ["OMP_NUM_THREADS"] = "1"
-        
+
         ray.init(
             num_cpus=training_config.get("num_cpus", None),
             num_gpus=training_config.get("num_gpus", 0),
             ignore_reinit_error=True,
             log_to_driver=True,
-            local_mode=False,  # Set to False for GPU usage (was True for Windows compatibility)
-            # local_mode=True forces CPU-only and ignores num_gpus setting
+            local_mode=False,
         )
 
-    # Convert output_dir to absolute path (required by Ray Tune storage_path)
     output_dir = os.path.abspath(output_dir)
 
-    logger.info("="*70)
-    logger.info("RLlib Multi-Agent Training with Ray Tune")
-    logger.info("="*70)
+    logger.info("=" * 70)
+    logger.info("RLlib Multi-Agent Training with RLModule API")
+    logger.info("=" * 70)
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Num workers: {training_config.get('num_workers', 0)}")
     logger.info(f"Total timesteps: {training_config.get('total_timesteps', 100000)}")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     # Register environment
     from ray.tune.registry import register_env
     register_env("multidc_env", env_creator)
 
     # Create RLlib config
-    config = create_rllib_config(
+    config = create_rlmodule_config(
         env_config,
         global_model_config,
         local_model_config,
@@ -444,7 +413,7 @@ def train_rllib(
     # Configure stopping criteria
     total_timesteps = training_config.get("total_timesteps", 100000)
     stop_criteria = {
-        "num_env_steps_sampled": total_timesteps,  # RLlib 2.x key
+        "num_env_steps_sampled": total_timesteps,
     }
 
     # Configure checkpoint settings
@@ -452,82 +421,66 @@ def train_rllib(
     checkpoint_config = air.CheckpointConfig(
         checkpoint_frequency=max(1, checkpoint_freq // training_config.get("train_batch_size", 5000)),
         checkpoint_at_end=True,
-        num_to_keep=3,  # Keep last 3 checkpoints
+        num_to_keep=3,
     )
 
-    # Create progress reporter with tqdm
+    # Create progress reporter
     progress_reporter = TqdmProgressReporter(
         total_timesteps=total_timesteps,
         metric_columns=["episode_reward_mean", "num_env_steps_sampled"],
-        max_report_frequency=5,  # Report every 5 seconds
+        max_report_frequency=5,
     )
 
-    # Determine algorithm name from config type (for Ray Tune + logging)
-    if isinstance(config, PPOConfig):
-        algo_name = "PPO"
-    else:
-        # Fallback: default to PPO if type is unknown
-        algo_name = "PPO"
-        logger.warning(f"Unknown config type {type(config)}, defaulting algo_name to 'PPO' for Ray Tune.")
-
-    # Configure run settings with automatic TensorBoard logging
+    # Configure run settings
     run_config = air.RunConfig(
-        name="multidc_training",
-        storage_path=output_dir,  # Ray 2.x uses storage_path instead of local_dir
+        name="multidc_rlmodule_training",
+        storage_path=output_dir,
         stop=stop_criteria,
         checkpoint_config=checkpoint_config,
-        verbose=0,  # Reduce verbosity since we have tqdm
+        verbose=0,
         progress_reporter=progress_reporter,
-        # TensorBoard logging is enabled by default
-        # Logs will be saved to: {output_dir}/multidc_training/{algo_name}_*/events.out.tfevents.*
     )
 
-    # Create Tuner with PPO algorithm
+    # Create Tuner
     tuner = tune.Tuner(
-        algo_name,
+        "PPO",
         param_space=config.to_dict(),
         run_config=run_config,
     )
 
-    logger.info("\n" + "="*70)
-    logger.info("Starting training with Ray Tune...")
-    logger.info(f"TensorBoard logs: {output_dir}/multidc_training/{algo_name}_*/")
-    logger.info(f"Checkpoints: {output_dir}/multidc_training/{algo_name}_*/checkpoint_*")
-    logger.info("="*70 + "\n")
+    logger.info("\n" + "=" * 70)
+    logger.info("Starting training with RLModule API...")
+    logger.info(f"TensorBoard logs: {output_dir}/multidc_rlmodule_training/PPO_*/")
+    logger.info(f"Checkpoints: {output_dir}/multidc_rlmodule_training/PPO_*/checkpoint_*")
+    logger.info("=" * 70 + "\n")
 
     try:
-        # Run training (blocking until completion)
         results = tuner.fit()
 
-        # Check if training succeeded
-        # Note: results.errors is a list of Exception objects, not (trial, error) tuples
         if hasattr(results, 'errors') and results.errors:
-            logger.error("\n" + "="*70)
+            logger.error("\n" + "=" * 70)
             logger.error("Training failed with errors!")
-            logger.error("="*70)
+            logger.error("=" * 70)
             for error in results.errors:
                 logger.error(f"Error: {error}")
             raise RuntimeError("Training failed. Check error logs above.")
 
-        # Get best result
         best_result = results.get_best_result(
             metric="episode_reward_mean",
             mode="max"
         )
 
-        logger.info("\n" + "="*70)
+        logger.info("\n" + "=" * 70)
         logger.info("Training completed successfully!")
-        logger.info("="*70)
+        logger.info("=" * 70)
         logger.info(f"Best checkpoint: {best_result.checkpoint}")
 
-        # Safely access metrics
         metrics = best_result.metrics
         if "episode_reward_mean" in metrics:
             logger.info(f"Best episode reward: {metrics['episode_reward_mean']:.2f}")
         if "num_env_steps_sampled" in metrics:
             logger.info(f"Total timesteps: {metrics['num_env_steps_sampled']}")
 
-        # Log custom metrics if available
         if "custom_metrics" in metrics:
             custom = metrics["custom_metrics"]
             logger.info("\nBest Episode Energy Metrics:")
@@ -538,10 +491,10 @@ def train_rllib(
     finally:
         ray.shutdown()
 
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("View TensorBoard:")
     logger.info(f"  tensorboard --logdir={output_dir}")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -554,7 +507,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Train hierarchical multi-DC MARL with RLlib"
+        description="Train hierarchical multi-DC MARL with RLlib RLModule API"
     )
     parser.add_argument(
         "--config",
@@ -565,7 +518,7 @@ def main():
     parser.add_argument(
         "--experiment",
         type=str,
-        default="experiment_multi_dc_3",
+        default="experiment_multi_dc_10",
         help="Experiment name in config"
     )
     parser.add_argument(
@@ -617,11 +570,10 @@ def main():
     if args.num_gpus is not None:
         training_config["num_gpus"] = args.num_gpus
 
-    # Setup output directory (same structure as Stable Baselines3)
+    # Setup output directory
     if args.output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Create structure: logs/experiment_name/timestamp/
-        args.output_dir = f"../../logs/{args.experiment}/{timestamp}"
+        args.output_dir = f"../../logs/{args.experiment}_RLModule/{timestamp}"
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -629,7 +581,7 @@ def main():
     logger.info(f"Output directory: {output_dir.absolute()}")
 
     # Train
-    train_rllib(
+    train_rlmodule(
         env_config=env_config,
         global_model_config=global_model_config,
         local_model_config=local_model_config,

@@ -139,6 +139,7 @@ def load_rllib_algorithm(checkpoint_path: str):
     """
     import ray
     from ray import tune
+    from pathlib import Path
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.models import ModelCatalog
     from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -164,8 +165,9 @@ def load_rllib_algorithm(checkpoint_path: str):
 
     tune.register_env('multidc_env', env_creator)
 
-    # 加载 checkpoint
-    algo = Algorithm.from_checkpoint(checkpoint_path)
+    # 加载 checkpoint（使用绝对 file:// URI，避免 pyarrow 对相对路径报错）
+    checkpoint_uri = Path(checkpoint_path).resolve().as_uri()
+    algo = Algorithm.from_checkpoint(checkpoint_uri)
     return algo
 
 

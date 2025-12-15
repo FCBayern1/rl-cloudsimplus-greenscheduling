@@ -61,14 +61,14 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.num_datacenters = len(config.get("datacenters", [{"datacenter_id": 0}]))
         
         # Fixed batch size for global routing decisions (key parameter)
-        self.global_routing_batch_size = config.get("global_routing_batch_size", 5)
+        self.global_routing_batch_size = config.get("global_routing_batch_size", 10)
         
         # Backward compatibility: if max_arriving_cloudlets is set, use it as batch size
         if "max_arriving_cloudlets" in config and "global_routing_batch_size" not in config:
             logger.warning(
                 "'max_arriving_cloudlets' is deprecated. Use 'global_routing_batch_size' instead."
             )
-            self.global_routing_batch_size = config.get("max_arriving_cloudlets", 5)
+            self.global_routing_batch_size = config.get("max_arriving_cloudlets", 10)
 
         # Py4J Gateway connection
         self.gateway = None
@@ -99,7 +99,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 dtype=np.float32
             ),
             "dc_current_power_w": spaces.Box(
-                low=0.0, high=10000.0,
+                low=0.0, high=5_000_000.0,
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
@@ -247,7 +247,6 @@ class HierarchicalMultiDCEnv(gym.Env):
         - Each action is a datacenter index in [0, num_datacenters - 1]
         - If fewer cloudlets are available than the routing batch size,
           extra actions are simply ignored (trimmed to queue length).
-        - If more cloudlets are available,未被选中的继续在全局队列中等待。
         
         Local Agents: Assign one cloudlet per DC per step.
         """
@@ -607,6 +606,27 @@ class HierarchicalMultiDCEnv(gym.Env):
             info[str(key)] = self._convert_java_value(value)
         return info
 
+    def _pad_batch_array(self, arr: np.ndarray, target_size: int, dtype=np.int32) -> np.ndarray:
+        """
+        Pad or trim array to match target_size.
+
+        Args:
+            arr: Input array from Java gateway
+            target_size: Target array size (global_routing_batch_size)
+            dtype: Array data type
+
+        Returns:
+            Array of exactly target_size elements
+        """
+        if len(arr) >= target_size:
+            # Trim to target size
+            return arr[:target_size]
+        else:
+            # Pad with zeros
+            result = np.zeros(target_size, dtype=dtype)
+            result[:len(arr)] = arr
+            return result
+
     def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
         """
         Convert Java GlobalObservationState to Python dict.
@@ -629,8 +649,14 @@ class HierarchicalMultiDCEnv(gym.Env):
             "dc_ram_utilizations": np.array(global_obs_java.getDcRamUtilizations(), dtype=np.float32),
             # Clamp Discrete values to valid range to prevent one_hot errors
             "upcoming_cloudlets_count": min(global_obs_java.getUpcomingCloudletsCount(), 99999),
-            "batch_cloudlet_pes": np.array(global_obs_java.getBatchCloudletPes(), dtype=np.int32),
-            "batch_cloudlet_mi": np.array(global_obs_java.getBatchCloudletMi(), dtype=np.int64),
+            "batch_cloudlet_pes": self._pad_batch_array(
+                np.array(global_obs_java.getBatchCloudletPes(), dtype=np.int32),
+                self.global_routing_batch_size, dtype=np.int32
+            ),
+            "batch_cloudlet_mi": self._pad_batch_array(
+                np.array(global_obs_java.getBatchCloudletMi(), dtype=np.int64),
+                self.global_routing_batch_size, dtype=np.int64
+            ),
             "upcoming_pes_distribution": np.array(global_obs_java.getUpcomingCloudletsPesDistribution(), dtype=np.int32),
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
             "recent_completed": min(global_obs_java.getRecentCompletedCloudlets(), 99999),

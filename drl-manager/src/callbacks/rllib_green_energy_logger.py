@@ -12,11 +12,13 @@ import json
 import ast
 import logging
 from typing import Dict, Optional
+import numpy as np
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,141 @@ def safe_convert_to_dict(obj, key_name="object"):
     return {}
 
 
+def get_episode_length(episode) -> int:
+    """
+    Get episode length compatible with both old and new RLlib API.
+
+    Old API (EpisodeV2): episode.length
+    New API (MultiAgentEpisode): episode.env_t or len(episode)
+    """
+    # Try new API first (MultiAgentEpisode)
+    if hasattr(episode, 'env_t'):
+        return episode.env_t
+    # Try len() which works for new API
+    try:
+        return len(episode)
+    except TypeError:
+        pass
+    # Fall back to old API (EpisodeV2)
+    if hasattr(episode, 'length'):
+        return episode.length
+    # Last resort
+    return 0
+
+
+def get_episode_reward(episode) -> float:
+    """
+    Get episode total reward compatible with both old and new RLlib API.
+
+    Old API (EpisodeV2): episode.total_reward
+    New API (MultiAgentEpisode): episode.get_return() or sum of agent returns
+    """
+    # Try new API first (MultiAgentEpisode)
+    if hasattr(episode, 'get_return'):
+        try:
+            return episode.get_return()
+        except Exception:
+            pass
+    # Try summing agent returns for multi-agent
+    if hasattr(episode, 'agent_episodes'):
+        try:
+            total = 0.0
+            for agent_eps in episode.agent_episodes.values():
+                if hasattr(agent_eps, 'get_return'):
+                    total += agent_eps.get_return()
+            return total
+        except Exception:
+            pass
+    # Fall back to old API (EpisodeV2)
+    if hasattr(episode, 'total_reward'):
+        return episode.total_reward
+    # Last resort
+    return 0.0
+
+
+def get_episode_info(episode, agent_id: str = None) -> dict:
+    """
+    Get episode info compatible with both old and new RLlib API.
+
+    Old API: episode.last_info_for(agent_id)
+    New API (MultiAgentEpisode): episode.get_infos(agent_id) returns list of infos
+    """
+    # Try old API first (EpisodeV2)
+    if hasattr(episode, 'last_info_for'):
+        try:
+            if agent_id:
+                info = episode.last_info_for(agent_id)
+            else:
+                info = episode.last_info_for()
+            if info:
+                return info
+        except Exception:
+            pass
+
+    # Try new API (MultiAgentEpisode)
+    # get_infos(agent_id) returns a list of info dicts for that agent
+    if hasattr(episode, 'get_infos'):
+        try:
+            # Try with specific agent_id first
+            target_agent = agent_id or "global_agent"
+            infos = episode.get_infos(target_agent)
+            if infos and len(infos) > 0:
+                # Return the last info for this agent
+                last_info = infos[-1]
+                if last_info and isinstance(last_info, dict):
+                    return last_info
+        except Exception:
+            pass
+
+        # Try without agent_id (returns dict of agent_id -> list of infos)
+        try:
+            all_infos = episode.get_infos()
+            if all_infos and isinstance(all_infos, dict):
+                # Try to find global_agent info first (has comprehensive metrics)
+                for agent_key in ["global_agent", agent_id] if agent_id else ["global_agent"]:
+                    if agent_key and agent_key in all_infos:
+                        agent_info_list = all_infos[agent_key]
+                        if agent_info_list and len(agent_info_list) > 0:
+                            last_info = agent_info_list[-1]
+                            if last_info and isinstance(last_info, dict):
+                                return last_info
+                # Fallback: return first agent's last info
+                for agent_key, agent_info_list in all_infos.items():
+                    if agent_info_list and len(agent_info_list) > 0:
+                        last_info = agent_info_list[-1]
+                        if last_info and isinstance(last_info, dict):
+                            return last_info
+        except Exception:
+            pass
+
+    # Try agent_episodes for new API
+    if hasattr(episode, 'agent_episodes'):
+        try:
+            agent_eps = episode.agent_episodes
+            target_agent = agent_id or "global_agent"
+            if target_agent in agent_eps:
+                single_ep = agent_eps[target_agent]
+                if hasattr(single_ep, 'get_infos'):
+                    infos = single_ep.get_infos()
+                    if infos and len(infos) > 0:
+                        last_info = infos[-1]
+                        if last_info and isinstance(last_info, dict):
+                            return last_info
+        except Exception:
+            pass
+
+    # Try agent_to_last_info (might exist on some versions)
+    if hasattr(episode, 'agent_to_last_info'):
+        agent_infos = episode.agent_to_last_info
+        if agent_infos and len(agent_infos) > 0:
+            if agent_id and agent_id in agent_infos:
+                return agent_infos[agent_id]
+            # Return first agent's info
+            return list(agent_infos.values())[0]
+
+    return {}
+
+
 class GreenEnergyLoggerCallback(DefaultCallbacks):
     """
     RLlib callback for logging green energy metrics per episode.
@@ -124,27 +261,44 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
     def on_episode_end(
         self,
         *,
-        worker: RolloutWorker,
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: EpisodeV2,
+        worker: RolloutWorker = None,
+        base_env: BaseEnv = None,
+        policies: Dict[str, Policy] = None,
+        episode: EpisodeV2 = None,
         env_index: Optional[int] = None,
+        env_runner = None,  # New API parameter
+        metrics_logger = None,  # New API parameter
         **kwargs,
     ) -> None:
         """
         Called when an episode is done.
 
+        Supports both old API (worker, base_env, policies, episode) and
+        new API stack (episode, env_runner).
+
         Args:
-            worker: Reference to the current rollout worker
-            base_env: BaseEnv running the episode
-            policies: Mapping of policy id to policy objects
+            worker: Reference to the current rollout worker (old API)
+            base_env: BaseEnv running the episode (old API)
+            policies: Mapping of policy id to policy objects (old API)
             episode: Episode object that contains info about the episode
             env_index: Index of the environment
+            env_runner: EnvRunner instance (new API)
+            metrics_logger: MetricsLogger instance (new API)
         """
+        # Determine which API we're using
+        is_new_api = env_runner is not None and worker is None
+        worker_index = 0  # Default for new API
+
+        # Get worker index (for CSV file naming)
+        if worker is not None:
+            worker_index = worker.worker_index
+        elif env_runner is not None and hasattr(env_runner, 'worker_index'):
+            worker_index = env_runner.worker_index
+
         # Initialize CSV file on first episode (worker-safe)
         if not self.csv_initialized:
-            logger.info(f"[CALLBACK DEBUG] Initializing CSV for worker {worker.worker_index}")
-            self._init_csv(worker)
+            logger.info(f"[CALLBACK DEBUG] Initializing CSV for worker {worker_index}")
+            self._init_csv_v2(worker_index)
             self.csv_initialized = True
             logger.info(f"[CALLBACK DEBUG] CSV initialized. File: {self.csv_file}")
 
@@ -177,11 +331,11 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     logger.info(f"[CALLBACK DEBUG] Got info from agent: {first_agent}")
 
         if last_info is None or len(last_info) == 0:
-            logger.error(f"[CALLBACK DEBUG] Failed to get episode info! Episode length: {episode.length}, Total reward: {episode.total_reward}")
+            logger.error(f"[CALLBACK DEBUG] Failed to get episode info! Episode length: {get_episode_length(episode)}, Total reward: {get_episode_reward(episode)}")
             logger.error(f"[CALLBACK DEBUG] Episode attributes: {dir(episode)}")
             return
 
-        logger.info(f"[CALLBACK DEBUG] Episode ended! Length: {episode.length}, Reward: {episode.total_reward}")
+        logger.info(f"[CALLBACK DEBUG] Episode ended! Length: {get_episode_length(episode)}, Reward: {get_episode_reward(episode)}")
         logger.info(f"[CALLBACK DEBUG] last_info keys: {list(last_info.keys())}")
 
         # Get global energy stats from info (handle string/Java Map/dict)
@@ -209,9 +363,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         total_carbon_kg = global_energy_stats.get('total_carbon_emission_kg', 0.0)
         carbon_intensity = global_energy_stats.get('carbon_intensity_kg_per_kwh', 0.0)
 
-        # Episode metrics
-        episode_reward = episode.total_reward
-        episode_length = episode.length
+        # Episode metrics (use helper functions for API compatibility)
+        episode_reward = get_episode_reward(episode)
+        episode_length = get_episode_length(episode)
 
         # Extract per-agent rewards for hierarchical MARL analysis
         global_agent_reward = 0.0
@@ -386,7 +540,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         episode.custom_metrics["completion_rate"] = completion_rate
 
         # Log to console (only worker 0 to avoid spam)
-        if worker.worker_index == 0:
+        if worker_index == 0:
             logger.info(f"\n{'='*60}")
             logger.info(f"Episode {self.episode_counter} finished:")
             logger.info(f"  Green Waste:  {green_waste:.2f} Wh")
@@ -397,6 +551,144 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             logger.info(f"  Episode Reward: {episode_reward:.2f}")
             logger.info(f"  Episode Length: {episode_length}")
             logger.info(f"{'='*60}\n")
+
+    def on_learn_on_batch(
+        self,
+        *,
+        policy: Policy,
+        train_batch,
+        result: Dict,
+        **kwargs,
+    ) -> None:
+        """
+        Optional hook called by RLlib right before a policy learns on a batch.
+
+        这里我们只做 *只读* 的调试日志，用来检查 RNN/Transformer 训练管线中的
+        `SEQ_LENS` 是否已经在进入 learner 之前出现异常（例如为负数或者和样本数不匹配）。
+
+        注意：绝对不要在这里修改 batch 内容，否则很容易破坏 RLlib 内部的
+        序列切分逻辑（`pad_batch_to_sequences_of_same_size` / `chop_into_sequences`）。
+        """
+
+        def _check_and_log_seq_lens(batch: SampleBatch, *, label: str) -> None:
+            if SampleBatch.SEQ_LENS not in batch:
+                logger.debug(f"[CALLBACK] {label}: no SEQ_LENS in batch")
+                return
+
+            try:
+                seq_lens = batch[SampleBatch.SEQ_LENS]
+                if not isinstance(seq_lens, np.ndarray):
+                    seq_lens = np.asarray(seq_lens)
+
+                batch_count = getattr(batch, "count", None)
+                if batch_count is None:
+                    # Fallback: 如果没有 count 属性，尽量用 seq_lens.sum() 作为参考（仅用于日志）
+                    batch_count = int(seq_lens.sum())
+
+                seq_min = int(seq_lens.min()) if len(seq_lens) > 0 else None
+                seq_max = int(seq_lens.max()) if len(seq_lens) > 0 else None
+                seq_sum = int(seq_lens.sum()) if len(seq_lens) > 0 else 0
+
+                msg_base = (
+                    f"[CALLBACK] {label}: "
+                    f"SEQ_LENS shape={seq_lens.shape}, "
+                    f"min={seq_min}, max={seq_max}, sum={seq_sum}, "
+                    f"batch.count={batch_count}"
+                )
+                invalid = False
+                if seq_min is not None and (seq_min < 1 or seq_sum != batch_count):
+                    invalid = True
+                    # 先打 warning，记录原始异常信息
+                    logger.warning(msg_base + "  <-- INVALID SEQ_LENS, will drop key to let RLlib recompute")
+                    # 关键自愈逻辑：删除 SEQ_LENS，让 RLlib 在 pad_batch_to_sequences_of_same_size
+                    # 内部根据 episode_ids/unroll_ids 自动重新计算序列长度，避免使用这串坏掉的数据。
+                    try:
+                        del batch[SampleBatch.SEQ_LENS]
+                        logger.warning(f"[CALLBACK] {label}: dropped SEQ_LENS from batch to force RLlib recomputation")
+                    except Exception as del_exc:
+                        logger.error(
+                            f"[CALLBACK] {label}: failed to delete SEQ_LENS despite being invalid: {del_exc}"
+                        )
+                else:
+                    logger.debug(msg_base)
+            except Exception as exc:  # 防御性：日志错误不能影响训练
+                logger.debug(f"[CALLBACK] Failed to log SEQ_LENS for {label}: {exc}")
+
+        # Multi-agent 情况：train_batch 可能是 MultiAgentBatch
+        if isinstance(train_batch, SampleBatch):
+            _check_and_log_seq_lens(train_batch, label=f"policy={policy.id}")
+        elif hasattr(train_batch, "policy_batches"):
+            for pid, sub_batch in train_batch.policy_batches.items():
+                _check_and_log_seq_lens(sub_batch, label=f"policy={pid}")
+
+    def _init_csv_v2(self, worker_index: int):
+        """
+        Initialize CSV file with headers (new API compatible).
+
+        Args:
+            worker_index: Index of the worker
+        """
+        # Get log directory
+        if self.log_dir:
+            log_dir = self.log_dir
+        else:
+            log_dir = './logs'
+
+        # Create directory if it doesn't exist
+        os.makedirs(log_dir, exist_ok=True)
+
+        # monitor.csv - episode-by-episode metrics (only worker 0)
+        if worker_index == 0:
+            self.csv_file = os.path.join(log_dir, "monitor.csv")
+            if not hasattr(self, 'best_episode_file') or not self.best_episode_file:
+                self.best_episode_file = os.path.join(log_dir, "best_episode_details.csv")
+        else:
+            # Other workers save to separate files
+            self.csv_file = os.path.join(log_dir, f"monitor_worker{worker_index}.csv")
+            if not hasattr(self, 'best_episode_file'):
+                self.best_episode_file = None
+
+        # Write CSV headers
+        try:
+            # Base headers
+            headers = [
+                'episode', 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
+                'total_energy_wh', 'green_ratio', 'waste_ratio', 'total_carbon_kg',
+                'carbon_intensity_kg_per_kwh', 'episode_reward', 'episode_length',
+                'global_agent_reward', 'local_agents_avg_reward', 'completion_rate'
+            ]
+            num_dcs = 10
+            for dc_id in range(num_dcs):
+                headers.append(f'local_reward_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'mean_completion_time_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'cloudlets_finished_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'completion_rate_dc_{dc_id}')
+
+            with open(self.csv_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+            logger.info(f"Initialized monitor.csv with {len(headers)} columns: {self.csv_file}")
+        except Exception as e:
+            logger.error(f"Failed to initialize monitor CSV: {e}")
+
+        # Initialize best_episode_details.csv (only worker 0)
+        if worker_index == 0 and self.best_episode_file:
+            try:
+                with open(self.best_episode_file, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        'episode', 'reward', 'length', 'green_waste_wh',
+                        'green_used_wh', 'brown_used_wh', 'total_energy_wh',
+                        'green_ratio', 'waste_ratio', 'total_carbon_kg',
+                        'carbon_intensity_kg_per_kwh', 'global_agent_reward',
+                        'local_agents_avg_reward', 'completion_rate'
+                    ])
+                logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
+            except Exception as e:
+                logger.error(f"Failed to initialize best episode CSV: {e}")
 
     def _init_csv(self, worker: RolloutWorker):
         """

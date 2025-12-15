@@ -1705,7 +1705,7 @@ experiment_multi_dc_10:
   # --- Training Configuration (RLlib) ---
   training:
     algorithm: "PPO"       # Explicitly use PPO for RLlib
-    total_timesteps: 400000 # More timesteps for 10 DCs
+    total_timesteps: 500000 # More timesteps for 10 DCs
     num_workers: 0
     num_gpus: 1
     train_batch_size: 8000            # Larger batch for more agents
@@ -2412,7 +2412,7 @@ experiment_multi_dc_simple:
 
   # --- Workload Configuration ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/dc10_fast.csv"
+  cloudlet_trace_file: "traces/dc10_3000.csv"  # Changed to match experiment_multi_dc_10 for fair comparison
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
