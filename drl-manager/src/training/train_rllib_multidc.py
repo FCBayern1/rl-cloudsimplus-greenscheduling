@@ -47,7 +47,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.models.masked_action_model import MaskedActionModel, DictObsModel
-from src.models.trxl_obsrec_model import TransformerXLObsRecModel
 from ray.rllib.models import ModelCatalog
 
 # Setup logging
@@ -209,13 +208,6 @@ def create_rllib_config(
     try:
         ModelCatalog.register_custom_model("dict_obs_model", DictObsModel)
         logger.info("Registered custom RLlib model: dict_obs_model")
-    except Exception as e:
-        if "You have already registered" not in str(e):
-            raise
-
-    try:
-        ModelCatalog.register_custom_model("trxl_obsrec_model", TransformerXLObsRecModel)
-        logger.info("Registered custom RLlib model: trxl_obsrec_model")
     except Exception as e:
         if "You have already registered" not in str(e):
             raise
