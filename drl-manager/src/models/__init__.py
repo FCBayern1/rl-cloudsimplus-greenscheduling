@@ -6,6 +6,10 @@ from .masked_action_model import MaskedActionModel, DictObsModel
 # New RLModule API models (enable_rl_module_and_learner=True)
 from .rlmodule_models import MaskedActionRLModule, DictObsRLModule
 
+# GTrXL RLModule API models (Gated Transformer-XL)
+from .gtrxl_rlmodule import GTrXLMaskedActionRLModule, GTrXLDictObsRLModule
+from .gtrxl_networks import GTrXLEncoder
+
 __all__ = [
     # Legacy API (TorchModelV2)
     "MaskedActionModel",
@@ -13,4 +17,8 @@ __all__ = [
     # New RLModule API - MLP based
     "MaskedActionRLModule",
     "DictObsRLModule",
+    # New RLModule API - GTrXL based
+    "GTrXLMaskedActionRLModule",
+    "GTrXLDictObsRLModule",
+    "GTrXLEncoder",
 ]
