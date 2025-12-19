@@ -3,10 +3,13 @@ import giu.edu.cspg.common.SimulationSettings;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import giu.edu.cspg.energy.TimeScalingMode;
 
 /**
  * Holds simulation configuration parameters, loaded from a Map
@@ -64,6 +67,27 @@ public class SimulationSettings {
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
+    /**
+     * When true, SWF jobs with status==0 are filtered out (treated as failed).
+     * Some traces have status column set to 0 for all rows (meaning "unknown" after cleaning),
+     * so this must be configurable per experiment.
+     */
+    private final boolean swfFilterFailedJobs;
+    /** If true, subtract the first seen SWF submitTime so arrivals start at t=0. */
+    private final boolean swfNormalizeSubmitTimes;
+    /** Divide SWF submit times by this factor to compress long traces into shorter episodes (>= 1.0). */
+    private final double swfTimeScale;
+    /** Cap SWF requested processors to this value (e.g., 8 to match max VM size). */
+    private final int swfMaxPes;
+    /**
+     * If true, compute Cloudlet MI as runTime * mips * pes to preserve SWF runtime on pes processors.
+     * If false, uses runTime * mips (legacy behavior).
+     */
+    private final boolean swfScaleMiByPes;
+    /**
+     * Carbon emission factor (kg CO2 per kWh). Used when reporting carbon metrics.
+     */
+    private final double carbonEmissionFactorKgPerKwh;
     private final boolean splitLargeCloudlets;
     private final int maxCloudletPes;
 
@@ -102,7 +126,16 @@ public class SimulationSettings {
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
     private final int turbineId;
+    /**
+     * Optional multi-turbine support (mainly used when single-DC reuses multi-DC datacenter configs).
+     * If not provided, falls back to a singleton list containing turbineId.
+     */
+    private final List<Integer> turbineIds;
     private final String windDataFile;
+    private final TimeScalingMode timeScalingMode;
+    private final int timeZoneOffsetRows;
+    private final double brownCarbonFactor;
+    private final double greenCarbonFactor;
     private final boolean greenPredictionEnabled;
     private final String predictionModelPath;
     private final double predictionCacheDuration;
@@ -192,6 +225,12 @@ public class SimulationSettings {
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",
                 Integer.MAX_VALUE);
         this.workloadReaderMips = getIntParam(params, "workload_reader_mips", (int) this.hostPeMips);
+        this.swfFilterFailedJobs = getBoolParam(params, "swf_filter_failed_jobs", true);
+        this.swfNormalizeSubmitTimes = getBoolParam(params, "swf_normalize_submit_times", false);
+        this.swfTimeScale = getDoubleParam(params, "swf_time_scale", 1.0);
+        this.swfMaxPes = getIntParam(params, "swf_max_pes", Integer.MAX_VALUE);
+        this.swfScaleMiByPes = getBoolParam(params, "swf_scale_mi_by_pes", true);
+        this.carbonEmissionFactorKgPerKwh = getDoubleParam(params, "carbon_emission_factor_kg_per_kwh", 0.5);
 
         this.splitLargeCloudlets = getBoolParam(params, "split_large_cloudlets", true);
         // Default maxCloudletPes to the largest VM's PE count if not specified
@@ -243,8 +282,13 @@ public class SimulationSettings {
         Map<String, Object> greenEnergyConfig = (Map<String, Object>) params.getOrDefault("green_energy", Map.of());
         this.greenEnergyEnabled = getBoolParam(greenEnergyConfig, "enabled", false);
         this.turbineId = getIntParam(greenEnergyConfig, "turbine_id", 1);
+        this.turbineIds = parseTurbineIds(greenEnergyConfig, this.turbineId);
         this.windDataFile = getStringParam(greenEnergyConfig, "wind_data_file",
             "windProduction/sdwpf_2001_2112_full.csv");
+        this.timeScalingMode = parseTimeScalingMode(getStringParam(greenEnergyConfig, "time_scaling_mode", "REAL_TIME"));
+        this.timeZoneOffsetRows = getIntParam(greenEnergyConfig, "time_zone_offset_rows", 0);
+        this.brownCarbonFactor = getDoubleParam(greenEnergyConfig, "brown_carbon_factor", 0.5);
+        this.greenCarbonFactor = getDoubleParam(greenEnergyConfig, "green_carbon_factor", 0.01);
 
         // Prediction sub-configuration
         @SuppressWarnings("unchecked")
@@ -261,8 +305,9 @@ public class SimulationSettings {
         this.longTermRows = getIntParam(forecastConfig, "long_term_rows", 144);    // Default: 144 rows = 24 hours
 
         if (this.greenEnergyEnabled) {
-            LOGGER.info("Green Energy: enabled, turbine_id={}, data_file={}",
-                this.turbineId, this.windDataFile);
+            LOGGER.info("Green Energy: enabled, turbine_ids={}, data_file={}, mode={}, tzOffsetRows={}, carbonFactors(brown={}, green={})",
+                this.turbineIds, this.windDataFile, this.timeScalingMode,
+                this.timeZoneOffsetRows, this.brownCarbonFactor, this.greenCarbonFactor);
             if (this.greenPredictionEnabled) {
                 LOGGER.info("Green Prediction: enabled, horizon={}, cache={}s, model={}",
                     this.predictionHorizon, this.predictionCacheDuration,
@@ -320,7 +365,12 @@ public class SimulationSettings {
                 "rewardCompletionCoef=" + rewardCompletionCoef + ",\n" +
                 "greenEnergyEnabled=" + greenEnergyEnabled + ",\n" +
                 "turbineId=" + turbineId + ",\n" +
+                "turbineIds=" + turbineIds + ",\n" +
                 "windDataFile='" + windDataFile + '\'' + ",\n" +
+                "timeScalingMode=" + timeScalingMode + ",\n" +
+                "timeZoneOffsetRows=" + timeZoneOffsetRows + ",\n" +
+                "brownCarbonFactor=" + brownCarbonFactor + ",\n" +
+                "greenCarbonFactor=" + greenCarbonFactor + ",\n" +
                 "greenPredictionEnabled=" + greenPredictionEnabled + ",\n" +
                 "predictionModelPath='" + predictionModelPath + '\'' + ",\n" +
                 "predictionCacheDuration=" + predictionCacheDuration + ",\n" +
@@ -381,6 +431,56 @@ public class SimulationSettings {
         return Boolean.parseBoolean(Objects.toString(value, String.valueOf(defaultValue)));
     }
 
+    /**
+     * Parse a list of turbine IDs from config map.
+     * Supports:
+     * - turbine_ids: [57, 58]
+     * - turbine_ids: ["57", "58"]
+     * Fallback: singleton list containing fallbackTurbineId.
+     */
+    private List<Integer> parseTurbineIds(Map<String, Object> map, int fallbackTurbineId) {
+        Object idsObj = map.get("turbine_ids");
+        if (idsObj instanceof List<?> list) {
+            List<Integer> ids = new ArrayList<>();
+            for (Object o : list) {
+                if (o instanceof Integer i) {
+                    ids.add(i);
+                } else if (o instanceof Number n) {
+                    ids.add(n.intValue());
+                } else if (o != null) {
+                    try {
+                        ids.add(Integer.parseInt(o.toString()));
+                    } catch (NumberFormatException ignored) {
+                        // Skip invalid entries
+                    }
+                }
+            }
+            if (!ids.isEmpty()) {
+                return ids;
+            }
+        }
+        return List.of(fallbackTurbineId);
+    }
+
+    /**
+     * Parse TimeScalingMode from string.
+     */
+    private TimeScalingMode parseTimeScalingMode(String modeStr) {
+        if (modeStr == null || modeStr.isBlank()) {
+            return TimeScalingMode.REAL_TIME;
+        }
+        String upper = modeStr.trim().toUpperCase();
+        return switch (upper) {
+            case "COMPRESSED" -> TimeScalingMode.COMPRESSED;
+            case "REAL_TIME" -> TimeScalingMode.REAL_TIME;
+            default -> {
+                LOGGER.warn("Unknown time_scaling_mode '{}', defaulting to REAL_TIME", modeStr);
+                yield TimeScalingMode.REAL_TIME;
+            }
+        };
+    }
+
+
     // --- Getters for all parameters ---
 
     public int[] getInitialVmCounts() {
@@ -428,6 +528,10 @@ public class SimulationSettings {
      */
     public double getCarbonEmissionPenaltyCoef() {
         return carbonEmissionPenaltyCoef;
+    }
+
+    public double getCarbonEmissionFactorKgPerKwh() {
+        return carbonEmissionFactorKgPerKwh;
     }
 
     // ============================================================================

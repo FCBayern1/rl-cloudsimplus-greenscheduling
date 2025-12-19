@@ -37,6 +37,12 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
 
     private final String workloadMode; // "SWF" or "CSV"
     private int referenceMips; // Only used for SWF
+    private boolean swfFilterFailedJobs = true; // Only used for SWF
+    private boolean swfNormalizeSubmitTimes = false; // Only used for SWF
+    private double swfTimeScale = 1.0; // Only used for SWF
+    private int swfMaxPes = Integer.MAX_VALUE; // Only used for SWF
+    private boolean swfScaleMiByPes = true; // Only used for SWF
+    private long swfBaseSubmitTime = -1; // computed on first parsed SWF job if normalization enabled
     private final List<CloudletDescriptor> descriptors; // List of Cloudlet descriptors generated from the trace file
 
     /**
@@ -76,6 +82,42 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
     }
 
     /**
+     * Controls whether SWF jobs with status==0 should be filtered out (treated as failed).
+     * Default is true to follow the SWF manual; can be disabled for traces where status is unknown/cleaned.
+     */
+    public WorkloadFileReader setSwfFilterFailedJobs(final boolean swfFilterFailedJobs) {
+        this.swfFilterFailedJobs = swfFilterFailedJobs;
+        return this;
+    }
+
+    /** If enabled, subtract the first seen submit time so arrivals start at 0. */
+    public WorkloadFileReader setSwfNormalizeSubmitTimes(final boolean swfNormalizeSubmitTimes) {
+        this.swfNormalizeSubmitTimes = swfNormalizeSubmitTimes;
+        return this;
+    }
+
+    /**
+     * Compress SWF submit times by dividing them by the given factor (>= 1.0).
+     * Example: 500 makes a 1,000,000s trace fit into ~2,000s episodes.
+     */
+    public WorkloadFileReader setSwfTimeScale(final double swfTimeScale) {
+        this.swfTimeScale = swfTimeScale <= 0 ? 1.0 : swfTimeScale;
+        return this;
+    }
+
+    /** Caps the parsed SWF processor requirement to a maximum value (>= 1). */
+    public WorkloadFileReader setSwfMaxPes(final int swfMaxPes) {
+        this.swfMaxPes = swfMaxPes <= 0 ? Integer.MAX_VALUE : swfMaxPes;
+        return this;
+    }
+
+    /** If true, compute MI as runTime * referenceMips * pes (to preserve SWF runtime on pes processors). */
+    public WorkloadFileReader setSwfScaleMiByPes(final boolean swfScaleMiByPes) {
+        this.swfScaleMiByPes = swfScaleMiByPes;
+        return this;
+    }
+
+    /**
      * Reads the trace file based on the configured mode and generates descriptors.
      * 
      * @return A list of CloudletDescriptor objects.
@@ -100,7 +142,8 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
         }
 
         // Check the job status field to filter out jobs that are not completed.
-        if (Integer.parseInt(parsedLineArray[SWF_STATUS_INDEX].trim()) == 0) {
+        // Some traces have status set to 0 for all rows (unknown after cleaning), so make it configurable.
+        if (swfFilterFailedJobs && Integer.parseInt(parsedLineArray[SWF_STATUS_INDEX].trim()) == 0) {
             return false;
         }
 
@@ -122,14 +165,31 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
         final int maxNumProc = Math.max(
                 Integer.parseInt(parsedLineArray[SWF_REQ_NUM_PROC_INDEX].trim()),
                 Integer.parseInt(parsedLineArray[SWF_NUM_PROC_INDEX].trim()));
-        final int numProc = Math.max(1, maxNumProc);
+        int numProc = Math.max(1, maxNumProc);
+        if (swfMaxPes != Integer.MAX_VALUE) {
+            numProc = Math.min(numProc, Math.max(1, swfMaxPes));
+        }
 
         long submitTime = Long.parseLong(parsedLineArray[SWF_SUBMIT_TIME_INDEX].trim());
         submitTime = Math.max(0, submitTime);
+        if (swfNormalizeSubmitTimes) {
+            if (swfBaseSubmitTime < 0) {
+                swfBaseSubmitTime = submitTime;
+            }
+            submitTime = Math.max(0, submitTime - swfBaseSubmitTime);
+        }
+        if (swfTimeScale > 1.0) {
+            submitTime = (long) Math.floor(submitTime / swfTimeScale);
+        }
 
         // Calculate MI based on runtime and reference MIPS
         // (runTime * MIPS) = Instructions processed by one PE in that time.
-        int mi = runTime * this.referenceMips;
+        long miLong = (long) runTime * (long) this.referenceMips;
+        if (swfScaleMiByPes) {
+            // total work across all PEs
+            miLong = miLong * (long) numProc;
+        }
+        int mi = (int) Math.min(Integer.MAX_VALUE, miLong);
         mi = Math.max(1, mi);
 
         final CloudletDescriptor descriptor = new CloudletDescriptor(id, submitTime, mi, numProc);

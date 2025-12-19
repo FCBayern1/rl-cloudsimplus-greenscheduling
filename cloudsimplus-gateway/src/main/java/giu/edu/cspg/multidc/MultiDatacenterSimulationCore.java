@@ -178,6 +178,13 @@ public class MultiDatacenterSimulationCore {
                 settings.getWorkloadMode(),
                 settings.getWorkloadReaderMips()
         );
+        if ("SWF".equalsIgnoreCase(settings.getWorkloadMode())) {
+            reader.setSwfFilterFailedJobs(settings.isSwfFilterFailedJobs());
+            reader.setSwfNormalizeSubmitTimes(settings.isSwfNormalizeSubmitTimes());
+            reader.setSwfTimeScale(settings.getSwfTimeScale());
+            reader.setSwfMaxPes(settings.getSwfMaxPes());
+            reader.setSwfScaleMiByPes(settings.isSwfScaleMiByPes());
+        }
 
         List<CloudletDescriptor> descriptors = reader.generateDescriptors();
 

@@ -136,6 +136,13 @@ public final class SimulationCore {
         LOGGER.info("Loading cloudlet descriptors trace from file: {} using MIPS reference: {}", filePath, mips);
         try {
             WorkloadFileReader reader = new WorkloadFileReader(filePath, mode, mips);
+            if ("SWF".equalsIgnoreCase(mode)) {
+                reader.setSwfFilterFailedJobs(settings.isSwfFilterFailedJobs());
+                reader.setSwfNormalizeSubmitTimes(settings.isSwfNormalizeSubmitTimes());
+                reader.setSwfTimeScale(settings.getSwfTimeScale());
+                reader.setSwfMaxPes(settings.getSwfMaxPes());
+                reader.setSwfScaleMiByPes(settings.isSwfScaleMiByPes());
+            }
             reader.setMaxLinesToRead(maxLines);
             return reader.generateDescriptors();
         } catch (RuntimeException e) {

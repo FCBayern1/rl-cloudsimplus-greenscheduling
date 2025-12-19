@@ -25,7 +25,6 @@ import com.google.gson.Gson;
 
 import giu.edu.cspg.Main;
 import giu.edu.cspg.common.SimulationSettings;
-import giu.edu.cspg.energy.EnergyAllocation;
 import giu.edu.cspg.energy.GreenEnergyProvider;
 import giu.edu.cspg.utils.SimulationResultUtils;
 import py4j.GatewayServer;
@@ -60,12 +59,13 @@ public class LoadBalancerGateway {
     private double averageHostUtilization = 0; // Average host CPU utilization
     private double maxTotalPowerW = 0;       // Cached maximum total power of all hosts (calculated in reset)
 
-    // Green Energy Provider and tracking
-    private GreenEnergyProvider greenEnergyProvider = null;
+    // Green Energy Providers (multi-turbine) and tracking
+    private final List<GreenEnergyProvider> greenEnergyProviders = new ArrayList<>();
     private double cumulativeGreenEnergyWh = 0;
     private double cumulativeBrownEnergyWh = 0;
     private double totalWastedGreenWh = 0;
     private double currentGreenPowerW = 0;
+    private double cumulativeCarbonEmissionKg = 0.0;
 
     // Wind power predictor (Py4J interface for optional prediction service)
     private Object windPowerPredictor = null;
@@ -87,7 +87,8 @@ public class LoadBalancerGateway {
      * @param params Map containing simulation parameters.
      */
     public void configureSimulation(Map<String, Object> params) {
-        this.settings = new SimulationSettings(params);
+        Map<String, Object> effectiveParams = normalizeSingleDcParams(params);
+        this.settings = new SimulationSettings(effectiveParams);
         this.simName = settings.getSimulationName();
         LOGGER.info("Simulation Name: {}", this.simName);
         LOGGER.info("Simulation settings dump\n{}", settings.printSettings());
@@ -171,6 +172,8 @@ public class LoadBalancerGateway {
         this.cumulativeBrownEnergyWh = 0;   // Reset brown energy tracking
         this.totalWastedGreenWh = 0;         // Reset wasted green energy tracking
         this.currentGreenPowerW = 0;         // Reset current green power
+        this.cumulativeCarbonEmissionKg = 0.0; // Reset carbon tracking
+        this.greenEnergyProviders.clear();
         // resetEpisodeStats(); // Reset any episode-specific stats if added later
 
         // Create/Reset core components
@@ -182,7 +185,7 @@ public class LoadBalancerGateway {
                 SimulationResultUtils.printAndSaveResults(this.simulationCore, episodeResultName);
 
                 // Save green energy statistics if enabled
-                if (greenEnergyProvider != null) {
+                if (!greenEnergyProviders.isEmpty()) {
                     SimulationResultUtils.saveGreenEnergyStats(getGreenEnergyStats(), episodeResultName);
                 }
 
@@ -212,20 +215,31 @@ public class LoadBalancerGateway {
 
         LOGGER.info("Max potential VMs calculated: {}", this.maxPotentialVms);
 
-        // Initialize Green Energy Provider if enabled
+        // Initialize Green Energy Provider(s) if enabled
         if (settings.isGreenEnergyEnabled()) {
             try {
-                this.greenEnergyProvider = new GreenEnergyProvider(
-                    settings.getTurbineId(),
-                    settings.getWindDataFile()
-                );
-                LOGGER.info("Green Energy Provider initialized for turbine {}", settings.getTurbineId());
+                List<Integer> turbineIds = settings.getTurbineIds();
+                for (int turbineId : turbineIds) {
+                    GreenEnergyProvider provider = new GreenEnergyProvider(
+                        turbineId,
+                        settings.getWindDataFile(),
+                        settings.getTimeScalingMode(),
+                        settings.getShortTermRows(),
+                        settings.getLongTermRows(),
+                        settings.getTimeZoneOffsetRows()
+                    );
+                    greenEnergyProviders.add(provider);
+                }
+                LOGGER.info("Green Energy Providers initialized: turbines={}, file={}, mode={}, tzOffsetRows={}",
+                    turbineIds, settings.getWindDataFile(),
+                    settings.getTimeScalingMode().getDescription(),
+                    settings.getTimeZoneOffsetRows());
             } catch (Exception e) {
                 LOGGER.error("Failed to initialize Green Energy Provider: {}", e.getMessage(), e);
-                this.greenEnergyProvider = null;
+                this.greenEnergyProviders.clear();
             }
         } else {
-            this.greenEnergyProvider = null;
+            this.greenEnergyProviders.clear();
             LOGGER.info("Green Energy Provider disabled");
         }
 
@@ -346,6 +360,13 @@ public class LoadBalancerGateway {
                 : 0.0;
         }
 
+        double carbonEmissionKg = computeCarbonEmissionKg();
+        double carbonIntensityKgPerKwh = computeCarbonIntensityKgPerKwh();
+        double greenGenerationWh = cumulativeGreenEnergyWh + totalWastedGreenWh;
+        double episodeDurationHours = currentClock > 0 ? currentClock / 3600.0 : 0.0;
+        double avgPowerW = episodeDurationHours > 0 ? cumulativeEnergyWh / episodeDurationHours : currentPowerW;
+        double greenPowerW = episodeDurationHours > 0 ? greenGenerationWh / episodeDurationHours : currentGreenPowerW;
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, false, false,
                 false, false, wasInvalidAction,
@@ -359,8 +380,10 @@ public class LoadBalancerGateway {
                 simulationCore.getBroker()
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
                 this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
+                avgPowerW, carbonEmissionKg, carbonIntensityKgPerKwh,
                 this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
                 this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio,
+                greenGenerationWh, greenPowerW,
                 episodeDuration, episodeCompletedCloudlets, episodeTotalCloudlets, episodeCompletionRate);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
@@ -552,6 +575,13 @@ public class LoadBalancerGateway {
                 : 0.0;
         }
 
+        double carbonEmissionKg = computeCarbonEmissionKg();
+        double carbonIntensityKgPerKwh = computeCarbonIntensityKgPerKwh();
+        double greenGenerationWh = cumulativeGreenEnergyWh + totalWastedGreenWh;
+        double episodeDurationHours = currentClock > 0 ? currentClock / 3600.0 : 0.0;
+        double avgPowerW = episodeDurationHours > 0 ? cumulativeEnergyWh / episodeDurationHours : currentPowerW;
+        double greenPowerW = episodeDurationHours > 0 ? greenGenerationWh / episodeDurationHours : currentGreenPowerW;
+
         SimulationStepInfo stepInfo = new SimulationStepInfo(
                 assignSuccess, createAttempted, createSuccess,
                 destroyAttempted, destroySuccess, wasInvalidAction,
@@ -565,8 +595,10 @@ public class LoadBalancerGateway {
                 simulationCore.getBroker()
                         .getFinishedWaitTimesLastStep(simulationCore.getClock()),
                 this.currentPowerW, this.cumulativeEnergyWh, this.averageHostUtilization,
+                avgPowerW, carbonEmissionKg, carbonIntensityKgPerKwh,
                 this.cumulativeGreenEnergyWh, this.cumulativeBrownEnergyWh,
                 this.totalWastedGreenWh, this.currentGreenPowerW, stepGreenRatio,
+                greenGenerationWh, greenPowerW,
                 episodeDuration, episodeCompletedCloudlets, episodeTotalCloudlets, episodeCompletionRate);
 
         LOGGER.debug("Step {} finished. Reward: {}, Term: {}, Trunc: {}, Info: {}", currentStep, totalReward,
@@ -729,7 +761,9 @@ public class LoadBalancerGateway {
                 // Ensure vmId is within the bounds of our observation arrays
                 if (vmId >= 0 && vmId < maxPotentialVms) {
                     vmLoads[vmId] = vm.getCpuPercentUtilization();
-                    vmAvailablePes[vmId] = (int) vm.getPesNumber();
+                    // IMPORTANT: use remaining/free PEs, not total PEs.
+                    // This is required for meaningful action masking and scheduling decisions.
+                    vmAvailablePes[vmId] = (int) vm.getFreePesNumber();
                     vmTypes[vmId] = vmTypeStringToIndex(vm.getDescription());
                     vmHostMap[vmId] = (int) vm.getHost().getId(); // Store host ID
                     actualVmCount++;
@@ -1007,7 +1041,7 @@ public class LoadBalancerGateway {
             SimulationResultUtils.printAndSaveResults(simulationCore, finalEpisodeResultName);
 
             // Save green energy statistics if enabled
-            if (greenEnergyProvider != null) {
+            if (!greenEnergyProviders.isEmpty()) {
                 SimulationResultUtils.saveGreenEnergyStats(getGreenEnergyStats(), finalEpisodeResultName);
             }
 
@@ -1049,29 +1083,49 @@ public class LoadBalancerGateway {
 
         // Update cumulative energy
         if (timeDeltaHours > 0) {
-            if (greenEnergyProvider != null) {
-                // Use green energy allocation
-                EnergyAllocation allocation = greenEnergyProvider.allocateEnergy(
-                    currentPowerW, currentClock, timeDelta
-                );
+            if (!greenEnergyProviders.isEmpty()) {
+                // Multi-turbine: aggregate available green power and allocate energy
+                double availableGreenPowerW = 0.0;
+                for (GreenEnergyProvider p : greenEnergyProviders) {
+                    availableGreenPowerW += p.getCurrentPowerW(currentClock);
+                }
 
-                // Update green/brown energy tracking
-                cumulativeGreenEnergyWh += allocation.getGreenEnergyWh();
-                cumulativeBrownEnergyWh += allocation.getBrownEnergyWh();
-                totalWastedGreenWh += allocation.getWastedGreenWh();
-                currentGreenPowerW = allocation.getGreenPowerW();
+                double demandWh = currentPowerW * timeDeltaHours;
+                double greenAvailableWh = availableGreenPowerW * timeDeltaHours;
+
+                double greenUsedWh = Math.min(demandWh, greenAvailableWh);
+                double brownUsedWh = demandWh - greenUsedWh;
+                double wastedGreenWh = greenAvailableWh - greenUsedWh;
+
+                // Update cumulative statistics
+                cumulativeGreenEnergyWh += greenUsedWh;
+                cumulativeBrownEnergyWh += brownUsedWh;
+                totalWastedGreenWh += wastedGreenWh;
+                currentGreenPowerW = availableGreenPowerW;
 
                 // Total cumulative energy (green + brown)
-                cumulativeEnergyWh += allocation.getTotalEnergyWh();
+                cumulativeEnergyWh += (greenUsedWh + brownUsedWh);
 
-                LOGGER.debug("Green Energy - Green: {}Wh({}%), Brown: {}Wh, Wasted: {}Wh, GreenPower: {}W",
-                    allocation.getGreenEnergyWh(), allocation.getGreenRatio() * 100,
-                    allocation.getBrownEnergyWh(), allocation.getWastedGreenWh(),
-                    allocation.getGreenPowerW());
+                // Update provider stats proportionally by their instantaneous power share
+                if (availableGreenPowerW > 0) {
+                    for (GreenEnergyProvider p : greenEnergyProviders) {
+                        double share = p.getCurrentPowerW(currentClock) / availableGreenPowerW;
+                        p.updateCumulativeStatistics(greenUsedWh * share, wastedGreenWh * share);
+                    }
+                }
+
+                // Update carbon (kg): green_kWh*green_factor + brown_kWh*brown_factor
+                double deltaGreenKwh = greenUsedWh / 1000.0;
+                double deltaBrownKwh = brownUsedWh / 1000.0;
+                cumulativeCarbonEmissionKg += deltaGreenKwh * settings.getGreenCarbonFactor()
+                                           + deltaBrownKwh * settings.getBrownCarbonFactor();
             } else {
                 // Traditional brown energy only
                 cumulativeEnergyWh += currentPowerW * timeDeltaHours;
                 cumulativeBrownEnergyWh += currentPowerW * timeDeltaHours;
+
+                // Carbon: treat all as brown
+                cumulativeCarbonEmissionKg += (currentPowerW * timeDeltaHours / 1000.0) * settings.getBrownCarbonFactor();
             }
         }
 
@@ -1140,6 +1194,26 @@ public class LoadBalancerGateway {
         return totalMaxPower;
     }
 
+    private double computeCarbonEmissionKg() {
+        // Prefer per-source factors aligned with multi-DC configs.
+        // This is cumulative over the episode.
+        if (cumulativeCarbonEmissionKg > 0) {
+            return cumulativeCarbonEmissionKg;
+        }
+        // Backward compatibility fallback (older single-DC configs only had a single factor for brown).
+        double carbonFactor = settings.getCarbonEmissionFactorKgPerKwh();
+        return (this.cumulativeBrownEnergyWh / 1000.0) * carbonFactor;
+    }
+
+    private double computeCarbonIntensityKgPerKwh() {
+        double totalEnergyKwh = this.cumulativeEnergyWh / 1000.0;
+        if (totalEnergyKwh <= 0) {
+            return 0.0;
+        }
+        double carbonKg = computeCarbonEmissionKg();
+        return carbonKg / totalEnergyKwh;
+    }
+
     /**
      * Register a wind power predictor service (via Py4J).
      * This allows the GreenEnergyProvider to call the prediction model for future power forecasting.
@@ -1164,11 +1238,127 @@ public class LoadBalancerGateway {
         stats.put("total_wasted_green_wh", totalWastedGreenWh);
         stats.put("current_green_power_w", currentGreenPowerW);
         stats.put("green_ratio", cumulativeEnergyWh > 0 ? cumulativeGreenEnergyWh / cumulativeEnergyWh : 0.0);
-
-        if (greenEnergyProvider != null) {
-            stats.put("overall_green_ratio", greenEnergyProvider.getOverallGreenRatio());
-        }
+        stats.put("overall_green_ratio",
+            (cumulativeGreenEnergyWh + cumulativeBrownEnergyWh) > 0
+                ? cumulativeGreenEnergyWh / (cumulativeGreenEnergyWh + cumulativeBrownEnergyWh)
+                : 0.0);
+        stats.put("carbon_emission_kg", computeCarbonEmissionKg());
 
         return stats;
+    }
+
+    /**
+     * Normalize parameters for Single-DC mode to support multi-DC-style `datacenters:` configs.
+     *
+     * If `datacenters` exists, we take the first datacenter entry and map its fields into:
+     * - Single-DC flat keys (hosts_count, host_count_spec_*, initial_*_vm_count, etc.)
+     * - Single-DC `green_energy` map (enabled, turbine_ids, wind_data_file, time_scaling_mode, tz offset, carbon factors)
+     *
+     * This enables reusing multi-DC datacenter blocks in single-DC experiments without duplication.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> normalizeSingleDcParams(Map<String, Object> params) {
+        if (params == null) {
+            return Map.of();
+        }
+
+        Map<String, Object> out = new HashMap<>(params);
+
+        Object dcListObj = params.get("datacenters");
+        if (!(dcListObj instanceof List<?> dcList) || dcList.isEmpty() || !(dcList.get(0) instanceof Map)) {
+            return out;
+        }
+
+        Map<String, Object> dc0 = (Map<String, Object>) dcList.get(0);
+        LOGGER.info("Single-DC: detected multi-DC-style `datacenters:` config. Using datacenters[0]={}",
+            dc0.getOrDefault("name", "DC_0"));
+
+        // Copy common infrastructure and VM keys if present in dc0
+        copyIfPresent(dc0, out, "hosts_count", "host_pes", "host_pe_mips", "host_ram", "host_bw", "host_storage",
+            "small_vm_pes", "small_vm_ram", "small_vm_bw", "small_vm_storage",
+            "medium_vm_multiplier", "large_vm_multiplier",
+            "initial_s_vm_count", "initial_m_vm_count", "initial_l_vm_count",
+            "vm_startup_delay", "vm_shutdown_delay");
+
+        // Copy any heterogeneous host composition keys (host_count_*)
+        boolean anyHostCount = false;
+        for (Map.Entry<String, Object> e : dc0.entrySet()) {
+            String k = e.getKey();
+            if (k != null && k.startsWith("host_count_")) {
+                out.put(k, e.getValue());
+                anyHostCount = true;
+            }
+        }
+        if (anyHostCount) {
+            out.put("enable_heterogeneous_hosts", true);
+        }
+
+        // Build / merge green_energy map from datacenter block
+        Map<String, Object> existingGe = Map.of();
+        Object existingGeObj = out.get("green_energy");
+        if (existingGeObj instanceof Map) {
+            existingGe = (Map<String, Object>) existingGeObj;
+        }
+
+        Map<String, Object> ge = new HashMap<>();
+        // Preserve prediction config if present (single-DC uses this shape)
+        Object predObj = existingGe.get("prediction");
+        if (predObj instanceof Map) {
+            ge.put("prediction", predObj);
+        }
+
+        ge.put("enabled", getBoolean(dc0.get("green_energy_enabled"), false));
+        if (dc0.containsKey("turbine_ids")) {
+            ge.put("turbine_ids", dc0.get("turbine_ids"));
+        }
+        if (dc0.containsKey("turbine_id")) {
+            ge.put("turbine_id", dc0.get("turbine_id"));
+        } else if (dc0.get("turbine_ids") instanceof List<?> ids && !ids.isEmpty()) {
+            ge.put("turbine_id", ids.get(0));
+        }
+        if (dc0.containsKey("wind_data_file")) {
+            ge.put("wind_data_file", dc0.get("wind_data_file"));
+        }
+        if (dc0.containsKey("time_scaling_mode")) {
+            ge.put("time_scaling_mode", dc0.get("time_scaling_mode"));
+        }
+        if (dc0.containsKey("time_zone_offset_rows")) {
+            ge.put("time_zone_offset_rows", dc0.get("time_zone_offset_rows"));
+        }
+        if (dc0.containsKey("brown_carbon_factor")) {
+            ge.put("brown_carbon_factor", dc0.get("brown_carbon_factor"));
+        }
+        if (dc0.containsKey("green_carbon_factor")) {
+            ge.put("green_carbon_factor", dc0.get("green_carbon_factor"));
+        }
+
+        // Future forecast rows: map dc-level keys into green_energy.future_energy_forecast
+        Map<String, Object> forecast = new HashMap<>();
+        if (dc0.containsKey("short_term_rows")) {
+            forecast.put("short_term_rows", dc0.get("short_term_rows"));
+        }
+        if (dc0.containsKey("long_term_rows")) {
+            forecast.put("long_term_rows", dc0.get("long_term_rows"));
+        }
+        if (!forecast.isEmpty()) {
+            ge.put("future_energy_forecast", forecast);
+        }
+
+        out.put("green_energy", ge);
+        return out;
+    }
+
+    private void copyIfPresent(Map<String, Object> src, Map<String, Object> dst, String... keys) {
+        for (String k : keys) {
+            if (src.containsKey(k)) {
+                dst.put(k, src.get(k));
+            }
+        }
+    }
+
+    private boolean getBoolean(Object value, boolean defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean b) return b;
+        return Boolean.parseBoolean(value.toString());
     }
 }

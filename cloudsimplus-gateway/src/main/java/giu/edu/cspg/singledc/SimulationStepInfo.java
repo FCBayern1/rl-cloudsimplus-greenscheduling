@@ -42,6 +42,9 @@ public class SimulationStepInfo {
     private final double currentPowerW;          // Current power consumption in Watts
     private final double cumulativeEnergyWh;     // Cumulative energy consumption in Watt-hours
     private final double averageHostUtilization; // Average CPU utilization across all hosts
+    private final double avgPowerW;              // Average power over episode (Watts)
+    private final double carbonEmissionKg;       // Estimated carbon emissions (kg CO2)
+    private final double carbonIntensityKgPerKwh; // Carbon intensity (kg/kWh)
 
     // Green Energy Metrics
     private final double cumulativeGreenEnergyWh;  // Cumulative green (renewable) energy consumed
@@ -49,6 +52,8 @@ public class SimulationStepInfo {
     private final double totalWastedGreenWh;       // Total wasted green energy (excess not used)
     private final double currentGreenPowerW;       // Current green power availability in Watts
     private final double greenRatio;               // Green energy ratio for current step (0.0 to 1.0)
+    private final double greenGenerationWh;        // Total green energy generated (used + wasted)
+    private final double greenPowerW;              // Green power equivalent (Watts)
 
     // Episode Statistics (only populated at episode end)
     private final double episodeDuration;          // Total episode duration in seconds
@@ -66,8 +71,10 @@ public class SimulationStepInfo {
             double rewardEnergyComponent,
             int[] observationTreeArray, List<Double> completedCloudletWaitTimes,
             double currentPowerW, double cumulativeEnergyWh, double averageHostUtilization,
+            double avgPowerW, double carbonEmissionKg, double carbonIntensityKgPerKwh,
             double cumulativeGreenEnergyWh, double cumulativeBrownEnergyWh,
             double totalWastedGreenWh, double currentGreenPowerW, double greenRatio,
+            double greenGenerationWh, double greenPowerW,
             double episodeDuration, int episodeCompletedCloudlets, int episodeTotalCloudlets, double episodeCompletionRate) {
         this.assignmentSuccess = assignmentSuccess;
         this.createVmAttempted = createVmAttempted;
@@ -88,11 +95,16 @@ public class SimulationStepInfo {
         this.currentPowerW = currentPowerW;
         this.cumulativeEnergyWh = cumulativeEnergyWh;
         this.averageHostUtilization = averageHostUtilization;
+        this.avgPowerW = avgPowerW;
+        this.carbonEmissionKg = carbonEmissionKg;
+        this.carbonIntensityKgPerKwh = carbonIntensityKgPerKwh;
         this.cumulativeGreenEnergyWh = cumulativeGreenEnergyWh;
         this.cumulativeBrownEnergyWh = cumulativeBrownEnergyWh;
         this.totalWastedGreenWh = totalWastedGreenWh;
         this.currentGreenPowerW = currentGreenPowerW;
         this.greenRatio = greenRatio;
+        this.greenGenerationWh = greenGenerationWh;
+        this.greenPowerW = greenPowerW;
         this.episodeDuration = episodeDuration;
         this.episodeCompletedCloudlets = episodeCompletedCloudlets;
         this.episodeTotalCloudlets = episodeTotalCloudlets;
@@ -102,8 +114,28 @@ public class SimulationStepInfo {
     // Simplified constructor for SimulationResetResult where action outcomes aren't
     // relevant
     public SimulationStepInfo(double currentClock) {
-        this(false, false, false, false, false, false, -1, 0, currentClock, 0, 0, 0, 0, 0, new int[1],
-                new ArrayList<>(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        this(false, false, false, false, false, false, -1, 0,
+                currentClock,
+                0, 0, 0, 0, 0,
+                new int[1], new ArrayList<>(),
+                0, // currentPowerW
+                0, // cumulativeEnergyWh
+                0, // averageHostUtilization
+                0, // avgPowerW
+                0, // carbonEmissionKg
+                0, // carbonIntensityKgPerKwh
+                0, // cumulativeGreenEnergyWh
+                0, // cumulativeBrownEnergyWh
+                0, // totalWastedGreenWh
+                0, // currentGreenPowerW
+                0, // greenRatio
+                0, // greenGenerationWh
+                0, // greenPowerW
+                0, // episodeDuration
+                0, // episodeCompletedCloudlets
+                0, // episodeTotalCloudlets
+                0  // episodeCompletionRate
+        );
     }
 
     // --- Getters ---
@@ -141,11 +173,15 @@ public class SimulationStepInfo {
         map.put("current_power_w", this.currentPowerW);
         map.put("cumulative_energy_wh", this.cumulativeEnergyWh);
         map.put("average_host_utilization", this.averageHostUtilization);
+        map.put("carbon_emission_kg", this.carbonEmissionKg);
+        map.put("carbon_intensity_kg_per_kwh", this.carbonIntensityKgPerKwh);
         map.put("cumulative_green_energy_wh", this.cumulativeGreenEnergyWh);
         map.put("cumulative_brown_energy_wh", this.cumulativeBrownEnergyWh);
         map.put("total_wasted_green_wh", this.totalWastedGreenWh);
         map.put("current_green_power_w", this.currentGreenPowerW);
         map.put("green_ratio", this.greenRatio);
+        map.put("green_generation_wh", this.greenGenerationWh);
+        map.put("green_power_w", this.greenPowerW);
         map.put("episode_duration", this.episodeDuration);
         map.put("episode_completed_cloudlets", this.episodeCompletedCloudlets);
         map.put("episode_total_cloudlets", this.episodeTotalCloudlets);

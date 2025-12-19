@@ -35,12 +35,13 @@ def train(params: dict):
     logger.info(f"Parameters: {params}")
 
     # --- Device Setup ---
-    device_name = params.get("device", "auto") # Get device from config, default to auto
+    # SB3 expects device as a string: "cpu" | "cuda" | "auto"
+    device_name = str(params.get("device", "auto")).lower()
     if device_name == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     else:
-        device = torch.device(device_name)
-    logger.info(f"Using device: {device}")
+        device = device_name
+    logger.info(f"Using device: {device} (torch.cuda.is_available={torch.cuda.is_available()})")
 
     # --- Environment Setup ---
     try:
@@ -83,6 +84,14 @@ def train(params: dict):
             "episode_reward_invalid_action_mean",
             "episode_reward_energy_mean",
             "episode_avg_power_w",
+            "episode_completion_rate",
+            "episode_reward_total",
+            "episode_carbon_emission_kg",
+            "episode_carbon_intensity_kg_per_kwh",
+        )
+        info_keywords_to_log += (
+            "carbon_emission_kg",
+            "carbon_intensity_kg_per_kwh",
         )
         env = Monitor(env, log_dir, info_keywords=info_keywords_to_log)
         logger.info(f"Environment wrapped with Monitor, logging to {log_dir}")
@@ -103,18 +112,11 @@ def train(params: dict):
         logger.info("Environment wrapped with Monitor (no file logging).")
 
     # --- Vectorized Environment ---
-    # DummyVecEnv is usually fine for single environment setups. If performance becomes an issue or A2C is used, switch to SubprocVecEnv.
-    # Note: SubprocVecEnv might have issues on Windows or with complex objects
-    # See https://stable-baselines3.readthedocs.io/en/master/modules/a2c.html
-    if params["algorithm"] == "A2C":
-        device = "cpu"
-        env = SubprocVecEnv([lambda: env], start_method="fork")
-    if params["algorithm"] == "MaskablePPO":
-            device = "cpu"
-            env = DummyVecEnv([lambda: env])
-    else:
-        env = DummyVecEnv([lambda: env])
-        logger.info("Environment wrapped with DummyVecEnv.")
+    # Keep a single-env setup and DO NOT override the chosen device.
+    # MaskablePPO works with DummyVecEnv; A2C can also use DummyVecEnv for num_envs=1.
+    algo = str(params.get("algorithm", "MaskablePPO"))
+    env = DummyVecEnv([lambda: env])
+    logger.info("Environment wrapped with DummyVecEnv (num_envs=1).")
 
     # --- Evaluation / Early Stopping Setup ---
     # Optional early stopping using SB3 EvalCallback

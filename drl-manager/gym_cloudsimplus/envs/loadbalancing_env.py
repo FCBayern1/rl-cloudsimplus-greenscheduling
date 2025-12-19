@@ -36,6 +36,8 @@ class LoadBalancingEnv(gym.Env):
         logger.info("Initializing LoadBalancingEnv...")
         self.config = config_params
         self._closed = False
+        # Always define this attribute (masking uses it even if reset fails)
+        self.last_observation = None
         # Episode-level accumulators for logging meaningful per-episode stats
         self._reset_episode_accumulators()
 
@@ -84,8 +86,18 @@ class LoadBalancingEnv(gym.Env):
              raise
 
         # --- Define Spaces (based on config) ---
-        self.large_vm_pes = self.config.get("large_vm_pes", 8)
-        self.num_vms = self.config.get("initial_s_vm_count", 0) + self.config.get("initial_m_vm_count", 0) + self.config.get("initial_l_vm_count", 0)
+        # Prefer multi-DC-style `datacenters[0]` values when present (single-DC now can reuse these blocks).
+        dc0 = None
+        if isinstance(self.config.get("datacenters"), list) and len(self.config["datacenters"]) > 0:
+            if isinstance(self.config["datacenters"][0], dict):
+                dc0 = self.config["datacenters"][0]
+
+        self.large_vm_pes = (dc0.get("large_vm_pes") if dc0 else None) or self.config.get("large_vm_pes", 8)
+
+        s_cnt = (dc0.get("initial_s_vm_count") if dc0 else None) or self.config.get("initial_s_vm_count", 0)
+        m_cnt = (dc0.get("initial_m_vm_count") if dc0 else None) or self.config.get("initial_m_vm_count", 0)
+        l_cnt = (dc0.get("initial_l_vm_count") if dc0 else None) or self.config.get("initial_l_vm_count", 0)
+        self.num_vms = int(s_cnt) + int(m_cnt) + int(l_cnt)
         if self.num_vms <= 0:
             raise ValueError("Config 'num_vms' must be positive.")
         logger.info(f"Using num_vms={self.num_vms} for spaces")
@@ -156,7 +168,7 @@ class LoadBalancingEnv(gym.Env):
         if java_obs_state is None:
             logger.error("Received null Java ObservationState!")
             # Return a zeroed-out observation matching the space structure
-            return {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.action.spaces.items()}
+            return {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.observation_space.spaces.items()}
 
         # Extract arrays (Py4J automatically converts Java arrays to Python tuples/lists)
         # Assumes Java side provides vmLoads padded up to maxPotentialVms, slice it
@@ -164,7 +176,8 @@ class LoadBalancingEnv(gym.Env):
         # Slice using self.num_vms which defines our fixed fleet size
         vm_loads = full_vm_loads[:self.num_vms]
 
-        vm_available_pes = self._to_nparray(java_obs_state.getVmAvailablePes(), dtype=np.int32)
+        full_vm_available_pes = self._to_nparray(java_obs_state.getVmAvailablePes(), dtype=np.int32)
+        vm_available_pes = full_vm_available_pes[:self.num_vms]
 
         # Extract VM types (0=None, 1=Small, 2=Medium, 3=Large)
         full_vm_types = self._to_nparray(java_obs_state.getVmTypes(), dtype=np.int32)
@@ -182,10 +195,20 @@ class LoadBalancingEnv(gym.Env):
         # Extract historical statistics
         completed_last_10 = np.array([java_obs_state.getCompletedCloudletsLast10Steps()], dtype=np.int32)
 
-        # Ensure correct shape (defensive)
-        if vm_loads.shape[0] != self.num_vms: vm_loads = np.pad(vm_loads, (0, self.num_vms - vm_loads.shape[0]))[:self.num_vms]
-        if vm_available_pes.shape[0] != self.num_vms: vm_available_pes = np.pad(vm_available_pes, (0, self.num_vms - vm_available_pes.shape[0]))[:self.num_vms]
-        if vm_types.shape[0] != self.num_vms: vm_types = np.pad(vm_types, (0, self.num_vms - vm_types.shape[0]))[:self.num_vms]
+        # Ensure correct shape (defensive):
+        # - If shorter: pad
+        # - If longer: truncate
+        if vm_loads.shape[0] < self.num_vms:
+            vm_loads = np.pad(vm_loads, (0, self.num_vms - vm_loads.shape[0]))
+        vm_loads = vm_loads[:self.num_vms]
+
+        if vm_available_pes.shape[0] < self.num_vms:
+            vm_available_pes = np.pad(vm_available_pes, (0, self.num_vms - vm_available_pes.shape[0]))
+        vm_available_pes = vm_available_pes[:self.num_vms]
+
+        if vm_types.shape[0] < self.num_vms:
+            vm_types = np.pad(vm_types, (0, self.num_vms - vm_types.shape[0]))
+        vm_types = vm_types[:self.num_vms]
 
         obs_dict = {
             "vm_loads": vm_loads,
@@ -229,6 +252,7 @@ class LoadBalancingEnv(gym.Env):
             "reward_energy": 0.0,
             "current_power_w": 0.0,
         }
+        self._ep_reward_total = 0.0
 
     def step(self, action: int):
         self.current_step += 1
@@ -252,6 +276,7 @@ class LoadBalancingEnv(gym.Env):
             info["actual_vm_count"] = step_result_java.getObservation().getActualVmCount()
             info["actual_host_count"] = step_result_java.getObservation().getActualHostCount()
 
+            self._ep_reward_total += reward
             # --- Accumulate episode-level stats ---
             self._ep_steps += 1
             for k in list(self._ep_sum.keys()):
@@ -267,8 +292,13 @@ class LoadBalancingEnv(gym.Env):
                 info["episode_reward_invalid_action_mean"] = self._ep_sum["reward_invalid_action"] / steps
                 info["episode_reward_energy_mean"] = self._ep_sum["reward_energy"] / steps
                 info["episode_avg_power_w"] = self._ep_sum["current_power_w"] / steps
+            info["episode_reward_total"] = self._ep_reward_total
+            info["episode_carbon_emission_kg"] = info.get("carbon_emission_kg", 0.0)
+            info["episode_carbon_intensity_kg_per_kwh"] = info.get("carbon_intensity_kg_per_kwh", 0.0)
+            if terminated or truncated:
                 # Reset accumulators for next episode
                 self._reset_episode_accumulators()
+                self._ep_reward_total = 0.0
 
             # Update internal state for action masking
             self._update_internal_state(observation)

@@ -577,7 +577,9 @@ public class GreenEnergyProvider {
                         try {
                             timestamp = parseTimestamp(parts[0].trim(), baseTimestamp);
                             if (baseTimestamp < 0) {
-                                baseTimestamp = (long)(timestamp * 1000);
+                                // parseTimestamp returns an absolute timestamp in milliseconds
+                                // when baseTimestamp is not set yet. Keep baseTimestamp in ms.
+                                baseTimestamp = (long) timestamp;
                                 timestamp = 0;
                             }
                         } catch (Exception e) {
@@ -602,7 +604,9 @@ public class GreenEnergyProvider {
                         try {
                             timestamp = parseTimestamp(parts[1].trim(), baseTimestamp);
                             if (baseTimestamp < 0) {
-                                baseTimestamp = (long)(timestamp * 1000);
+                                // parseTimestamp returns an absolute timestamp in milliseconds
+                                // when baseTimestamp is not set yet. Keep baseTimestamp in ms.
+                                baseTimestamp = (long) timestamp;
                                 timestamp = 0;
                             }
                         } catch (Exception e) {
