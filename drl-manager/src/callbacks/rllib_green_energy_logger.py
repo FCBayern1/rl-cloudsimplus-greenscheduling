@@ -307,28 +307,58 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # All agents share the same info dict, so we can use any agent (e.g., "global_agent")
         last_info = None
 
-        # Try to get info from global_agent first
-        if hasattr(episode, 'last_info_for'):
+        # NEW API: Try get_infos() method first (MultiAgentEpisode in new API stack)
+        if hasattr(episode, 'get_infos'):
+            try:
+                # get_infos() returns dict of agent_id -> list of infos
+                all_infos = episode.get_infos()
+                logger.debug(f"[CALLBACK DEBUG] get_infos() returned type: {type(all_infos)}")
+
+                if isinstance(all_infos, dict) and len(all_infos) > 0:
+                    # Try global_agent first
+                    for agent_key in ["global_agent"]:
+                        if agent_key in all_infos:
+                            agent_info_list = all_infos[agent_key]
+                            if agent_info_list and len(agent_info_list) > 0:
+                                last_info = agent_info_list[-1]
+                                logger.debug(f"[CALLBACK DEBUG] Got info from {agent_key} via get_infos()")
+                                break
+
+                    # Fallback: get from any agent
+                    if last_info is None or not last_info:
+                        for agent_key, agent_info_list in all_infos.items():
+                            if agent_info_list and len(agent_info_list) > 0:
+                                last_info = agent_info_list[-1]
+                                logger.debug(f"[CALLBACK DEBUG] Got info from {agent_key} (fallback)")
+                                break
+            except Exception as e:
+                logger.debug(f"[CALLBACK DEBUG] get_infos() failed: {e}")
+
+        # OLD API: Try last_info_for() method
+        if (last_info is None or not last_info) and hasattr(episode, 'last_info_for'):
             try:
                 last_info = episode.last_info_for("global_agent")
             except (KeyError, TypeError):
                 # If global_agent doesn't exist, try without agent_id
-                last_info = episode.last_info_for()
+                try:
+                    last_info = episode.last_info_for()
+                except Exception:
+                    pass
 
         # Fallback: try to get from episode history
-        if last_info is None or len(last_info) == 0:
-            logger.error(f"[CALLBACK DEBUG] No info from last_info_for(). Trying episode history...")
+        if last_info is None or not last_info:
+            logger.debug(f"[CALLBACK DEBUG] No info from get_infos()/last_info_for(). Trying episode history...")
 
             # Try to access episode's info history
             if hasattr(episode, 'agent_to_last_info'):
                 agent_infos = episode.agent_to_last_info
-                logger.info(f"[CALLBACK DEBUG] agent_to_last_info keys: {list(agent_infos.keys())}")
+                logger.debug(f"[CALLBACK DEBUG] agent_to_last_info keys: {list(agent_infos.keys())}")
 
                 # Get info from any agent (they all have the same info)
                 if len(agent_infos) > 0:
                     first_agent = list(agent_infos.keys())[0]
                     last_info = agent_infos[first_agent]
-                    logger.info(f"[CALLBACK DEBUG] Got info from agent: {first_agent}")
+                    logger.debug(f"[CALLBACK DEBUG] Got info from agent: {first_agent}")
 
         if last_info is None or len(last_info) == 0:
             logger.error(f"[CALLBACK DEBUG] Failed to get episode info! Episode length: {get_episode_length(episode)}, Total reward: {get_episode_reward(episode)}")
@@ -371,24 +401,46 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         global_agent_reward = 0.0
         local_agent_rewards = {}  # Changed to dict for per-DC tracking
 
-        # Access agent_rewards dict from episode
+        # NEW API: Try agent_episodes for MultiAgentEpisode
+        if hasattr(episode, 'agent_episodes'):
+            try:
+                agent_episodes = episode.agent_episodes
+                for agent_id, agent_ep in agent_episodes.items():
+                    try:
+                        reward = agent_ep.get_return() if hasattr(agent_ep, 'get_return') else 0.0
+                        if agent_id == 'global_agent':
+                            global_agent_reward = reward
+                            logger.debug(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
+                        elif agent_id.startswith('local_agent_'):
+                            try:
+                                dc_id = int(agent_id.split('_')[-1])
+                                local_agent_rewards[dc_id] = reward
+                                logger.debug(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
+                            except (ValueError, IndexError):
+                                pass
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(f"[CALLBACK DEBUG] agent_episodes access failed: {e}")
+
+        # OLD API: Access agent_rewards dict from episode
         # In RLlib, agent_rewards keys are tuples: (agent_id, policy_id)
-        if hasattr(episode, 'agent_rewards'):
+        if not local_agent_rewards and hasattr(episode, 'agent_rewards'):
             agent_rewards_dict = episode.agent_rewards
-            logger.info(f"[CALLBACK DEBUG] Agent rewards: {agent_rewards_dict}")
+            logger.debug(f"[CALLBACK DEBUG] Agent rewards: {agent_rewards_dict}")
 
             # Extract global agent reward
             # Keys are tuples: (agent_id, policy_id)
             for (agent_id, policy_id), reward in agent_rewards_dict.items():
                 if agent_id == 'global_agent':
                     global_agent_reward = reward
-                    logger.info(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
+                    logger.debug(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
                 elif agent_id.startswith('local_agent_'):
                     # Extract DC ID from agent_id (e.g., "local_agent_0" -> 0)
                     try:
                         dc_id = int(agent_id.split('_')[-1])
                         local_agent_rewards[dc_id] = reward
-                        logger.info(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
+                        logger.debug(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
                     except (ValueError, IndexError):
                         logger.warning(f"[CALLBACK DEBUG] Could not parse DC ID from {agent_id}")
 
@@ -469,15 +521,33 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 per_dc_cloudlets_finished[dc_id] = dc_cloudlets_finished
                 per_dc_cloudlets_received[dc_id] = dc_cloudlets_received
 
-                # Record per-DC metrics to TensorBoard
+                # Record per-DC metrics to TensorBoard (if supported)
                 # These will show up as "dc_0/green_used_wh", "dc_1/green_used_wh", etc.
-                episode.custom_metrics[f"dc_{dc_id}/green_used_wh"] = dc_green
-                episode.custom_metrics[f"dc_{dc_id}/brown_used_wh"] = dc_brown
-                episode.custom_metrics[f"dc_{dc_id}/green_wasted_wh"] = dc_wasted
-                episode.custom_metrics[f"dc_{dc_id}/green_ratio"] = dc_green_ratio
-                episode.custom_metrics[f"dc_{dc_id}/total_energy_wh"] = dc_green + dc_brown
-                episode.custom_metrics[f"dc_{dc_id}/cloudlets_finished"] = dc_cloudlets_finished
-                episode.custom_metrics[f"dc_{dc_id}/mean_completion_time"] = dc_mean_completion_time
+                per_dc_metrics = {
+                    f"dc_{dc_id}/green_used_wh": dc_green,
+                    f"dc_{dc_id}/brown_used_wh": dc_brown,
+                    f"dc_{dc_id}/green_wasted_wh": dc_wasted,
+                    f"dc_{dc_id}/green_ratio": dc_green_ratio,
+                    f"dc_{dc_id}/total_energy_wh": dc_green + dc_brown,
+                    f"dc_{dc_id}/cloudlets_finished": dc_cloudlets_finished,
+                    f"dc_{dc_id}/mean_completion_time": dc_mean_completion_time,
+                }
+
+                # Try new API (metrics_logger)
+                if metrics_logger is not None:
+                    try:
+                        for key, value in per_dc_metrics.items():
+                            metrics_logger.log_value(key, value, reduce="mean")
+                    except Exception:
+                        pass
+
+                # Try old API (episode.custom_metrics)
+                if hasattr(episode, 'custom_metrics'):
+                    try:
+                        for key, value in per_dc_metrics.items():
+                            episode.custom_metrics[key] = value
+                    except Exception:
+                        pass
 
         # Write to monitor.csv (episode-by-episode metrics)
         try:
@@ -528,16 +598,36 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             logger.error(f"Failed to write to monitor CSV: {e}")
 
         # Add custom metrics to episode (will be aggregated by RLlib)
-        episode.custom_metrics["green_waste_wh"] = green_waste
-        episode.custom_metrics["green_used_wh"] = green_used
-        episode.custom_metrics["brown_used_wh"] = brown_used
-        episode.custom_metrics["green_ratio"] = green_ratio
-        episode.custom_metrics["waste_ratio"] = waste_ratio
-        episode.custom_metrics["total_carbon_kg"] = total_carbon_kg
-        episode.custom_metrics["carbon_intensity_kg_per_kwh"] = carbon_intensity
-        episode.custom_metrics["global_agent_reward"] = global_agent_reward
-        episode.custom_metrics["local_agents_avg_reward"] = local_agents_avg_reward
-        episode.custom_metrics["completion_rate"] = completion_rate
+        # Support both old API (episode.custom_metrics) and new API (metrics_logger)
+        custom_metrics_dict = {
+            "green_waste_wh": green_waste,
+            "green_used_wh": green_used,
+            "brown_used_wh": brown_used,
+            "green_ratio": green_ratio,
+            "waste_ratio": waste_ratio,
+            "total_carbon_kg": total_carbon_kg,
+            "carbon_intensity_kg_per_kwh": carbon_intensity,
+            "global_agent_reward": global_agent_reward,
+            "local_agents_avg_reward": local_agents_avg_reward,
+            "completion_rate": completion_rate,
+        }
+
+        # Try new API first (metrics_logger)
+        if metrics_logger is not None:
+            try:
+                for key, value in custom_metrics_dict.items():
+                    metrics_logger.log_value(key, value, reduce="mean")
+                logger.debug(f"[CALLBACK DEBUG] Logged metrics via metrics_logger")
+            except Exception as e:
+                logger.debug(f"[CALLBACK DEBUG] metrics_logger.log_value failed: {e}")
+
+        # Also try old API (episode.custom_metrics) for backward compatibility
+        if hasattr(episode, 'custom_metrics'):
+            try:
+                for key, value in custom_metrics_dict.items():
+                    episode.custom_metrics[key] = value
+            except Exception as e:
+                logger.debug(f"[CALLBACK DEBUG] episode.custom_metrics failed: {e}")
 
         # Log to console (only worker 0 to avoid spam)
         if worker_index == 0:

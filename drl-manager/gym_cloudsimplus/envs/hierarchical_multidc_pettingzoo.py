@@ -122,6 +122,8 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
 
         # Store last observations for action masking
         self._last_observations = None
+        self._obs_shape_ref = {}
+        self._validate_obs_shapes = bool(config.get("validate_obs_shapes", False))
 
         logger.info(
             f"HierarchicalMultiDCParallelEnv initialized with {len(self.agents)} agents: "
@@ -475,7 +477,34 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 "action_mask": action_mask,
             }
 
+        if self._validate_obs_shapes:
+            for agent, obs in flat_obs.items():
+                self._check_obs_shapes(agent, obs)
+
         return flat_obs
+
+    def _check_obs_shapes(self, agent: str, obs: Dict[str, Any]) -> None:
+        """Validate observation shapes are consistent across timesteps."""
+        def _shape_of(value):
+            if isinstance(value, dict):
+                return {k: _shape_of(v) for k, v in value.items()}
+            arr = np.asarray(value)
+            return arr.shape
+
+        current = _shape_of(obs)
+        if agent not in self._obs_shape_ref:
+            self._obs_shape_ref[agent] = current
+            logger.info("[ObsShapeRef] %s -> %s", agent, current)
+            return
+
+        if current != self._obs_shape_ref[agent]:
+            logger.error(
+                "[ObsShapeMismatch] %s expected=%s got=%s",
+                agent,
+                self._obs_shape_ref[agent],
+                current,
+            )
+            raise ValueError(f"Observation shape mismatch for {agent}")
 
     def _flat_to_hierarchical_actions(
         self,

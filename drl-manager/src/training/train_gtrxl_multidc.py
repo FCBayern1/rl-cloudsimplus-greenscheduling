@@ -52,6 +52,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Enable diagnostic logging for NaN debugging
+nan_debug_logger = logging.getLogger("GTrXL_NaN_Debug")
+nan_debug_logger.setLevel(logging.WARNING)  # Show WARNING and above
+# Ensure it has a handler that outputs to console
+if not nan_debug_logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    nan_debug_logger.addHandler(console_handler)
+
 
 class TqdmProgressReporter(CLIReporter):
     """Custom Ray Tune reporter with tqdm progress bar."""
@@ -169,6 +179,7 @@ def create_gtrxl_config(
     Returns:
         Configured PPOConfig object
     """
+    print(f"[DEBUG] create_gtrxl_config called with gtrxl_config={gtrxl_config}")
     # Create sample environment to get spaces
     env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
@@ -207,14 +218,20 @@ def create_gtrxl_config(
     logger.info(f"Number of datacenters: {num_dcs}")
 
     # GTrXL model config
+    # max_seq_len is required for stateful RLModules in RLlib new API stack
+    mem_len = gtrxl_config.get("mem_len", 64)
     model_config = {
-        # GTrXL-specific config
+        # GTrXL-specific config - pass the complete config to RLModule
         "d_model": gtrxl_config.get("d_model", 256),
         "num_heads": gtrxl_config.get("num_heads", 4),
         "num_layers": gtrxl_config.get("num_layers", 2),
         "d_ff": gtrxl_config.get("d_ff", 512),
-        "mem_len": gtrxl_config.get("mem_len", 64),
+        "mem_len": mem_len,
         "dropout": gtrxl_config.get("dropout", 0.1),
+        # Required for stateful RLModules - controls sequence chunking for BPTT
+        "max_seq_len": gtrxl_config.get("max_seq_len", mem_len),
+        # Pass complete GTrXL config for RLModule initialization
+        "gtrxl_config": gtrxl_config,
     }
 
     logger.info(f"GTrXL config: {model_config}")
@@ -227,6 +244,10 @@ def create_gtrxl_config(
 
         logger.info(f"Unified local obs space: {unified_local_obs_space}")
         logger.info(f"Unified local action space: {unified_local_action_space}")
+
+        print(f"[DEBUG] Creating RLModuleSpec for global_policy with GTrXLDictObsRLModule")
+        print(f"[DEBUG] global_action_space = {global_action_space}")
+        print(f"[DEBUG] global_obs_space = {global_obs_space}")
 
         rl_module_spec = MultiRLModuleSpec(
             rl_module_specs={
@@ -244,6 +265,10 @@ def create_gtrxl_config(
                 ),
             }
         )
+
+        print(f"[DEBUG] RLModuleSpec created: {rl_module_spec}")
+        print(f"[DEBUG] global_policy spec: {rl_module_spec.rl_module_specs['global_policy']}")
+        print(f"[DEBUG] global_policy module_class: {rl_module_spec.rl_module_specs['global_policy'].module_class}")
 
         policies = {"global_policy", "shared_local_policy"}
         policy_mapping_fn = shared_policy_mapping_fn
@@ -291,6 +316,8 @@ def create_gtrxl_config(
         )
         .rl_module(
             rl_module_spec=rl_module_spec,
+            # Critical: max_seq_len must be set here for RLlib connectors to slice sequences
+            model_config={"max_seq_len": model_config["max_seq_len"]},
         )
         .multi_agent(
             policies=policies,
@@ -302,7 +329,7 @@ def create_gtrxl_config(
             num_envs_per_env_runner=1,
         )
         .training(
-            train_batch_size=training_config.get("train_batch_size", 4000),
+            train_batch_size=training_config.get("train_batch_size", 4096),
             minibatch_size=training_config.get("sgd_minibatch_size", 128),
             num_sgd_iter=training_config.get("num_sgd_iter", 10),
             gamma=local_model_config.get("gamma", 0.99),
@@ -312,6 +339,9 @@ def create_gtrxl_config(
             entropy_coeff=local_model_config.get("ent_coef", 0.01),
             vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
             grad_clip=local_model_config.get("max_grad_norm", 0.5),
+            # CRITICAL: Enforce max_seq_len for batch slicing to match GTrXL memory length
+            # This is required for stateful RLModules in V2 stack
+            model={"max_seq_len": mem_len},
         )
         .resources(num_gpus=training_config.get("num_gpus", 0))
         .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
@@ -342,6 +372,38 @@ def train_gtrxl(
         gtrxl_config: GTrXL-specific configuration
         output_dir: Output directory for logs and checkpoints
     """
+    # Setup logging to file
+    output_dir = os.path.abspath(output_dir)
+    log_file = os.path.join(output_dir, "gtrxl_training.log")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Create file handler for logging
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)  # Log everything to file, including DEBUG
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+
+    # Add file handler to root logger (captures all logs including GTrXL modules)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # Ensure root logger accepts DEBUG level
+    root_logger.addHandler(file_handler)
+
+    # Also add to specific loggers we care about
+    gtrxl_logger = logging.getLogger('src.models.gtrxl_rlmodule')
+    gtrxl_logger.setLevel(logging.DEBUG)
+    gtrxl_logger.addHandler(file_handler)
+
+    # Test debug logging
+    logging.debug("DEBUG: File logging initialized")
+    gtrxl_logger.debug("DEBUG: GTrXL logger initialized")
+
+    # Also add to our specific loggers
+    logger.addHandler(file_handler)
+    nan_debug_logger.addHandler(file_handler)
+
+    logger.info(f"GTrXL training logs will be saved to: {log_file}")
+
     # Initialize Ray
     if not ray.is_initialized():
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -383,9 +445,10 @@ def train_gtrxl(
     )
 
     # Configure stopping criteria
+    # Note: In new RLlib API stack, use "num_env_steps_sampled_lifetime" instead of "num_env_steps_sampled"
     total_timesteps = training_config.get("total_timesteps", 100000)
     stop_criteria = {
-        "num_env_steps_sampled": total_timesteps,
+        "num_env_steps_sampled_lifetime": total_timesteps,
     }
 
     # Configure checkpoint settings
@@ -462,6 +525,13 @@ def train_gtrxl(
 
     finally:
         ray.shutdown()
+
+        # Close log file handler
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:  # Copy list to avoid modification during iteration
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+                root_logger.removeHandler(handler)
 
     logger.info("\n" + "=" * 70)
     logger.info("View TensorBoard:")

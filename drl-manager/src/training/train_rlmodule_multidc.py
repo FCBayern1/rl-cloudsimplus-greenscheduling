@@ -313,6 +313,8 @@ def create_rlmodule_config(
     sample_env.close()
 
     # Build PPO configuration with new API stack
+    num_gpus = training_config.get("num_gpus", 0)
+
     config = (
         PPOConfig()
         .api_stack(
@@ -335,6 +337,11 @@ def create_rlmodule_config(
             num_env_runners=training_config.get("num_workers", 0),
             num_envs_per_env_runner=1,
         )
+        .learners(
+            # New API: GPU is configured in learners, not resources
+            num_learners=1 if num_gpus > 0 else 0,
+            num_gpus_per_learner=num_gpus if num_gpus > 0 else 0,
+        )
         .training(
             train_batch_size=training_config.get("train_batch_size", 4000),
             minibatch_size=training_config.get("sgd_minibatch_size", 128),
@@ -347,11 +354,13 @@ def create_rlmodule_config(
             vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
             grad_clip=local_model_config.get("max_grad_norm", 0.5),
         )
-        .resources(num_gpus=training_config.get("num_gpus", 0))
+        .resources(num_gpus=num_gpus)
         .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
         .debugging(log_level="INFO")
         .framework(framework="torch")
     )
+
+    logger.info(f"GPU Configuration: num_gpus={num_gpus}, num_learners={1 if num_gpus > 0 else 0}")
 
     logger.info("Successfully created PPO configuration with RLModule API")
     return config
@@ -389,12 +398,27 @@ def train_rlmodule(
 
     output_dir = os.path.abspath(output_dir)
 
+    num_gpus_config = training_config.get("num_gpus", 0)
+
     logger.info("=" * 70)
     logger.info("RLlib Multi-Agent Training with RLModule API")
     logger.info("=" * 70)
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Num workers: {training_config.get('num_workers', 0)}")
     logger.info(f"Total timesteps: {training_config.get('total_timesteps', 100000)}")
+    logger.info(f"GPU Configuration: num_gpus={num_gpus_config}")
+
+    # Check GPU availability
+    import torch
+    if torch.cuda.is_available():
+        logger.info(f"  CUDA Device: {torch.cuda.get_device_name(0)}")
+        logger.info(f"  CUDA Version: {torch.version.cuda}")
+        if num_gpus_config > 0:
+            logger.info("  Status: GPU ENABLED for training ✓")
+        else:
+            logger.info("  Status: GPU available but NOT ENABLED (set num_gpus: 1 in config)")
+    else:
+        logger.info("  Status: No GPU available, using CPU")
     logger.info("=" * 70)
 
     # Register environment
@@ -411,9 +435,10 @@ def train_rlmodule(
     )
 
     # Configure stopping criteria
+    # Note: In new RLlib API stack, use "num_env_steps_sampled_lifetime" instead of "num_env_steps_sampled"
     total_timesteps = training_config.get("total_timesteps", 100000)
     stop_criteria = {
-        "num_env_steps_sampled": total_timesteps,
+        "num_env_steps_sampled_lifetime": total_timesteps,
     }
 
     # Configure checkpoint settings

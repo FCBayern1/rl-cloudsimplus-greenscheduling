@@ -26,10 +26,13 @@ Usage:
 """
 
 from typing import Any, Dict, Optional
+import logging
 
 import torch
 import torch.nn as nn
 from gymnasium import spaces
+
+logger = logging.getLogger(__name__)
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
@@ -376,11 +379,19 @@ class DictObsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         action_space = self.action_space
         obs_space = self.observation_space
 
-        # Get action dimension
+        # Get action dimension and configure distribution class
         if isinstance(action_space, spaces.Discrete):
             self.action_dim = action_space.n
+            # Single discrete -> standard categorical
+            self.action_dist_cls = TorchCategorical
         elif isinstance(action_space, spaces.MultiDiscrete):
             self.action_dim = int(sum(action_space.nvec))
+            # MultiDiscrete -> MultiCategorical over each dimension
+            self.action_dist_cls = self._get_multi_categorical_cls()
+            logger.warning(
+                "[DictObsRLModule] Detected MultiDiscrete action space, "
+                f"nvec={action_space.nvec}. Will use MultiCategorical for all phases."
+            )
         else:
             raise ValueError(f"Unsupported action space type: {type(action_space)}")
 
@@ -610,13 +621,46 @@ class DictObsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     @override(TorchRLModule)
     def get_exploration_action_dist_cls(self):
         """Return the action distribution class for exploration."""
-        if isinstance(self.action_space, spaces.MultiDiscrete):
-            return self._get_multi_categorical_cls()
-        return TorchCategorical
+        if not isinstance(self.action_space, spaces.MultiDiscrete):
+            raise ValueError(
+                "[DictObsRLModule] Exploration dist expected MultiDiscrete "
+                f"action_space, got {type(self.action_space)}"
+            )
+        return self._get_multi_categorical_cls()
 
     @override(TorchRLModule)
     def get_inference_action_dist_cls(self):
         """Return the action distribution class for inference."""
-        if isinstance(self.action_space, spaces.MultiDiscrete):
-            return self._get_multi_categorical_cls()
-        return TorchCategorical
+        if not isinstance(self.action_space, spaces.MultiDiscrete):
+            raise ValueError(
+                "[DictObsRLModule] Inference dist expected MultiDiscrete "
+                f"action_space, got {type(self.action_space)}"
+            )
+        return self._get_multi_categorical_cls()
+
+    @override(TorchRLModule)
+    def get_train_action_dist_cls(self):
+        """
+        Ensure PPO's learner also uses MultiCategorical for MultiDiscrete actions.
+
+        For some RLlib versions, relying on the base implementation can cause
+        the learner to fall back to TorchCategorical during training, which
+        then fails for MultiDiscrete actions (shape mismatch between actions
+        and flattened logits). This explicit override keeps training,
+        exploration and inference consistent.
+        """
+        if not isinstance(self.action_space, spaces.MultiDiscrete):
+            raise ValueError(
+                "[DictObsRLModule] Train dist expected MultiDiscrete "
+                f"action_space, got {type(self.action_space)}"
+            )
+        # Debug: log once to ensure we are returning MultiCategorical
+        if not hasattr(self, "_logged_train_dist"):
+            logger.warning(
+                "[DictObsRLModule] Using MultiCategorical for TRAIN "
+                f"action_space.nvec={self.action_space.nvec}"
+            )
+            self._logged_train_dist = True
+        multi_cat_cls = self._get_multi_categorical_cls()
+        logger.debug(f"[DictObsRLModule] Returning MultiCategorical class: {multi_cat_cls}")
+        return multi_cat_cls

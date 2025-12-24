@@ -520,7 +520,10 @@ experiment_multi_dc_10:
   py4j_port: 25333                    # Same port as Java gateway
 
   # Global Routing Configuration
-  global_routing_batch_size: 10       # Increased batch size for 10 DCs
+  global_routing_batch_size: 10       # Reduced batch size for testing
+  validate_obs_shapes: true
+  validate_action_shapes: true
+
 
   # --- Datacenter Configurations ---
   # ========================================================================
@@ -885,7 +888,7 @@ experiment_multi_dc_10:
 
   # --- Workload Configuration ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/dc10_3000.csv"  # Faster cloudlets (~1.8s avg exec time)
+  cloudlet_trace_file: "traces/dc10_fast.csv"  # Faster cloudlets (~1.8s avg exec time)
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
@@ -894,7 +897,7 @@ experiment_multi_dc_10:
   # --- Simulation Settings ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 4000  # Reduced from 10000 (faster cloudlets complete sooner)
+  max_episode_length: 500  # Reduced from 10000 (faster cloudlets complete sooner)
 
   # --- Reward Configuration ---
   reward_completion_coef: 0.3            # Slightly higher completion reward
@@ -929,24 +932,28 @@ experiment_multi_dc_10:
     vf_coef: 0.5
     max_grad_norm: 0.5
 
+  # --- GTrXL Model Configuration ---
+  gtrxl:
+    d_model: 256                    # Hidden dimension
+    num_heads: 4                    # Number of attention heads
+    num_layers: 2                   # Number of GTrXL layers
+    d_ff: 512                       # Feed-forward dimension
+    mem_len: 64                     # Memory length for segment-level recurrence
+    dropout: 0.1                    # Dropout rate
+    learning_rate: 0.0003           # Learning rate for GTrXL parameters
+
   # --- Training Configuration (RLlib) ---
   training:
     algorithm: "PPO"       # Explicitly use PPO for RLlib
-    total_timesteps: 500000 # More timesteps for 10 DCs
+    total_timesteps: 40000 # More timesteps for 10 DCs
     num_workers: 0
     num_gpus: 1
-    train_batch_size: 8000            # Larger batch for more agents
+    train_batch_size: 1000            # Larger batch for more agents
     sgd_minibatch_size: 256
     num_sgd_iter: 10
     checkpoint_freq_timesteps: 20000
     # Enable local-agent parameter sharing in RLlib (shared_local_policy)
     parameter_sharing: true
-
-  # # --- Wind Prediction (disabled by default) ---
-  # wind_prediction:
-  #   enabled: false
-  #   horizon: 8
-  #   device: "cuda"
 
 experiment_multi_dc_10_1:
   # --- Identification ---
@@ -959,7 +966,7 @@ experiment_multi_dc_10_1:
   py4j_port: 25333                    # Same port as Java gateway
 
   # Global Routing Configuration
-  global_routing_batch_size: 10       # Increased batch size for 10 DCs
+  global_routing_batch_size: 10       # Reduced batch size for testing
 
   # --- Datacenter Configurations ---
   # ========================================================================
@@ -1405,7 +1412,7 @@ experiment_multi_dc_simple:
   py4j_port: 25333                    # Same port as Java gateway
 
   # Global Routing Configuration
-  global_routing_batch_size: 10       # Increased batch size for 10 DCs
+  global_routing_batch_size: 10       # Reduced batch size for testing
 
   # --- Environment Configuration ---
   env_id: "HierarchicalMultiDCSimple-v0"  # KEY DIFFERENCE: No God's Eye features

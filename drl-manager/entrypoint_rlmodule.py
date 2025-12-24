@@ -179,12 +179,14 @@ Examples:
     if args.num_gpus is not None:
         training_config["num_gpus"] = args.num_gpus
 
-    # Setup output directory
+    # Setup output directory - save to project root logs/ directory
     if args.output_dir is not None:
         output_dir = Path(args.output_dir)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = script_dir / "logs" / f"{args.experiment}_RLModule" / timestamp
+        # Use project root logs/ directory instead of drl-manager/logs/
+        project_root = script_dir.parent
+        output_dir = project_root / "logs" / f"{args.experiment}_RLModule" / timestamp
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
