@@ -1,0 +1,480 @@
+"""
+RLlib Training Script using GTrXL RLModule for Multi-Datacenter MARL.
+
+This script trains Global and Local Agents using Ray RLlib with the new RLModule API
+and Gated Transformer-XL (GTrXL) architecture.
+
+It utilizes:
+- GTrXLGlobalRLModule: For global agent
+- GTrXLMaskedActionRLModule: For local agents (with masking)
+"""
+
+import os
+import sys
+import argparse
+import yaml
+import logging
+import warnings
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Optional
+import copy
+
+import gymnasium as gym
+from gymnasium import spaces
+
+import ray
+from ray import tune, air
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.tune.logger import pretty_print
+from ray.tune import CLIReporter
+from tqdm import tqdm
+
+# Add drl-manager root to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
+from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
+from src.models.rlmodule_gtrxl_models import GTrXLMaskedActionRLModule, GTrXLGlobalRLModule
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class TqdmProgressReporter(CLIReporter):
+    """
+    Custom Ray Tune reporter with tqdm progress bar.
+    """
+
+    def __init__(self, total_timesteps: int, **kwargs):
+        super().__init__(**kwargs)
+        self.total_timesteps = total_timesteps
+        self.pbar = None
+        self.last_timesteps = 0
+
+    def report(self, trials, done, *sys_info):
+        """Called by Ray Tune to report progress."""
+        if self.pbar is None:
+            self.pbar = tqdm(
+                total=self.total_timesteps,
+                desc="Training",
+                unit=" steps",
+                dynamic_ncols=True,
+                bar_format="{percentage:3.0f}% {bar} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
+            )
+
+        if trials:
+            trial = trials[0]
+            if trial.last_result:
+                current_timesteps = trial.last_result.get(
+                    "num_env_steps_sampled",
+                    trial.last_result.get("timesteps_total", 0)
+                )
+
+                delta = current_timesteps - self.last_timesteps
+                if delta > 0:
+                    self.pbar.update(delta)
+                    self.last_timesteps = current_timesteps
+
+                reward = trial.last_result.get("episode_reward_mean", None)
+                if reward is not None:
+                    self.pbar.set_postfix({"reward": f"{reward:.2f}"})
+
+        if done and self.pbar is not None:
+            self.pbar.close()
+
+        return super().report(trials, done, *sys_info)
+
+
+class RLModulePettingZooEnv(ParallelPettingZooEnv):
+    """
+    Custom PettingZoo wrapper for the new RLlib API stack.
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self._pz_env = env
+        self.possible_agents = list(env.possible_agents)
+        self.agents = list(env.agents)
+
+    def reset(self, *, seed=None, options=None):
+        result = super().reset(seed=seed, options=options)
+        self.agents = list(self._pz_env.agents)
+        return result
+
+    def step(self, action_dict):
+        result = super().step(action_dict)
+        self.agents = list(self._pz_env.agents)
+        return result
+
+
+def env_creator(config: Dict[str, Any]):
+    env_id = config.get("env_id", "")
+    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
+    if use_simple:
+        logger.info("Creating SIMPLIFIED PettingZoo environment")
+        env = HierarchicalMultiDCParallelEnvSimple(config)
+    else:
+        logger.info("Creating standard PettingZoo environment")
+        env = HierarchicalMultiDCParallelEnv(config)
+
+    return RLModulePettingZooEnv(env)
+
+
+def shared_policy_mapping_fn(agent_id, episode, **kwargs):
+    if agent_id == "global_agent":
+        return "global_policy"
+    else:
+        return "shared_local_policy"
+
+
+def independent_policy_mapping_fn(agent_id, episode, **kwargs):
+    if agent_id == "global_agent":
+        return "global_policy"
+    else:
+        dc_id = int(agent_id.split("_")[-1])
+        return f"local_policy_{dc_id}"
+
+
+def _debug_check_env_spaces(sample_env):
+    """
+    Debug function to check env observation space vs actual observations.
+    This helps identify mismatches that cause dimension errors in RLModule.
+    """
+    import numpy as np
+
+    obs, info = sample_env.reset()
+    logger.info("\n" + "=" * 70)
+    logger.info("=== ENV SPACE CHECK (Debug) ===")
+    logger.info("=" * 70)
+    logger.info(f"possible_agents: {sample_env.possible_agents}")
+
+    def flatten_single(o):
+        """Flatten a single observation to 1D array."""
+        if isinstance(o, dict):
+            parts = []
+            for k in sorted(o.keys()):
+                parts.append(flatten_single(o[k]))
+            return np.concatenate(parts, axis=-1)
+        return np.asarray(o, dtype=np.float32).reshape(-1)
+
+    def space_flat_dim(s):
+        """Calculate flat dimension from observation space."""
+        if isinstance(s, spaces.Box):
+            return int(np.prod(s.shape))
+        if isinstance(s, spaces.Dict):
+            if "observation" in s.spaces:
+                return space_flat_dim(s.spaces["observation"])
+            return sum(space_flat_dim(v) for v in s.spaces.values())
+        if isinstance(s, spaces.Discrete):
+            return 1
+        if isinstance(s, spaces.MultiDiscrete):
+            return len(s.nvec)
+        raise TypeError(f"Unknown space type: {type(s)}")
+
+    for aid in sample_env.possible_agents:
+        sp = sample_env.observation_space(aid)
+        ob = obs[aid]
+
+        logger.info(f"\n--- Agent: {aid} ---")
+        logger.info(f"obs_space type: {type(sp)}")
+
+        # 1) Check contains
+        try:
+            ok = sp.contains(ob)
+            logger.info(f"space.contains(obs) = {ok}")
+            if not ok:
+                logger.error(f"  !!! MISMATCH: obs not in space !!!")
+        except Exception as e:
+            logger.error(f"space.contains(obs) raises: {repr(e)}")
+
+        # 2) Calculate actual flat dim (only observation part, not action_mask)
+        if isinstance(ob, dict) and "observation" in ob:
+            obs_to_flatten = ob["observation"]
+        else:
+            obs_to_flatten = ob
+
+        flat = flatten_single(obs_to_flatten)
+        actual_flat_dim = flat.shape[-1]
+
+        # 3) Calculate space flat dim
+        declared_flat_dim = space_flat_dim(sp)
+
+        logger.info(f"flat_dim(actual)   = {actual_flat_dim}")
+        logger.info(f"flat_dim(declared) = {declared_flat_dim}")
+
+        if actual_flat_dim != declared_flat_dim:
+            logger.error(f"  !!! DIMENSION MISMATCH !!!")
+            logger.error(f"  actual={actual_flat_dim} vs declared={declared_flat_dim}")
+            # Check if it's a sequence flattening issue
+            if actual_flat_dim % declared_flat_dim == 0:
+                T = actual_flat_dim // declared_flat_dim
+                logger.error(f"  Looks like T={T} timesteps flattened into features!")
+            elif declared_flat_dim % actual_flat_dim == 0:
+                logger.error(f"  Space declares more dims than actual obs provides")
+
+        # 4) Print obs structure for debugging
+        if isinstance(ob, dict):
+            logger.info(f"obs keys: {list(ob.keys())}")
+            if "observation" in ob:
+                inner = ob["observation"]
+                if isinstance(inner, dict):
+                    logger.info(f"obs['observation'] keys: {list(inner.keys())}")
+                    for k, v in inner.items():
+                        arr = np.asarray(v)
+                        logger.info(f"  {k}: shape={arr.shape}, dtype={arr.dtype}")
+
+    logger.info("=" * 70)
+    logger.info("=== END ENV SPACE CHECK ===")
+    logger.info("=" * 70 + "\n")
+
+
+def create_rlmodule_config(
+    env_config: Dict[str, Any],
+    global_model_config: Dict[str, Any],
+    local_model_config: Dict[str, Any],
+    training_config: Dict[str, Any],
+    output_dir: Optional[str] = None
+):
+    """
+    Create RLlib PPO configuration with GTrXL RLModule.
+    """
+    # Create a sample environment to get spaces
+    env_id = env_config.get("env_id", "")
+    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+
+    if use_simple:
+        sample_env = HierarchicalMultiDCParallelEnvSimple(env_config)
+    else:
+        sample_env = HierarchicalMultiDCParallelEnv(env_config)
+
+    # === DEBUG: Check env spaces vs actual observations ===
+    _debug_check_env_spaces(sample_env)
+
+    global_obs_space = sample_env.observation_space("global_agent")
+    global_action_space = sample_env.action_space("global_agent")
+
+    # Check parameter sharing
+    ps_cfg = env_config.get("parameter_sharing", {})
+    if isinstance(ps_cfg, dict):
+        use_parameter_sharing = bool(ps_cfg.get("local_agents", ps_cfg.get("enabled", False)))
+    else:
+        use_parameter_sharing = bool(ps_cfg)
+
+    if "parameter_sharing" in training_config:
+        use_parameter_sharing = bool(training_config.get("parameter_sharing"))
+
+    # Count DCs
+    num_dcs = len([a for a in sample_env.possible_agents if a.startswith("local_agent_")])
+    if not num_dcs:
+        num_dcs = len(env_config.get("datacenters", []))
+
+    # GTrXL Configuration
+    # Extract from config or use defaults
+    gtrxl_config = {
+        "d_model": local_model_config.get("model", {}).get("d_model", 128),
+        "nhead": local_model_config.get("model", {}).get("nhead", 4),
+        "num_layers": local_model_config.get("model", {}).get("num_layers", 2),
+        "dim_feedforward": local_model_config.get("model", {}).get("dim_feedforward", 256),
+        "dropout": local_model_config.get("model", {}).get("dropout", 0.0),
+        "max_seq_len": local_model_config.get("model", {}).get("max_seq_len", 20), # Default for recurrent models
+    }
+    
+    logger.info(f"GTrXL Config: {gtrxl_config}")
+
+    if use_parameter_sharing:
+        sample_local_agent = "local_agent_0"
+        unified_local_obs_space = sample_env.observation_space(sample_local_agent)
+        unified_local_action_space = sample_env.action_space(sample_local_agent)
+
+        rl_module_spec = MultiRLModuleSpec(
+            rl_module_specs={
+                "global_policy": RLModuleSpec(
+                    module_class=GTrXLGlobalRLModule,
+                    observation_space=global_obs_space,
+                    action_space=global_action_space,
+                    model_config=gtrxl_config,
+                ),
+                "shared_local_policy": RLModuleSpec(
+                    module_class=GTrXLMaskedActionRLModule,
+                    observation_space=unified_local_obs_space,
+                    action_space=unified_local_action_space,
+                    model_config=gtrxl_config,
+                ),
+            }
+        )
+
+        policies = {"global_policy", "shared_local_policy"}
+        policy_mapping_fn = shared_policy_mapping_fn
+
+    else:
+        rl_module_specs = {
+            "global_policy": RLModuleSpec(
+                module_class=GTrXLGlobalRLModule,
+                observation_space=global_obs_space,
+                action_space=global_action_space,
+                model_config=gtrxl_config,
+            ),
+        }
+
+        for dc_id in range(num_dcs):
+            agent_name = f"local_agent_{dc_id}"
+            rl_module_specs[f"local_policy_{dc_id}"] = RLModuleSpec(
+                module_class=GTrXLMaskedActionRLModule,
+                observation_space=sample_env.observation_space(agent_name),
+                action_space=sample_env.action_space(agent_name),
+                model_config=gtrxl_config,
+            )
+
+        rl_module_spec = MultiRLModuleSpec(rl_module_specs=rl_module_specs)
+        policies = set(rl_module_specs.keys())
+        policy_mapping_fn = independent_policy_mapping_fn
+
+    sample_env.close()
+
+    # Build PPO Config
+    num_gpus = training_config.get("num_gpus", 0)
+
+    config = (
+        PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .environment(
+            env="multidc_env",
+            env_config=env_config,
+        )
+        .rl_module(
+            rl_module_spec=rl_module_spec,
+        )
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=list(policies),
+        )
+        .env_runners(
+            num_env_runners=training_config.get("num_workers", 0),
+            num_envs_per_env_runner=1,
+        )
+        .learners(
+            num_learners=1 if num_gpus > 0 else 0,
+            num_gpus_per_learner=num_gpus if num_gpus > 0 else 0,
+        )
+        .training(
+            train_batch_size=training_config.get("train_batch_size", 4000),
+            minibatch_size=training_config.get("sgd_minibatch_size", 128),
+            num_sgd_iter=training_config.get("num_sgd_iter", 10),
+            gamma=local_model_config.get("gamma", 0.99),
+            lr=local_model_config.get("learning_rate", 3e-4),
+            lambda_=local_model_config.get("gae_lambda", 0.95),
+            clip_param=local_model_config.get("clip_range", 0.2),
+            entropy_coeff=local_model_config.get("ent_coef", 0.01),
+            vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
+            grad_clip=local_model_config.get("max_grad_norm", 0.5),
+        )
+        .resources(num_gpus=num_gpus)
+        .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
+        .debugging(log_level="INFO")
+        .framework(framework="torch")
+    )
+
+    return config
+
+
+def train_rlmodule_gtrxl(
+    env_config: Dict[str, Any],
+    global_model_config: Dict[str, Any],
+    local_model_config: Dict[str, Any],
+    training_config: Dict[str, Any],
+    output_dir: str
+):
+    # Initialize Ray
+    if not ray.is_initialized():
+        os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+        os.environ["OMP_NUM_THREADS"] = "1"
+
+        ray.init(
+            num_cpus=training_config.get("num_cpus", None),
+            num_gpus=training_config.get("num_gpus", 0),
+            ignore_reinit_error=True,
+            log_to_driver=True,
+            local_mode=False,
+        )
+
+    output_dir = os.path.abspath(output_dir)
+
+    logger.info("=" * 70)
+    logger.info("RLlib Multi-Agent Training with GTrXL RLModule")
+    logger.info("=" * 70)
+    
+    # Register environment
+    from ray.tune.registry import register_env
+    register_env("multidc_env", env_creator)
+
+    # Create Config
+    config = create_rlmodule_config(
+        env_config,
+        global_model_config,
+        local_model_config,
+        training_config,
+        output_dir=output_dir
+    )
+
+    # Stopping criteria
+    total_timesteps = training_config.get("total_timesteps", 100000)
+    stop_criteria = {"num_env_steps_sampled_lifetime": total_timesteps}
+
+    # Checkpointing
+    checkpoint_freq = training_config.get("checkpoint_freq_timesteps", 10000)
+    checkpoint_config = air.CheckpointConfig(
+        checkpoint_frequency=max(1, checkpoint_freq // training_config.get("train_batch_size", 5000)),
+        checkpoint_at_end=True,
+        num_to_keep=3,
+    )
+
+    # Reporter
+    progress_reporter = TqdmProgressReporter(
+        total_timesteps=total_timesteps,
+        metric_columns=["episode_reward_mean", "num_env_steps_sampled"],
+        max_report_frequency=5,
+    )
+
+    # Tuner
+    run_config = air.RunConfig(
+        name="multidc_gtrxl_training",
+        storage_path=output_dir,
+        stop=stop_criteria,
+        checkpoint_config=checkpoint_config,
+        verbose=0,
+        progress_reporter=progress_reporter,
+    )
+
+    tuner = tune.Tuner(
+        "PPO",
+        param_space=config.to_dict(),
+        run_config=run_config,
+    )
+
+    logger.info("Starting GTrXL Training...")
+    results = tuner.fit()
+
+    if hasattr(results, 'errors') and results.errors:
+        raise RuntimeError(f"Training failed: {results.errors}")
+
+    ray.shutdown()
+    logger.info("Training completed.")
+
+
+def load_config(config_path: str) -> Dict[str, Any]:
+    """Load YAML configuration file."""
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    return config
