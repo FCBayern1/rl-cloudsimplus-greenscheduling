@@ -36,6 +36,7 @@ import random
 import logging
 import numpy as np
 import torch
+import yaml
 from datetime import datetime
 from pathlib import Path
 
@@ -193,6 +194,28 @@ Examples:
     # Save seed for reproducibility
     with open(output_dir / "seed.txt", "w") as f:
         f.write(str(seed))
+
+    # Save experiment configuration to YAML
+    config_save_path = output_dir / "experiment_config.yml"
+    with open(config_save_path, 'w', encoding='utf-8') as f:
+        yaml.dump({
+            'experiment_name': args.experiment,
+            'timestamp': datetime.now().isoformat(),
+            'command_line_args': {
+                'config': args.config,
+                'experiment': args.experiment,
+                'num_workers': args.num_workers,
+                'total_timesteps': args.total_timesteps,
+                'num_gpus': args.num_gpus,
+                'output_dir': args.output_dir,
+                'seed': args.seed,
+            },
+            'env_config': env_config,
+            'global_model_config': global_model_config,
+            'local_model_config': local_model_config,
+            'training_config': training_config,
+        }, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    logger.info(f"Saved experiment config to: {config_save_path}")
 
     logger.info(f"Experiment: {args.experiment}")
     logger.info(f"Output directory: {output_dir}")
