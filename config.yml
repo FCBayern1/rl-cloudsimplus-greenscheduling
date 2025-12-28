@@ -897,7 +897,7 @@ experiment_multi_dc_10:
   # --- Simulation Settings ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 500  # Reduced from 10000 (faster cloudlets complete sooner)
+  max_episode_length: 4000  # Reduced from 10000 (faster cloudlets complete sooner)
 
   # --- Reward Configuration ---
   reward_completion_coef: 0.3            # Slightly higher completion reward
@@ -945,7 +945,7 @@ experiment_multi_dc_10:
   # --- Training Configuration (RLlib) ---
   training:
     algorithm: "PPO"       # Explicitly use PPO for RLlib
-    total_timesteps: 40000 # More timesteps for 10 DCs
+    total_timesteps: 400000 # More timesteps for 10 DCs
     num_workers: 0
     num_gpus: 1
     train_batch_size: 1000            # Larger batch for more agents
@@ -1992,3 +1992,1184 @@ experiment_multi_dc_simple_tianshou:
   # --- Wind Prediction (disabled) ---
   wind_prediction:
     enabled: false
+
+# ===================================================================
+# Experiment: Multi-DC 11 - Large Scale 100k Cloudlets
+# ===================================================================
+# Based on experiment_multi_dc_10 with:
+# - 100k cloudlets workload
+# - Longer episode length (8000 steps)
+# - Training for ~100 episodes
+# ===================================================================
+experiment_multi_dc_11:
+  # --- Identification ---
+  simulation_name: "Hierarchical_10DC_100k"
+  experiment_name: "hierarchical_10dc_100k"
+  experiment_type_dir: "Multi_Datacenter"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+
+  # Global Routing Configuration
+  global_routing_batch_size: 10
+
+  # --- Datacenter Configurations (same as experiment_multi_dc_10) ---
+  datacenters:
+    # Tier 1: Premium DCs
+    - datacenter_id: 0
+      name: "DC_Premium_West"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.7
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 128
+      initial_m_vm_count: 64
+      initial_l_vm_count: 32
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 1
+      name: "DC_Premium_East"
+      turbine_ids: [15]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.65
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 16
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 96
+      initial_m_vm_count: 48
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Tier 2: Green Energy-Efficient DCs
+    - datacenter_id: 2
+      name: "DC_Green_Nordic"
+      turbine_ids: [30]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.25
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 24
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 100
+      initial_m_vm_count: 50
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 3
+      name: "DC_Green_Germany"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_1_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.4
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs500a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 80
+      initial_m_vm_count: 40
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Tier 3: Regional DCs
+    - datacenter_id: 4
+      name: "DC_Regional_Central"
+      turbine_ids: [60]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs720_e9: 10
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 32
+      initial_m_vm_count: 16
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 5
+      name: "DC_Regional_South"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_2_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs720_e9: 8
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 26
+      initial_m_vm_count: 12
+      initial_l_vm_count: 6
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 6
+      name: "DC_Regional_APAC"
+      turbine_ids: [90]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 96
+      brown_carbon_factor: 0.75
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 12
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 60
+      initial_m_vm_count: 30
+      initial_l_vm_count: 16
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    # Tier 4: Edge DCs
+    - datacenter_id: 7
+      name: "DC_Edge_West"
+      turbine_ids: [105]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 8
+      name: "DC_Edge_East"
+      turbine_ids: [118]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 9
+      name: "DC_Edge_Europe"
+      turbine_ids: [130]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 8
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration (100k cloudlets) ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/dc10_100k.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings (longer episodes for 100k cloudlets) ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 8000  # Increased from 4000 for larger workload
+
+  # --- Reward Configuration ---
+  reward_completion_coef: 0.3
+  global_reward_alpha: 1.0
+  global_reward_beta: 1.5
+  global_reward_gamma: 0.5
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_queue_penalty_coef: 0.6
+  reward_invalid_action_coef: 2.0
+
+  # --- Global Agent Configuration ---
+  global_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+
+  # --- Local Model Configuration ---
+  local_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+
+  # --- GTrXL Model Configuration ---
+  gtrxl:
+    d_model: 256
+    num_heads: 4
+    num_layers: 2
+    d_ff: 512
+    mem_len: 64
+    dropout: 0.1
+    learning_rate: 0.0003
+
+  # --- Training Configuration (RLlib) ---
+  # 100 episodes × 8000 steps = 800,000 total timesteps
+  training:
+    algorithm: "PPO"
+    total_timesteps: 800000
+    num_workers: 0
+    num_gpus: 1
+    train_batch_size: 2000
+    sgd_minibatch_size: 256
+    num_sgd_iter: 10
+    checkpoint_freq_timesteps: 40000
+    parameter_sharing: true
+
+# ==============================================================================
+# BASELINE ALGORITHM EXPERIMENTS (No God's Eye Features)
+# ==============================================================================
+# These experiments use HierarchicalMultiDCSimple-v0 environment which does not
+# include future energy prediction (God's Eye) features. This provides fair
+# comparison baselines for different RL algorithms.
+
+# --- DQN Baseline ---
+experiment_baseline_dqn:
+  # --- Identification ---
+  simulation_name: "Baseline_DQN_10DC"
+  experiment_name: "baseline_dqn"
+  experiment_type_dir: "Baseline_DQN"
+
+  # --- Environment ---
+  env_id: "HierarchicalMultiDCSimple-v0"  # No God's Eye features
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+  global_routing_batch_size: 10
+
+  # --- Common Settings ---
+  seed: 42
+  save_experiment: true
+  device: "auto"
+
+  # --- Datacenter Configurations (same as experiment_multi_dc_10) ---
+  datacenters:
+    - datacenter_id: 0
+      name: "DC_Premium_West"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.7
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 128
+      initial_m_vm_count: 64
+      initial_l_vm_count: 32
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 1
+      name: "DC_Premium_East"
+      turbine_ids: [15]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.65
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 16
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 96
+      initial_m_vm_count: 48
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 2
+      name: "DC_Green_Nordic"
+      turbine_ids: [30]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.25
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 24
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 100
+      initial_m_vm_count: 50
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 3
+      name: "DC_Green_Germany"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_1_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.4
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs500a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 80
+      initial_m_vm_count: 40
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 4
+      name: "DC_Regional_Central"
+      turbine_ids: [60]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs720_e9: 10
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 32
+      initial_m_vm_count: 16
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 5
+      name: "DC_Regional_South"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_2_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs720_e9: 8
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 26
+      initial_m_vm_count: 12
+      initial_l_vm_count: 6
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 6
+      name: "DC_Regional_APAC"
+      turbine_ids: [90]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 96
+      brown_carbon_factor: 0.75
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 12
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 60
+      initial_m_vm_count: 30
+      initial_l_vm_count: 16
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 7
+      name: "DC_Edge_West"
+      turbine_ids: [105]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 8
+      name: "DC_Edge_East"
+      turbine_ids: [118]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 9
+      name: "DC_Edge_Europe"
+      turbine_ids: [130]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 8
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/dc10_3000.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 4000
+
+  # --- Reward Configuration ---
+  reward_completion_coef: 0.3
+  global_reward_alpha: 1.0
+  global_reward_beta: 1.5
+  global_reward_gamma: 0.5
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_queue_penalty_coef: 0.6
+  reward_invalid_action_coef: 2.0
+
+  # --- Model Configuration ---
+  local_model:
+    learning_rate: 0.0005  # DQN typically uses higher LR
+    gamma: 0.99
+    model:
+      fcnet_hiddens: [256, 256]
+      fcnet_activation: "relu"
+    dueling: true  # Enable Dueling DQN
+
+  # --- DQN Training Configuration ---
+  training:
+    algorithm: "DQN"
+    total_timesteps: 400000
+    num_workers: 0
+    num_gpus: 1
+    train_batch_size: 32
+    buffer_size: 50000
+    target_update_freq: 500
+    n_step: 3  # N-step returns
+    exploration_initial_eps: 1.0
+    exploration_final_eps: 0.02
+    exploration_fraction: 0.1
+    prioritized_replay_alpha: 0.6
+    prioritized_replay_beta: 0.4
+    checkpoint_freq_timesteps: 20000
+    parameter_sharing: true
+
+# --- IMPALA Baseline ---
+experiment_baseline_impala:
+  # --- Identification ---
+  simulation_name: "Baseline_IMPALA_10DC"
+  experiment_name: "baseline_impala"
+  experiment_type_dir: "Baseline_IMPALA"
+
+  # --- Environment ---
+  env_id: "HierarchicalMultiDCSimple-v0"  # No God's Eye features
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+  global_routing_batch_size: 10
+
+  # --- Common Settings ---
+  seed: 42
+  save_experiment: true
+  device: "auto"
+
+  # --- Datacenter Configurations (same as experiment_multi_dc_10) ---
+  datacenters:
+    - datacenter_id: 0
+      name: "DC_Premium_West"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.7
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 128
+      initial_m_vm_count: 64
+      initial_l_vm_count: 32
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 1
+      name: "DC_Premium_East"
+      turbine_ids: [15]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.65
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 16
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 96
+      initial_m_vm_count: 48
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 2
+      name: "DC_Green_Nordic"
+      turbine_ids: [30]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.25
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 24
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 100
+      initial_m_vm_count: 50
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 3
+      name: "DC_Green_Germany"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_1_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.4
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs500a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 80
+      initial_m_vm_count: 40
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 4
+      name: "DC_Regional_Central"
+      turbine_ids: [60]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs720_e9: 10
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 32
+      initial_m_vm_count: 16
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 5
+      name: "DC_Regional_South"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_2_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs720_e9: 8
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 26
+      initial_m_vm_count: 12
+      initial_l_vm_count: 6
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 6
+      name: "DC_Regional_APAC"
+      turbine_ids: [90]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 96
+      brown_carbon_factor: 0.75
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 12
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 60
+      initial_m_vm_count: 30
+      initial_l_vm_count: 16
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 7
+      name: "DC_Edge_West"
+      turbine_ids: [105]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 8
+      name: "DC_Edge_East"
+      turbine_ids: [118]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 9
+      name: "DC_Edge_Europe"
+      turbine_ids: [130]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 8
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/dc10_3000.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 4000
+
+  # --- Reward Configuration ---
+  reward_completion_coef: 0.3
+  global_reward_alpha: 1.0
+  global_reward_beta: 1.5
+  global_reward_gamma: 0.5
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_queue_penalty_coef: 0.6
+  reward_invalid_action_coef: 2.0
+
+  # --- Model Configuration ---
+  local_model:
+    learning_rate: 0.0005
+    gamma: 0.99
+    gae_lambda: 0.95
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 40.0  # IMPALA uses higher grad clip
+    model:
+      fcnet_hiddens: [256, 256]
+      fcnet_activation: "relu"
+
+  # --- IMPALA Training Configuration ---
+  training:
+    algorithm: "IMPALA"
+    total_timesteps: 400000
+    num_workers: 2  # IMPALA benefits from multiple workers
+    num_gpus: 1
+    train_batch_size: 500
+    vtrace_clip_rho: 1.0
+    vtrace_clip_pg_rho: 1.0
+    checkpoint_freq_timesteps: 20000
+    parameter_sharing: true
+
+# --- PPO Baseline (No God's Eye) ---
+experiment_baseline_ppo:
+  # --- Identification ---
+  simulation_name: "Baseline_PPO_10DC"
+  experiment_name: "baseline_ppo"
+  experiment_type_dir: "Baseline_PPO"
+
+  # --- Environment ---
+  env_id: "HierarchicalMultiDCSimple-v0"  # No God's Eye features
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+  global_routing_batch_size: 10
+
+  # --- Common Settings ---
+  seed: 42
+  save_experiment: true
+  device: "auto"
+
+  # --- Datacenter Configurations (same as experiment_multi_dc_10) ---
+  datacenters:
+    - datacenter_id: 0
+      name: "DC_Premium_West"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.7
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 128
+      initial_m_vm_count: 64
+      initial_l_vm_count: 32
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 1
+      name: "DC_Premium_East"
+      turbine_ids: [15]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.65
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 16
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 96
+      initial_m_vm_count: 48
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 2
+      name: "DC_Green_Nordic"
+      turbine_ids: [30]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.25
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 24
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 100
+      initial_m_vm_count: 50
+      initial_l_vm_count: 24
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 3
+      name: "DC_Green_Germany"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_1_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.4
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs500a: 20
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 80
+      initial_m_vm_count: 40
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 4
+      name: "DC_Regional_Central"
+      turbine_ids: [60]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs720_e9: 10
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 32
+      initial_m_vm_count: 16
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 5
+      name: "DC_Regional_South"
+      turbine_ids: [1]
+      wind_data_file: "solarProduction/simplified/Solar_2_2020.csv"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 12
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.02
+      host_count_spec_asus_rs720_e9: 8
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 26
+      initial_m_vm_count: 12
+      initial_l_vm_count: 6
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 6
+      name: "DC_Regional_APAC"
+      turbine_ids: [90]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 96
+      brown_carbon_factor: 0.75
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs500a: 12
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 60
+      initial_m_vm_count: 30
+      initial_l_vm_count: 16
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 7
+      name: "DC_Edge_West"
+      turbine_ids: [105]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 8
+      name: "DC_Edge_East"
+      turbine_ids: [118]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18
+      brown_carbon_factor: 0.55
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 10
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 9
+      name: "DC_Edge_Europe"
+      turbine_ids: [130]
+      wind_data_file: "windProduction/simplified"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+      host_count_spec_acer_ar360: 6
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 8
+      initial_m_vm_count: 4
+      initial_l_vm_count: 2
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/dc10_3000.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 4000
+
+  # --- Reward Configuration ---
+  reward_completion_coef: 0.3
+  global_reward_alpha: 1.0
+  global_reward_beta: 1.5
+  global_reward_gamma: 0.5
+  reward_wait_time_coef: 1.0
+  reward_unutilization_coef: 1.0
+  reward_queue_penalty_coef: 0.6
+  reward_invalid_action_coef: 2.0
+
+  # --- Model Configuration ---
+  local_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    model:
+      fcnet_hiddens: [256, 256]
+      fcnet_activation: "relu"
+
+  # --- PPO Training Configuration ---
+  training:
+    algorithm: "PPO"
+    total_timesteps: 400000
+    num_workers: 0
+    num_gpus: 1
+    train_batch_size: 4000
+    sgd_minibatch_size: 256
+    num_sgd_iter: 10
+    checkpoint_freq_timesteps: 20000
+    parameter_sharing: true

@@ -72,6 +72,24 @@ class HierarchicalMultiDCParallelEnvSimple(HierarchicalMultiDCParallelEnv):
         self.num_datacenters = self.base_env.num_datacenters
         self.global_routing_batch_size = self.base_env.global_routing_batch_size
 
+        # Get max_hosts and max_vms from base_env (required for observation spaces)
+        self.max_hosts = getattr(self.base_env, "max_hosts", None)
+        self.max_vms = getattr(self.base_env, "max_vms", None)
+
+        # Fallback calculation if not set
+        if self.max_hosts is None or self.max_vms is None:
+            dc_host_counts = getattr(self.base_env, "dc_host_counts", [])
+            dc_vm_counts = getattr(self.base_env, "dc_vm_counts", [])
+            self.max_hosts = max(dc_host_counts) if dc_host_counts else 1
+            self.max_vms = max(dc_vm_counts) if dc_vm_counts else 1
+
+        # Get max_actions for action masking
+        self.max_actions = getattr(self.base_env, "local_action_space", None)
+        if self.max_actions is not None:
+            self.max_actions = self.base_env.local_action_space.n
+        else:
+            self.max_actions = self.max_vms + 1
+
         # Define agent names (PettingZoo requirement: flat namespace)
         self.possible_agents = self._create_agent_list()
         self.agents = self.possible_agents.copy()
@@ -82,6 +100,8 @@ class HierarchicalMultiDCParallelEnvSimple(HierarchicalMultiDCParallelEnv):
 
         # Store last observations for action masking
         self._last_observations = None
+        self._obs_shape_ref = {}
+        self._validate_obs_shapes = bool(config.get("validate_obs_shapes", False))
 
         logger.info(
             f"HierarchicalMultiDCParallelEnvSimple initialized with {len(self.agents)} agents"

@@ -326,10 +326,12 @@ Examples:
             'command_line_args': {
                 'config': args.config,
                 'experiment': args.experiment,
-                'num_workers': args.num_workers,
-                'total_timesteps': args.total_timesteps,
-                'num_gpus': args.num_gpus,
-                'output_dir': args.output_dir,
+            },
+            'resolved_training_params': {
+                'num_workers': args.num_workers if args.num_workers is not None else training_config.get('num_workers', 0),
+                'total_timesteps': args.total_timesteps if args.total_timesteps is not None else training_config.get('total_timesteps', 100000),
+                'num_gpus': args.num_gpus if args.num_gpus is not None else training_config.get('num_gpus', 0),
+                'output_dir': str(args.output_dir) if args.output_dir else str(output_path),
             },
             'env_config': env_config,
             'global_model_config': global_model_config,
