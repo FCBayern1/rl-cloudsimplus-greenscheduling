@@ -6,11 +6,20 @@ from .base import LocalScheduler
 AlgorithmType = Any
 
 
+def _valid_action_indices(action_mask: np.ndarray) -> np.ndarray:
+    """Return valid action indices (including 0 for NoAssign if allowed)."""
+    if action_mask is None:
+        return np.array([0], dtype=np.int32)
+    mask = np.asarray(action_mask).astype(bool)
+    idx = np.where(mask)[0].astype(np.int32)
+    return idx if idx.size > 0 else np.array([0], dtype=np.int32)
+
+
 class RandomLocalScheduler(LocalScheduler):
     """Random Local Scheduler"""
 
     def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
-        valid_actions = np.where(action_mask)[0]
+        valid_actions = _valid_action_indices(action_mask)
         if len(valid_actions) > 0:
             return int(np.random.choice(valid_actions))
         return 0  # NoAssign
@@ -106,6 +115,278 @@ class MinLoadLocalScheduler(LocalScheduler):
                     best_vm = i
 
         return best_vm
+
+
+class PackingAwareLocalScheduler(LocalScheduler):
+    """
+    Packing-aware local heuristic (green-friendly proxy):
+
+    Prefer to *pack* cloudlets onto already-loaded VMs/hosts (helps consolidation),
+    but avoid overload and avoid large PE waste.
+
+    Cost per VM (lower is better):
+      + a * vm_load
+      + b * waste_pes
+      + c * overload_penalty
+    """
+
+    def __init__(self, num_vms: int, a: float = 1.0, b: float = 0.5, c: float = 5.0):
+        super().__init__(num_vms)
+        self.a = float(a)
+        self.b = float(b)
+        self.c = float(c)
+
+    def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
+        valid = _valid_action_indices(action_mask)
+        # If only NoAssign is valid, return it.
+        if valid.size == 1 and int(valid[0]) == 0:
+            return 0
+
+        vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
+        vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
+        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+
+        best_action = 0
+        best_cost = float("inf")
+        for a in valid:
+            a = int(a)
+            if a == 0:
+                # NoAssign: allow but discourage if there is any feasible VM action
+                continue
+            idx = a - 1
+            if idx >= vm_avail.size:
+                continue
+            avail = float(vm_avail[idx])
+            if avail <= 0:
+                continue
+            waste = max(0.0, avail - demand)
+            overload = max(0.0, demand - avail)  # should be 0 when mask is correct
+            load = float(vm_loads[idx]) if idx < vm_loads.size else 0.0
+            cost = self.a * load + self.b * waste + self.c * overload
+            if cost < best_cost:
+                best_cost = cost
+                best_action = a
+
+        return int(best_action) if best_action != 0 else int(valid[0])
+
+
+class GeneticAlgorithmLocalScheduler(LocalScheduler):
+    """
+    GA baseline for choosing a single VM action under action_mask.
+
+    This is intentionally lightweight: population is a set of candidate actions,
+    evolved using tournament selection and mutation. Fitness uses a multi-criteria
+    local cost (pack vs waste vs overload).
+    """
+
+    def __init__(
+        self,
+        num_vms: int,
+        population_size: int = 18,
+        generations: int = 10,
+        mutation_rate: float = 0.25,
+        tournament_k: int = 3,
+        a: float = 1.0,
+        b: float = 0.5,
+        c: float = 5.0,
+        rng_seed: Optional[int] = None,
+    ):
+        super().__init__(num_vms)
+        self.population_size = max(4, int(population_size))
+        self.generations = max(1, int(generations))
+        self.mutation_rate = float(mutation_rate)
+        self.tournament_k = max(2, int(tournament_k))
+        self.a = float(a)
+        self.b = float(b)
+        self.c = float(c)
+        self.rng = np.random.default_rng(rng_seed)
+
+    def _cost(self, action: int, vm_loads: np.ndarray, vm_avail: np.ndarray, demand: float) -> float:
+        if action == 0:
+            # Penalize NoAssign if other options exist; caller will handle feasibility.
+            return 1e6
+        idx = action - 1
+        if idx < 0 or idx >= vm_avail.size:
+            return 1e6
+        avail = float(vm_avail[idx])
+        if avail <= 0:
+            return 1e6
+        waste = max(0.0, avail - demand)
+        overload = max(0.0, demand - avail)
+        load = float(vm_loads[idx]) if idx < vm_loads.size else 0.0
+        return self.a * load + self.b * waste + self.c * overload
+
+    def _tournament(self, fitnesses: np.ndarray) -> int:
+        idxs = self.rng.integers(0, fitnesses.size, size=self.tournament_k)
+        best = idxs[np.argmin(fitnesses[idxs])]
+        return int(best)
+
+    def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
+        valid = _valid_action_indices(action_mask)
+        if valid.size == 1:
+            return int(valid[0])
+
+        # Exclude 0 from normal population if possible (keep as fallback)
+        valid_nonzero = valid[valid != 0]
+        if valid_nonzero.size == 0:
+            return 0
+
+        vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
+        vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
+        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+
+        # init population from heuristics + random valid actions
+        pop = np.empty(self.population_size, dtype=np.int32)
+        # seed with BestFit (min waste among feasible)
+        bestfit = 0
+        min_waste = float("inf")
+        for a in valid_nonzero:
+            idx = int(a) - 1
+            if idx < vm_avail.size:
+                waste = float(vm_avail[idx]) - demand
+                if 0.0 <= waste < min_waste:
+                    min_waste = waste
+                    bestfit = int(a)
+        pop[0] = bestfit if bestfit != 0 else int(valid_nonzero[0])
+
+        # seed with MinLoad
+        minload = int(valid_nonzero[0])
+        best_load = float("inf")
+        for a in valid_nonzero:
+            idx = int(a) - 1
+            load = float(vm_loads[idx]) if idx < vm_loads.size else 0.0
+            if load < best_load:
+                best_load = load
+                minload = int(a)
+        if self.population_size > 1:
+            pop[1] = minload
+
+        # rest random
+        for i in range(2, self.population_size):
+            pop[i] = int(self.rng.choice(valid_nonzero))
+
+        fitnesses = np.array([self._cost(int(a), vm_loads, vm_avail, demand) for a in pop], dtype=np.float32)
+
+        for _ in range(self.generations):
+            new_pop = np.empty_like(pop)
+            elite_idx = int(np.argmin(fitnesses))
+            new_pop[0] = pop[elite_idx]
+
+            for i in range(1, self.population_size):
+                p1 = int(pop[self._tournament(fitnesses)])
+                p2 = int(pop[self._tournament(fitnesses)])
+                # crossover in single-gene space: pick one parent
+                child = p1 if self.rng.random() < 0.5 else p2
+                if self.rng.random() < self.mutation_rate:
+                    child = int(self.rng.choice(valid_nonzero))
+                new_pop[i] = child
+
+            pop = new_pop
+            fitnesses = np.array([self._cost(int(a), vm_loads, vm_avail, demand) for a in pop], dtype=np.float32)
+
+        best = int(pop[int(np.argmin(fitnesses))])
+        return best if best in set(valid.tolist()) else int(valid[0])
+
+
+class ParticleSwarmLocalScheduler(LocalScheduler):
+    """
+    PSO baseline for choosing a single VM action under action_mask.
+
+    Uses a 1D continuous position mapped to a discrete action via rounding and
+    snapping to the nearest valid action.
+    """
+
+    def __init__(
+        self,
+        num_vms: int,
+        swarm_size: int = 16,
+        iterations: int = 12,
+        inertia: float = 0.6,
+        c1: float = 1.4,
+        c2: float = 1.4,
+        a: float = 1.0,
+        b: float = 0.5,
+        c: float = 5.0,
+        rng_seed: Optional[int] = None,
+    ):
+        super().__init__(num_vms)
+        self.swarm_size = max(4, int(swarm_size))
+        self.iterations = max(1, int(iterations))
+        self.inertia = float(inertia)
+        self.c1 = float(c1)
+        self.c2 = float(c2)
+        self.a = float(a)
+        self.b = float(b)
+        self.c = float(c)
+        self.rng = np.random.default_rng(rng_seed)
+
+    def _cost(self, action: int, vm_loads: np.ndarray, vm_avail: np.ndarray, demand: float) -> float:
+        if action == 0:
+            return 1e6
+        idx = action - 1
+        if idx < 0 or idx >= vm_avail.size:
+            return 1e6
+        avail = float(vm_avail[idx])
+        if avail <= 0:
+            return 1e6
+        waste = max(0.0, avail - demand)
+        overload = max(0.0, demand - avail)
+        load = float(vm_loads[idx]) if idx < vm_loads.size else 0.0
+        return self.a * load + self.b * waste + self.c * overload
+
+    def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
+        valid = _valid_action_indices(action_mask)
+        if valid.size == 1:
+            return int(valid[0])
+
+        valid_nonzero = valid[valid != 0]
+        if valid_nonzero.size == 0:
+            return 0
+
+        vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
+        vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
+        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+
+        # map continuous -> discrete action by rounding then snapping to nearest valid_nonzero
+        valid_actions = valid_nonzero.astype(np.int32)
+
+        def snap(x: float) -> int:
+            a = int(np.rint(x))
+            # clamp to plausible range then snap
+            a = max(int(valid_actions.min()), min(int(valid_actions.max()), a))
+            # nearest valid
+            nearest = int(valid_actions[np.argmin(np.abs(valid_actions - a))])
+            return nearest
+
+        # init swarm around random valid actions
+        pos = self.rng.choice(valid_actions, size=self.swarm_size).astype(np.float32)
+        vel = (self.rng.random(self.swarm_size, dtype=np.float32) - 0.5) * 0.5
+
+        pbest_pos = pos.copy()
+        pbest_fit = np.array([self._cost(snap(float(p)), vm_loads, vm_avail, demand) for p in pos], dtype=np.float32)
+        gbest_idx = int(np.argmin(pbest_fit))
+        gbest_pos = float(pbest_pos[gbest_idx])
+        gbest_fit = float(pbest_fit[gbest_idx])
+
+        for _ in range(self.iterations):
+            r1 = self.rng.random(self.swarm_size, dtype=np.float32)
+            r2 = self.rng.random(self.swarm_size, dtype=np.float32)
+            vel = self.inertia * vel + self.c1 * r1 * (pbest_pos - pos) + self.c2 * r2 * (gbest_pos - pos)
+            pos = pos + vel
+
+            fits = np.array([self._cost(snap(float(p)), vm_loads, vm_avail, demand) for p in pos], dtype=np.float32)
+            improved = fits < pbest_fit
+            if improved.any():
+                pbest_fit = np.where(improved, fits, pbest_fit)
+                pbest_pos = np.where(improved, pos, pbest_pos)
+                new_gbest_idx = int(np.argmin(pbest_fit))
+                new_gbest_fit = float(pbest_fit[new_gbest_idx])
+                if new_gbest_fit < gbest_fit:
+                    gbest_fit = new_gbest_fit
+                    gbest_pos = float(pbest_pos[new_gbest_idx])
+
+        best_action = snap(gbest_pos)
+        return best_action if best_action in set(valid.tolist()) else int(valid[0])
 
 
 class RLlibLocalScheduler(LocalScheduler):
@@ -301,5 +582,8 @@ LOCAL_SCHEDULERS = {
     'worst_fit': WorstFitLocalScheduler,
     'round_robin': RoundRobinLocalScheduler,
     'min_load': MinLoadLocalScheduler,
+    'packing_aware': PackingAwareLocalScheduler,
+    'ga': GeneticAlgorithmLocalScheduler,
+    'pso': ParticleSwarmLocalScheduler,
     # Note: 'rllib' requires special handling via create_rllib_local_schedulers()
 }
