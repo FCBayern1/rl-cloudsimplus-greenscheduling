@@ -265,6 +265,15 @@ public class LoadBalancerGateway {
             throw new IllegalStateException("Simulation not initialized/configured. Call reset() first.");
         }
 
+        // --- 0. Early termination check ---
+        // If simulation already finished (all cloudlets done), return terminated immediately
+        if (!simulationCore.isRunning()) {
+            LOGGER.info("Step called but simulation already finished. Returning terminated=true.");
+            ObservationState finalState = getCurrentState();
+            SimulationStepInfo finalInfo = new SimulationStepInfo(simulationCore.getClock());
+            return new SimulationStepResult(finalState, 0.0, true, false, finalInfo);
+        }
+
         currentStep++;
         LOGGER.debug("Step {} starting. Target VM ID: {}", currentStep, targetVmId);
 

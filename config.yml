@@ -129,8 +129,10 @@ common:
     min_evals: 5                       # For no_improvement: minimum eval rounds before checking
     # reward_threshold: 200.0            # For reward_threshold: stop when reached
 
+
+
 # ===================================================================
-# Experiment-Specific Overrides (Define different runs below)
+# Experiment-Specific
 # ===================================================================
 experiment_1:
   simulation_name: "Exp1_CSVSimple_GreenEnergy" # Unique name for logging this specific run
@@ -156,11 +158,11 @@ experiment_1:
 
   # Green Energy Configuration - Testing wind turbine integration
   green_energy:
-    enabled: true                                     
-    turbine_id: 57                                    
-    wind_data_file: "windProduction/processed_data/cleaned_data.csv"
+    enabled: true
+    turbine_id: 57
+    wind_data_file: "windProduction/simplified"  # Directory with Turbine_57_*.csv files
     prediction:
-      enabled: false                                  # Disable prediction for now
+      enabled: false
       model_path: "../SWF_Prediction/saved_models/best_model.pth"
       cache_duration_seconds: 600
       horizon: 8
@@ -173,6 +175,7 @@ experiment_1:
   reward_queue_penalty_coef: 0.055  # Queue penalty
   reward_energy_coef: 0.2
   reward_invalid_action_coef: 0.2   # Invalid action penalty
+
 
 # ===================================================================
 # Experiment 2: Large-Scale LLNL Workload with Optimized Parameters
@@ -373,6 +376,47 @@ experiment_single_dc_local_swf:
   verbose: 1
   log_interval: 1
 
+
+# ===================================================================
+# Experiment-Specific Overrides (Define different runs below)
+# ===================================================================
+experiment_1_new:
+  simulation_name: "Exp1_CSVSimple_GreenEnergy_New" # Unique name for logging this specific run
+  experiment_name: "Exp1_CSVSimple_GreenEnergy_New" # Name for the log sub-folder
+  experiment_type_dir: "CSV_single_dc_new"
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/three_60max_8maxcores.csv"
+
+  mode: "train"
+  algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
+  timesteps: 50000  # Longer training
+  learning_rate: 0.0001  # Lower LR for stability
+
+  max_episode_length: 500
+
+  n_steps: 1024  # Smaller for more frequent updates
+  batch_size: 128
+  n_epochs: 15
+  gamma: 0.995
+  gae_lambda: 0.98
+  clip_range: 0.2
+  ent_coef: 0.02  # Increase exploration
+
+  # Green Energy Configuration - Testing wind turbine integration
+  green_energy:
+    enabled: true
+    turbine_id: 57
+    wind_data_file: "windProduction/simplified"  # Directory with Turbine_57_*.csv files
+
+  # Reward Weights - Added energy coefficient for green energy optimization
+  reward_wait_time_coef: 0.1        # Wait time penalty
+  reward_throughput_coef: 0.085     # Throughput reward
+  reward_unutilization_coef: 0.05   # Utilization penalty
+  reward_cost_coef: 0.05            # Cost penalty
+  reward_queue_penalty_coef: 0.055  # Queue penalty
+  reward_energy_coef: 0.2
+  reward_invalid_action_coef: 0.2   # Invalid action penalty
+
 # ===================================================================
 # Experiment: Single-DC, Single-Agent (Local Scheduler Only) with CSV
 # - Recommended for quick sanity checks and stable learning curves
@@ -471,16 +515,18 @@ experiment_single_dc_local_csv:
     prediction:
       enabled: false
 
-  # Reward weights (same defaults; keep explicit for clarity)
-  reward_completion_coef: 0.1    # NEW: Conservative start for stability (use log1p scaling)
-  reward_wait_time_coef: 0.75
-  reward_unutilization_coef: 0.25
-  reward_queue_penalty_coef: 0.55
-  reward_invalid_action_coef: 1.0
+  # Reward weights (aligned with experiment_1 for fair comparison)
+  reward_wait_time_coef: 0.1        # Wait time penalty (same as Exp1)
+  reward_throughput_coef: 0.085     # Throughput reward (same as Exp1)
+  reward_unutilization_coef: 0.05   # Utilization penalty (same as Exp1)
+  reward_cost_coef: 0.05            # Cost penalty (same as Exp1)
+  reward_queue_penalty_coef: 0.055  # Queue penalty (same as Exp1)
+  reward_energy_coef: 0.2           # Energy reward (same as Exp1)
+  reward_invalid_action_coef: 0.2   # Invalid action penalty (same as Exp1)
 
   # Workload: CSV (already in repo, reasonable arrival times / PEs 1-8)
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/single_dc_2000_poisson.csv"  # Dense: 5000 cloudlets in 500s (10/sec) for stress test
+  cloudlet_trace_file: "traces/single_dc_1000_200s.csv"  # 1000 cloudlets in 200s, matching Exp1 intensity (5 jobs/sec)
   # Keep cloudlets as-is (no splitting needed for this file)
   split_large_cloudlets: false
   max_cloudlet_pes: 8
