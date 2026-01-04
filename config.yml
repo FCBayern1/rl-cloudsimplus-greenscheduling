@@ -144,7 +144,7 @@ experiment_1:
   timesteps: 50000  # Longer training
   learning_rate: 0.0001  # Lower LR for stability
 
-  max_episode_length: 5000
+  max_episode_length: 500
 
   n_steps: 1024  # Smaller for more frequent updates
   batch_size: 128
@@ -171,7 +171,7 @@ experiment_1:
   reward_unutilization_coef: 0.05   # Utilization penalty
   reward_cost_coef: 0.05            # Cost penalty
   reward_queue_penalty_coef: 0.055  # Queue penalty
-  reward_energy_coef: 0.2           # ✅ Energy consumption penalty (new for green energy)
+  reward_energy_coef: 0.2
   reward_invalid_action_coef: 0.2   # Invalid action penalty
 
 # ===================================================================
@@ -315,12 +315,13 @@ experiment_single_dc_local_swf:
       enabled: false
 
   # Reward weights (explicit for this experiment)
-  # NOTE: Single-DC Java reward currently uses ONLY:
+  # NOTE: Single-DC Java reward uses:
+  # - reward_completion_coef (NEW: positive reward for completing tasks, log-scaled)
   # - reward_wait_time_coef
   # - reward_unutilization_coef
   # - reward_queue_penalty_coef
   # - reward_invalid_action_coef
-  # Throughput/cost/energy coefficients may exist in config but are not used by the single-DC reward function.
+  reward_completion_coef: 0.1    # NEW: Conservative start for stability (use log1p scaling)
   reward_wait_time_coef: 0.75
   reward_unutilization_coef: 0.25
   reward_queue_penalty_coef: 0.55
@@ -471,6 +472,7 @@ experiment_single_dc_local_csv:
       enabled: false
 
   # Reward weights (same defaults; keep explicit for clarity)
+  reward_completion_coef: 0.1    # NEW: Conservative start for stability (use log1p scaling)
   reward_wait_time_coef: 0.75
   reward_unutilization_coef: 0.25
   reward_queue_penalty_coef: 0.55
@@ -478,7 +480,7 @@ experiment_single_dc_local_csv:
 
   # Workload: CSV (already in repo, reasonable arrival times / PEs 1-8)
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/single_dc_2000_poisson.csv"
+  cloudlet_trace_file: "traces/single_dc_2000_poisson.csv"  # Dense: 5000 cloudlets in 500s (10/sec) for stress test
   # Keep cloudlets as-is (no splitting needed for this file)
   split_large_cloudlets: false
   max_cloudlet_pes: 8
@@ -487,9 +489,9 @@ experiment_single_dc_local_csv:
   # Training
   mode: "train"
   algorithm: "MaskablePPO"
-  timesteps: 400000
+  timesteps: 50000
   learning_rate: 0.0003
-  max_episode_length: 4000
+  max_episode_length: 500
 
   n_steps: 1024
   batch_size: 128
@@ -888,7 +890,7 @@ experiment_multi_dc_10:
 
   # --- Workload Configuration ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/dc10_fast.csv"  # Faster cloudlets (~1.8s avg exec time)
+  cloudlet_trace_file: "traces/dc10_3000.csv"  # Faster cloudlets (~1.8s avg exec time)
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
@@ -1340,7 +1342,7 @@ experiment_multi_dc_10_1:
   # --- Simulation Settings ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 4000  # Reduced from 10000 (faster cloudlets complete sooner)
+  max_episode_length: 1000  # Reduced from 10000 (faster cloudlets complete sooner)
 
   # --- Reward Configuration ---
   # OLD: carbon_emission_penalty_coef: 1500.0   # (Replaced by normalized scheme)

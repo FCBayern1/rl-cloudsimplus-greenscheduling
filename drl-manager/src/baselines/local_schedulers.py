@@ -425,16 +425,16 @@ class RLlibLocalScheduler(LocalScheduler):
 
     def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
         """
-        使用 RLlib 模型选择 VM
+        Use RLlib model to select VM
 
-        RLlib 通过 observation 中的 'action_mask' 键来处理动作掩码。
+        RLlib handles action mask through the 'action_mask' key in the observation.
 
-        对于参数共享模式 (shared_local_policy):
-        - 使用完整的 padded 观测 (max_hosts, max_vms)
-        - 添加 dc_id_onehot 和 valid_vm_mask
+        For parameter sharing mode (shared_local_policy):
+        - Use full padded observations (max_hosts, max_vms)
+        - Add dc_id_onehot and valid_vm_mask
 
-        对于独立策略模式:
-        - 裁剪观测到每个 DC 实际的 host/vm 数量
+        For independent policy mode:
+        - Trim observations to each DC's actual host/vm count
         """
         if self.use_parameter_sharing:
             # Parameter sharing mode: use full padded observations
@@ -499,9 +499,9 @@ class RLlibLocalScheduler(LocalScheduler):
                 "action_mask": trimmed_mask,
             }
 
-        # 选择实际使用的 policy_id：
-        # - 如果算法的本地 worker 中包含 shared_local_policy，且当前 policy_id 不在 policy_map 里，
-        #   则说明使用了参数共享，回退到 shared_local_policy，避免访问不存在的 local_policy_*。
+        # select policy_id：
+        # - If local worker contains shared_local_policy，and current policy_id is not in the policy_map，
+        #   Which means paremeterSharing is enabled, fallback to shared_local_policy, avoid accessing non-existent local_policy_*。
         policy_id = self.policy_id
         worker_mgr = getattr(self.algo, "workers", None)
         if worker_mgr is not None:
@@ -511,7 +511,7 @@ class RLlibLocalScheduler(LocalScheduler):
                 if "shared_local_policy" in policy_ids and policy_id not in policy_ids:
                     policy_id = "shared_local_policy"
             except Exception:
-                # 如果无法读取 policy_map，就继续使用原始 policy_id，由 RLlib 自己决定是否报错
+                # if cannot read policy_map, continue using original policy_id, let RLlib decide whether to error
                 pass
 
         action = self.algo.compute_single_action(
@@ -526,15 +526,15 @@ class RLlibLocalScheduler(LocalScheduler):
 def create_rllib_schedulers(algo, env, num_dcs: int, batch_size: int, num_vms: int,
                             max_hosts: int = 16):
     """
-    创建 RLlib 版本的 Global 和 Local 调度器
+    create RLlib-based Global and Local schedulers
 
     Args:
-        algo: 已加载的 RLlib Algorithm 实例
-        env: HierarchicalMultiDCEnv 实例（用于裁剪本地观测到每个 DC 的实际规模）
-        num_dcs: 数据中心数量
+        algo: loaded RLlib Algorithm instance
+        env: HierarchicalMultiDCEnv instance (used to trim local observations to each DC's actual size)
+        num_dcs: number of datacenters
         batch_size: Global routing batch size
-        num_vms: 每个 DC 的最大 VM 数量
-        max_hosts: 每个 DC 的最大主机数量 (for parameter sharing)
+        num_vms: maximum number of VMs per DC
+        max_hosts: maximum number of hosts per DC (for parameter sharing)
 
     Returns:
         (global_scheduler, local_schedulers_dict)

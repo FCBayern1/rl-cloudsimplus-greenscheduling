@@ -85,6 +85,8 @@ def train(params: dict):
             "episode_reward_energy_mean",
             "episode_avg_power_w",
             "episode_completion_rate",
+            "episode_completed_cloudlets",  # NEW: track actual cloudlet counts
+            "episode_total_cloudlets",      # NEW: track total cloudlets for debugging
             "episode_reward_total",
             "episode_carbon_emission_kg",
             "episode_carbon_intensity_kg_per_kwh",

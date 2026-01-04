@@ -51,6 +51,7 @@ public class LoadBalancerGateway {
     private double rewardQueuePenaltyComponent = 0;
     private double rewardInvalidActionComponent = 0;
     private double rewardEnergyComponent = 0;
+    private double rewardCompletionComponent = 0;  // NEW: Positive reward for completing tasks
 
     // Energy tracking
     private double cumulativeEnergyWh = 0;  // Cumulative energy consumption in Watt-hours
@@ -631,9 +632,15 @@ public class LoadBalancerGateway {
         // Scale wait time penalty - e.g., shorter waits are less penalized
         this.rewardWaitTimeComponent = -settings.getRewardWaitTimeCoef() * Math.log1p(avgFinishedWaitTime);
 
-        // 2. Utilization & Balance Penalty (Penalize variance & deviation from target)
+        // 2. Load Balance Penalty (Only penalize variance across VMs)
+        // Rationale: In multi-DC setup, local agent cannot control total load amount
+        // (that's global agent's decision). It can only control load DISTRIBUTION.
+        // So we only penalize imbalance (variance), not deviation from fixed 95% target.
         this.rewardUnutilizationComponent = 0;
-        if (!runningVms.isEmpty()) {
+        long waitingCount = simulationCore.getNotYetRunningCloudletsCount();
+        if (!runningVms.isEmpty() && waitingCount > 0) {
+            // Only penalize imbalance when there are tasks waiting
+            // (if queue is empty, load balance doesn't matter)
             final double avgUtilization = runningVms.stream()
                     .mapToDouble(Vm::getCpuPercentUtilization)
                     .average().orElse(0.0);
@@ -642,19 +649,24 @@ public class LoadBalancerGateway {
                     .mapToDouble(vm -> Math.pow(vm.getCpuPercentUtilization() - avgUtilization, 2))
                     .average().orElse(0.0);
 
-            // Penalize deviation from a target utilization (e.g., 0.95) and variance
-            double targetUtil = 0.95;
-            double utilDeviationPenalty = Math.abs(avgUtilization - targetUtil);
-            // Combine penalties: variance + deviation from target. Use sqrt for variance.
+            // Only penalize variance (load imbalance), NOT deviation from fixed target
             this.rewardUnutilizationComponent = -settings.getRewardUnutilizationCoef()
-                    * (Math.sqrt(utilizationVariance) + utilDeviationPenalty);
+                    * Math.sqrt(utilizationVariance);
         }
+        // When queue is empty, no penalty - low utilization is not local agent's fault
 
         // 3. Queue Length Penalty (Ratio relative to arrived)
         this.rewardQueuePenaltyComponent = -settings.getRewardQueuePenaltyCoef() * getWaitingCloudletsRatio();
 
         // 4. Invalid Action Penalty
         this.rewardInvalidActionComponent = -settings.getRewardInvalidActionCoef() * (wasInvalidAction ? 1.0 : 0.0);
+
+        // 5. Completion Reward (NEW: positive reward for completing tasks)
+        // Use log1p scaling to avoid reward explosion when many tasks complete at once
+        // log1p(0) = 0, log1p(1) ≈ 0.69, log1p(5) ≈ 1.79, log1p(10) ≈ 2.40
+        List<Cloudlet> completedList = broker.getCloudletsFinishedLastStep(simulationCore.getClock());
+        int completedThisStep = completedList.size();
+        this.rewardCompletionComponent = settings.getRewardCompletionCoef() * Math.log1p(completedThisStep);
 
         // Energy tracking (for logging purposes only, not part of reward)
         double currentClock = simulationCore.getClock();
@@ -663,13 +675,15 @@ public class LoadBalancerGateway {
         this.rewardEnergyComponent = 0.0;  // Not used in original reward function
 
         // --- Total Reward ---
-        // Note: No direct positive reward, agent optimizes by *minimizing penalties*.
-        double totalReward = this.rewardWaitTimeComponent +
+        // Now includes positive completion reward to incentivize task completion
+        double totalReward = this.rewardCompletionComponent +  // NEW: positive reward
+                this.rewardWaitTimeComponent +
                 this.rewardUnutilizationComponent +
                 this.rewardQueuePenaltyComponent +
                 this.rewardInvalidActionComponent;
 
-        LOGGER.debug("Reward Calc: Wait={}, UtilBal={}, Queue={}, Invalid={}, Total={}",
+        LOGGER.debug("Reward Calc: Completion={}, Wait={}, UtilBal={}, Queue={}, Invalid={}, Total={}",
+                String.format("%.3f", this.rewardCompletionComponent),
                 String.format("%.3f", this.rewardWaitTimeComponent),
                 String.format("%.3f", this.rewardUnutilizationComponent),
                 String.format("%.3f", this.rewardQueuePenaltyComponent),

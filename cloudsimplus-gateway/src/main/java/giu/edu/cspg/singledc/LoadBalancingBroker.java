@@ -433,6 +433,11 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
         return this.getCloudletFinishedList().size() < inputCloudlets.size();
     }
 
+    /** Checks if there are cloudlets still waiting to be submitted (future arrivals). */
+    public boolean hasCloudletsInSubmissionQueue() {
+        return !cloudletsQueue.isEmpty();
+    }
+
     /** Gets (but does not remove) the next cloudlet waiting in the queue. */
     public Cloudlet peekWaitingCloudlet() {
         return cloudletWaitingQueue.peek();

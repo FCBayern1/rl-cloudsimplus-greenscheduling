@@ -376,11 +376,18 @@ public final class SimulationCore {
 
     /** Checks if the simulation is considered active. */
     public boolean isRunning() {
-        if (simulation == null || !simulation.isRunning()) {
+        if (simulation == null) {
             return false;
         }
-        boolean waiting = broker != null && broker.hasUnfinishedCloudlets();
-        return waiting && simulation.isRunning();
+        // Check if broker has unfinished work:
+        // 1. Cloudlets that haven't finished yet (in execution or waiting)
+        // 2. Cloudlets that haven't arrived yet (in submission queue with future arrival times)
+        boolean hasUnfinished = broker != null && broker.hasUnfinishedCloudlets();
+        boolean hasQueuedCloudlets = broker != null && broker.hasCloudletsInSubmissionQueue();
+
+        // Keep running if there's any work left, even if CloudSim's event queue is empty
+        // (CloudSim might pause when all current cloudlets finish, but more cloudlets are coming)
+        return hasUnfinished || hasQueuedCloudlets;
     }
 
     // This now returns the potentially dynamic list of VMs known to the broker

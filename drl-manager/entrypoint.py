@@ -3,6 +3,7 @@ import sys
 import logging
 import random
 import shutil
+import argparse
 import numpy as np
 import torch
 import importlib
@@ -91,11 +92,20 @@ def setup_logging(log_dir):
 def main():
     logger.info("--- DRL Manager Entrypoint Starting ---")
 
+    # --- Parse Command Line Arguments ---
+    parser = argparse.ArgumentParser(description='DRL Manager Entrypoint')
+    parser.add_argument('--exp', '--experiment', type=str, default=None,
+                        help='Experiment ID to run (e.g., experiment_1, experiment_single_dc_local_csv)')
+    parser.add_argument('--config', type=str, default=None,
+                        help='Path to config file (default: config.yml)')
+    args = parser.parse_args()
+
     # --- Determine Experiment Config ---
-    # Use environment variables set by docker-compose or run script
-    config_file = os.getenv("CONFIG_FILE", DEFAULT_CONFIG_FILE)
-    # Default to experiment_1 if not specified
-    experiment_id = os.getenv("EXPERIMENT_ID", DEFAULT_EXPERIMENT_ID)
+    # Priority: command line args > environment variables > defaults
+    config_file = args.config or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_FILE)
+    experiment_id = args.exp or os.getenv("EXPERIMENT_ID", DEFAULT_EXPERIMENT_ID)
+
+    logger.info(f"Using experiment: {experiment_id}, config: {config_file}")
 
     # --- Load Configuration ---
     params = load_config(config_file=config_file, experiment_id=experiment_id)

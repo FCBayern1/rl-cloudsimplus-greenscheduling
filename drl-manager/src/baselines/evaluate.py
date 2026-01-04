@@ -81,22 +81,32 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
         # Workload metrics
         'total_cloudlets': _safe_get(info, 'total_cloudlets', 0),
         'remaining_cloudlets': _safe_get(info, 'remaining_cloudlets', 0),
-        'routed_cloudlets': _safe_get(info, 'routed_cloudlets', 0),
+        # Java Multi-DC info uses "cloudlets_routed"; keep backward compat with "routed_cloudlets".
+        'routed_cloudlets': _safe_get(info, 'cloudlets_routed', _safe_get(info, 'routed_cloudlets', 0)),
     }
+
+    # Extra debug counters from Java global energy stats (if present)
+    # Note: these can differ from total_cloudlets if the simulator loads a fixed trace list vs dynamically injected list.
+    metrics['total_created_cloudlets'] = _safe_get(gs, 'total_created_cloudlets', 0)
+    metrics['total_finished_cloudlets'] = _safe_get(gs, 'total_finished_cloudlets', 0)
 
     # Derived global metrics
     total_green = metrics['green_used_wh'] + metrics['green_waste_wh']
     metrics['waste_ratio'] = metrics['green_waste_wh'] / total_green if total_green > 0 else 0.0
 
-    completed = metrics['total_cloudlets'] - metrics['remaining_cloudlets']
-    metrics['completed_cloudlets'] = completed
-    metrics['completion_rate'] = (
-        completed / metrics['total_cloudlets'] if metrics['total_cloudlets'] > 0 else 0.0
+    # Routed cloudlets: cloudlets that have been dispatched to DCs (but may not have finished execution)
+    routed = metrics['total_cloudlets'] - metrics['remaining_cloudlets']
+    metrics['routed_cloudlets_count'] = routed
+    metrics['routed_rate'] = (
+        routed / metrics['total_cloudlets'] if metrics['total_cloudlets'] > 0 else 0.0
     )
+    # Keep 'completion_rate' as alias for backward compatibility (same as routed_rate)
+    metrics['completion_rate'] = metrics['routed_rate']
 
     # Per-DC metrics + global mean completion time
     total_finished = 0
     weighted_completion_sum = 0.0
+    total_received = 0
 
     for dc_id in range(num_dcs):
         dc = dc_metrics.get(dc_id, {}) if isinstance(dc_metrics, dict) else {}
@@ -105,18 +115,33 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
 
         mean_ct = _safe_get(dc, 'mean_completion_time', 0.0)
         finished = _safe_get(dc, 'cloudlets_finished', 0)
+        received = _safe_get(dc, 'cloudlets_received', 0)
         green_ratio_dc = _safe_get(dc, 'green_energy_ratio', 0.0)
 
         metrics[f'completion_time_dc_{dc_id}'] = float(mean_ct)
         metrics[f'finished_dc_{dc_id}'] = int(finished)
+        metrics[f'received_dc_{dc_id}'] = int(received)
         metrics[f'green_ratio_dc_{dc_id}'] = float(green_ratio_dc)
 
         total_finished += int(finished)
+        total_received += int(received)
         weighted_completion_sum += float(mean_ct) * int(finished)
 
     # Global mean completion time across all finished cloudlets (weighted by per-DC counts)
     metrics['mean_completion_time'] = (
         weighted_completion_sum / total_finished if total_finished > 0 else 0.0
+    )
+    metrics['total_received_cloudlets'] = int(total_received)
+    metrics['sum_finished_dc'] = int(total_finished)
+
+    # Finished rate: cloudlets that have actually completed execution across all DCs
+    metrics['finished_rate'] = (
+        total_finished / metrics['total_cloudlets'] if metrics['total_cloudlets'] > 0 else 0.0
+    )
+
+    # Carbon per finished cloudlet (kg CO2 per completed task)
+    metrics['carbon_per_finished_cloudlet'] = (
+        metrics['total_carbon_kg'] / total_finished if total_finished > 0 else 0.0
     )
 
     return metrics
@@ -245,7 +270,8 @@ def run_evaluation(
         if verbose:
             print(f"Episode {ep+1}/{num_episodes}: "
                   f"Steps={steps}, "
-                  f"Completion={metrics['completion_rate']:.2%}, "
+                  f"Routed={metrics['routed_rate']:.2%}, "
+                  f"Finished={metrics['finished_rate']:.2%}, "
                   f"GreenRatio={metrics['green_ratio']:.2%}, "
                   f"WasteRatio={metrics['waste_ratio']:.2%}, "
                   f"Carbon={metrics['total_carbon_kg']:.4f}kg")
@@ -313,25 +339,33 @@ def _print_summary(
     print(f"{'='*60}")
 
     # Aggregate metrics
-    avg_completion = np.mean([r['completion_rate'] for r in results])
+    avg_routed_rate = np.mean([r['routed_rate'] for r in results])
+    avg_finished_rate = np.mean([r['finished_rate'] for r in results])
     avg_green_ratio = np.mean([r['green_ratio'] for r in results])
     avg_waste_ratio = np.mean([r['waste_ratio'] for r in results])
     avg_carbon = np.mean([r['total_carbon_kg'] for r in results])
+    avg_carbon_per_cloudlet = np.mean([r['carbon_per_finished_cloudlet'] for r in results])
     avg_steps = np.mean([r['episode_length'] for r in results])
     total_energy = np.mean([r['total_energy_wh'] for r in results])
 
     print(f"Avg Episode Length: {avg_steps:.1f} steps")
-    print(f"Avg Completion Rate: {avg_completion:.2%}")
+    print(f"Avg Routed Rate: {avg_routed_rate:.2%}  (cloudlets dispatched to DCs)")
+    print(f"Avg Finished Rate: {avg_finished_rate:.2%}  (cloudlets actually completed)")
     print(f"Avg Green Ratio: {avg_green_ratio:.2%}")
     print(f"Avg Waste Ratio: {avg_waste_ratio:.2%}")
     print(f"Avg Carbon Emission: {avg_carbon:.4f} kg")
+    print(f"Avg Carbon/Cloudlet: {avg_carbon_per_cloudlet*1000:.4f} g/task")
     print(f"Avg Total Energy: {total_energy:.2f} Wh")
 
     # Per-DC completion summary
     print(f"\nPer-DC Cloudlets Finished:")
     for dc_id in range(num_dcs):
         avg_finished = np.mean([r.get(f'finished_dc_{dc_id}', 0) for r in results])
-        print(f"  DC {dc_id}: {avg_finished:.0f}")
+        if any(f"received_dc_{dc_id}" in r for r in results):
+            avg_received = np.mean([r.get(f"received_dc_{dc_id}", 0) for r in results])
+            print(f"  DC {dc_id}: finished={avg_finished:.0f}, received={avg_received:.0f}")
+        else:
+            print(f"  DC {dc_id}: {avg_finished:.0f}")
 
     print(f"{'='*60}\n")
 
@@ -423,20 +457,21 @@ def compare_baselines(
 
 def _print_comparison_table(all_results: Dict[str, List[Dict[str, Any]]]):
     """Print comparison table for all combinations."""
-    print(f"\n{'='*80}")
+    print(f"\n{'='*100}")
     print("COMPARISON TABLE")
-    print(f"{'='*80}")
-    print(f"{'Combination':<30} {'Completion':>12} {'Green Ratio':>12} {'Carbon (kg)':>12}")
-    print(f"{'-'*80}")
+    print(f"{'='*100}")
+    print(f"{'Combination':<30} {'Routed':>10} {'Finished':>10} {'Green Ratio':>12} {'Carbon (kg)':>12}")
+    print(f"{'-'*100}")
 
     for combo_name, results in all_results.items():
-        avg_completion = np.mean([r['completion_rate'] for r in results])
+        avg_routed = np.mean([r['routed_rate'] for r in results])
+        avg_finished = np.mean([r['finished_rate'] for r in results])
         avg_green = np.mean([r['green_ratio'] for r in results])
         avg_carbon = np.mean([r['total_carbon_kg'] for r in results])
 
-        print(f"{combo_name:<30} {avg_completion:>11.2%} {avg_green:>11.2%} {avg_carbon:>12.4f}")
+        print(f"{combo_name:<30} {avg_routed:>9.2%} {avg_finished:>9.2%} {avg_green:>11.2%} {avg_carbon:>12.4f}")
 
-    print(f"{'='*80}\n")
+    print(f"{'='*100}\n")
 
 
 def run_rllib_evaluation(
@@ -475,6 +510,12 @@ def run_rllib_evaluation(
         print("RLlib Model Evaluation (Global + Local RL)")
         print(f"{'='*60}")
         print(f"Checkpoint: {checkpoint_path}")
+        # Print workload config (what trace file this evaluation will use)
+        wl_mode = config.get("workload_mode", "UNKNOWN")
+        wl_file = config.get("cloudlet_trace_file", "UNKNOWN")
+        wl_max = config.get("max_cloudlets_to_create_from_workload_file", None)
+        ep_len = config.get("max_episode_length", None)
+        print(f"Workload: mode={wl_mode}, trace={wl_file}, max_cloudlets={wl_max}, max_episode_length={ep_len}")
         print("Loading model...")
 
     # 1. 加载 RLlib 模型
@@ -563,9 +604,17 @@ def run_rllib_evaluation(
         all_results.append(metrics)
 
         if verbose:
+            # Print cloudlet counts for this episode (debugging workload mismatch)
+            print(
+                f"[Cloudlets] total={metrics.get('total_cloudlets')}, "
+                f"created={metrics.get('total_created_cloudlets')}, "
+                f"received(sum)={metrics.get('total_received_cloudlets')}, "
+                f"finished(sum)={metrics.get('sum_finished_dc')}"
+            )
             print(f"Episode {ep+1}/{num_episodes}: "
                   f"Steps={steps}, "
-                  f"Completion={metrics['completion_rate']:.2%}, "
+                  f"Routed={metrics['routed_rate']:.2%}, "
+                  f"Finished={metrics['finished_rate']:.2%}, "
                   f"GreenRatio={metrics['green_ratio']:.2%}, "
                   f"Carbon={metrics['total_carbon_kg']:.4f}kg")
 

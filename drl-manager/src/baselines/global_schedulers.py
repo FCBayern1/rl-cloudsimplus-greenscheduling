@@ -240,21 +240,26 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
     Notes:
     - Designed to be lightweight (small pop/iters) for per-step online scheduling.
     - Uses only signals present in baseline evaluate converter; extra keys are optional.
+    - IMPROVED: Uses dc_current_green_power_w as fallback when green_ratio is unavailable.
+    - IMPROVED: Better capacity-aware load balancing across DCs.
     """
 
     def __init__(
         self,
         num_datacenters: int,
         batch_size: int,
-        population_size: int = 20,
-        generations: int = 10,
-        mutation_rate: float = 0.08,
+        population_size: int = 30,
+        generations: int = 15,
+        mutation_rate: float = 0.10,
         tournament_k: int = 3,
         w_queue: float = 1.0,
-        w_imbalance: float = 0.5,
+        w_imbalance: float = 0.8,
+        w_util: float = 0.2,
         w_brown: float = 0.3,
-        w_green: float = 0.3,
-        w_capacity: float = 2.0,
+        w_green: float = 0.5,
+        w_green_power: float = 0.4,
+        w_capacity: float = 1.5,
+        w_capacity_balance: float = 0.6,
         rng_seed: Optional[int] = None,
     ):
         super().__init__(num_datacenters, batch_size)
@@ -264,9 +269,12 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
         self.tournament_k = max(2, int(tournament_k))
         self.w_queue = float(w_queue)
         self.w_imbalance = float(w_imbalance)
+        self.w_util = float(w_util)
         self.w_brown = float(w_brown)
         self.w_green = float(w_green)
+        self.w_green_power = float(w_green_power)
         self.w_capacity = float(w_capacity)
+        self.w_capacity_balance = float(w_capacity_balance)
         self.rng = np.random.default_rng(rng_seed)
 
     def _fitness(
@@ -274,7 +282,9 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
         assignment: np.ndarray,
         queue: np.ndarray,
         green_ratio: np.ndarray,
+        green_power: np.ndarray,
         brown_power: np.ndarray,
+        utilizations: np.ndarray,
         avail_pes: np.ndarray,
         batch_pes: np.ndarray,
     ) -> float:
@@ -287,22 +297,51 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
         # Prefer higher green_ratio on chosen DCs
         green_term = float(np.mean(green_ratio[assignment])) if green_ratio.size else 0.0
 
-        brown_term = float(np.mean(brown_power[assignment])) if brown_power.size else 0.0
+        # NEW: Prefer higher green_power (current green energy availability) on chosen DCs
+        green_power_term = float(np.mean(green_power[assignment])) if green_power.size else 0.0
+        # Normalize green_power_term to [0, 1] range for consistent weighting
+        if green_power.max() > 0:
+            green_power_term = green_power_term / green_power.max()
 
-        # Capacity penalty: if available_pes is low compared to demand, penalize.
-        # (Soft proxy; local scheduler can still queue/noassign.)
+        brown_term = float(np.mean(brown_power[assignment])) if brown_power.size else 0.0
+        # Normalize brown_term
+        if brown_power.max() > 0:
+            brown_term = brown_term / brown_power.max()
+
+        # Utilization penalty (soft): avoid sending more to already-busy DCs.
+        util_pen = float(np.mean(utilizations[assignment])) if utilizations.size else 0.0
+
+        # Capacity penalty (DC-aggregated): penalize concentrating demand onto DCs
+        # whose available PEs are insufficient.
         cap_pen = 0.0
         if avail_pes.size and batch_pes.size:
             demands = batch_pes[: assignment.size].astype(np.float32)
-            shortfall = np.maximum(0.0, demands - avail_pes[assignment].astype(np.float32))
-            cap_pen = float(np.mean(shortfall))
+            demand_sum = np.zeros(n, dtype=np.float32)
+            # accumulate demand per DC
+            np.add.at(demand_sum, assignment, demands)
+            shortfall_dc = np.maximum(0.0, demand_sum - avail_pes.astype(np.float32))
+            # normalize by batch size to keep scale stable across batch sizes
+            cap_pen = float(np.sum(shortfall_dc) / max(1, assignment.size))
+
+        # NEW: Capacity balance penalty - prefer distributing load proportional to DC capacity
+        cap_balance_pen = 0.0
+        if avail_pes.size and avail_pes.sum() > 0:
+            # Ideal distribution: proportional to available PEs
+            total_avail = avail_pes.sum()
+            ideal_ratio = avail_pes / total_avail
+            actual_ratio = add / max(1, add.sum())
+            # Penalize deviation from ideal distribution
+            cap_balance_pen = float(np.sum(np.abs(actual_ratio - ideal_ratio)))
 
         return (
             self.w_queue * queue_pressure
             + self.w_imbalance * imbalance
+            + self.w_util * util_pen
             + self.w_brown * brown_term
             - self.w_green * green_term
+            - self.w_green_power * green_power_term
             + self.w_capacity * cap_pen
+            + self.w_capacity_balance * cap_balance_pen
         )
 
     def _tournament(self, fitnesses: np.ndarray) -> int:
@@ -315,12 +354,15 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
         b = self.batch_size
 
         queue = _as_np_1d(global_obs.get("dc_queue_sizes"), n, fill=0.0, dtype=np.float32)
-        green_ratio = _as_np_1d(global_obs.get("dc_green_ratio"), n, fill=0.5, dtype=np.float32)
-        avail_pes = _as_np_1d(global_obs.get("dc_available_pes"), n, fill=0.0, dtype=np.float32)
+        green_ratio = _as_np_1d(global_obs.get("dc_green_ratio"), n, fill=0.0, dtype=np.float32)
+        utilizations = _as_np_1d(global_obs.get("dc_utilizations"), n, fill=0.0, dtype=np.float32)
+        avail_pes = _as_np_1d(global_obs.get("dc_available_pes"), n, fill=1.0, dtype=np.float32)
         batch_pes = np.ravel(np.array(global_obs.get("batch_cloudlet_pes", []), dtype=np.float32))
         if batch_pes.size < b:
-            # if missing, treat all as 1 PE so capacity penalty becomes mild
             batch_pes = np.ones(b, dtype=np.float32)
+
+        # Get current green power (available green energy at each DC)
+        green_power = _as_np_1d(global_obs.get("dc_current_green_power_w"), n, fill=0.0, dtype=np.float32)
 
         current_power = _as_np_1d(global_obs.get("dc_current_power_w"), n, fill=np.nan, dtype=np.float32)
         if np.isfinite(current_power).any():
@@ -333,6 +375,7 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
 
         # --- init population (mix of heuristics + random) ---
         pop = np.empty((self.population_size, b), dtype=np.int32)
+        seed_idx = 0
 
         # Seed 0: greedy min-queue (with simulated increments)
         tmp_q = queue.copy()
@@ -341,27 +384,79 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
             dc = int(np.argmin(tmp_q))
             seed0[i] = dc
             tmp_q[dc] += 1.0
-        pop[0] = seed0
+        pop[seed_idx] = seed0
+        seed_idx += 1
 
-        # Seed 1: greedy weighted score (green vs queue)
-        tmp_q = queue.copy()
-        seed1 = np.empty(b, dtype=np.int32)
-        g_norm = _normalize_01(green_ratio)
-        for i in range(b):
-            q_norm = _normalize_01(tmp_q)
-            score = 0.6 * g_norm + 0.4 * (1.0 - q_norm)
-            dc = int(np.argmax(score))
-            seed1[i] = dc
-            tmp_q[dc] += 1.0
-        if self.population_size > 1:
-            pop[1] = seed1
+        # Seed 1: greedy weighted score (green_ratio vs queue)
+        if seed_idx < self.population_size:
+            tmp_q = queue.copy()
+            seed1 = np.empty(b, dtype=np.int32)
+            g_norm = _normalize_01(green_ratio)
+            for i in range(b):
+                q_norm = _normalize_01(tmp_q)
+                score = 0.6 * g_norm + 0.4 * (1.0 - q_norm)
+                dc = int(np.argmax(score))
+                seed1[i] = dc
+                tmp_q[dc] += 1.0
+            pop[seed_idx] = seed1
+            seed_idx += 1
+
+        # Seed 2: NEW - greedy green_power (prefer DCs with high current green power)
+        if seed_idx < self.population_size:
+            tmp_q = queue.copy()
+            seed2 = np.empty(b, dtype=np.int32)
+            gp_norm = _normalize_01(green_power)
+            for i in range(b):
+                q_norm = _normalize_01(tmp_q)
+                # Combine green power preference with queue avoidance
+                score = 0.5 * gp_norm + 0.3 * (1.0 - q_norm) + 0.2 * _normalize_01(avail_pes)
+                dc = int(np.argmax(score))
+                seed2[i] = dc
+                tmp_q[dc] += 1.0
+            pop[seed_idx] = seed2
+            seed_idx += 1
+
+        # Seed 3: NEW - capacity-proportional distribution (load balance by DC capacity)
+        if seed_idx < self.population_size:
+            seed3 = np.empty(b, dtype=np.int32)
+            total_avail = avail_pes.sum()
+            if total_avail > 0:
+                # Distribute cloudlets proportionally to available PEs
+                probs = avail_pes / total_avail
+                seed3 = self.rng.choice(n, size=b, p=probs).astype(np.int32)
+            else:
+                seed3 = self.rng.integers(0, n, size=b, dtype=np.int32)
+            pop[seed_idx] = seed3
+            seed_idx += 1
+
+        # Seed 4: NEW - round-robin across all DCs (ensures all DCs get some load)
+        if seed_idx < self.population_size:
+            seed4 = np.array([i % n for i in range(b)], dtype=np.int32)
+            pop[seed_idx] = seed4
+            seed_idx += 1
+
+        # Seed 5: NEW - combined green_power + capacity score
+        if seed_idx < self.population_size:
+            tmp_q = queue.copy()
+            seed5 = np.empty(b, dtype=np.int32)
+            gp_norm = _normalize_01(green_power)
+            cap_norm = _normalize_01(avail_pes)
+            for i in range(b):
+                q_norm = _normalize_01(tmp_q)
+                # Heavy emphasis on green power and capacity
+                score = 0.4 * gp_norm + 0.4 * cap_norm + 0.2 * (1.0 - q_norm)
+                dc = int(np.argmax(score))
+                seed5[i] = dc
+                tmp_q[dc] += 1.0
+            pop[seed_idx] = seed5
+            seed_idx += 1
 
         # Remaining: random
-        for i in range(2, self.population_size):
+        for i in range(seed_idx, self.population_size):
             pop[i] = self.rng.integers(0, n, size=b, dtype=np.int32)
 
         fitnesses = np.array(
-            [self._fitness(ind, queue, green_ratio, brown_power, avail_pes, batch_pes) for ind in pop],
+            [self._fitness(ind, queue, green_ratio, green_power, brown_power, utilizations, avail_pes, batch_pes) for ind in pop],
             dtype=np.float32,
         )
 
@@ -389,7 +484,7 @@ class GeneticAlgorithmGlobalScheduler(GlobalScheduler):
 
             pop = new_pop
             fitnesses = np.array(
-                [self._fitness(ind, queue, green_ratio, brown_power, avail_pes, batch_pes) for ind in pop],
+                [self._fitness(ind, queue, green_ratio, green_power, brown_power, utilizations, avail_pes, batch_pes) for ind in pop],
                 dtype=np.float32,
             )
 
@@ -403,22 +498,28 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
 
     Particle position: real-valued vector (len=batch_size) mapped to DC ids by rounding+clamp.
     Objective: same as GA (queue pressure + imbalance + brown power - green + capacity penalty).
+
+    IMPROVED: Uses dc_current_green_power_w as fallback when green_ratio is unavailable.
+    IMPROVED: Better capacity-aware load balancing across DCs.
     """
 
     def __init__(
         self,
         num_datacenters: int,
         batch_size: int,
-        swarm_size: int = 18,
-        iterations: int = 12,
+        swarm_size: int = 25,
+        iterations: int = 15,
         inertia: float = 0.6,
-        c1: float = 1.4,
-        c2: float = 1.4,
+        c1: float = 1.5,
+        c2: float = 1.5,
         w_queue: float = 1.0,
-        w_imbalance: float = 0.5,
+        w_imbalance: float = 0.8,
+        w_util: float = 0.2,
         w_brown: float = 0.3,
-        w_green: float = 0.3,
-        w_capacity: float = 2.0,
+        w_green: float = 0.5,
+        w_green_power: float = 0.4,
+        w_capacity: float = 1.5,
+        w_capacity_balance: float = 0.6,
         rng_seed: Optional[int] = None,
     ):
         super().__init__(num_datacenters, batch_size)
@@ -429,9 +530,12 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
         self.c2 = float(c2)
         self.w_queue = float(w_queue)
         self.w_imbalance = float(w_imbalance)
+        self.w_util = float(w_util)
         self.w_brown = float(w_brown)
         self.w_green = float(w_green)
+        self.w_green_power = float(w_green_power)
         self.w_capacity = float(w_capacity)
+        self.w_capacity_balance = float(w_capacity_balance)
         self.rng = np.random.default_rng(rng_seed)
 
     def _fitness(
@@ -439,29 +543,56 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
         assignment: np.ndarray,
         queue: np.ndarray,
         green_ratio: np.ndarray,
+        green_power: np.ndarray,
         brown_power: np.ndarray,
+        utilizations: np.ndarray,
         avail_pes: np.ndarray,
         batch_pes: np.ndarray,
     ) -> float:
-        # Reuse GA fitness structure
         n = self.num_datacenters
         add = _bincount_assignments(assignment, n).astype(np.float32)
         q_pred = queue.astype(np.float32) + add
         queue_pressure = float(np.mean(q_pred))
         imbalance = float(np.std(q_pred))
+
         green_term = float(np.mean(green_ratio[assignment])) if green_ratio.size else 0.0
+
+        # NEW: Prefer higher green_power (current green energy availability)
+        green_power_term = float(np.mean(green_power[assignment])) if green_power.size else 0.0
+        if green_power.max() > 0:
+            green_power_term = green_power_term / green_power.max()
+
         brown_term = float(np.mean(brown_power[assignment])) if brown_power.size else 0.0
+        if brown_power.max() > 0:
+            brown_term = brown_term / brown_power.max()
+
+        util_pen = float(np.mean(utilizations[assignment])) if utilizations.size else 0.0
+
         cap_pen = 0.0
         if avail_pes.size and batch_pes.size:
             demands = batch_pes[: assignment.size].astype(np.float32)
-            shortfall = np.maximum(0.0, demands - avail_pes[assignment].astype(np.float32))
-            cap_pen = float(np.mean(shortfall))
+            demand_sum = np.zeros(n, dtype=np.float32)
+            np.add.at(demand_sum, assignment, demands)
+            shortfall_dc = np.maximum(0.0, demand_sum - avail_pes.astype(np.float32))
+            cap_pen = float(np.sum(shortfall_dc) / max(1, assignment.size))
+
+        # NEW: Capacity balance penalty
+        cap_balance_pen = 0.0
+        if avail_pes.size and avail_pes.sum() > 0:
+            total_avail = avail_pes.sum()
+            ideal_ratio = avail_pes / total_avail
+            actual_ratio = add / max(1, add.sum())
+            cap_balance_pen = float(np.sum(np.abs(actual_ratio - ideal_ratio)))
+
         return (
             self.w_queue * queue_pressure
             + self.w_imbalance * imbalance
+            + self.w_util * util_pen
             + self.w_brown * brown_term
             - self.w_green * green_term
+            - self.w_green_power * green_power_term
             + self.w_capacity * cap_pen
+            + self.w_capacity_balance * cap_balance_pen
         )
 
     def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
@@ -469,11 +600,15 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
         b = self.batch_size
 
         queue = _as_np_1d(global_obs.get("dc_queue_sizes"), n, fill=0.0, dtype=np.float32)
-        green_ratio = _as_np_1d(global_obs.get("dc_green_ratio"), n, fill=0.5, dtype=np.float32)
-        avail_pes = _as_np_1d(global_obs.get("dc_available_pes"), n, fill=0.0, dtype=np.float32)
+        green_ratio = _as_np_1d(global_obs.get("dc_green_ratio"), n, fill=0.0, dtype=np.float32)
+        utilizations = _as_np_1d(global_obs.get("dc_utilizations"), n, fill=0.0, dtype=np.float32)
+        avail_pes = _as_np_1d(global_obs.get("dc_available_pes"), n, fill=1.0, dtype=np.float32)
         batch_pes = np.ravel(np.array(global_obs.get("batch_cloudlet_pes", []), dtype=np.float32))
         if batch_pes.size < b:
             batch_pes = np.ones(b, dtype=np.float32)
+
+        # Get current green power
+        green_power = _as_np_1d(global_obs.get("dc_current_green_power_w"), n, fill=0.0, dtype=np.float32)
 
         current_power = _as_np_1d(global_obs.get("dc_current_power_w"), n, fill=np.nan, dtype=np.float32)
         if np.isfinite(current_power).any():
@@ -484,19 +619,61 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
         else:
             brown_power = np.zeros(n, dtype=np.float32)
 
-        # init swarm near heuristic solutions + random
-        # positions in [0, n-1]
+        # init swarm with diverse seed particles
         pos = self.rng.random((self.swarm_size, b), dtype=np.float32) * float(max(n - 1, 1))
         vel = (self.rng.random((self.swarm_size, b), dtype=np.float32) - 0.5) * 0.5
+        seed_idx = 0
 
-        # seed particle 0 with greedy min-queue
-        tmp_q = queue.copy()
-        seed = np.empty(b, dtype=np.float32)
-        for i in range(b):
-            dc = int(np.argmin(tmp_q))
-            seed[i] = float(dc)
-            tmp_q[dc] += 1.0
-        pos[0] = seed
+        # Seed 0: greedy min-queue
+        if seed_idx < self.swarm_size:
+            tmp_q = queue.copy()
+            seed0 = np.empty(b, dtype=np.float32)
+            for i in range(b):
+                dc = int(np.argmin(tmp_q))
+                seed0[i] = float(dc)
+                tmp_q[dc] += 1.0
+            pos[seed_idx] = seed0
+            seed_idx += 1
+
+        # Seed 1: greedy green_power + capacity
+        if seed_idx < self.swarm_size:
+            tmp_q = queue.copy()
+            seed1 = np.empty(b, dtype=np.float32)
+            gp_norm = _normalize_01(green_power)
+            cap_norm = _normalize_01(avail_pes)
+            for i in range(b):
+                q_norm = _normalize_01(tmp_q)
+                score = 0.4 * gp_norm + 0.4 * cap_norm + 0.2 * (1.0 - q_norm)
+                dc = int(np.argmax(score))
+                seed1[i] = float(dc)
+                tmp_q[dc] += 1.0
+            pos[seed_idx] = seed1
+            seed_idx += 1
+
+        # Seed 2: capacity-proportional distribution
+        if seed_idx < self.swarm_size:
+            total_avail = avail_pes.sum()
+            if total_avail > 0:
+                probs = avail_pes / total_avail
+                seed2 = self.rng.choice(n, size=b, p=probs).astype(np.float32)
+            else:
+                seed2 = self.rng.random(b, dtype=np.float32) * float(max(n - 1, 1))
+            pos[seed_idx] = seed2
+            seed_idx += 1
+
+        # Seed 3: greedy green_power only
+        if seed_idx < self.swarm_size:
+            tmp_q = queue.copy()
+            seed3 = np.empty(b, dtype=np.float32)
+            gp_norm = _normalize_01(green_power)
+            for i in range(b):
+                q_norm = _normalize_01(tmp_q)
+                score = 0.7 * gp_norm + 0.3 * (1.0 - q_norm)
+                dc = int(np.argmax(score))
+                seed3[i] = float(dc)
+                tmp_q[dc] += 1.0
+            pos[seed_idx] = seed3
+            seed_idx += 1
 
         def to_assign(p: np.ndarray) -> np.ndarray:
             a = np.rint(p).astype(np.int32)
@@ -504,7 +681,7 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
 
         pbest_pos = pos.copy()
         pbest_fit = np.array(
-            [self._fitness(to_assign(p), queue, green_ratio, brown_power, avail_pes, batch_pes) for p in pos],
+            [self._fitness(to_assign(p), queue, green_ratio, green_power, brown_power, utilizations, avail_pes, batch_pes) for p in pos],
             dtype=np.float32,
         )
         gbest_idx = int(np.argmin(pbest_fit))
@@ -523,7 +700,7 @@ class ParticleSwarmGlobalScheduler(GlobalScheduler):
             pos = np.clip(pos, 0.0, float(max(n - 1, 1)))
 
             fits = np.array(
-                [self._fitness(to_assign(p), queue, green_ratio, brown_power, avail_pes, batch_pes) for p in pos],
+                [self._fitness(to_assign(p), queue, green_ratio, green_power, brown_power, utilizations, avail_pes, batch_pes) for p in pos],
                 dtype=np.float32,
             )
             improved = fits < pbest_fit
