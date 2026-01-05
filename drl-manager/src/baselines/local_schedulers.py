@@ -574,6 +574,184 @@ def create_rllib_schedulers(algo, env, num_dcs: int, batch_size: int, num_vms: i
     return global_scheduler, local_schedulers
 
 
+class RLlibNewAPILocalScheduler(LocalScheduler):
+    """
+    RLlib-based Local Scheduler for New API Stack (RLModule).
+
+    Uses RLModule directly for inference instead of compute_single_action.
+    This is required for models trained with enable_rl_module_and_learner=True.
+    """
+
+    def __init__(self, num_vms: int, algo, dc_id: int, env=None, policy_id: Optional[str] = None,
+                 use_parameter_sharing: bool = False, num_datacenters: int = 10,
+                 max_hosts: int = 16, max_vms: int = 224):
+        """
+        Args:
+            num_vms: Max number of VMs across all datacenters
+            algo: RLlib Algorithm instance (New API Stack)
+            dc_id: Datacenter ID
+            env: HierarchicalMultiDCEnv instance
+            policy_id: Policy ID to use
+            use_parameter_sharing: Whether using shared_local_policy
+            num_datacenters: Number of datacenters
+            max_hosts: Max hosts per DC
+            max_vms: Max VMs per DC
+        """
+        super().__init__(num_vms)
+        self.algo = algo
+        self.dc_id = dc_id
+        self.env = env
+        self.use_parameter_sharing = use_parameter_sharing
+        self.num_datacenters = num_datacenters
+        self.max_hosts = max_hosts
+        self.max_vms = max_vms
+        self.policy_id = policy_id or "shared_local_policy"
+
+        # Get the RLModule
+        self._rl_module = self._get_rl_module()
+
+    def _get_rl_module(self):
+        """Get the RLModule for inference."""
+        try:
+            env_runner = getattr(self.algo, 'env_runner', None)
+            if env_runner is not None:
+                module = getattr(env_runner, 'module', None)
+                if module is not None:
+                    return module
+        except Exception as e:
+            print(f"Warning: Could not get RLModule: {e}")
+        return None
+
+    def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
+        """
+        Use RLModule to select VM.
+        """
+        import torch
+
+        if self._rl_module is None:
+            raise RuntimeError("RLModule not available. Make sure algorithm uses New API Stack.")
+
+        # Build observation with action mask (parameter sharing mode)
+        dc_vm_count = self.env._get_dc_vm_count(self.dc_id) if self.env else self.max_vms
+
+        # Build valid_vm_mask (1 for real VMs, 0 for padding)
+        valid_vm_mask = np.zeros(self.max_vms, dtype=np.float32)
+        valid_vm_mask[:dc_vm_count] = 1.0
+
+        # DC ID one-hot
+        dc_id_onehot = np.zeros(self.num_datacenters, dtype=np.float32)
+        dc_id_onehot[self.dc_id] = 1.0
+
+        unified_obs = {
+            "host_loads": local_obs["host_loads"],
+            "host_ram_usage": local_obs["host_ram_usage"],
+            "vm_loads": local_obs["vm_loads"],
+            "vm_types": local_obs["vm_types"],
+            "vm_available_pes": local_obs["vm_available_pes"],
+            "waiting_cloudlets": local_obs["waiting_cloudlets"],
+            "next_cloudlet_pes": local_obs["next_cloudlet_pes"],
+            "dc_id_onehot": dc_id_onehot,
+            "valid_vm_mask": valid_vm_mask,
+        }
+
+        # Full action mask
+        full_mask = action_mask.astype(np.float32)
+
+        obs_with_mask = {
+            "observation": unified_obs,
+            "action_mask": full_mask,
+        }
+
+        # Get the local policy module
+        module = self._rl_module
+        if hasattr(module, '__getitem__'):
+            module = module[self.policy_id]
+
+        # Prepare batch input
+        batch = self._obs_to_batch(obs_with_mask)
+
+        # Forward pass
+        with torch.no_grad():
+            output = module.forward_inference(batch)
+
+        # Extract action
+        if "actions" in output:
+            action = output["actions"]
+        elif "action_dist_inputs" in output:
+            # Apply action mask and argmax
+            dist_inputs = output["action_dist_inputs"]
+            # Mask invalid actions with large negative value
+            mask_tensor = torch.from_numpy(full_mask).unsqueeze(0)
+            masked_logits = dist_inputs.clone()
+            masked_logits[mask_tensor == 0] = float('-inf')
+            action = torch.argmax(masked_logits, dim=-1)
+        else:
+            raise ValueError(f"Unknown output format: {output.keys()}")
+
+        if isinstance(action, torch.Tensor):
+            action = action.cpu().numpy()
+
+        return int(action.flatten()[0])
+
+    def _obs_to_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert observation dict to batched tensor format for RLModule."""
+        import torch
+
+        def to_tensor(v):
+            if isinstance(v, dict):
+                return {k: to_tensor(vv) for k, vv in v.items()}
+            elif isinstance(v, (list, np.ndarray)):
+                arr = np.array(v)
+                if arr.ndim == 0:
+                    arr = arr.reshape(1)
+                arr = arr[np.newaxis, ...]  # Add batch dim
+                if arr.dtype in (np.float64, np.float32):
+                    return torch.from_numpy(arr.astype(np.float32))
+                elif arr.dtype in (np.int64, np.int32):
+                    return torch.from_numpy(arr.astype(np.int64))
+                else:
+                    return torch.from_numpy(arr)
+            elif isinstance(v, (int, float)):
+                return torch.tensor([[v]])
+            else:
+                return v
+
+        return {"obs": to_tensor(obs)}
+
+
+def create_rllib_new_api_schedulers(algo, env, num_dcs: int, batch_size: int, num_vms: int,
+                                     max_hosts: int = 16):
+    """
+    Create RLlib-based Global and Local schedulers for New API Stack.
+
+    Args:
+        algo: loaded RLlib Algorithm instance (New API Stack)
+        env: HierarchicalMultiDCEnv instance
+        num_dcs: number of datacenters
+        batch_size: Global routing batch size
+        num_vms: maximum number of VMs per DC
+        max_hosts: maximum number of hosts per DC
+
+    Returns:
+        (global_scheduler, local_schedulers_dict)
+    """
+    from .global_schedulers import RLlibNewAPIGlobalScheduler
+
+    global_scheduler = RLlibNewAPIGlobalScheduler(num_dcs, batch_size, algo)
+
+    local_schedulers = {}
+    for dc_id in range(num_dcs):
+        local_schedulers[dc_id] = RLlibNewAPILocalScheduler(
+            num_vms, algo, dc_id, env=env, policy_id="shared_local_policy",
+            use_parameter_sharing=True,
+            num_datacenters=num_dcs,
+            max_hosts=max_hosts,
+            max_vms=num_vms,
+        )
+
+    return global_scheduler, local_schedulers
+
+
 # === Register Local Schedulers ===
 LOCAL_SCHEDULERS = {
     'random': RandomLocalScheduler,
@@ -585,5 +763,6 @@ LOCAL_SCHEDULERS = {
     'packing_aware': PackingAwareLocalScheduler,
     'ga': GeneticAlgorithmLocalScheduler,
     'pso': ParticleSwarmLocalScheduler,
-    # Note: 'rllib' requires special handling via create_rllib_local_schedulers()
+    # Note: 'rllib' requires special handling via create_rllib_schedulers()
+    # Note: 'rllib_new_api' requires special handling via create_rllib_new_api_schedulers()
 }

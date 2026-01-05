@@ -802,6 +802,121 @@ def load_rllib_algorithm(checkpoint_path: str):
     return algo
 
 
+class RLlibNewAPIGlobalScheduler(GlobalScheduler):
+    """
+    RLlib-based Global Scheduler for New API Stack (RLModule).
+
+    Uses RLModule directly for inference instead of compute_single_action.
+    This is required for models trained with enable_rl_module_and_learner=True.
+    """
+
+    def __init__(self, num_datacenters: int, batch_size: int, algo):
+        """
+        Args:
+            num_datacenters: number of datacenters
+            batch_size: number of cloudlets per step
+            algo: loaded RLlib Algorithm instance (New API Stack)
+        """
+        super().__init__(num_datacenters, batch_size)
+        self.algo = algo
+        self.policy_id = "global_policy"
+
+        # Get the RLModule from the algorithm
+        self._rl_module = self._get_rl_module()
+
+    def _get_rl_module(self):
+        """Get the RLModule for inference."""
+        try:
+            env_runner = getattr(self.algo, 'env_runner', None)
+            if env_runner is not None:
+                module = getattr(env_runner, 'module', None)
+                if module is not None:
+                    return module
+        except Exception as e:
+            print(f"Warning: Could not get RLModule: {e}")
+        return None
+
+    def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
+        """
+        Use RLModule to select target DC for cloudlets in batch.
+        """
+        import torch
+
+        if self._rl_module is None:
+            raise RuntimeError("RLModule not available. Make sure algorithm uses New API Stack.")
+
+        # Wrap observation to match training-time PettingZoo format
+        wrapped_obs = {"observation": global_obs}
+
+        # Get the global policy module
+        module = self._rl_module
+        if hasattr(module, '__getitem__'):
+            module = module[self.policy_id]
+
+        # Prepare batch input
+        batch = self._obs_to_batch(wrapped_obs)
+
+        # Forward pass
+        with torch.no_grad():
+            output = module.forward_inference(batch)
+
+        # Extract action
+        if "actions" in output:
+            actions = output["actions"]
+        elif "action_dist_inputs" in output:
+            # For MultiDiscrete, action_dist_inputs shape: (batch, sum of nvec)
+            # Need to sample or argmax for each sub-action
+            dist_inputs = output["action_dist_inputs"]
+            actions = self._sample_multidiscrete(dist_inputs)
+        else:
+            raise ValueError(f"Unknown output format: {output.keys()}")
+
+        if isinstance(actions, torch.Tensor):
+            actions = actions.cpu().numpy()
+
+        actions = actions.flatten()
+        return actions.tolist()
+
+    def _sample_multidiscrete(self, dist_inputs) -> np.ndarray:
+        """Sample from MultiDiscrete distribution inputs."""
+        import torch
+
+        # dist_inputs shape: (batch, num_dcs * num_dcs) for 10x10 MultiDiscrete
+        # Each sub-action has num_dcs logits
+        batch_size = dist_inputs.shape[0]
+        logits = dist_inputs.reshape(batch_size, self.batch_size, self.num_datacenters)
+
+        # Greedy: take argmax for each sub-action
+        actions = torch.argmax(logits, dim=-1)  # (batch, batch_size)
+        return actions
+
+    def _obs_to_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert observation dict to batched tensor format for RLModule."""
+        import torch
+
+        def to_tensor(v):
+            if isinstance(v, dict):
+                return {k: to_tensor(vv) for k, vv in v.items()}
+            elif isinstance(v, (list, np.ndarray)):
+                arr = np.array(v)
+                if arr.ndim == 0:
+                    arr = arr.reshape(1)
+                arr = arr[np.newaxis, ...]  # Add batch dim
+                # Convert dtype
+                if arr.dtype in (np.float64, np.float32):
+                    return torch.from_numpy(arr.astype(np.float32))
+                elif arr.dtype in (np.int64, np.int32):
+                    return torch.from_numpy(arr.astype(np.int64))
+                else:
+                    return torch.from_numpy(arr)
+            elif isinstance(v, (int, float)):
+                return torch.tensor([[v]])
+            else:
+                return v
+
+        return {"obs": to_tensor(obs)}
+
+
 # === Register all global schedulers ===
 GLOBAL_SCHEDULERS = {
     'random': RandomGlobalScheduler,
@@ -813,5 +928,6 @@ GLOBAL_SCHEDULERS = {
     'weighted_score': WeightedScoreGlobalScheduler,
     'ga': GeneticAlgorithmGlobalScheduler,
     'pso': ParticleSwarmGlobalScheduler,
-    'rllib': RLlibGlobalScheduler,  # For Multi-DC (RLlib/Ray)
+    'rllib': RLlibGlobalScheduler,  # For Multi-DC (RLlib/Ray) - Old API
+    'rllib_new_api': RLlibNewAPIGlobalScheduler,  # For New API Stack (RLModule)
 }

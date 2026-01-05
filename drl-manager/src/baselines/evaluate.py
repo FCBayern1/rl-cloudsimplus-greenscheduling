@@ -344,18 +344,24 @@ def _print_summary(
     avg_green_ratio = np.mean([r['green_ratio'] for r in results])
     avg_waste_ratio = np.mean([r['waste_ratio'] for r in results])
     avg_carbon = np.mean([r['total_carbon_kg'] for r in results])
+    avg_carbon_intensity = np.mean([r.get('carbon_intensity', 0) for r in results])
     avg_carbon_per_cloudlet = np.mean([r['carbon_per_finished_cloudlet'] for r in results])
     avg_steps = np.mean([r['episode_length'] for r in results])
     total_energy = np.mean([r['total_energy_wh'] for r in results])
+    avg_green_used = np.mean([r.get('green_used_wh', 0) for r in results])
+    avg_brown_used = np.mean([r.get('brown_used_wh', 0) for r in results])
 
     print(f"Avg Episode Length: {avg_steps:.1f} steps")
     print(f"Avg Routed Rate: {avg_routed_rate:.2%}  (cloudlets dispatched to DCs)")
     print(f"Avg Finished Rate: {avg_finished_rate:.2%}  (cloudlets actually completed)")
     print(f"Avg Green Ratio: {avg_green_ratio:.2%}")
     print(f"Avg Waste Ratio: {avg_waste_ratio:.2%}")
-    print(f"Avg Carbon Emission: {avg_carbon:.4f} kg")
-    print(f"Avg Carbon/Cloudlet: {avg_carbon_per_cloudlet*1000:.4f} g/task")
+    print(f"Avg Green Energy Used: {avg_green_used:.2f} Wh")
+    print(f"Avg Brown Energy Used: {avg_brown_used:.2f} Wh")
     print(f"Avg Total Energy: {total_energy:.2f} Wh")
+    print(f"Avg Carbon Emission: {avg_carbon:.4f} kg")
+    print(f"Avg Carbon Intensity: {avg_carbon_intensity:.4f} kg/kWh")
+    print(f"Avg Carbon/Cloudlet: {avg_carbon_per_cloudlet*1000:.4f} g/task")
 
     # Per-DC completion summary
     print(f"\nPer-DC Cloudlets Finished:")
@@ -482,6 +488,7 @@ def run_rllib_evaluation(
     output_csv: Optional[str] = None,
     verbose: bool = True,
     shared_local: bool = False,
+    use_new_api: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
@@ -490,6 +497,8 @@ def run_rllib_evaluation(
       `create_rllib_schedulers` 创建全局/本地调度器；
     - 参数共享模式：如果传入 `shared_local=True`，则所有 DC 使用同一个
       `"shared_local_policy"` 作为本地调度器（适用于 parameter sharing 训练）。
+    - New API Stack 模式：如果传入 `use_new_api=True`，则使用 RLModule 直接推理
+      （适用于 enable_rl_module_and_learner=True 训练的模型）。
 
     Args:
         checkpoint_path: RLlib checkpoint 路径
@@ -499,6 +508,7 @@ def run_rllib_evaluation(
         output_csv: 结果保存路径
         verbose: 是否打印详情
         shared_local: 是否将所有本地调度器绑定到同一个 shared_local_policy
+        use_new_api: 是否使用 New API Stack (RLModule) 进行推理
     """
     from src.baselines.global_schedulers import load_rllib_algorithm, RLlibGlobalScheduler
     from src.baselines.local_schedulers import create_rllib_schedulers, RLlibLocalScheduler
@@ -547,7 +557,20 @@ def run_rllib_evaluation(
     max_hosts = getattr(env, 'max_hosts', 16)
 
     # 3. 创建调度器
-    if shared_local:
+    if use_new_api:
+        # New API Stack 模式：使用 RLModule 直接推理
+        from src.baselines.local_schedulers import create_rllib_new_api_schedulers
+        if verbose:
+            print("Using New API Stack (RLModule) for inference.")
+        global_scheduler, local_schedulers = create_rllib_new_api_schedulers(
+            algo=algo,
+            env=env,
+            num_dcs=num_dcs,
+            batch_size=batch_size,
+            num_vms=max_vms,
+            max_hosts=max_hosts,
+        )
+    elif shared_local:
         # 所有 DC 显式使用同一个本地策略 "shared_local_policy"
         if verbose:
             print("Using shared_local_policy for all local agents (parameter sharing mode).")
@@ -639,6 +662,17 @@ def run_rllib_evaluation(
     if verbose:
         _print_summary("RLlib", "RLlib", all_results, num_dcs)
 
+    # Properly shutdown Algorithm and Ray to avoid cleanup errors at interpreter exit
+    import ray
+    try:
+        # Stop the algorithm first to clean up LearnerGroup
+        algo.stop()
+    except Exception:
+        pass
+
+    if ray.is_initialized():
+        ray.shutdown()
+
     return all_results
 
 
@@ -665,6 +699,9 @@ if __name__ == "__main__":
                         help="Base directory to save compare_result outputs when using --compare")
     parser.add_argument("--shared-local", action="store_true",
                         help="For RLlib evaluation: treat all local agents as sharing 'shared_local_policy'")
+    parser.add_argument("--new-api", action="store_true",
+                        help="For RLlib evaluation: use New API Stack (RLModule) for inference. "
+                             "Required for models trained with enable_rl_module_and_learner=True (e.g., GTrXL)")
     parser.add_argument("--compare", action="store_true",
                         help="Run comparison of multiple baseline combinations")
 
@@ -685,6 +722,7 @@ if __name__ == "__main__":
             seed=args.seed,
             output_csv=args.output,
             shared_local=args.shared_local,
+            use_new_api=args.new_api,
         )
     elif args.compare:
         # 比较多个组合
@@ -724,6 +762,7 @@ if __name__ == "__main__":
                 seed=args.seed,
                 output_csv=rllib_csv,
                 shared_local=args.shared_local,
+                use_new_api=args.new_api,
             )
             all_results["rllib_rllib"] = rllib_results
 
