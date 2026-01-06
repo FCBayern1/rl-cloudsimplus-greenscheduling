@@ -10,12 +10,15 @@ def merge_args():
 
     # Run hyper-parameters
     parser1 = get_run_args()
-    run_args = parser1.parse_args()
+    # IMPORTANT: Use parse_known_args because sys.argv also contains model-specific args.
+    # We only need `run_args.model` at this stage to decide which model args parser to load.
+    run_args, _ = parser1.parse_known_args()
 
     # Model hyper-parameters
     model_args_file = model_args_dict[run_args.model]
     parser2 = model_args_file.get_args()
-    model_args = parser2.parse_args()
+    # IMPORTANT: Use parse_known_args because sys.argv also contains run-level args.
+    model_args, _ = parser2.parse_known_args()
 
     # Merged hyper-parameters
     merged_parser = argparse.ArgumentParser(description='Merged parser')

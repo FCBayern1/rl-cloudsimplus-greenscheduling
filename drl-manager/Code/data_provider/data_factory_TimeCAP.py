@@ -4,6 +4,9 @@ from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Data
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
     'pretrain_AAAI': Dataset_Pretrain_TimeCAP,
+    # Generic ETT-style CSV: expects a 'date' column and numeric feature columns,
+    # with the target column specified by args.target. Uses 70/10/20 time split.
+    'custom': Dataset_Custom,
 }
 
 def data_provider(args, flag):

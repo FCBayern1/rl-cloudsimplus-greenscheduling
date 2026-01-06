@@ -1,5 +1,23 @@
 import argparse
 
+def str2bool(v):
+    """
+    Robust boolean parsing for argparse.
+
+    NOTE: do NOT use type=bool (bool("False") is True).
+    Accepts: true/false, 1/0, yes/no, y/n (case-insensitive).
+    """
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    s = str(v).strip().lower()
+    if s in {"true", "1", "yes", "y", "t"}:
+        return True
+    if s in {"false", "0", "no", "n", "f"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {v!r}")
+
 def get_run_args():
     parser = argparse.ArgumentParser(description='run_args')
 
@@ -7,8 +25,8 @@ def get_run_args():
     parser.add_argument('--paradigm', type=str, default='pretrain_finetune', help='task paradigm, options:[pretrain_finetune, train_val_test]')
     parser.add_argument('--task_name', type=str, default='finetune', help='task name, options:[pretrain, finetune, long_term_forecast]')
     parser.add_argument('--downstream_task', type=str, default='forecasting', help='task name, options:[forecasting, imputation]')
-    parser.add_argument('--is_training', type=bool, default=True, help='status')
-    parser.add_argument("--load_checkpoints", type=bool, default=True, help="load historical models")
+    parser.add_argument('--is_training', type=str2bool, default=True, help='status')
+    parser.add_argument("--load_checkpoints", type=str2bool, default=True, help="load historical models")
     parser.add_argument('--seed', type=int, default=2021, help='random seed')
 
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -27,18 +45,18 @@ def get_run_args():
     parser.add_argument('--percent', type=int, default=100, help='Zero-shot or few-shot training')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--res_dir', type=str, default='./results', help='results dir')
-    parser.add_argument('--drop_last', type=bool, default=False, help='drop the last batch')
+    parser.add_argument('--drop_last', type=str2bool, default=False, help='drop the last batch')
 
     parser.add_argument('--num_workers', type=int, default=0, help='data loader num workers')
     parser.add_argument('--use_amp', action='store_true', default=False, help='use automatic mixed precision training')
 
-    parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
+    parser.add_argument('--use_gpu', type=str2bool, default=True, help='use gpu')
     parser.add_argument('--gpu', type=int, default=0, help='gpu')
     parser.add_argument('--gpu_type', type=str, default='cuda', help='gpu type')
     parser.add_argument('--use_multi_gpu', action='store_true', default=False, help='use multiple gpus')
     parser.add_argument('--devices', type=str, default='0', help='device ids of multile gpus')
 
-    parser.add_argument('--use_dtw', type=bool, default=False, help='the controller of using dtw metric (dtw is time consuming, not suggested unless necessary)')
+    parser.add_argument('--use_dtw', type=str2bool, default=False, help='the controller of using dtw metric (dtw is time consuming, not suggested unless necessary)')
     parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
     parser.add_argument('--inverse', action='store_true', default=False, help='inverse output data')
     parser.add_argument('--augmentation_ratio', type=int, default=0, help="How many times to augment")

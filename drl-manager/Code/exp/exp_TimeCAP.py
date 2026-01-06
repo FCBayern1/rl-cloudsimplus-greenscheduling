@@ -9,11 +9,16 @@ import torch.nn as nn
 from torch import optim
 from utils.metrics import metric
 from exp.exp_basic import Exp_Basic
-from optimizer.Stable_Spam import StableSPAM
 from data_provider.data_factory_TimeCAP import data_provider
 from utils.tools import check_dir, EarlyStopping, adjust_learning_rate, clever_format
 
 warnings.filterwarnings('ignore')
+
+# Optional optimizer (not always vendored in this repo). Fallback to Adam if missing.
+try:
+    from optimizer.Stable_Spam import StableSPAM  # type: ignore
+except Exception:
+    StableSPAM = None  # type: ignore
 
 class Exp_TimeCAP(Exp_Basic):
     def __init__(self, args, logger, model_dir, test_dir, setting):
@@ -42,6 +47,9 @@ class Exp_TimeCAP(Exp_Basic):
 
     def _select_optimizer(self, flag):
         if flag == 'stable_spam':
+            if StableSPAM is None:
+                print("[WARN] optimizer.Stable_Spam not found; falling back to Adam.")
+                return optim.Adam(self.model.parameters(), lr=self.args.learning_rate, weight_decay=0)
             model_optim = StableSPAM(self.model.parameters(), lr=self.args.learning_rate, gamma1=0.7, gamma2=0.9, gamma3=0.999, total_T=1000, update_proj_gap=50)
         elif flag == 'adam':
             model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate, weight_decay=0)
@@ -236,11 +244,23 @@ class Exp_TimeCAP(Exp_Basic):
     def Inference(self):
         # Load test data and model checkpoints
         test_data, test_loader = self._get_data(flag='inference')
-        # print("Loading best pretrain model from {}".format(self.best_checkpoints_path))
-        # self.model.load_state_dict(torch.load(self.best_checkpoints_path))
+        # Load a checkpoint for inference.
+        # Prefer the best checkpoint from THIS run; fall back to best_pretrain_path only if it exists.
+        ckpt_path = None
+        if hasattr(self, "best_checkpoints_path") and os.path.exists(self.best_checkpoints_path):
+            ckpt_path = self.best_checkpoints_path
+        elif getattr(self.args, "best_pretrain_path", None) and os.path.exists(self.args.best_pretrain_path):
+            ckpt_path = self.args.best_pretrain_path
 
-        print("Loading best pretrain model from {}".format(self.args.best_pretrain_path))
-        self.model.load_state_dict(torch.load(self.args.best_pretrain_path), strict=False)
+        if ckpt_path is None:
+            raise FileNotFoundError(
+                "No checkpoint found for inference. "
+                f"Tried best_checkpoints_path={getattr(self, 'best_checkpoints_path', None)!r} and "
+                f"best_pretrain_path={getattr(self.args, 'best_pretrain_path', None)!r}."
+            )
+
+        print(f"Loading checkpoint for inference from {ckpt_path}")
+        self.model.load_state_dict(torch.load(ckpt_path, map_location=self.device), strict=False)
 
         # Calculate number of iterations needed for autoregressive prediction
         itrs = int(np.ceil(self.args.pred_len / self.args.pretrain_pred_len))
@@ -295,14 +315,39 @@ class Exp_TimeCAP(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
 
-        # Evaluate prediction
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
+        # Optionally inverse-transform back to original scale (if supported by dataset)
+        preds_eval = preds
+        trues_eval = trues
+        if getattr(self.args, "inverse", False) and hasattr(test_data, "inverse_transform"):
+            try:
+                n, h, c = preds.shape
+                preds_2d = preds.reshape(-1, c)
+                trues_2d = trues.reshape(-1, c)
+                preds_eval = test_data.inverse_transform(preds_2d).reshape(n, h, c)
+                trues_eval = test_data.inverse_transform(trues_2d).reshape(n, h, c)
+                print("[Inference] Applied inverse_transform for metrics.")
+            except Exception as e:
+                print(f"[Inference][WARN] inverse_transform failed; using scaled metrics. Reason: {e}")
+                preds_eval = preds
+                trues_eval = trues
+
+        # Evaluate prediction (overall)
+        mae, mse, rmse, mape, mspe = metric(preds_eval, trues_eval)
         print(f'{self.args.seq_len}-pred-{self.args.pred_len}, MSE: {mse:.4f}, MAE: {mae:.4f}')
         self.logger.info(f'{self.args.seq_len}-pred-{self.args.pred_len}, MSE: {mse:.4f}, MAE: {mae:.4f}')
 
+        # If multivariate output (features='M'), also report target-only (last channel) metrics.
+        # Dataset_Custom reorders columns to put target at the end.
+        if self.args.features == 'M' and preds_eval.shape[-1] >= 1:
+            target_pred = preds_eval[:, :, -1:]
+            target_true = trues_eval[:, :, -1:]
+            t_mae, t_mse, _, _, _ = metric(target_pred, target_true)
+            print(f'[Target-only (OT, last channel)] MSE: {t_mse:.4f}, MAE: {t_mae:.4f}')
+            self.logger.info(f'[Target-only (OT, last channel)] MSE: {t_mse:.4f}, MAE: {t_mae:.4f}')
+
         # Save prediction and metrics
         np.save(os.path.join(self.test_path, 'metrics.npy'), np.array([mae, mse, rmse, mape, mspe]))
-        np.save(os.path.join(self.test_path, 'pred.npy'), preds)
-        np.save(os.path.join(self.test_path, 'true.npy'), trues)
+        np.save(os.path.join(self.test_path, 'pred.npy'), preds_eval)
+        np.save(os.path.join(self.test_path, 'true.npy'), trues_eval)
 
         return mse, mae
