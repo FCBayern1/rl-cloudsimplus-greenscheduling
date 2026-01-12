@@ -58,4 +58,38 @@ python3 merge_ett_csvs.py \
     /home/joshua/rl-cloudsimplus-greenscheduling/cloudsimplus-gateway/src/main/resources/windProduction/preprocessed/Turbine_9_2020_2021_ett.csv
 ```
 
+## `preprocess_all_turbines_2021.py`
+
+Batch preprocess **all 2021** split turbine files into ETT-style CSVs.
+
+- Input pattern: `split/Turbine_<ID>_2021.csv`
+- Output:
+  - `preprocessed/Turbine_<ID>_2021_ett.csv`
+  - `preprocessed/Turbine_<ID>_2021_report.json`
+  - `preprocessed/preprocess_2021_summary.json`
+
+### Usage
+
+```bash
+# From repo root, using the drl-manager venv:
+/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/.venv/bin/python \
+  /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/Code/new/preprocess_all_turbines_2021.py \
+  --year 2021 \
+  --jobs 1
+```
+
+### Common options
+
+```bash
+# Faster/stronger cleaning and write per-turbine scaler JSONs
+/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/.venv/bin/python \
+  /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/Code/new/preprocess_all_turbines_2021.py \
+  --year 2021 \
+  --outlier-mode adjacent \
+  --interp-max-gap 12 \
+  --normalize minmax \
+  --write-scalers \
+  --jobs 4
+```
+
 

@@ -1,0 +1,80 @@
+{
+  "Etmp": {
+    "max": 46.44,
+    "min": -9.31,
+    "out_max": 1.0,
+    "out_min": -1.0
+  },
+  "Itmp": {
+    "max": 51.58,
+    "min": 4.9783335,
+    "out_max": 1.0,
+    "out_min": -1.0
+  },
+  "Ndir": {
+    "max": 629.33,
+    "min": -367.63,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "OT": {
+    "max": 1249.84,
+    "min": 0.0,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "Pab1": {
+    "max": 90.0,
+    "min": 0.0,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "Prtv": {
+    "max": 0.0,
+    "min": 0.0,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "RelH": {
+    "max": 0.8139736,
+    "min": 0.0254179,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "Sp": {
+    "max": 87413.4,
+    "min": 83933.33,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "T2m": {
+    "max": 37.66226,
+    "min": -22.3022,
+    "out_max": 1.0,
+    "out_min": -1.0
+  },
+  "Wdir": {
+    "max": 13.2,
+    "min": -12.9,
+    "out_max": 1.0,
+    "out_min": -1.0
+  },
+  "Wdir_w": {
+    "max": 359.886261,
+    "min": 0.0081959,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "Wspd": {
+    "max": 12.25,
+    "min": 0.0,
+    "out_max": 1.0,
+    "out_min": 0.0
+  },
+  "Wspd_w": {
+    "max": 11.098251,
+    "min": 0.037296146,
+    "out_max": 1.0,
+    "out_min": 0.0
+  }
+}
