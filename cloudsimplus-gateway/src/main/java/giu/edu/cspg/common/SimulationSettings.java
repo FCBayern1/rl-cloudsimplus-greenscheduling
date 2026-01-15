@@ -123,6 +123,16 @@ public class SimulationSettings {
     private final double globalRewardBeta;   // β: Carbon penalty weight (default: 0.5)
     private final double globalRewardGamma;  // γ: Green waste penalty weight (default: 0.3)
 
+    /**
+     * Controls how the global carbon penalty signal is computed in multi-DC mode.
+     *
+     * Options:
+     * - TOTAL: penalize total step carbon emission (kg) normalized by running max
+     * - PER_MI: penalize carbon per completed MI in the timestep (kg/MI), normalized by running max.
+     *          This discourages "doing less work" to reduce total emissions.
+     */
+    private final String carbonPenaltyMode;
+
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
     private final int turbineId;
@@ -274,8 +284,10 @@ public class SimulationSettings {
         this.globalRewardAlpha = getDoubleParam(params, "global_reward_alpha", 1.0);  // α: Local performance weight
         this.globalRewardBeta = getDoubleParam(params, "global_reward_beta", 0.5);    // β: Carbon penalty weight
         this.globalRewardGamma = getDoubleParam(params, "global_reward_gamma", 0.3);  // γ: Green waste penalty weight
+        this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
+        LOGGER.info("Global Carbon Penalty Mode: {}", this.carbonPenaltyMode);
 
         // Green Energy Configuration
         @SuppressWarnings("unchecked")
@@ -561,5 +573,12 @@ public class SimulationSettings {
      */
     public double getGlobalRewardGamma() {
         return globalRewardGamma;
+    }
+
+    /**
+     * Returns the global carbon penalty mode ("TOTAL" or "PER_MI").
+     */
+    public String getCarbonPenaltyMode() {
+        return carbonPenaltyMode;
     }
 }

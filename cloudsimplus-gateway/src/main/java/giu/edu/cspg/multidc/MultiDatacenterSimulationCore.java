@@ -67,10 +67,27 @@ public class MultiDatacenterSimulationCore {
     private boolean firstReset = true;  // Track if this is the first reset
 
     // === Running Statistics for Reward Normalization ===
-    // Running max for carbon emission normalization (persists across episodes)
+    // Running max for carbon penalty signal normalization (persists across episodes).
+    // Note: depending on settings.carbon_penalty_mode, this may track:
+    // - TOTAL: total step carbon (kg)
+    // - PER_MI: carbon-per-MI signal (kg/MI)
     private double runningMaxCarbon = 1e-3;  // Initial small value to avoid division by zero
     private static final double EPSILON = 1e-8;
     private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalized carbon ratio
+
+    // === Episode-level reward breakdown tracking (for logging/analysis) ===
+    // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw
+    private double epGlobalTermLocalSum = 0.0;   // Σ (α·L)
+    private double epGlobalTermCarbonSum = 0.0;  // Σ (-β·Ĉ)
+    private double epGlobalTermWasteSum = 0.0;   // Σ (-γ·Rw)
+
+    // Local reward component sums per DC (Σ over steps within an episode)
+    // Keys: dcId -> component sum
+    private final Map<Integer, Double> epLocalWaitSum = new HashMap<>();
+    private final Map<Integer, Double> epLocalUtilSum = new HashMap<>();
+    private final Map<Integer, Double> epLocalQueueSum = new HashMap<>();
+    private final Map<Integer, Double> epLocalInvalidSum = new HashMap<>();
+    private final Map<Integer, Double> epLocalCompletionSum = new HashMap<>();
 
     /**
      * Initialise the multi-datacenter simulation core.
@@ -116,6 +133,16 @@ public class MultiDatacenterSimulationCore {
         currentClock = 0.0;
         currentStep = 0;
         firstStep = true;
+
+        // Reset episode-level reward breakdown trackers
+        epGlobalTermLocalSum = 0.0;
+        epGlobalTermCarbonSum = 0.0;
+        epGlobalTermWasteSum = 0.0;
+        epLocalWaitSum.clear();
+        epLocalUtilSum.clear();
+        epLocalQueueSum.clear();
+        epLocalInvalidSum.clear();
+        epLocalCompletionSum.clear();
 
         // === Step 1: Load Cloudlet Workload ===
         allCloudlets = loadAllCloudlets();
@@ -939,6 +966,11 @@ public class MultiDatacenterSimulationCore {
                       - beta * normalizedCarbon
                       - gamma * wasteRatio;
 
+        // Track episode-level component contributions for analysis (cumulative sums over steps)
+        epGlobalTermLocalSum += (alpha * avgLocalReward);
+        epGlobalTermCarbonSum += (-beta * normalizedCarbon);
+        epGlobalTermWasteSum += (-gamma * wasteRatio);
+
         LOGGER.debug("Global Reward: total={} (α·L={}, β·Ĉ={}, γ·Rw={})",
                 String.format("%.4f", reward),
                 String.format("%.4f", alpha * avgLocalReward),
@@ -967,38 +999,68 @@ public class MultiDatacenterSimulationCore {
      * @return Normalized carbon penalty in range [0, CARBON_RATIO_MAX]
      */
     private double calculateNormalizedCarbonPenalty() {
+        // 1) Sum carbon emissions from all datacenters for this timestep
         double totalCarbonKg = 0.0;
         int validDatacenters = 0;
-
-        // Sum carbon emissions from all datacenters for this timestep
         for (DatacenterInstance dc : datacenterInstances) {
             EnergyMetricsDelta delta = dc.getLatestEnergyDelta();
-            if (delta == null) {
-                continue;
-            }
+            if (delta == null) continue;
             validDatacenters++;
             totalCarbonKg += delta.getDeltaCarbonEmissionKg();
         }
+        if (validDatacenters == 0) return 0.0;
 
-        if (validDatacenters == 0) {
-            return 0.0;
+        // 2) Compute the penalty signal depending on mode
+        final String mode = settings.getCarbonPenaltyMode();
+        final double signal;
+
+        if ("PER_MI".equals(mode)) {
+            // Compute completed MI in this timestep across all datacenters.
+            // If no work completes, we apply maximum penalty to discourage "doing nothing" to reduce emissions.
+            double completedMiThisStep = getCompletedMiThisStep();
+            if (completedMiThisStep <= 0.0) {
+                return CARBON_RATIO_MAX;
+            }
+            signal = totalCarbonKg / (completedMiThisStep + EPSILON); // kg/MI
+        } else {
+            // Default: TOTAL (kg) per timestep
+            signal = totalCarbonKg;
         }
 
-        // Update running maximum
-        runningMaxCarbon = Math.max(runningMaxCarbon, totalCarbonKg);
-
-        // Normalize by running max
+        // 3) Normalize by running max of the chosen signal
+        runningMaxCarbon = Math.max(runningMaxCarbon, signal);
         double normalizedCarbon = Math.min(
-            totalCarbonKg / (runningMaxCarbon + EPSILON),
-            CARBON_RATIO_MAX
+                signal / (runningMaxCarbon + EPSILON),
+                CARBON_RATIO_MAX
         );
 
-        LOGGER.trace("  Carbon: total={}kg, runningMax={}kg, normalized={}",
+        LOGGER.trace("  Carbon(mode={}): total={}kg, signal={}, runningMaxSignal={}, normalized={}",
+                mode,
                 String.format("%.6f", totalCarbonKg),
-                String.format("%.6f", runningMaxCarbon),
+                String.format("%.8f", signal),
+                String.format("%.8f", runningMaxCarbon),
                 String.format("%.4f", normalizedCarbon));
 
         return normalizedCarbon;
+    }
+
+    /**
+     * Computes the total completed work (MI) in the current timestep across all datacenters.
+     * Used for carbon penalty normalization in PER_MI mode.
+     */
+    private double getCompletedMiThisStep() {
+        double totalMi = 0.0;
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker == null) continue;
+            List<Cloudlet> finished = localBroker.getCloudletsFinishedLastStep(currentClock);
+            if (finished == null || finished.isEmpty()) continue;
+            for (Cloudlet c : finished) {
+                // Cloudlet length is in MI (CloudSim Plus convention)
+                totalMi += Math.max(0.0, (double) c.getLength());
+            }
+        }
+        return totalMi;
     }
 
     /**
@@ -1287,34 +1349,32 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        // === 2. Utilization & Balance Penalty (use VMs like LoadBalancerGateway) ===
+        // === 2. Utilization & Balance Penalty (Single-DC aligned) ===
+        // Only penalize imbalance (variance across active VMs), and only when there is work waiting.
+        // Rationale: the local agent controls *distribution* of load, not total workload amount.
         double utilizationPenalty = 0.0;
-        List<Vm> runningVms = dc.getVmPool();
-        if (runningVms != null && !runningVms.isEmpty()) {
-            // Filter for created and active VMs
-            List<Vm> activeVms = runningVms.stream()
-                .filter(vm -> vm.isCreated() && !vm.isFailed())
-                .collect(java.util.stream.Collectors.toList());
+        int waitingCloudletsForUtilPenalty = dc.getWaitingCloudletCount();
+        if (waitingCloudletsForUtilPenalty > 0) {
+            List<Vm> runningVms = dc.getVmPool();
+            if (runningVms != null && !runningVms.isEmpty()) {
+                // Filter for created and active VMs
+                List<Vm> activeVms = runningVms.stream()
+                        .filter(vm -> vm.isCreated() && !vm.isFailed())
+                        .collect(java.util.stream.Collectors.toList());
 
-            if (!activeVms.isEmpty()) {
-                // Calculate average utilization
-                double avgUtilization = activeVms.stream()
-                    .mapToDouble(Vm::getCpuPercentUtilization)
-                    .average()
-                    .orElse(0.0);
+                if (!activeVms.isEmpty()) {
+                    double avgUtilization = activeVms.stream()
+                            .mapToDouble(Vm::getCpuPercentUtilization)
+                            .average()
+                            .orElse(0.0);
 
-                // Calculate variance for load balancing
-                double variance = activeVms.stream()
-                    .mapToDouble(vm -> Math.pow(vm.getCpuPercentUtilization() - avgUtilization, 2))
-                    .average()
-                    .orElse(0.0);
+                    double variance = activeVms.stream()
+                            .mapToDouble(vm -> Math.pow(vm.getCpuPercentUtilization() - avgUtilization, 2))
+                            .average()
+                            .orElse(0.0);
 
-                // Target utilization (0.75 for multi-DC, lower than Single DC's 0.95)
-                double targetUtil = 0.75;
-                double utilDeviationPenalty = Math.abs(avgUtilization - targetUtil);
-
-                // Combine penalties: sqrt(variance) + deviation (same as LoadBalancerGateway)
-                utilizationPenalty = -utilizationCoef * (Math.sqrt(variance) + utilDeviationPenalty);
+                    utilizationPenalty = -utilizationCoef * Math.sqrt(variance);
+                }
             }
         }
 
@@ -1331,25 +1391,26 @@ public class MultiDatacenterSimulationCore {
         // === 4. Invalid Action Penalty (exactly like LoadBalancerGateway) ===
         double invalidActionPenalty = -invalidActionCoef * (wasInvalidAction ? 1.0 : 0.0);
 
-        // === 5. Completion Rate Reward (POSITIVE reward to prevent sacrificing completion) ===
-        // TEMPORARILY DISABLED - uncomment to re-enable
-        // Fixed per-completion reward instead of normalized by totalReceived
-        // This avoids reward explosion at episode start when totalReceived is small
-        //
-        // Formula: r_completion = completionCoef × completedThisStep
-        // With completionCoef = 0.1, each completion gives +0.1 reward
-        // This is similar magnitude to other penalties (~0.3-0.5 per step)
+        // === 5. Completion Reward (Single-DC aligned) ===
+        // Positive shaping reward for completions in this timestep.
+        // Use log1p scaling to prevent reward explosion when many tasks finish at once.
         double completionReward = 0.0;
         int completedThisStep = 0;
         if (localBroker != null) {
             completedThisStep = localBroker.getCloudletsFinishedLastStep(currentClock).size();
-            // Simple per-completion reward (no normalization)
-            // completionReward = completionCoef * completedThisStep;  // DISABLED
+            completionReward = completionCoef * Math.log1p(completedThisStep);
         }
 
         // === Total Reward (no clipping, same as LoadBalancerGateway) ===
-        // Note: completionReward is now always 0.0 (disabled)
         double totalReward = waitTimePenalty + utilizationPenalty + queuePenalty + invalidActionPenalty + completionReward;
+
+        // Track per-DC episode component sums for analysis/logging
+        final int dcId = dc.getId();
+        epLocalWaitSum.put(dcId, epLocalWaitSum.getOrDefault(dcId, 0.0) + waitTimePenalty);
+        epLocalUtilSum.put(dcId, epLocalUtilSum.getOrDefault(dcId, 0.0) + utilizationPenalty);
+        epLocalQueueSum.put(dcId, epLocalQueueSum.getOrDefault(dcId, 0.0) + queuePenalty);
+        epLocalInvalidSum.put(dcId, epLocalInvalidSum.getOrDefault(dcId, 0.0) + invalidActionPenalty);
+        epLocalCompletionSum.put(dcId, epLocalCompletionSum.getOrDefault(dcId, 0.0) + completionReward);
 
         LOGGER.debug("DC {} Local Reward: total={} (wait={}, util={}, queue={}, invalid={}, completion={}[{}])",
                 dc.getName(),
@@ -1411,6 +1472,15 @@ public class MultiDatacenterSimulationCore {
             dcMetrics.put("cloudlets_received", dc.getCloudletsReceived());
             dcMetrics.put("cloudlets_finished", dc.getCloudletsCompleted());
 
+            // Add local reward breakdown (episode cumulative sums)
+            // These are sums of the per-step components accumulated inside calculateSingleLocalReward(...)
+            int dcId = dc.getId();
+            dcMetrics.put("local_reward_wait_sum", epLocalWaitSum.getOrDefault(dcId, 0.0));
+            dcMetrics.put("local_reward_util_sum", epLocalUtilSum.getOrDefault(dcId, 0.0));
+            dcMetrics.put("local_reward_queue_sum", epLocalQueueSum.getOrDefault(dcId, 0.0));
+            dcMetrics.put("local_reward_invalid_sum", epLocalInvalidSum.getOrDefault(dcId, 0.0));
+            dcMetrics.put("local_reward_completion_sum", epLocalCompletionSum.getOrDefault(dcId, 0.0));
+
             // Calculate mean completion time from finished cloudlets
             LoadBalancingBroker localBroker = dc.getLocalBroker();
             if (localBroker != null) {
@@ -1453,6 +1523,15 @@ public class MultiDatacenterSimulationCore {
         // Cloudlet completion tracking
         int totalCloudletsReceived = 0;
         int totalCloudletsCompleted = 0;
+        double totalWorkloadMi = 0.0;
+        double totalFinishedMi = 0.0;
+
+        // Total workload MI (across all cloudlets in the episode workload)
+        if (allCloudlets != null && !allCloudlets.isEmpty()) {
+            for (Cloudlet c : allCloudlets) {
+                totalWorkloadMi += Math.max(0.0, (double) c.getLength());
+            }
+        }
 
         for (DatacenterInstance dc : datacenterInstances) {
             totalGreenWh += dc.getCumulativeGreenEnergyWh();
@@ -1467,6 +1546,17 @@ public class MultiDatacenterSimulationCore {
             // Aggregate cloudlet statistics
             totalCloudletsReceived += dc.getCloudletsReceived();
             totalCloudletsCompleted += dc.getCloudletsCompleted();
+
+            // Aggregate finished MI from broker's finished list (episode-to-date)
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker != null) {
+                List<Cloudlet> finishedCloudlets = localBroker.getCloudletFinishedList();
+                if (finishedCloudlets != null && !finishedCloudlets.isEmpty()) {
+                    for (Cloudlet c : finishedCloudlets) {
+                        totalFinishedMi += Math.max(0.0, (double) c.getLength());
+                    }
+                }
+            }
         }
 
         double totalEnergyWh = totalGreenWh + totalBrownWh;
@@ -1488,6 +1578,22 @@ public class MultiDatacenterSimulationCore {
         // Add cloudlet completion statistics
         stats.put("total_created_cloudlets", totalCloudletsReceived);
         stats.put("total_finished_cloudlets", totalCloudletsCompleted);
+
+        // Add MI-based workload stats (useful for carbon-per-work metrics)
+        stats.put("total_workload_mi", totalWorkloadMi);
+        stats.put("total_finished_mi", totalFinishedMi);
+        stats.put("carbon_kg_per_mi", totalFinishedMi > 0 ? (totalCarbonKg / (totalFinishedMi + EPSILON)) : 0.0);
+        stats.put("completion_rate_mi", totalWorkloadMi > 0 ? (totalFinishedMi / (totalWorkloadMi + EPSILON)) : 0.0);
+
+        // Add global reward breakdown (episode cumulative term sums)
+        // r_global = α·L - β·Ĉ - γ·Rw
+        stats.put("global_reward_term_local_sum", epGlobalTermLocalSum);
+        stats.put("global_reward_term_carbon_sum", epGlobalTermCarbonSum);
+        stats.put("global_reward_term_waste_sum", epGlobalTermWasteSum);
+        // Optional per-step means (divide by currentStep; 0 if episode not progressed)
+        stats.put("global_reward_term_local_mean", currentStep > 0 ? epGlobalTermLocalSum / currentStep : 0.0);
+        stats.put("global_reward_term_carbon_mean", currentStep > 0 ? epGlobalTermCarbonSum / currentStep : 0.0);
+        stats.put("global_reward_term_waste_mean", currentStep > 0 ? epGlobalTermWasteSum / currentStep : 0.0);
 
         return stats;
     }

@@ -282,10 +282,10 @@ experiment_1_new:
 
   mode: "train"
   algorithm: "MaskablePPO"  # Use MaskablePPO to reduce invalid actions
-  timesteps: 50000  # Longer training
+  timesteps: 150000  # Longer training
   learning_rate: 0.0001  # Lower LR for stability
 
-  max_episode_length: 500
+  max_episode_length: 1500
 
   n_steps: 1024  # Smaller for more frequent updates
   batch_size: 128
@@ -1805,8 +1805,8 @@ experiment_multi_dc_simple_tianshou:
 # ===================================================================
 experiment_multi_dc_11:
   # --- Identification ---
-  simulation_name: "Hierarchical_10DC_100k"
-  experiment_name: "hierarchical_10dc_100k"
+  simulation_name: "Hierarchical_10DC_20k"
+  experiment_name: "hierarchical_10dc_20k"
   experiment_type_dir: "Multi_Datacenter"
 
   # --- Multi-Datacenter Configuration ---
@@ -2044,7 +2044,7 @@ experiment_multi_dc_11:
 
   # --- Workload Configuration (100k cloudlets) ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/dc10_100k.csv"
+  cloudlet_trace_file: "traces/dc10_20000.csv"
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
@@ -2053,7 +2053,7 @@ experiment_multi_dc_11:
   # --- Simulation Settings (longer episodes for 100k cloudlets) ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 8000  # Increased from 4000 for larger workload
+  max_episode_length: 4000  # Increased from 4000 for larger workload
 
   # --- Reward Configuration ---
   reward_completion_coef: 0.3
@@ -2092,13 +2092,12 @@ experiment_multi_dc_11:
     learning_rate: 0.0003
 
   # --- Training Configuration (RLlib) ---
-  # 100 episodes × 8000 steps = 800,000 total timesteps
   training:
     algorithm: "PPO"
-    total_timesteps: 800000
+    total_timesteps: 400000
     num_workers: 0
     num_gpus: 1
-    train_batch_size: 2000
+    train_batch_size: 4000
     sgd_minibatch_size: 256
     num_sgd_iter: 10
     checkpoint_freq_timesteps: 40000

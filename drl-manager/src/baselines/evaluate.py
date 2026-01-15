@@ -489,6 +489,7 @@ def run_rllib_evaluation(
     verbose: bool = True,
     shared_local: bool = False,
     use_new_api: bool = False,
+    py4j_port: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
@@ -529,12 +530,19 @@ def run_rllib_evaluation(
         print("Loading model...")
 
     # 1. 加载 RLlib 模型
-    algo = load_rllib_algorithm(checkpoint_path)
+    # IMPORTANT: Algorithm.from_checkpoint() may internally initialize env runners/envs.
+    # If you are running training concurrently, override py4j_port to avoid colliding
+    # with the training Java gateway.
+    algo = load_rllib_algorithm(checkpoint_path, py4j_port_override=py4j_port)
 
     if verbose:
         print("✓ Model loaded!")
 
     # 2. 创建环境（根据 env_id 选择是否使用简化版，无 God's Eye 特征）
+    # Ensure evaluation env connects to the requested Java gateway instance.
+    if py4j_port is not None:
+        config = dict(config)
+        config["py4j_port"] = int(py4j_port)
     env_id = config.get("env_id", "")
     use_simple_env = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
 
@@ -702,6 +710,9 @@ if __name__ == "__main__":
     parser.add_argument("--new-api", action="store_true",
                         help="For RLlib evaluation: use New API Stack (RLModule) for inference. "
                              "Required for models trained with enable_rl_module_and_learner=True (e.g., GTrXL)")
+    parser.add_argument("--py4j-port", type=int, default=None,
+                        help="Override py4j_port for evaluation to connect to a different Java gateway instance "
+                             "(recommended when training is running on another port).")
     parser.add_argument("--compare", action="store_true",
                         help="Run comparison of multiple baseline combinations")
 
@@ -723,6 +734,7 @@ if __name__ == "__main__":
             output_csv=args.output,
             shared_local=args.shared_local,
             use_new_api=args.new_api,
+            py4j_port=args.py4j_port,
         )
     elif args.compare:
         # 比较多个组合

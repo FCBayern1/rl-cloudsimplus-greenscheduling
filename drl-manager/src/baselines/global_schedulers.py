@@ -758,12 +758,14 @@ class RLlibGlobalScheduler(GlobalScheduler):
             return [int(action)] * self.batch_size
 
 
-def load_rllib_algorithm(checkpoint_path: str):
+def load_rllib_algorithm(checkpoint_path: str, py4j_port_override: int | None = None):
     """
     load RLlib checkpoint and return Algorithm instance
 
     Args:
         checkpoint_path: checkpoint path
+        py4j_port_override: if provided, override env_config['py4j_port'] when creating envs during
+            checkpoint restore (prevents colliding with a running training gateway).
 
     Returns:
         RLlib Algorithm instance
@@ -791,6 +793,12 @@ def load_rllib_algorithm(checkpoint_path: str):
     from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import HierarchicalMultiDCParallelEnv
 
     def env_creator(cfg):
+        # IMPORTANT: RLlib may create envs during Algorithm.from_checkpoint()
+        # (space inference / env runner init). Override port here to ensure evaluation
+        # connects to a separate Java gateway instance.
+        if py4j_port_override is not None and isinstance(cfg, dict):
+            cfg = dict(cfg)
+            cfg["py4j_port"] = int(py4j_port_override)
         env = HierarchicalMultiDCParallelEnv(cfg)
         return ParallelPettingZooEnv(env)
 

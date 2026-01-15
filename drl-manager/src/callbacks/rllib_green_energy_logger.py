@@ -392,6 +392,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # Extract carbon emission metrics
         total_carbon_kg = global_energy_stats.get('total_carbon_emission_kg', 0.0)
         carbon_intensity = global_energy_stats.get('carbon_intensity_kg_per_kwh', 0.0)
+        # Carbon per work (kg/MI) - requires Java to provide total_finished_mi (added in MultiDatacenterSimulationCore)
+        total_finished_mi = global_energy_stats.get('total_finished_mi', 0.0)
+        carbon_per_mi = total_carbon_kg / total_finished_mi if total_finished_mi and total_finished_mi > 0 else 0.0
+
+        # Global reward component contributions (episode cumulative term sums)
+        # r_global = α·L - β·Ĉ - γ·Rw
+        global_term_local_sum = global_energy_stats.get('global_reward_term_local_sum', 0.0)
+        global_term_carbon_sum = global_energy_stats.get('global_reward_term_carbon_sum', 0.0)
+        global_term_waste_sum = global_energy_stats.get('global_reward_term_waste_sum', 0.0)
 
         # Episode metrics (use helper functions for API compatibility)
         episode_reward = get_episode_reward(episode)
@@ -479,6 +488,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'waste_ratio': waste_ratio,
                 'total_carbon_kg': total_carbon_kg,
                 'carbon_intensity_kg_per_kwh': carbon_intensity,
+                'carbon_per_mi': carbon_per_mi,
+                'global_term_local_sum': global_term_local_sum,
+                'global_term_carbon_sum': global_term_carbon_sum,
+                'global_term_waste_sum': global_term_waste_sum,
                 'global_agent_reward': global_agent_reward,
                 'local_agents_avg_reward': local_agents_avg_reward,
                 'completion_rate': completion_rate
@@ -493,6 +506,11 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         per_dc_mean_completion_times = {}
         per_dc_cloudlets_finished = {}
         per_dc_cloudlets_received = {}
+        per_dc_local_wait_sum = {}
+        per_dc_local_util_sum = {}
+        per_dc_local_queue_sum = {}
+        per_dc_local_invalid_sum = {}
+        per_dc_local_completion_sum = {}
 
         if dc_energy_metrics:
             for dc_id_str, dc_metrics_raw in dc_energy_metrics.items():
@@ -515,6 +533,13 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 dc_cloudlets_received = dc_metrics.get('cloudlets_received', 0)
                 dc_cloudlets_finished = dc_metrics.get('cloudlets_finished', 0)
                 dc_mean_completion_time = dc_metrics.get('mean_completion_time', 0.0)
+
+                # Extract local reward breakdown (episode cumulative sums)
+                per_dc_local_wait_sum[dc_id] = dc_metrics.get('local_reward_wait_sum', 0.0)
+                per_dc_local_util_sum[dc_id] = dc_metrics.get('local_reward_util_sum', 0.0)
+                per_dc_local_queue_sum[dc_id] = dc_metrics.get('local_reward_queue_sum', 0.0)
+                per_dc_local_invalid_sum[dc_id] = dc_metrics.get('local_reward_invalid_sum', 0.0)
+                per_dc_local_completion_sum[dc_id] = dc_metrics.get('local_reward_completion_sum', 0.0)
 
                 # Store for CSV output
                 per_dc_mean_completion_times[dc_id] = dc_mean_completion_time
@@ -565,6 +590,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 waste_ratio,
                 total_carbon_kg,
                 carbon_intensity,
+                carbon_per_mi,
+                global_term_local_sum,
+                global_term_carbon_sum,
+                global_term_waste_sum,
                 episode_reward,
                 episode_length,
                 global_agent_reward,
@@ -575,6 +604,18 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             # Add per-DC local rewards (local_reward_0, local_reward_1, ..., local_reward_9)
             for dc_id in range(num_dcs):
                 row.append(local_agent_rewards.get(dc_id, 0.0))
+
+            # Add per-DC local reward component sums (episode cumulative)
+            for dc_id in range(num_dcs):
+                row.append(per_dc_local_wait_sum.get(dc_id, 0.0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_local_util_sum.get(dc_id, 0.0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_local_queue_sum.get(dc_id, 0.0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_local_invalid_sum.get(dc_id, 0.0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_local_completion_sum.get(dc_id, 0.0))
 
             # Add per-DC mean completion times (mean_completion_time_dc_0, ..., mean_completion_time_dc_9)
             for dc_id in range(num_dcs):
@@ -607,6 +648,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             "waste_ratio": waste_ratio,
             "total_carbon_kg": total_carbon_kg,
             "carbon_intensity_kg_per_kwh": carbon_intensity,
+            "carbon_per_mi": carbon_per_mi,
+            "global_term_local_sum": global_term_local_sum,
+            "global_term_carbon_sum": global_term_carbon_sum,
+            "global_term_waste_sum": global_term_waste_sum,
             "global_agent_reward": global_agent_reward,
             "local_agents_avg_reward": local_agents_avg_reward,
             "completion_rate": completion_rate,
@@ -744,12 +789,24 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             headers = [
                 'episode', 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
                 'total_energy_wh', 'green_ratio', 'waste_ratio', 'total_carbon_kg',
-                'carbon_intensity_kg_per_kwh', 'episode_reward', 'episode_length',
+                'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
+                'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
+                'episode_reward', 'episode_length',
                 'global_agent_reward', 'local_agents_avg_reward', 'completion_rate'
             ]
             num_dcs = 10
             for dc_id in range(num_dcs):
                 headers.append(f'local_reward_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_wait_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_util_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_queue_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_invalid_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_completion_sum_dc_{dc_id}')
             for dc_id in range(num_dcs):
                 headers.append(f'mean_completion_time_dc_{dc_id}')
             for dc_id in range(num_dcs):
@@ -773,7 +830,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                         'episode', 'reward', 'length', 'green_waste_wh',
                         'green_used_wh', 'brown_used_wh', 'total_energy_wh',
                         'green_ratio', 'waste_ratio', 'total_carbon_kg',
-                        'carbon_intensity_kg_per_kwh', 'global_agent_reward',
+                        'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
+                        'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
+                        'global_agent_reward',
                         'local_agents_avg_reward', 'completion_rate'
                     ])
                 logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
@@ -823,6 +882,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'waste_ratio',
                 'total_carbon_kg',
                 'carbon_intensity_kg_per_kwh',
+                'carbon_per_mi',
+                'global_term_local_sum',
+                'global_term_carbon_sum',
+                'global_term_waste_sum',
                 'episode_reward',
                 'episode_length',
                 'global_agent_reward',
@@ -834,6 +897,18 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             num_dcs = 10  # Default to 10 DCs
             for dc_id in range(num_dcs):
                 headers.append(f'local_reward_{dc_id}')
+
+            # Add per-DC local reward component sum headers
+            for dc_id in range(num_dcs):
+                headers.append(f'local_wait_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_util_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_queue_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_invalid_sum_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_completion_sum_dc_{dc_id}')
 
             # Add per-DC mean completion time headers
             for dc_id in range(num_dcs):
@@ -871,6 +946,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                         'waste_ratio',
                         'total_carbon_kg',
                         'carbon_intensity_kg_per_kwh',
+                        'carbon_per_mi',
+                        'global_term_local_sum',
+                        'global_term_carbon_sum',
+                        'global_term_waste_sum',
                         'global_agent_reward',
                         'local_agents_avg_reward',
                         'completion_rate'  # Added completion rate header

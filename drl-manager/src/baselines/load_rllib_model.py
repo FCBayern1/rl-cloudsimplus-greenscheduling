@@ -44,7 +44,7 @@ def register_rllib_components():
     tune.register_env('multidc_env', env_creator)
 
 
-def load_rllib_checkpoint(checkpoint_path: str):
+def load_rllib_checkpoint(checkpoint_path: str, py4j_port_override: Optional[int] = None):
     """
     加载 RLlib checkpoint
 
@@ -62,12 +62,30 @@ def load_rllib_checkpoint(checkpoint_path: str):
         ray.init(ignore_reinit_error=True, log_to_driver=False)
 
     # 注册组件
+    #
+    # NOTE: If you want to avoid colliding with a running training Java gateway,
+    # set py4j_port_override and make sure the Java gateway is running on that port.
+    # (RLlib may create envs during restore.)
     register_rllib_components()
 
     # 加载 checkpoint
     print(f"Loading checkpoint from: {checkpoint_path}")
+    if py4j_port_override is not None:
+        # Override env registration to inject py4j_port into env_config during restore.
+        from ray import tune
+        from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+        from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import HierarchicalMultiDCParallelEnv
+
+        def env_creator(cfg):
+            if isinstance(cfg, dict):
+                cfg = dict(cfg)
+                cfg["py4j_port"] = int(py4j_port_override)
+            return ParallelPettingZooEnv(HierarchicalMultiDCParallelEnv(cfg))
+
+        tune.register_env("multidc_env", env_creator)
+
     algo = Algorithm.from_checkpoint(checkpoint_path)
-    print("✓ Checkpoint loaded successfully!")
+    print("Checkpoint loaded successfully!")
 
     return algo
 
@@ -90,8 +108,8 @@ class RLlibInferenceWrapper:
     提供简单的 API 用于获取动作
     """
 
-    def __init__(self, checkpoint_path: str):
-        self.algo = load_rllib_checkpoint(checkpoint_path)
+    def __init__(self, checkpoint_path: str, py4j_port_override: Optional[int] = None):
+        self.algo = load_rllib_checkpoint(checkpoint_path, py4j_port_override=py4j_port_override)
         self.policy_ids = get_policy_ids(self.algo)
         self.num_dcs = len(self.policy_ids['local'])
         print(f"Loaded {len(self.policy_ids['global'])} global + {self.num_dcs} local policies")
