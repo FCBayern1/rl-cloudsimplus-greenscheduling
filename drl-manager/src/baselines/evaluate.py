@@ -671,10 +671,20 @@ def run_rllib_evaluation(
         _print_summary("RLlib", "RLlib", all_results, num_dcs)
 
     # Properly shutdown Algorithm and Ray to avoid cleanup errors at interpreter exit
+    # NOTE: In RLlib New API Stack, LearnerGroup cleanup can otherwise run during
+    # interpreter shutdown and emit "Exception ignored in: LearnerGroup.__del__".
     import ray
     try:
-        # Stop the algorithm first to clean up LearnerGroup
+        # Stop the algorithm first to clean up LearnerGroup while Ray is alive.
         algo.stop()
+    except Exception:
+        pass
+
+    # Force GC now (before ray.shutdown) so any __del__ runs while Ray is still initialized.
+    try:
+        import gc
+        del algo
+        gc.collect()
     except Exception:
         pass
 

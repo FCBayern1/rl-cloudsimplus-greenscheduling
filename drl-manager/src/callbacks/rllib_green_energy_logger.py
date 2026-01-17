@@ -396,11 +396,19 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         total_finished_mi = global_energy_stats.get('total_finished_mi', 0.0)
         carbon_per_mi = total_carbon_kg / total_finished_mi if total_finished_mi and total_finished_mi > 0 else 0.0
 
+        # Global carbon penalty debug signals (from Java; aligns with global reward carbon term)
+        global_carbon_signal_mean = global_energy_stats.get('global_carbon_signal_mean', 0.0)
+        global_carbon_signal_sum = global_energy_stats.get('global_carbon_signal_sum', 0.0)
+        global_carbon_penalty_norm_mean = global_energy_stats.get('global_carbon_penalty_norm_mean', 0.0)
+        global_carbon_penalty_norm_sum = global_energy_stats.get('global_carbon_penalty_norm_sum', 0.0)
+
         # Global reward component contributions (episode cumulative term sums)
         # r_global = α·L - β·Ĉ - γ·Rw
         global_term_local_sum = global_energy_stats.get('global_reward_term_local_sum', 0.0)
         global_term_carbon_sum = global_energy_stats.get('global_reward_term_carbon_sum', 0.0)
         global_term_waste_sum = global_energy_stats.get('global_reward_term_waste_sum', 0.0)
+        global_term_throughput_sum = global_energy_stats.get('global_reward_term_throughput_sum', 0.0)
+        global_term_completion_mi_sum = global_energy_stats.get('global_reward_term_completion_mi_sum', 0.0)
 
         # Episode metrics (use helper functions for API compatibility)
         episode_reward = get_episode_reward(episode)
@@ -457,18 +465,38 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         local_agents_avg_reward = sum(local_agent_rewards.values()) / len(local_agent_rewards) if local_agent_rewards else 0.0
         logger.info(f"[CALLBACK DEBUG] Average local agent reward: {local_agents_avg_reward} (from {len(local_agent_rewards)} agents)")
 
-        # Calculate task completion rate
-        # Note: This relies on global_energy_stats having completed/created cloudlet counts
-        # which should be added to the CloudSim info map in Java
-        total_cloudlets_created = global_energy_stats.get('total_created_cloudlets', 0)
+        # === Completion + throughput metrics (align monitor.csv with what you care about) ===
+        # NOTE:
+        # - total_created_cloudlets in Java currently means "total routed/received by DCs", not workload size.
+        # - total_workload_cloudlets is the actual episode workload count (added in Java).
+        total_cloudlets_received = global_energy_stats.get('total_created_cloudlets', 0)
         total_cloudlets_finished = global_energy_stats.get('total_finished_cloudlets', 0)
-        
-        if total_cloudlets_created > 0:
-            completion_rate = total_cloudlets_finished / total_cloudlets_created
-        else:
-            completion_rate = 0.0
-            
-        logger.info(f"[CALLBACK DEBUG] Cloudlets: Finished {total_cloudlets_finished} / Created {total_cloudlets_created} (Rate: {completion_rate:.2%})")
+        total_workload_cloudlets = global_energy_stats.get('total_workload_cloudlets', 0)
+
+        finished_over_received_rate = (
+            (total_cloudlets_finished / total_cloudlets_received) if total_cloudlets_received > 0 else 0.0
+        )
+        finished_over_workload_cloudlets_rate = (
+            (total_cloudlets_finished / total_workload_cloudlets) if total_workload_cloudlets > 0 else 0.0
+        )
+
+        # MI-based completion rate (recommended primary completion metric)
+        completion_rate_mi = global_energy_stats.get('completion_rate_mi', 0.0)
+
+        logger.info(
+            "[CALLBACK DEBUG] Cloudlets: Finished %s / Received(routed) %s (finished_over_received=%.2%%), "
+            "Finished %s / Workload %s (finished_over_workload=%.2%%), completion_rate_mi=%.2%%",
+            total_cloudlets_finished,
+            total_cloudlets_received,
+            finished_over_received_rate * 100.0,
+            total_cloudlets_finished,
+            total_workload_cloudlets,
+            finished_over_workload_cloudlets_rate * 100.0,
+            completion_rate_mi * 100.0,
+        )
+
+        # Backward compatibility: keep `completion_rate` variable name but make it MI-based (what we actually want)
+        completion_rate = completion_rate_mi
 
         # Increment episode counter
         self.episode_counter += 1
@@ -489,12 +517,20 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'total_carbon_kg': total_carbon_kg,
                 'carbon_intensity_kg_per_kwh': carbon_intensity,
                 'carbon_per_mi': carbon_per_mi,
+                'global_carbon_signal_mean': global_carbon_signal_mean,
+                'global_carbon_signal_sum': global_carbon_signal_sum,
+                'global_carbon_penalty_norm_mean': global_carbon_penalty_norm_mean,
+                'global_carbon_penalty_norm_sum': global_carbon_penalty_norm_sum,
                 'global_term_local_sum': global_term_local_sum,
                 'global_term_carbon_sum': global_term_carbon_sum,
                 'global_term_waste_sum': global_term_waste_sum,
+                'global_term_throughput_sum': global_term_throughput_sum,
+                'global_term_completion_mi_sum': global_term_completion_mi_sum,
                 'global_agent_reward': global_agent_reward,
                 'local_agents_avg_reward': local_agents_avg_reward,
-                'completion_rate': completion_rate
+                'completion_rate_mi': completion_rate_mi,
+                'finished_over_received_rate': finished_over_received_rate,
+                'finished_over_workload_cloudlets_rate': finished_over_workload_cloudlets_rate,
             }
             self._save_best_episode()
 
@@ -591,14 +627,22 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 total_carbon_kg,
                 carbon_intensity,
                 carbon_per_mi,
+                global_carbon_signal_mean,
+                global_carbon_signal_sum,
+                global_carbon_penalty_norm_mean,
+                global_carbon_penalty_norm_sum,
                 global_term_local_sum,
                 global_term_carbon_sum,
                 global_term_waste_sum,
+                global_term_throughput_sum,
+                global_term_completion_mi_sum,
                 episode_reward,
                 episode_length,
                 global_agent_reward,
                 local_agents_avg_reward,
-                completion_rate
+                completion_rate_mi,
+                finished_over_received_rate,
+                finished_over_workload_cloudlets_rate,
             ]
 
             # Add per-DC local rewards (local_reward_0, local_reward_1, ..., local_reward_9)
@@ -649,12 +693,20 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             "total_carbon_kg": total_carbon_kg,
             "carbon_intensity_kg_per_kwh": carbon_intensity,
             "carbon_per_mi": carbon_per_mi,
+            "global_carbon_signal_mean": global_carbon_signal_mean,
+            "global_carbon_signal_sum": global_carbon_signal_sum,
+            "global_carbon_penalty_norm_mean": global_carbon_penalty_norm_mean,
+            "global_carbon_penalty_norm_sum": global_carbon_penalty_norm_sum,
             "global_term_local_sum": global_term_local_sum,
             "global_term_carbon_sum": global_term_carbon_sum,
             "global_term_waste_sum": global_term_waste_sum,
+            "global_term_throughput_sum": global_term_throughput_sum,
+            "global_term_completion_mi_sum": global_term_completion_mi_sum,
             "global_agent_reward": global_agent_reward,
             "local_agents_avg_reward": local_agents_avg_reward,
-            "completion_rate": completion_rate,
+            "completion_rate_mi": completion_rate_mi,
+            "finished_over_received_rate": finished_over_received_rate,
+            "finished_over_workload_cloudlets_rate": finished_over_workload_cloudlets_rate,
         }
 
         # Try new API first (metrics_logger)
@@ -790,9 +842,18 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'episode', 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
                 'total_energy_wh', 'green_ratio', 'waste_ratio', 'total_carbon_kg',
                 'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
+                # Carbon penalty debug signals (what global reward actually uses)
+                'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
                 'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
+                'global_term_throughput_sum', 'global_term_completion_mi_sum',
                 'episode_reward', 'episode_length',
-                'global_agent_reward', 'local_agents_avg_reward', 'completion_rate'
+                'global_agent_reward', 'local_agents_avg_reward',
+                # Primary completion metric (MI-based)
+                'completion_rate_mi',
+                # Disambiguated cloudlet-based completion rates
+                'finished_over_received_rate',
+                'finished_over_workload_cloudlets_rate',
             ]
             num_dcs = 10
             for dc_id in range(num_dcs):
@@ -831,9 +892,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                         'green_used_wh', 'brown_used_wh', 'total_energy_wh',
                         'green_ratio', 'waste_ratio', 'total_carbon_kg',
                         'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
+                        'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                        'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
                         'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
+                        'global_term_throughput_sum', 'global_term_completion_mi_sum',
                         'global_agent_reward',
-                        'local_agents_avg_reward', 'completion_rate'
+                        'local_agents_avg_reward',
+                        'completion_rate_mi',
+                        'finished_over_received_rate',
+                        'finished_over_workload_cloudlets_rate',
                     ])
                 logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
             except Exception as e:
@@ -883,14 +950,20 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'total_carbon_kg',
                 'carbon_intensity_kg_per_kwh',
                 'carbon_per_mi',
+                'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
                 'global_term_local_sum',
                 'global_term_carbon_sum',
                 'global_term_waste_sum',
+                'global_term_throughput_sum',
+                'global_term_completion_mi_sum',
                 'episode_reward',
                 'episode_length',
                 'global_agent_reward',
                 'local_agents_avg_reward',
-                'completion_rate'
+                'completion_rate_mi',
+                'finished_over_received_rate',
+                'finished_over_workload_cloudlets_rate',
             ]
 
             # Add per-DC local reward headers
@@ -947,12 +1020,18 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                         'total_carbon_kg',
                         'carbon_intensity_kg_per_kwh',
                         'carbon_per_mi',
+                        'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                        'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
                         'global_term_local_sum',
                         'global_term_carbon_sum',
                         'global_term_waste_sum',
+                        'global_term_throughput_sum',
+                        'global_term_completion_mi_sum',
                         'global_agent_reward',
                         'local_agents_avg_reward',
-                        'completion_rate'  # Added completion rate header
+                        'completion_rate_mi',
+                        'finished_over_received_rate',
+                        'finished_over_workload_cloudlets_rate',
                     ])
                 logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
             except Exception as e:
@@ -969,19 +1048,16 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 writer = csv.writer(f)
                 # Write header
                 writer.writerow([
-                    'episode',
-                    'reward',
-                    'length',
-                    'green_waste_wh',
-                    'green_used_wh',
-                    'brown_used_wh',
-                    'total_energy_wh',
-                    'green_ratio',
-                    'waste_ratio',
-                    'total_carbon_kg',
-                    'carbon_intensity_kg_per_kwh',
-                    'global_agent_reward',
-                    'local_agents_avg_reward'
+                    'episode', 'reward', 'length', 'green_waste_wh',
+                    'green_used_wh', 'brown_used_wh', 'total_energy_wh',
+                    'green_ratio', 'waste_ratio', 'total_carbon_kg',
+                    'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
+                    'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                    'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
+                    'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
+                    'global_term_throughput_sum', 'global_term_completion_mi_sum',
+                    'global_agent_reward', 'local_agents_avg_reward',
+                    'completion_rate_mi', 'finished_over_received_rate', 'finished_over_workload_cloudlets_rate',
                 ])
                 # Write data
                 writer.writerow([
@@ -996,8 +1072,21 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     self.best_episode_data['waste_ratio'],
                     self.best_episode_data['total_carbon_kg'],
                     self.best_episode_data['carbon_intensity_kg_per_kwh'],
-                    self.best_episode_data['global_agent_reward'],
-                    self.best_episode_data['local_agents_avg_reward']
+                    self.best_episode_data.get('carbon_per_mi', 0.0),
+                    self.best_episode_data.get('global_carbon_signal_mean', 0.0),
+                    self.best_episode_data.get('global_carbon_signal_sum', 0.0),
+                    self.best_episode_data.get('global_carbon_penalty_norm_mean', 0.0),
+                    self.best_episode_data.get('global_carbon_penalty_norm_sum', 0.0),
+                    self.best_episode_data.get('global_term_local_sum', 0.0),
+                    self.best_episode_data.get('global_term_carbon_sum', 0.0),
+                    self.best_episode_data.get('global_term_waste_sum', 0.0),
+                    self.best_episode_data.get('global_term_throughput_sum', 0.0),
+                    self.best_episode_data.get('global_term_completion_mi_sum', 0.0),
+                    self.best_episode_data.get('global_agent_reward', 0.0),
+                    self.best_episode_data.get('local_agents_avg_reward', 0.0),
+                    self.best_episode_data.get('completion_rate_mi', 0.0),
+                    self.best_episode_data.get('finished_over_received_rate', 0.0),
+                    self.best_episode_data.get('finished_over_workload_cloudlets_rate', 0.0),
                 ])
             logger.info(f"Updated best episode: Episode {self.best_episode_data['episode']} with reward {self.best_reward:.2f}")
         except Exception as e:

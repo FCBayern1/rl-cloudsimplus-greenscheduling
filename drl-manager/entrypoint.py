@@ -4,8 +4,6 @@ import logging
 import random
 import shutil
 import argparse
-import numpy as np
-import torch
 import importlib
 import traceback
 import yaml
@@ -32,6 +30,10 @@ DEFAULT_MODE = "train"
 def set_seed_globally(seed):
     """Sets random seeds for Python, NumPy, and PyTorch."""
     try:
+        # Import heavy deps lazily so importing entrypoint.py doesn't fail in minimal environments.
+        import numpy as np
+        import torch
+
         seed = int(seed)
         random.seed(seed)
         np.random.seed(seed)
@@ -49,16 +51,39 @@ def setup_logging(log_dir):
     """Sets up file logging handlers."""
     if not log_dir:
         logger.warning("Log directory not specified, only logging to console.")
-        return
+        return None
 
     os.makedirs(log_dir, exist_ok=True)
 
-    # Generate timestamp matching Java's format but with MINUTE precision
-    timestamp_minute = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    run_dir_minute = os.path.join(log_dir, timestamp_minute)
+    # Optional cleanup: remove previously created "latest pointer" artifacts at the experiment root.
+    # We only remove symlinks (safe) and legacy text pointers.
+    try:
+        legacy_names = [
+            "latest",
+            "latest_run.txt",
+            "monitor.csv",
+            "progress.csv",
+            "best_model.zip",
+            "final_model.zip",
+            "best_episode_details_10.csv",
+            "config_used.yml",
+            "seed_used.txt",
+        ]
+        for name in legacy_names:
+            p = os.path.join(log_dir, name)
+            if os.path.islink(p):
+                os.unlink(p)
+            elif name == "latest_run.txt" and os.path.exists(p) and os.path.isfile(p):
+                os.remove(p)
+    except Exception:
+        pass
+
+    # Use SECOND precision to ensure each run gets its own directory (avoid overwriting within the same minute).
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    run_dir = os.path.join(log_dir, timestamp)
 
     # Create run directory if not exists (may have been created by Java)
-    os.makedirs(run_dir_minute, exist_ok=True)
+    os.makedirs(run_dir, exist_ok=True)
 
     # Remove previous basic console handler to avoid duplicate messages
     root_logger = logging.getLogger()
@@ -70,8 +95,9 @@ def setup_logging(log_dir):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
     handlers = [
-        logging.FileHandler(os.path.join(log_dir, 'current_run.log'), mode='w'),
-        logging.FileHandler(os.path.join(run_dir_minute, 'run.log'), mode='w'),
+        # Per-run logs go into the timestamped run directory to avoid overwriting previous runs.
+        logging.FileHandler(os.path.join(run_dir, 'current_run.log'), mode='w'),
+        logging.FileHandler(os.path.join(run_dir, 'run.log'), mode='w'),
         logging.StreamHandler(sys.stdout) # Log to console
     ]
 
@@ -87,7 +113,13 @@ def setup_logging(log_dir):
     logging.getLogger("stable_baselines3").setLevel(logging.INFO)
     logging.getLogger("sb3_contrib").setLevel(logging.INFO)
 
-    logger.info(f"Logging setup complete. Current log: {os.path.join(log_dir, 'current_run.log')}, Run log: {os.path.join(run_dir_minute, 'run.log')}")
+    logger.info(
+        "Logging setup complete. Run directory: %s (run.log=%s)",
+        run_dir,
+        os.path.join(run_dir, 'run.log')
+    )
+
+    return run_dir
 
 def main():
     logger.info("--- DRL Manager Entrypoint Starting ---")
@@ -135,9 +167,12 @@ def main():
         exp_type_dir = params.get("experiment_type_dir", "DefaultType")
         # Use experiment_name from config, fallback to experiment_id
         exp_name = params.get("experiment_name", experiment_id)
-        log_dir = os.path.join(base_log_dir, exp_type_dir, exp_name)
-        params['log_dir'] = log_dir # Add final log_dir path to params dict
-        setup_logging(log_dir) # Setup file handlers etc.
+        experiment_dir = os.path.join(base_log_dir, exp_type_dir, exp_name)
+        run_log_dir = setup_logging(experiment_dir) # Setup file handlers etc. (returns per-run dir)
+        # Persist both: a stable experiment directory and a per-run output directory.
+        params['experiment_dir'] = experiment_dir
+        params['log_dir'] = run_log_dir
+        log_dir = run_log_dir
 
         # Save config and seed to log directory
         try:
@@ -158,6 +193,7 @@ def main():
             logger.error(f"Could not save config/seed to log directory: {e}", exc_info=True)
     else:
         params['log_dir'] = None # Ensure log_dir is None if not saving
+        params['experiment_dir'] = None
         logger.info("Experiment saving is disabled.")
 
     # --- Execute Selected Mode ---

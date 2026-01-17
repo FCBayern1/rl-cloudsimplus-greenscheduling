@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+from datetime import datetime
 import torch
 import gymnasium as gym
 from gymnasium import spaces
@@ -23,6 +24,39 @@ from src.callbacks.save_on_best_reward import SaveOnBestTrainingRewardCallback
 import gym_cloudsimplus  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_run_dir(params: dict) -> tuple[str | None, str | None]:
+    """
+    Returns (experiment_dir, run_dir).
+
+    We keep a stable experiment directory (params['experiment_dir']) and a per-run directory
+    (params['log_dir']). If entrypoint passes a stable directory by mistake, we create a
+    timestamped subdirectory here to avoid overwriting previous runs.
+    """
+    experiment_dir = params.get("experiment_dir")
+    run_dir = params.get("log_dir")
+
+    if not (params.get("save_experiment", False) and run_dir):
+        return experiment_dir, run_dir
+
+    try:
+        os.makedirs(run_dir, exist_ok=True)
+    except Exception:
+        return experiment_dir, run_dir
+
+    # If run_dir == experiment_dir, create a timestamped subdir to avoid overwriting.
+    try:
+        if experiment_dir and os.path.abspath(run_dir) == os.path.abspath(experiment_dir):
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            run_dir = os.path.join(experiment_dir, ts)
+            os.makedirs(run_dir, exist_ok=True)
+            params["log_dir"] = run_dir
+    except Exception:
+        pass
+
+    return experiment_dir, run_dir
+
 
 def train(params: dict):
     """
@@ -55,7 +89,7 @@ def train(params: dict):
 
     # --- Logging and Monitoring ---
     log_destination = ["stdout"]
-    log_dir = params.get("log_dir") # Get log_dir set by entrypoint.py
+    experiment_dir, log_dir = _ensure_run_dir(params)  # Get per-run log_dir (timestamped)
     callbacks = []
 
     if params.get("save_experiment", False) and log_dir:
