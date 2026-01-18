@@ -16,6 +16,7 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+import os
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -48,6 +49,57 @@ def load_config(experiment_name: str) -> dict:
         logger.warning(f"Experiment '{experiment_name}' not found in config.yml, using common config only")
 
     return config
+
+
+def _parse_scalar(v: str):
+    """Parse a CLI override value into bool/int/float/str."""
+    s = v.strip()
+    low = s.lower()
+    if low in ("true", "false"):
+        return low == "true"
+    # int
+    try:
+        if low.startswith("0") and len(low) > 1 and low[1].isdigit():
+            # keep as string to avoid octal ambiguity
+            raise ValueError
+        return int(s)
+    except Exception:
+        pass
+    # float
+    try:
+        return float(s)
+    except Exception:
+        pass
+    return s
+
+
+def _apply_overrides(config: dict, overrides: List[str]) -> dict:
+    """
+    Apply overrides like:
+      --override max_cloudlets_to_create_from_workload_file=100000
+      --override green_energy.enabled=true
+    """
+    if not overrides:
+        return config
+    cfg = dict(config)
+    for item in overrides:
+        if "=" not in item:
+            raise ValueError(f"Invalid --override '{item}'. Expected key=value.")
+        k, v = item.split("=", 1)
+        key_path = [p for p in k.strip().split(".") if p]
+        if not key_path:
+            raise ValueError(f"Invalid --override '{item}'. Empty key.")
+        value = _parse_scalar(v)
+        # set nested dicts
+        cur = cfg
+        for p in key_path[:-1]:
+            nxt = cur.get(p, None)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                cur[p] = nxt
+            cur = nxt
+        cur[key_path[-1]] = value
+    return cfg
 
 
 def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
@@ -157,6 +209,41 @@ def _safe_get(d: Any, key: str, default: Any) -> Any:
         return getattr(d, key, default)
     except:
         return default
+
+
+def _infer_use_new_api_from_checkpoint(checkpoint_path: str) -> bool:
+    """
+    Heuristic: New API Stack checkpoints contain learner_group/ (RLModule + Learner).
+    """
+    try:
+        cp = Path(checkpoint_path)
+        # Allow user to pass either ".../checkpoint_000019" or its parent.
+        if cp.is_dir() and (cp / "rllib_checkpoint.json").exists():
+            return (cp / "learner_group").exists()
+        # If user passes a higher-level directory, try common patterns.
+        if cp.is_dir():
+            # Find any checkpoint_* child
+            for child in sorted(cp.glob("checkpoint_*")):
+                if (child / "rllib_checkpoint.json").exists():
+                    return (child / "learner_group").exists()
+    except Exception:
+        pass
+    return False
+
+
+def _checkpoint_label_from_path(checkpoint_path: str) -> str:
+    """
+    Derive a readable label from a checkpoint path for compare tables.
+    Example: ".../PPO_xxx/checkpoint_000019" -> "PPO_xxx_checkpoint_000019"
+    """
+    try:
+        p = Path(checkpoint_path)
+        parts = [x for x in p.parts if x]
+        if len(parts) >= 2:
+            return f"{parts[-2]}_{parts[-1]}"
+        return p.name or "rllib"
+    except Exception:
+        return "rllib"
 
 
 def run_evaluation(
@@ -705,12 +792,32 @@ if __name__ == "__main__":
                         help="Local scheduler algorithm")
     parser.add_argument("--experiment", type=str, default="experiment_multi_dc_10",
                         help="Experiment name from config.yml")
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        help="Override config values (repeatable). Example: --override max_cloudlets_to_create_from_workload_file=100000",
+    )
     parser.add_argument("--episodes", type=int, default=1,
                         help="Number of episodes to run")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="RLlib checkpoint path (for rllib scheduler)")
+    parser.add_argument(
+        "--rllib-checkpoint",
+        action="append",
+        default=[],
+        help="(Optional, repeatable) Additional RLlib checkpoints to evaluate in --compare mode. "
+             "Example: --rllib-checkpoint /abs/path/to/checkpoint_000019",
+    )
+    parser.add_argument(
+        "--rllib-label",
+        action="append",
+        default=[],
+        help="(Optional, repeatable) Labels for --rllib-checkpoint entries (same order). "
+             "If omitted, a label is derived from the checkpoint path.",
+    )
     parser.add_argument("--output", type=str, default=None,
                         help="Path to save results CSV (for single run or rllib evaluation)")
     parser.add_argument("--output-dir", type=str, default=None,
@@ -720,6 +827,12 @@ if __name__ == "__main__":
     parser.add_argument("--new-api", action="store_true",
                         help="For RLlib evaluation: use New API Stack (RLModule) for inference. "
                              "Required for models trained with enable_rl_module_and_learner=True (e.g., GTrXL)")
+    parser.add_argument(
+        "--auto-new-api",
+        action="store_true",
+        help="Auto-detect New API Stack from checkpoint contents (learner_group/) when running --compare. "
+             "If set, each checkpoint will use New API inference if it looks like an RLModule checkpoint.",
+    )
     parser.add_argument("--py4j-port", type=int, default=None,
                         help="Override py4j_port for evaluation to connect to a different Java gateway instance "
                              "(recommended when training is running on another port).")
@@ -729,6 +842,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = load_config(args.experiment)
+    # Apply CLI overrides (useful for evaluation-only workload tweaks without editing config.yml)
+    if args.override:
+        config = _apply_overrides(config, args.override)
 
     if args.global_sched == 'rllib' or args.local_sched == 'rllib':
         # 使用 RLlib 模型评估
@@ -774,19 +890,40 @@ if __name__ == "__main__":
             print_table=False,  # 暂时不打印表格，后面合并 RLlib 一起打印
         )
 
-        # 2) 如果提供了 checkpoint，则额外跑一组 RLlib + RLlib，并写到同一目录
+        # 2) Optional: evaluate one or more RLlib checkpoints (ResMLP/gMLP/GTrXL, etc.) in the same compare run.
+        rllib_checkpoints: List[str] = []
         if args.checkpoint is not None:
-            rllib_csv = str(output_dir / "rllib_rllib.csv")
+            rllib_checkpoints.append(args.checkpoint)
+        if args.rllib_checkpoint:
+            rllib_checkpoints.extend(list(args.rllib_checkpoint))
+
+        labels: List[str] = []
+        if args.rllib_label:
+            labels = list(args.rllib_label)
+            if len(labels) != len(rllib_checkpoints):
+                print("Error: --rllib-label count must match total RLlib checkpoints provided "
+                      "(--checkpoint + --rllib-checkpoint).")
+                sys.exit(1)
+
+        for i, ckpt in enumerate(rllib_checkpoints):
+            label = labels[i] if labels else _checkpoint_label_from_path(ckpt)
+            safe_label = "".join(c if (c.isalnum() or c in "-_") else "_" for c in label)
+            rllib_csv = str(output_dir / f"rllib_{safe_label}.csv")
+
+            use_new_api = args.new_api
+            if (not use_new_api) and args.auto_new_api:
+                use_new_api = _infer_use_new_api_from_checkpoint(ckpt)
+
             rllib_results = run_rllib_evaluation(
-                checkpoint_path=args.checkpoint,
+                checkpoint_path=ckpt,
                 config=config,
                 num_episodes=args.episodes,
                 seed=args.seed,
                 output_csv=rllib_csv,
                 shared_local=args.shared_local,
-                use_new_api=args.new_api,
+                use_new_api=use_new_api,
             )
-            all_results["rllib_rllib"] = rllib_results
+            all_results[f"rllib_{safe_label}"] = rllib_results
 
         # 3) 打印包含所有组合（包含 RLlib）的对比表
         _print_comparison_table(all_results)

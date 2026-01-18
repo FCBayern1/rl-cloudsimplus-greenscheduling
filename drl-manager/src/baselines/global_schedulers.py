@@ -789,6 +789,16 @@ def load_rllib_algorithm(checkpoint_path: str, py4j_port_override: int | None = 
     except Exception:
         pass
 
+    # Ensure RLModule classes are importable before restoring New API Stack checkpoints.
+    # (Algorithm.from_checkpoint may need to import the module path that defines the RLModule.)
+    try:
+        import src.models.rlmodule_models  # noqa: F401
+        import src.models.rlmodule_resmlp_models  # noqa: F401
+        import src.models.rlmodule_gmlp_models  # noqa: F401
+    except Exception:
+        # If these modules are not present/used, it's fine.
+        pass
+
     # register environment
     from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import HierarchicalMultiDCParallelEnv
 
