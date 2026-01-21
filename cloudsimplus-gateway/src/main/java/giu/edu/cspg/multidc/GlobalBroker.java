@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
  */
 public class GlobalBroker extends DatacenterBrokerSimple {
     private static final Logger logger = LoggerFactory.getLogger(GlobalBroker.class.getSimpleName());
+    private static final double EPS = 1e-9;
 
     // === All Cloudlets (sorted by arrival time) ===
     private final List<Cloudlet> allCloudlets;
@@ -94,13 +95,15 @@ public class GlobalBroker extends DatacenterBrokerSimple {
         double windowStart = (currentTime < timestep) ? 0.0 : currentTime;
 
         int arrivedCount = 0;
+        int lateArrivedCount = 0;
         // Scan from nextCloudletIndex onwards
         while (nextCloudletIndex < allCloudlets.size()) {
             Cloudlet cloudlet = allCloudlets.get(nextCloudletIndex);
             double arrivalTime = cloudlet.getSubmissionDelay();
 
             // Check if cloudlet arrives in current window
-            if (arrivalTime >= windowStart && arrivalTime < windowEnd) {
+            // NOTE: Use EPS to absorb tiny floating-point jitter around boundaries.
+            if (arrivalTime >= (windowStart - EPS) && arrivalTime < (windowEnd + EPS)) {
                 globalWaitingQueue.add(cloudlet);
                 nextCloudletIndex++;
                 arrivedCount++;
@@ -108,16 +111,25 @@ public class GlobalBroker extends DatacenterBrokerSimple {
                 // Future cloudlet, stop scanning
                 break;
             } else {
-                // Cloudlet arrived in the past (should not happen if sorted)
-                logger.warn("Cloudlet {} has arrival time {} < window start {}. Skipping.",
-                        cloudlet.getId(), arrivalTime, windowStart);
+                // Cloudlet arrived in the past (can happen if time windows are skipped or due to tiny time jitter).
+                // IMPORTANT: Do not drop it; enqueue it now so it can still be routed.
+                globalWaitingQueue.add(cloudlet);
                 nextCloudletIndex++;
+                arrivedCount++;
+                lateArrivedCount++;
+                logger.warn("Late arrival: Cloudlet {} has arrival time {} < window start {}. Enqueued to global queue.",
+                        cloudlet.getId(), arrivalTime, windowStart);
             }
         }
 
         if (arrivedCount > 0) {
             logger.debug("{}: {} cloudlets arrived, global queue size now: {}",
                     getSimulation().clockStr(), arrivedCount, globalWaitingQueue.size());
+        }
+
+        if (lateArrivedCount > 0) {
+            logger.warn("{}: {} late-arrival cloudlets were enqueued (arrival < windowStart). Queue size now: {}",
+                    getSimulation().clockStr(), lateArrivedCount, globalWaitingQueue.size());
         }
     }
 
@@ -183,6 +195,15 @@ public class GlobalBroker extends DatacenterBrokerSimple {
      */
     public int getGlobalWaitingCloudletsCount() {
         return globalWaitingQueue.size();
+    }
+
+    /**
+     * Re-queue a cloudlet to the tail of the global waiting queue.
+     * Used when routing fails (e.g., invalid action/temporary DC issues) to avoid "losing" cloudlets.
+     */
+    public void requeueCloudletToTail(Cloudlet cloudlet) {
+        if (cloudlet == null) return;
+        globalWaitingQueue.addLast(cloudlet);
     }
 
     /**

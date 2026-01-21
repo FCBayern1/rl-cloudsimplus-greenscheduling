@@ -59,6 +59,31 @@ public class GreenEnergyProvider {
     private final int timeZoneOffsetRows;
 
     /**
+     * Convert the configured timezone offset (in "rows") into simulation-time seconds.
+     *
+     * - In {@link TimeScalingMode#COMPRESSED}: simulation time is treated as row index, so 1 row == 1 second.
+     * - In {@link TimeScalingMode#REAL_TIME}: wind data points are typically 600s apart, so 1 row == 600 seconds.
+     */
+    private double getTimeZoneOffsetSeconds() {
+        final double rowSeconds = timeScalingMode != null ? timeScalingMode.getTypicalInterval() : 1.0;
+        return ((double) timeZoneOffsetRows) * rowSeconds;
+    }
+
+    /**
+     * Wrap a time value into [minTime, maxTime] assuming cyclic data.
+     * Handles both overflow (>max) and underflow (<min).
+     */
+    private double wrapTimeCyclic(double t) {
+        final double dataLength = maxTime - minTime;
+        if (dataLength <= 0) return t;
+
+        double shifted = t - minTime;
+        shifted = shifted % dataLength;
+        if (shifted < 0) shifted += dataLength;
+        return minTime + shifted;
+    }
+
+    /**
      * Create a green energy provider for a specific wind turbine.
      */
     public GreenEnergyProvider(int turbineId, String csvFilePath) {
@@ -194,13 +219,9 @@ public class GreenEnergyProvider {
 
         try {
             // Apply timezone offset to simulate different geographic locations
-            double adjustedTime = simulationTime + timeZoneOffsetRows;
-
-            // Wrap around if we exceed the data range (cyclic behavior)
-            double dataLength = maxTime - minTime;
-            if (dataLength > 0 && adjustedTime > maxTime) {
-                adjustedTime = minTime + ((adjustedTime - minTime) % dataLength);
-            }
+            double adjustedTime = simulationTime + getTimeZoneOffsetSeconds();
+            // Wrap around for cyclic behavior (both directions)
+            adjustedTime = wrapTimeCyclic(adjustedTime);
 
             double powerKW = powerSpline.value(adjustedTime);
             double powerW = Math.max(0, powerKW * 1000);
@@ -253,16 +274,13 @@ public class GreenEnergyProvider {
         }
 
         double[] predictions = new double[horizonSeconds.length];
-        double dataLength = maxTime - minTime;
+        final double tzOffsetSec = getTimeZoneOffsetSeconds();
 
         for (int i = 0; i < horizonSeconds.length; i++) {
             // Apply timezone offset
-            double futureTime = currentTime + horizonSeconds[i] + timeZoneOffsetRows;
-
-            // Wrap around if we exceed the data range (cyclic behavior)
-            if (dataLength > 0 && futureTime > maxTime) {
-                futureTime = minTime + ((futureTime - minTime) % dataLength);
-            }
+            double futureTime = currentTime + horizonSeconds[i] + tzOffsetSec;
+            // Wrap around for cyclic behavior (both directions)
+            futureTime = wrapTimeCyclic(futureTime);
 
             try {
                 double futurePowerKW = powerSpline.value(futureTime);
@@ -350,13 +368,15 @@ public class GreenEnergyProvider {
      */
     private int simTimeToRowIndex(double simTime) {
         // Apply timezone offset
-        double adjustedTime = simTime + timeZoneOffsetRows;
+        double adjustedTime = simTime + getTimeZoneOffsetSeconds();
 
         if (timeScalingMode == TimeScalingMode.COMPRESSED) {
             int index = (int) Math.round(adjustedTime);
             // Wrap around for cyclic behavior
-            if (powerValues != null && powerValues.length > 0 && index >= powerValues.length) {
-                index = index % powerValues.length;
+            if (powerValues != null && powerValues.length > 0) {
+                int n = powerValues.length;
+                index = index % n;
+                if (index < 0) index += n;
             }
             return index;
         } else {

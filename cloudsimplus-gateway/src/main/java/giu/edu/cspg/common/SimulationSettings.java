@@ -122,6 +122,11 @@ public class SimulationSettings {
     private final double globalRewardAlpha;  // α: Local performance weight (default: 1.0)
     private final double globalRewardBeta;   // β: Carbon penalty weight (default: 0.5)
     private final double globalRewardGamma;  // γ: Green waste penalty weight (default: 0.3)
+    // Optional shaping terms to align global reward with throughput + completion objectives:
+    // - throughput: encourages finishing more MI per step
+    // - completion progress: encourages increasing MI-based completion rate over the episode
+    private final double globalThroughputMiCoef;       // k_T: weight for log1p(MI_finished_this_step)
+    private final double globalCompletionRateMiCoef;   // k_C: weight for Δcompletion_rate_mi per step
 
     /**
      * Controls how the global carbon penalty signal is computed in multi-DC mode.
@@ -284,9 +289,18 @@ public class SimulationSettings {
         this.globalRewardAlpha = getDoubleParam(params, "global_reward_alpha", 1.0);  // α: Local performance weight
         this.globalRewardBeta = getDoubleParam(params, "global_reward_beta", 0.5);    // β: Carbon penalty weight
         this.globalRewardGamma = getDoubleParam(params, "global_reward_gamma", 0.3);  // γ: Green waste penalty weight
+        this.globalThroughputMiCoef = getDoubleParam(params, "global_throughput_mi_coef", 0.0);
+        // Backward-compat alias: global_completion_rate_coef (older name used in some configs)
+        this.globalCompletionRateMiCoef = getDoubleParam(
+                params,
+                "global_completion_rate_mi_coef",
+                getDoubleParam(params, "global_completion_rate_coef", 0.0)
+        );
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
+        LOGGER.info("Global Reward Shaping: throughput_mi_coef={}, completion_rate_mi_coef={}",
+                this.globalThroughputMiCoef, this.globalCompletionRateMiCoef);
         LOGGER.info("Global Carbon Penalty Mode: {}", this.carbonPenaltyMode);
 
         // Green Energy Configuration
@@ -573,6 +587,22 @@ public class SimulationSettings {
      */
     public double getGlobalRewardGamma() {
         return globalRewardGamma;
+    }
+
+    /**
+     * Global throughput shaping coefficient (MI-based).
+     * Applied as: r_global += global_throughput_mi_coef * log1p(finished_mi_this_step)
+     */
+    public double getGlobalThroughputMiCoef() {
+        return globalThroughputMiCoef;
+    }
+
+    /**
+     * Global MI-completion progress shaping coefficient.
+     * Applied as: r_global += global_completion_rate_mi_coef * Δcompletion_rate_mi
+     */
+    public double getGlobalCompletionRateMiCoef() {
+        return globalCompletionRateMiCoef;
     }
 
     /**

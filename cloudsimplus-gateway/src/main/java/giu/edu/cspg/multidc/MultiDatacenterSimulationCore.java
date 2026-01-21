@@ -80,6 +80,22 @@ public class MultiDatacenterSimulationCore {
     private double epGlobalTermLocalSum = 0.0;   // Σ (α·L)
     private double epGlobalTermCarbonSum = 0.0;  // Σ (-β·Ĉ)
     private double epGlobalTermWasteSum = 0.0;   // Σ (-γ·Rw)
+    private double epGlobalTermThroughputSum = 0.0; // Σ (k_T · log1p(finished_mi_this_step))
+    private double epGlobalTermCompletionMiSum = 0.0; // Σ (k_C · Δcompletion_rate_mi)
+
+    // Episode-level MI completion tracking (for completion_rate_mi shaping)
+    private double episodeTotalWorkloadMi = 0.0;
+    private double episodeFinishedMiCumulative = 0.0;
+    private double prevCompletionRateMi = 0.0;
+
+    // === Carbon penalty signal tracking (for debugging/analysis) ===
+    // Track the *raw* carbon penalty signal that is normalized to produce Ĉ.
+    // - TOTAL mode: signal = step total carbon (kg)
+    // - PER_MI mode: signal = step carbon per completed MI (kg/MI) or CARBON_RATIO_MAX if MI==0
+    private double epGlobalCarbonSignalSum = 0.0;        // Σ signal
+    private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
+    private double lastGlobalCarbonSignal = 0.0;         // last step signal
+    private double lastGlobalCarbonPenaltyNorm = 0.0;    // last step Ĉ
 
     // Local reward component sums per DC (Σ over steps within an episode)
     // Keys: dcId -> component sum
@@ -138,6 +154,12 @@ public class MultiDatacenterSimulationCore {
         epGlobalTermLocalSum = 0.0;
         epGlobalTermCarbonSum = 0.0;
         epGlobalTermWasteSum = 0.0;
+        epGlobalTermThroughputSum = 0.0;
+        epGlobalTermCompletionMiSum = 0.0;
+        epGlobalCarbonSignalSum = 0.0;
+        epGlobalCarbonPenaltyNormSum = 0.0;
+        lastGlobalCarbonSignal = 0.0;
+        lastGlobalCarbonPenaltyNorm = 0.0;
         epLocalWaitSum.clear();
         epLocalUtilSum.clear();
         epLocalQueueSum.clear();
@@ -147,6 +169,16 @@ public class MultiDatacenterSimulationCore {
         // === Step 1: Load Cloudlet Workload ===
         allCloudlets = loadAllCloudlets();
         LOGGER.info("Loaded {} cloudlets from workload trace", allCloudlets.size());
+
+        // Pre-compute total workload MI for this episode (used by completion_rate_mi shaping).
+        episodeTotalWorkloadMi = 0.0;
+        if (allCloudlets != null && !allCloudlets.isEmpty()) {
+            for (Cloudlet c : allCloudlets) {
+                episodeTotalWorkloadMi += Math.max(0.0, (double) c.getLength());
+            }
+        }
+        episodeFinishedMiCumulative = 0.0;
+        prevCompletionRateMi = 0.0;
 
         // === Step 2: Create Datacenter Instances including datacenter, hosts, vms, and localbroker ===
         datacenterInstances = new ArrayList<>();
@@ -434,6 +466,11 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
+            } else {
+                // IMPORTANT: Do not lose cloudlets on routing failure.
+                // Re-queue to tail so training can recover, while still allowing you to
+                // penalize invalid/ineffective actions on the Python side if desired.
+                globalBroker.requeueCloudletToTail(cloudlet);
             }
         }
 
@@ -948,6 +985,8 @@ public class MultiDatacenterSimulationCore {
         double alpha = settings.getGlobalRewardAlpha();  // Local performance weight
         double beta = settings.getGlobalRewardBeta();    // Carbon penalty weight
         double gamma = settings.getGlobalRewardGamma();  // Green waste penalty weight
+        double throughputMiCoef = settings.getGlobalThroughputMiCoef();
+        double completionRateMiCoef = settings.getGlobalCompletionRateMiCoef();
 
         // === Component 1: Average Local Reward (L) ===
         double avgLocalReward = localRewards.values().stream()
@@ -961,15 +1000,34 @@ public class MultiDatacenterSimulationCore {
         // === Component 3: Green Waste Ratio (R_w) ===
         double wasteRatio = calculateGreenWasteRatio();
 
+        // === Optional Component 4: Throughput shaping (MI finished in this step) ===
+        // Encourages doing more useful work per unit time.
+        double completedMiThisStep = getCompletedMiThisStep();
+        double throughputTerm = throughputMiCoef * Math.log1p(Math.max(0.0, completedMiThisStep));
+
+        // === Optional Component 5: MI-based completion progress shaping ===
+        // completion_rate_mi = finished_mi / total_workload_mi (episode-to-date)
+        episodeFinishedMiCumulative += Math.max(0.0, completedMiThisStep);
+        double completionRateMiNow = episodeTotalWorkloadMi > 0
+                ? (episodeFinishedMiCumulative / (episodeTotalWorkloadMi + EPSILON))
+                : 0.0;
+        double deltaCompletionMi = completionRateMiNow - prevCompletionRateMi;
+        prevCompletionRateMi = completionRateMiNow;
+        double completionMiTerm = completionRateMiCoef * deltaCompletionMi;
+
         // === Final Global Reward ===
         double reward = alpha * avgLocalReward
                       - beta * normalizedCarbon
                       - gamma * wasteRatio;
+        // Add shaping terms (default coefs are 0.0, so this is backward-compatible)
+        reward += throughputTerm + completionMiTerm;
 
         // Track episode-level component contributions for analysis (cumulative sums over steps)
         epGlobalTermLocalSum += (alpha * avgLocalReward);
         epGlobalTermCarbonSum += (-beta * normalizedCarbon);
         epGlobalTermWasteSum += (-gamma * wasteRatio);
+        epGlobalTermThroughputSum += throughputTerm;
+        epGlobalTermCompletionMiSum += completionMiTerm;
 
         LOGGER.debug("Global Reward: total={} (α·L={}, β·Ĉ={}, γ·Rw={})",
                 String.format("%.4f", reward),
@@ -981,8 +1039,29 @@ public class MultiDatacenterSimulationCore {
                 String.format("%.4f", normalizedCarbon),
                 String.format("%.4f", wasteRatio),
                 alpha, beta, gamma);
+        LOGGER.debug("  Shaping: throughputMi={} (coef={}, term={}), completionRateMiNow={} (coef={}, Δ={}, term={})",
+                String.format("%.2f", completedMiThisStep),
+                throughputMiCoef,
+                String.format("%.4f", throughputTerm),
+                String.format("%.4f", completionRateMiNow),
+                completionRateMiCoef,
+                String.format("%.6f", deltaCompletionMi),
+                String.format("%.4f", completionMiTerm));
 
         return reward;
+    }
+
+    private double computeGlobalCompletionRate() {
+        long totalReceived = 0L;
+        long totalFinished = 0L;
+        for (DatacenterInstance dc : datacenterInstances) {
+            if (dc == null) continue;
+            // DatacenterInstance tracks per-DC counters via getCloudletsReceived/getCloudletsCompleted
+            totalReceived += Math.max(0L, (long) dc.getCloudletsReceived());
+            totalFinished += Math.max(0L, (long) dc.getCloudletsCompleted());
+        }
+        if (totalReceived <= 0L) return 0.0;
+        return (double) totalFinished / (double) totalReceived;
     }
 
     /**
@@ -1019,6 +1098,12 @@ public class MultiDatacenterSimulationCore {
             // If no work completes, we apply maximum penalty to discourage "doing nothing" to reduce emissions.
             double completedMiThisStep = getCompletedMiThisStep();
             if (completedMiThisStep <= 0.0) {
+                // IMPORTANT: Keep learning behavior identical to the previous implementation:
+                // return max penalty without updating runningMaxCarbon.
+                lastGlobalCarbonSignal = CARBON_RATIO_MAX;
+                lastGlobalCarbonPenaltyNorm = CARBON_RATIO_MAX;
+                epGlobalCarbonSignalSum += lastGlobalCarbonSignal;
+                epGlobalCarbonPenaltyNormSum += lastGlobalCarbonPenaltyNorm;
                 return CARBON_RATIO_MAX;
             }
             signal = totalCarbonKg / (completedMiThisStep + EPSILON); // kg/MI
@@ -1033,6 +1118,12 @@ public class MultiDatacenterSimulationCore {
                 signal / (runningMaxCarbon + EPSILON),
                 CARBON_RATIO_MAX
         );
+
+        // 4) Track signal + normalized penalty for logging/analysis
+        lastGlobalCarbonSignal = signal;
+        lastGlobalCarbonPenaltyNorm = normalizedCarbon;
+        epGlobalCarbonSignalSum += signal;
+        epGlobalCarbonPenaltyNormSum += normalizedCarbon;
 
         LOGGER.trace("  Carbon(mode={}): total={}kg, signal={}, runningMaxSignal={}, normalized={}",
                 mode,
@@ -1580,20 +1671,34 @@ public class MultiDatacenterSimulationCore {
         stats.put("total_finished_cloudlets", totalCloudletsCompleted);
 
         // Add MI-based workload stats (useful for carbon-per-work metrics)
+        stats.put("total_workload_cloudlets", (allCloudlets != null) ? allCloudlets.size() : 0);
         stats.put("total_workload_mi", totalWorkloadMi);
         stats.put("total_finished_mi", totalFinishedMi);
         stats.put("carbon_kg_per_mi", totalFinishedMi > 0 ? (totalCarbonKg / (totalFinishedMi + EPSILON)) : 0.0);
         stats.put("completion_rate_mi", totalWorkloadMi > 0 ? (totalFinishedMi / (totalWorkloadMi + EPSILON)) : 0.0);
+
+        // Expose the actual carbon penalty signal used by the global reward (pre-normalization)
+        stats.put("global_carbon_signal_last", lastGlobalCarbonSignal);
+        stats.put("global_carbon_signal_sum", epGlobalCarbonSignalSum);
+        stats.put("global_carbon_signal_mean", currentStep > 0 ? epGlobalCarbonSignalSum / currentStep : 0.0);
+        // Expose the normalized penalty Ĉ used in r_global = α·L - β·Ĉ - γ·Rw
+        stats.put("global_carbon_penalty_norm_last", lastGlobalCarbonPenaltyNorm);
+        stats.put("global_carbon_penalty_norm_sum", epGlobalCarbonPenaltyNormSum);
+        stats.put("global_carbon_penalty_norm_mean", currentStep > 0 ? epGlobalCarbonPenaltyNormSum / currentStep : 0.0);
 
         // Add global reward breakdown (episode cumulative term sums)
         // r_global = α·L - β·Ĉ - γ·Rw
         stats.put("global_reward_term_local_sum", epGlobalTermLocalSum);
         stats.put("global_reward_term_carbon_sum", epGlobalTermCarbonSum);
         stats.put("global_reward_term_waste_sum", epGlobalTermWasteSum);
+        stats.put("global_reward_term_throughput_sum", epGlobalTermThroughputSum);
+        stats.put("global_reward_term_completion_mi_sum", epGlobalTermCompletionMiSum);
         // Optional per-step means (divide by currentStep; 0 if episode not progressed)
         stats.put("global_reward_term_local_mean", currentStep > 0 ? epGlobalTermLocalSum / currentStep : 0.0);
         stats.put("global_reward_term_carbon_mean", currentStep > 0 ? epGlobalTermCarbonSum / currentStep : 0.0);
         stats.put("global_reward_term_waste_mean", currentStep > 0 ? epGlobalTermWasteSum / currentStep : 0.0);
+        stats.put("global_reward_term_throughput_mean", currentStep > 0 ? epGlobalTermThroughputSum / currentStep : 0.0);
+        stats.put("global_reward_term_completion_mi_mean", currentStep > 0 ? epGlobalTermCompletionMiSum / currentStep : 0.0);
 
         return stats;
     }

@@ -24,7 +24,7 @@ public class EnergyMetricsDelta {
     private final double availableGreenPowerW;       // Available green power
 
     // Utilization metrics
-    private final double greenUtilizationRatio;      // deltaGreenUsed / availableGreenEnergy
+    private final double greenUtilizationRatio;      // deltaGreenUsedWh / (deltaGreenUsedWh + deltaGreenWastedWh)
     private final double timestepDurationHours;      // Duration of this timestep
 
     /**

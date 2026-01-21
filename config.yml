@@ -1457,7 +1457,7 @@ experiment_multi_dc_simple:
   # --- Simulation Settings ---
   simulation_timestep: 1.0
   min_time_between_events: 0.1
-  max_episode_length: 2000
+  max_episode_length: 1000
 
   # --- Reward Configuration ---
   reward_completion_coef: 0.3
@@ -1510,6 +1510,9 @@ experiment_multi_dc_simple_tianshou:
   experiment_type_dir: "Multi_Datacenter_Tianshou"
 
   # --- Multi-Datacenter Configuration ---
+  # Use the standard env to enable "God's Eye" features (future energy forecast in obs).
+  # DO NOT set this to HierarchicalMultiDCSimple-v0, which disables God's Eye.
+  env_id: "HierarchicalMultiDC-v0"
   multi_datacenter_enabled: true
   py4j_port: 25333
 
@@ -2044,7 +2047,7 @@ experiment_multi_dc_11:
 
   # --- Workload Configuration (100k cloudlets) ---
   workload_mode: "CSV"
-  cloudlet_trace_file: "traces/dc10_20000.csv"
+  cloudlet_trace_file: "traces/dc10_3000.csv"
   max_cloudlets_to_create_from_workload_file: 2147483647
   workload_reader_mips: 50000
   split_large_cloudlets: true
@@ -2056,14 +2059,22 @@ experiment_multi_dc_11:
   max_episode_length: 4000  # Increased from 4000 for larger workload
 
   # --- Reward Configuration ---
-  reward_completion_coef: 0.3
+
   global_reward_alpha: 1.0
   global_reward_beta: 1.5
   global_reward_gamma: 0.5
-  reward_wait_time_coef: 1.0
-  reward_unutilization_coef: 1.0
-  reward_queue_penalty_coef: 0.6
-  reward_invalid_action_coef: 2.0
+  # Optional: global shaping term to reward progress in completion rate (finished/received).
+  # Implemented as: r_global += global_completion_rate_coef * Δcompletion_rate
+  global_completion_rate_coef: 0.0
+  reward_completion_coef: 0.3
+  reward_wait_time_coef: 0.1 
+  reward_throughput_coef: 0.085
+  reward_unutilization_coef: 0.05
+  reward_cost_coef: 0.05
+  reward_queue_penalty_coef: 0.055
+  reward_invalid_action_coef: 0.2
+  
+
 
   # --- Global Agent Configuration ---
   global_model:
@@ -2102,6 +2113,237 @@ experiment_multi_dc_11:
     num_sgd_iter: 10
     checkpoint_freq_timesteps: 40000
     parameter_sharing: true
+
+# ===================================================================
+# Experiment: Multi-DC 5 (Repro) - restored from logs/experiment_multi_dc_5/20251128_235555/experiment_config.yml
+# ===================================================================
+experiment_multi_dc_5:
+  # --- Identification ---
+  simulation_name: "Hierarchical_5DC_Green"
+  experiment_name: "hierarchical_5dc"
+  experiment_type_dir: "Multi_Datacenter"
+  env_id: "HierarchicalMultiDC-v0"
+
+  # --- Multi-Datacenter Configuration ---
+  multi_datacenter_enabled: true
+  py4j_port: 25333
+
+  # Global Routing Configuration
+  global_routing_batch_size: 5
+  validate_obs_shapes: true
+  validate_action_shapes: true
+
+  # --- Datacenter Configurations (5 DCs, from saved experiment_config.yml) ---
+  datacenters:
+    - datacenter_id: 0
+      name: "DC_HighPerformance"
+      turbine_ids: [1]
+      wind_data_file: "windProduction/split"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      # Timezone offset in 10-minute rows (18 rows = 3 hours)
+      time_zone_offset_rows: 0
+      brown_carbon_factor: 0.8
+      green_carbon_factor: 0.01
+      host_count_spec_asus_rs700a: 4
+      host_count_spec_asus_rs500a: 8
+      host_count_spec_asus_rs720_e9: 8
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 40
+      initial_m_vm_count: 60
+      initial_l_vm_count: 35
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 1
+      name: "DC_EnergyEfficient"
+      turbine_ids: [57]
+      wind_data_file: "windProduction/split"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 18   # +3h
+      brown_carbon_factor: 0.5
+      green_carbon_factor: 0.01
+      hosts_count: 24
+      host_pes: 16
+      host_pe_mips: 50000
+      host_ram: 65536
+      host_bw: 50000
+      host_storage: 100000
+      host_count_spec_asus_rs500a: 10
+      host_count_spec_asus_rs720_e9: 6
+      host_count_low_power: 4
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 30
+      initial_m_vm_count: 50
+      initial_l_vm_count: 40
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 2
+      name: "DC_Edge"
+      turbine_ids: [124]
+      wind_data_file: "windProduction/split"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 36   # +6h
+      brown_carbon_factor: 0.6
+      green_carbon_factor: 0.01
+      hosts_count: 12
+      host_pes: 12
+      host_pe_mips: 40000
+      host_ram: 32768
+      host_bw: 25000
+      host_storage: 50000
+      host_count_spec_acer_r520: 6
+      host_count_spec_acer_ar360: 4
+      host_count_low_power: 4
+      small_vm_pes: 2
+      small_vm_ram: 4096
+      small_vm_bw: 500
+      small_vm_storage: 2000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 3
+      initial_s_vm_count: 8
+      initial_m_vm_count: 12
+      initial_l_vm_count: 8
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 3
+      name: "DC_MidRange"
+      turbine_ids: [80]
+      wind_data_file: "windProduction/split"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 54   # +9h
+      brown_carbon_factor: 0.3
+      green_carbon_factor: 0.01
+      hosts_count: 18
+      host_pes: 20
+      host_pe_mips: 55000
+      host_ram: 98304
+      host_bw: 75000
+      host_storage: 150000
+      host_count_spec_asus_rs720_e9: 5
+      host_count_spec_asus_rs500a: 3
+      host_count_medium: 6
+      host_count_high_performance: 4
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 20
+      initial_m_vm_count: 35
+      initial_l_vm_count: 30
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+    - datacenter_id: 4
+      name: "DC_Regional"
+      turbine_ids: [100]
+      wind_data_file: "windProduction/split"
+      green_energy_enabled: true
+      time_scaling_mode: "COMPRESSED"
+      time_zone_offset_rows: 72   # +12h
+      brown_carbon_factor: 0.45
+      green_carbon_factor: 0.01
+      hosts_count: 16
+      host_pes: 18
+      host_pe_mips: 52000
+      host_ram: 65536
+      host_bw: 60000
+      host_storage: 120000
+      host_count_spec_acer_ar360: 6
+      host_count_spec_acer_r520: 4
+      host_count_spec_asus_rs500a: 4
+      host_count_medium: 2
+      small_vm_pes: 2
+      small_vm_ram: 8192
+      small_vm_bw: 1000
+      small_vm_storage: 4000
+      medium_vm_multiplier: 2
+      large_vm_multiplier: 4
+      initial_s_vm_count: 16
+      initial_m_vm_count: 25
+      initial_l_vm_count: 20
+      vm_startup_delay: 0.0
+      vm_shutdown_delay: 0.0
+
+  # --- Workload Configuration ---
+  workload_mode: "CSV"
+  cloudlet_trace_file: "traces/my_uniform.csv"
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  workload_reader_mips: 50000
+  split_large_cloudlets: true
+  max_cloudlet_pes: 8
+
+  # --- Simulation Settings ---
+  simulation_timestep: 1.0
+  min_time_between_events: 0.1
+  max_episode_length: 2000
+
+  # --- Reward Configuration (as saved) ---
+  # Global Reward (hierarchical): r_global = α·L - β·Ĉ - γ·R_w
+  global_reward_alpha: 1.0
+  global_reward_beta: 1.5
+  global_reward_gamma: 0.5
+  # Optional shaping terms (logged as global_term_throughput_sum / global_term_completion_mi_sum in monitor.csv)
+  # - throughput term: k_T * log1p(finished_mi_this_step)
+  # - completion progress term: k_C * Δ(completion_rate_mi)
+  global_throughput_mi_coef: 0.02
+  global_completion_rate_mi_coef: 5.0
+  # Global carbon penalty mode:
+  # - "TOTAL": penalize total step carbon (kg), normalized by running max (default)
+  # - "PER_MI": penalize carbon per completed MI in the timestep (kg/MI), normalized by running max
+  carbon_penalty_mode: "PER_MI"
+  # Local reward coefficients (apply to each DC's local agent reward)
+  reward_completion_coef: 0.2
+  reward_wait_time_coef: 0.1
+  reward_unutilization_coef: 0.05
+  reward_queue_penalty_coef: 0.055
+  reward_invalid_action_coef: 1.0
+
+  # --- Model Configurations (as saved) ---
+  local_model:
+    learning_rate: 0.0003
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 10
+
+  # --- Training Configuration (as saved) ---
+  training:
+    total_timesteps: 320000
+    num_workers: 0
+    num_gpus: 1
+    train_batch_size: 4000
+    sgd_minibatch_size: 512
+    num_sgd_iter: 10
+    checkpoint_freq_timesteps: 15000
+
+
+  # --- Misc ---
+  mode: "train"
+  seed: 2025
+  save_experiment: true
+  verbose: 1
+  device: "auto"
 
 # ==============================================================================
 # BASELINE ALGORITHM EXPERIMENTS (No God's Eye Features)

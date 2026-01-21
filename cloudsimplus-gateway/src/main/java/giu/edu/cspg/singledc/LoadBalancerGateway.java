@@ -684,12 +684,12 @@ public class LoadBalancerGateway {
         this.rewardEnergyComponent = 0.0;  // Not used in original reward function
 
         // --- Total Reward ---
-        // Now includes positive completion reward to incentivize task completion
-        double totalReward = this.rewardCompletionComponent +  // NEW: positive reward
-                this.rewardWaitTimeComponent +
-                this.rewardUnutilizationComponent +
-                this.rewardQueuePenaltyComponent +
-                this.rewardInvalidActionComponent;
+        // Include positive completion reward to incentivize task completion.
+        double totalReward = this.rewardCompletionComponent +
+            this.rewardWaitTimeComponent +
+            this.rewardUnutilizationComponent +
+            this.rewardQueuePenaltyComponent +
+            this.rewardInvalidActionComponent;
 
         LOGGER.debug("Reward Calc: Completion={}, Wait={}, UtilBal={}, Queue={}, Invalid={}, Total={}",
                 String.format("%.3f", this.rewardCompletionComponent),
@@ -698,6 +698,14 @@ public class LoadBalancerGateway {
                 String.format("%.3f", this.rewardQueuePenaltyComponent),
                 String.format("%.3f", this.rewardInvalidActionComponent),
                 String.format("%.3f", totalReward));
+
+        // IMPORTANT: Clear per-step finished lists so "last step" metrics don't accumulate across the episode.
+        // Otherwise completion/wait-time calculations become non-stationary and can distort learning.
+        try {
+            broker.clearFinishedWaitTimes();
+        } catch (Exception ignored) {
+            // Non-critical; reward already computed.
+        }
 
         return totalReward;
     }

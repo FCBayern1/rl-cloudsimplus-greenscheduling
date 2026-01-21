@@ -58,13 +58,8 @@ public class DatacenterInstance {
     private double previousClock = 0.0;             // Previous update time for delta calculation
 
     // Track previous values for delta calculation
-    private double previousGreenEnergyWh = 0.0;     // Previous cumulative green energy
-    private double previousBrownEnergyWh = 0.0;     // Previous cumulative brown energy
-    private double previousWastedGreenWh = 0.0;     // Previous cumulative wasted green
-
     // === Carbon Emission Tracking ===
     private double cumulativeCarbonEmissionKg = 0.0;   // Total carbon emissions for episode (kg CO2)
-    private double previousCarbonEmissionKg = 0.0;     // Previous cumulative carbon emissions (for delta calculation)
 
     // Latest timestep delta
     private EnergyMetricsDelta latestEnergyDelta = null;
@@ -269,13 +264,33 @@ public class DatacenterInstance {
         // Calculate time delta
         double timeDelta = currentClock - previousClock;
         if (timeDelta <= 0) {
-            return;  // Skip if no time has passed
-        }
+            // IMPORTANT:
+            // If no time has passed, we must not leave latestEnergyDelta unchanged,
+            // otherwise callers may repeatedly read the previous timestep's delta and double-count it.
+            // Provide an explicit zero-delta snapshot for this clock tick.
+            currentPowerW = hostList.stream()
+                    .mapToDouble(host -> {
+                        if (host.getPowerModel() != null) {
+                            double utilization = host.getCpuPercentUtilization();
+                            return host.getPowerModel().getPower(utilization);
+                        }
+                        return 0.0;
+                    })
+                    .sum();
 
-        // Store previous values for delta calculation
-        previousGreenEnergyWh = cumulativeGreenEnergyWh;
-        previousBrownEnergyWh = cumulativeBrownEnergyWh;
-        previousWastedGreenWh = totalWastedGreenWh;
+            double availableGreenPower = isGreenEnergyEnabled() ? getCurrentGreenPowerW(currentClock) : 0.0;
+            latestEnergyDelta = EnergyMetricsDelta.builder()
+                    .deltaGreenEnergyUsedWh(0.0)
+                    .deltaBrownEnergyUsedWh(0.0)
+                    .deltaGreenEnergyWastedWh(0.0)
+                    .deltaCarbonEmissionKg(0.0)
+                    .currentPowerW(currentPowerW)
+                    .availableGreenPowerW(availableGreenPower)
+                    .greenUtilizationRatio(0.0)
+                    .timestepDurationHours(0.0)
+                    .build();
+            return;
+        }
 
         // Calculate total power consumption from all hosts
         currentPowerW = hostList.stream()
@@ -338,7 +353,6 @@ public class DatacenterInstance {
                              + (deltaBrownKWh * config.getBrownCarbonFactor());
 
         // Update cumulative carbon emissions
-        previousCarbonEmissionKg = cumulativeCarbonEmissionKg;
         cumulativeCarbonEmissionKg += deltaCarbonKg;
 
         // Create and store energy delta for this timestep
@@ -349,7 +363,11 @@ public class DatacenterInstance {
                 .deltaCarbonEmissionKg(deltaCarbonKg)
                 .currentPowerW(currentPowerW)
                 .availableGreenPowerW(availableGreenPower)
-                .greenUtilizationRatio(availableGreenPower > 0 ? deltaGreenUsed / (deltaGreenUsed + deltaGreenWasted) : 0.0)
+                .greenUtilizationRatio(
+                        (deltaGreenUsed + deltaGreenWasted) > 0
+                                ? (deltaGreenUsed / (deltaGreenUsed + deltaGreenWasted))
+                                : 0.0
+                )
                 .timestepDurationHours(timeDelta / 3600.0)
                 .build();
 
@@ -405,14 +423,10 @@ public class DatacenterInstance {
         previousClock = 0.0;
 
         // Reset delta tracking
-        previousGreenEnergyWh = 0.0;
-        previousBrownEnergyWh = 0.0;
-        previousWastedGreenWh = 0.0;
         latestEnergyDelta = null;
 
         // Reset carbon emissions
         cumulativeCarbonEmissionKg = 0.0;
-        previousCarbonEmissionKg = 0.0;
 
         if (isGreenEnergyEnabled()) {
             for (GreenEnergyProvider provider : greenEnergyProviders) {
