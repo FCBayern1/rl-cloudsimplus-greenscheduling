@@ -169,6 +169,40 @@ logs/<experiment_type_dir>/<experiment_name>/<timestamp>/
 
 ---
 
+## TensorBoard 开启与查看
+
+### 多 DC（RLlib / Ray Tune）
+
+把 TensorBoard 指向 **run 的输出目录**（`entrypoint_pettingzoo.py` 会打印 `Output dir`），例如：
+
+```bash
+# 示例：查看某个实验的所有 runs（推荐）
+tensorboard --logdir logs/experiment_multi_dc_5_PPO_ParameterSharing
+```
+
+或者只看单次运行：
+
+```bash
+tensorboard --logdir logs/experiment_multi_dc_5_PPO_ParameterSharing/<timestamp>
+```
+
+### 单 DC（SB3）
+
+把 TensorBoard 指向 **experiment 文件夹**（这样可以覆盖多个 timestamp 运行），例如：
+
+```bash
+# 示例：experiment_1
+tensorboard --logdir logs/CSV_Train/Exp1_CSVSimple_GreenEnergy
+```
+
+默认端口是 6006；在远程机器上你可能需要：
+
+```bash
+tensorboard --logdir logs --host 0.0.0.0 --port 6006
+```
+
+---
+
 ## Baseline / 算法对比评估
 
 ### 1) Heuristic baseline（多 DC）

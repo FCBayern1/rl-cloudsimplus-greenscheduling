@@ -3,10 +3,12 @@ package giu.edu.cspg.multidc;
 import java.util.HashMap;
 import java.util.Map;
 
+import lombok.Getter;
+
 /**
- * Energy metrics for a single datacenter.
- * Provides energy consumption statistics including green/brown energy split.
+ * Pack the energy metrics for a single dc into a single object at each timestep.
  */
+@Getter
 public class DatacenterEnergyMetrics {
     private final int datacenterId;
     private final String datacenterName;
@@ -45,38 +47,6 @@ public class DatacenterEnergyMetrics {
         this.cumulativeCarbonEmissionKg = cumulativeCarbonEmissionKg;
         this.currentPowerW = currentPowerW;
         this.currentGreenPowerW = currentGreenPowerW;
-    }
-
-    public int getDatacenterId() {
-        return datacenterId;
-    }
-
-    public String getDatacenterName() {
-        return datacenterName;
-    }
-
-    public double getCumulativeGreenEnergyWh() {
-        return cumulativeGreenEnergyWh;
-    }
-
-    public double getCumulativeBrownEnergyWh() {
-        return cumulativeBrownEnergyWh;
-    }
-
-    public double getTotalWastedGreenWh() {
-        return totalWastedGreenWh;
-    }
-
-    public double getCurrentPowerW() {
-        return currentPowerW;
-    }
-
-    public double getCurrentGreenPowerW() {
-        return currentGreenPowerW;
-    }
-
-    public double getCumulativeCarbonEmissionKg() {
-        return cumulativeCarbonEmissionKg;
     }
 
     /**

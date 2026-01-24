@@ -4,7 +4,6 @@ import giu.edu.cspg.singledc.LoadBalancingBroker;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import lombok.Getter;
 import org.cloudsimplus.brokers.DatacenterBrokerSimple;
@@ -50,7 +49,6 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     // === Statistics ===
     @Getter
     private int totalCloudletsRouted = 0;
-    private int totalCloudletsCompleted = 0;
 
     /**
      * Create a GlobalBroker with all cloudlets and datacenter instances.
@@ -411,7 +409,6 @@ public class GlobalBroker extends DatacenterBrokerSimple {
      */
     public void resetStatistics() {
         totalCloudletsRouted = 0;
-        totalCloudletsCompleted = 0;
         nextCloudletIndex = 0;
         globalWaitingQueue.clear();
         datacenterInstances.forEach(DatacenterInstance::resetStatistics);

@@ -14,7 +14,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.ArrayList;
 
 /**
  * Encapsulates all runtime state and components for a single datacenter
@@ -23,9 +22,9 @@ import java.util.ArrayList;
  * Each instance maintains its own:
  * - Datacenter (CloudSim Plus entity)
  * - LocalBroker (manages cloudlet-to-VM assignment within this DC)
- * - Hosts (physical servers)
- * - VMs (virtual machines)
- * - GreenEnergyProvider (wind turbine power supply)
+ * - Hosts
+ * - VMs
+ * - GreenEnergyProvider
  */
 @Getter
 @Setter
@@ -44,22 +43,18 @@ public class DatacenterInstance {
     private List<Vm> vmPool;
 
     // === Green Energy ===
-    /**
-     * List of green energy providers (one per wind turbine).
-     * Multiple turbines can supply power to a single datacenter.
-     */
     private List<GreenEnergyProvider> greenEnergyProviders = new ArrayList<>();
 
     // === Energy Tracking ===
     private double cumulativeGreenEnergyWh = 0.0;   // Total green energy consumed
-    private double cumulativeBrownEnergyWh = 0.0;   // Total brown (grid) energy consumed
+    private double cumulativeBrownEnergyWh = 0.0;   // Total brown energy consumed
     private double totalWastedGreenWh = 0.0;        // Total wasted green energy
-    private double currentPowerW = 0.0;             // Current power consumption
+    private double currentPowerW = 0.0;             // Current power of the datacentre
     private double previousClock = 0.0;             // Previous update time for delta calculation
 
     // Track previous values for delta calculation
     // === Carbon Emission Tracking ===
-    private double cumulativeCarbonEmissionKg = 0.0;   // Total carbon emissions for episode (kg CO2)
+    private double cumulativeCarbonEmissionKg = 0.0;   // Total carbon emissions for episode (CO2 in kg)
 
     // Latest timestep delta
     private EnergyMetricsDelta latestEnergyDelta = null;
@@ -119,19 +114,12 @@ public class DatacenterInstance {
     }
 
     /**
-     * Add a green energy provider (turbine) to this datacenter.
+     * Add a green energy provider to this datacenter.
      */
     public void addGreenEnergyProvider(GreenEnergyProvider provider) {
         if (provider != null) {
             greenEnergyProviders.add(provider);
         }
-    }
-
-    /**
-     * Get all green energy providers.
-     */
-    public List<GreenEnergyProvider> getGreenEnergyProviders() {
-        return greenEnergyProviders;
     }
 
     /**
@@ -258,13 +246,27 @@ public class DatacenterInstance {
      */
     public void updateEnergyMetrics(double currentClock) {
         if (hostList == null || hostList.isEmpty()) {
+            // Defensive: if there are no hosts, we must still publish a zero-delta snapshot.
+            // Otherwise callers may keep reading the previous timestep's delta and double-count it.
+            currentPowerW = 0.0;
+            double availableGreenPower = isGreenEnergyEnabled() ? getCurrentGreenPowerW(currentClock) : 0.0;
+            latestEnergyDelta = EnergyMetricsDelta.builder()
+                    .deltaGreenEnergyUsedWh(0.0)
+                    .deltaBrownEnergyUsedWh(0.0)
+                    .deltaGreenEnergyWastedWh(0.0)
+                    .deltaCarbonEmissionKg(0.0)
+                    .currentPowerW(currentPowerW)
+                    .availableGreenPowerW(availableGreenPower)
+                    .greenUtilizationRatio(0.0)
+                    .timestepDurationHours(0.0)
+                    .build();
+            previousClock = currentClock;
             return;
         }
 
         // Calculate time delta
         double timeDelta = currentClock - previousClock;
         if (timeDelta <= 0) {
-            // IMPORTANT:
             // If no time has passed, we must not leave latestEnergyDelta unchanged,
             // otherwise callers may repeatedly read the previous timestep's delta and double-count it.
             // Provide an explicit zero-delta snapshot for this clock tick.
@@ -318,7 +320,7 @@ public class DatacenterInstance {
             double demandWh = currentPowerW * timeDeltaHours;
             double greenAvailableWh = availableGreenPower * timeDeltaHours;
 
-            // Prioritize green energy, excess is wasted (no storage)
+            // Prioritise green energy, excess is wasted (no storage)
             deltaGreenUsed = Math.min(demandWh, greenAvailableWh);
             deltaBrownUsed = demandWh - deltaGreenUsed;
             deltaGreenWasted = greenAvailableWh - deltaGreenUsed;
@@ -371,7 +373,7 @@ public class DatacenterInstance {
                 .timestepDurationHours(timeDelta / 3600.0)
                 .build();
 
-        LOGGER.debug("{}: Carbon emission - Delta: {:.3f} kg CO2, Cumulative: {:.3f} kg CO2, Intensity: {:.3f} kg/kWh",
+        LOGGER.debug("{}: Carbon emission - Delta: {} kg CO2, Cumulative: {} kg CO2, Intensity: {} kg/kWh",
                 getName(), deltaCarbonKg, cumulativeCarbonEmissionKg, latestEnergyDelta.getCarbonIntensity());
 
         previousClock = currentClock;
@@ -390,13 +392,6 @@ public class DatacenterInstance {
      */
     public double getTotalEnergyWh() {
         return cumulativeGreenEnergyWh + cumulativeBrownEnergyWh;
-    }
-
-    /**
-     * Get cumulative carbon emissions (kg CO2).
-     */
-    public double getCumulativeCarbonEmissionKg() {
-        return cumulativeCarbonEmissionKg;
     }
 
     /**
@@ -437,14 +432,6 @@ public class DatacenterInstance {
     }
 
     /**
-     * Get the latest energy delta for the most recent timestep.
-     * Returns null if no timestep has been processed yet.
-     */
-    public EnergyMetricsDelta getLatestEnergyDelta() {
-        return latestEnergyDelta;
-    }
-
-    /**
      * Get list of current host CPU utilizations.
      */
     public List<Double> getHostUtilizations() {
@@ -458,13 +445,6 @@ public class DatacenterInstance {
     }
 
     /**
-     * Get count of cloudlets received by this datacenter.
-     */
-    public int getCloudletsReceived() {
-        return cloudletsReceived;
-    }
-
-    /**
      * Get count of cloudlets completed by this datacenter.
      * Uses the broker's finished list for accurate count.
      */
@@ -473,14 +453,6 @@ public class DatacenterInstance {
             return localBroker.getCloudletFinishedList().size();
         }
         return cloudletsCompleted;  // Fallback to manual counter
-    }
-
-    /**
-     * Get the local broker for this datacenter.
-     * Used for accessing cloudlet statistics like finished list.
-     */
-    public LoadBalancingBroker getLocalBroker() {
-        return localBroker;
     }
 
     @Override
