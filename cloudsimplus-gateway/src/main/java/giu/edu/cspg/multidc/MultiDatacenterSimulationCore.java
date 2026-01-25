@@ -63,17 +63,16 @@ public class MultiDatacenterSimulationCore {
     private double currentClock = 0.0;
     private double timestepSize;
     private int currentStep = 0;
-    private boolean firstStep = true;
     private boolean firstReset = true;  // Track if this is the first reset
 
-    // === Running Statistics for Reward Normalization ===
-    // Running max for carbon penalty signal normalization (persists across episodes).
+    // === Running Statistics for Reward Normalisation ===
+    // Running max for carbon penalty signal normalisation (persists across episodes).
     // Note: depending on settings.carbon_penalty_mode, this may track:
     // - TOTAL: total step carbon (kg)
     // - PER_MI: carbon-per-MI signal (kg/MI)
     private double runningMaxCarbon = 1e-3;  // Initial small value to avoid division by zero
     private static final double EPSILON = 1e-8;
-    private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalized carbon ratio
+    private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalised carbon ratio
 
     // === Episode-level reward breakdown tracking (for logging/analysis) ===
     // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw
@@ -92,7 +91,7 @@ public class MultiDatacenterSimulationCore {
     // Track the *raw* carbon penalty signal that is normalized to produce Ĉ.
     // - TOTAL mode: signal = step total carbon (kg)
     // - PER_MI mode: signal = step carbon per completed MI (kg/MI) or CARBON_RATIO_MAX if MI==0
-    private double epGlobalCarbonSignalSum = 0.0;        // Σ signal
+    private double epGlobalCarbonSignalSum = 0.0;        // Σ signal, total carbon emission sum at each timestep in kg
     private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
     private double lastGlobalCarbonSignal = 0.0;         // last step signal
     private double lastGlobalCarbonPenaltyNorm = 0.0;    // last step Ĉ
@@ -122,7 +121,7 @@ public class MultiDatacenterSimulationCore {
         this.timestepSize = settings.getSimulationTimestep();
         this.datacenterInstances = new ArrayList<>();
 
-        LOGGER.info("Initializing MultiDatacenterSimulationCore with {} datacenters",
+        LOGGER.info("Initialising MultiDatacenterSimulationCore with {} datacenters",
                 datacenterConfigs.size());
     }
 
@@ -144,11 +143,10 @@ public class MultiDatacenterSimulationCore {
         // Reset VM ID counter to ensure VM IDs start from 0 in each episode
         DatacenterSetup.resetVmIdCounter();
 
-        // Initialize CloudSim Plus engine
+        // Reinitialise CloudSim Plus engine
         simulation = new CloudSimPlus(settings.getMinTimeBetweenEvents());
         currentClock = 0.0;
         currentStep = 0;
-        firstStep = true;
 
         // Reset episode-level reward breakdown trackers
         epGlobalTermLocalSum = 0.0;
@@ -199,7 +197,7 @@ public class MultiDatacenterSimulationCore {
         // === Step 5: Start Simulation (sync mode) ===
         simulation.startSync();
 
-        // === Step 6: Initialize simulation by proceeding clock ===
+        // === Step 6: Initialise simulation by proceeding clock ===
         proceedClockTo(settings.getMinTimeBetweenEvents());
         LOGGER.info("Simulation clock initialized to {}", currentClock);
 
@@ -486,17 +484,25 @@ public class MultiDatacenterSimulationCore {
         Map<Integer, Boolean> results = new HashMap<>();
 
         for (Map.Entry<Integer, Integer> entry : localActions.entrySet()) {
-            int dcId = entry.getKey();
+            int dcKey = entry.getKey();
             int targetVmId = entry.getValue();
 
-            if (dcId < 0 || dcId >= datacenterInstances.size()) {
-                LOGGER.warn("Invalid datacenter ID: {}", dcId);
+            // IMPORTANT: dcKey in localActions is expected to be the Datacenter ID (from config),
+            // not necessarily the 0..N-1 index in datacenterInstances.
+            // To be robust, try to resolve by DC ID first; fall back to index only if needed.
+            DatacenterInstance dc = resolveDatacenterInstance(dcKey);
+            if (dc == null) {
+                LOGGER.warn("Invalid datacenter key: {} (cannot resolve to any DatacenterInstance)", dcKey);
+                results.put(dcKey, false);
+                continue;
+            }
+            final int dcId = dc.getId();
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker == null) {
+                LOGGER.error("DC {}: LocalBroker not initialized. Cannot apply local action.", dcId);
                 results.put(dcId, false);
                 continue;
             }
-
-            DatacenterInstance dc = datacenterInstances.get(dcId);
-            LoadBalancingBroker localBroker = dc.getLocalBroker();
 
             // Check if agent chose NoAssign (-1)
             if (targetVmId == -1) {
@@ -526,13 +532,12 @@ public class MultiDatacenterSimulationCore {
                     // Get actual VM ID from the VM pool
                     long actualVmId = vmPool.get(targetVmId).getId();
 
-                    // DEBUG: Print VM pool and broker VM list info
-                    LOGGER.warn("DC {}: DEBUG - vmPool size: {}, local index: {}, actual VM ID: {}",
+                    // Debug info (use DEBUG level to avoid log spam during training)
+                    LOGGER.debug("DC {}: vmPool size: {}, local index: {}, actual VM ID: {}",
                             dcId, vmPool.size(), targetVmId, actualVmId);
 
-                    // DEBUG: Print broker's VM list size
                     int brokerVmCount = localBroker.getVmCreatedList().size();
-                    LOGGER.warn("DC {}: Broker has {} VMs created", dcId, brokerVmCount);
+                    LOGGER.debug("DC {}: Broker has {} VMs created", dcId, brokerVmCount);
 
                     // DEBUG: Print first few VM IDs in vmPool (for first action of each DC)
                     if (targetVmId < 3) {
@@ -542,7 +547,7 @@ public class MultiDatacenterSimulationCore {
                             if (i < Math.min(5, vmPool.size()) - 1) vmPoolIds.append(", ");
                         }
                         vmPoolIds.append(", ...]");
-                        LOGGER.warn(vmPoolIds.toString());
+                        LOGGER.debug(vmPoolIds.toString());
 
                         // Also print broker's actual VM IDs
                         StringBuilder brokerVmIds = new StringBuilder("DC " + dcId + " broker VM IDs: [");
@@ -552,7 +557,7 @@ public class MultiDatacenterSimulationCore {
                             if (i < Math.min(5, brokerVms.size()) - 1) brokerVmIds.append(", ");
                         }
                         brokerVmIds.append(", ...]");
-                        LOGGER.warn(brokerVmIds.toString());
+                        LOGGER.debug(brokerVmIds.toString());
                     }
 
                     // Local agent assigns a cloudlet from local queue to a VM
@@ -604,6 +609,24 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
+     * Resolve a DatacenterInstance from a key that may be either a datacenterId (preferred)
+     * or a datacenter index (fallback for backward compatibility).
+     */
+    private DatacenterInstance resolveDatacenterInstance(int dcKey) {
+        // 1) Try resolve by configured datacenterId
+        for (DatacenterInstance dc : datacenterInstances) {
+            if (dc != null && dc.getId() == dcKey) {
+                return dc;
+            }
+        }
+        // 2) Fallback: treat as index
+        if (dcKey >= 0 && dcKey < datacenterInstances.size()) {
+            return datacenterInstances.get(dcKey);
+        }
+        return null;
+    }
+
+    /**
      * Advance simulation time by one timestep.
      * Uses proceedClockTo to ensure precise time advancement.
      */
@@ -614,8 +637,6 @@ public class MultiDatacenterSimulationCore {
 
         // Use proceedClockTo for precise time advancement
         proceedClockTo(targetTime);
-
-        firstStep = false;
 
         LOGGER.debug("Simulation advanced to {}", currentClock);
     }
@@ -780,12 +801,17 @@ public class MultiDatacenterSimulationCore {
         // Calculate load imbalance (variance in utilization)
         double loadImbalance = calculateLoadImbalance(dcUtilizations);
 
-        // Get recent completed cloudlets (across all DCs)
-        // Note: This requires tracking completed counts in DatacenterInstance
-        // For now, use broker's finished list size as proxy
-        int recentCompleted = datacenterInstances.stream()
-                .mapToInt(dc -> dc.getLocalBroker().getCloudletFinishedList().size())
-                .sum();
+        // Get recent completed cloudlets (across all DCs) within the last timestep.
+        // Use the broker's per-step finished list rather than the cumulative finished list.
+        int recentCompleted = 0;
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker broker = dc.getLocalBroker();
+            if (broker == null) continue;
+            List<Cloudlet> finishedLastStep = broker.getCloudletsFinishedLastStep(currentClock);
+            if (finishedLastStep != null) {
+                recentCompleted += finishedLastStep.size();
+            }
+        }
 
         // Create GlobalObservationState with proper DC-level semantics
         return new GlobalObservationState(
@@ -1783,8 +1809,15 @@ public class MultiDatacenterSimulationCore {
      */
     private boolean hasUnfinishedCloudlets() {
         // Check GlobalBroker for unrouted cloudlets
-        if (globalBroker != null && globalBroker.getRemainingCloudletCount() > 0) {
-            return true;
+        if (globalBroker != null) {
+            // Cloudlets not yet injected into the global routing queue
+            if (globalBroker.getRemainingCloudletCount() > 0) {
+                return true;
+            }
+            // Cloudlets already arrived but not routed yet
+            if (globalBroker.getGlobalWaitingCloudletsCount() > 0) {
+                return true;
+            }
         }
 
         // Check each LocalBroker for unfinished cloudlets

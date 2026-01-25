@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- *   Global Broker for multi-datacenter environment (Batch Routing Mode).
+ *   Global Broker for multi-datacenter environment.
  *
  *   This broker implements a batch routing strategy:
  * - Stores all cloudlets with their arrival times (from workload trace)
@@ -27,11 +27,10 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     private static final Logger logger = LoggerFactory.getLogger(GlobalBroker.class.getSimpleName());
     private static final double EPS = 1e-9;
 
-    // === All Cloudlets (sorted by arrival time) ===
+    // === All Cloudlets sorted by arrival time ===
     private final List<Cloudlet> allCloudlets;
 
     // === Global Waiting Queue ===
-    // Use LinkedList for efficient O(1) removal from head
     private final LinkedList<Cloudlet> globalWaitingQueue = new LinkedList<>();
 
     // === Datacenter Instances ===
@@ -40,12 +39,6 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     // === Routing State ===
     private int nextCloudletIndex = 0;  // Index of next cloudlet to process from allCloudlets
 
-    /**
-     * -- GETTER --
-     *  Get the number of cloudlets that have been routed to datacenters.
-     *
-     * @return Total cloudlets routed
-     */
     // === Statistics ===
     @Getter
     private int totalCloudletsRouted = 0;
@@ -70,7 +63,7 @@ public class GlobalBroker extends DatacenterBrokerSimple {
         this.allCloudlets = new ArrayList<>(allCloudlets);
         this.datacenterInstances = new ArrayList<>(datacenterInstances);
 
-        logger.info("GlobalBroker initialized with {} cloudlets and {} datacenters",
+        logger.info("GlobalBroker initialised with {} cloudlets and {} datacenters",
                 allCloudlets.size(), datacenterInstances.size());
 
         // Disable auto-submission
@@ -309,6 +302,7 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     }
 
     /**
+     * Has not been used yet.
      * Batch route multiple cloudlets to their target datacenters.
      *
      * @param cloudlets List of cloudlets to route

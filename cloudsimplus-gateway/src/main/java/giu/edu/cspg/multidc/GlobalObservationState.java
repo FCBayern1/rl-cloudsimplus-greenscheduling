@@ -1,8 +1,8 @@
 package giu.edu.cspg.multidc;
-import giu.edu.cspg.singledc.ObservationState;
 import lombok.Getter;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Global observation state for hierarchical multi-datacenter MARL.
@@ -205,6 +205,47 @@ public class GlobalObservationState {
             int numDatacenters,
             double currentClock) {
 
+        // Basic validation to prevent subtle out-of-bounds bugs later.
+        if (numDatacenters <= 0) {
+            throw new IllegalArgumentException("numDatacenters must be > 0");
+        }
+        Objects.requireNonNull(dcCurrentGreenPowerW, "dcCurrentGreenPowerW");
+        Objects.requireNonNull(dcCurrentPowerW, "dcCurrentPowerW");
+        Objects.requireNonNull(dcGreenRatio, "dcGreenRatio");
+        Objects.requireNonNull(dcCumulativeWastedGreenWh, "dcCumulativeWastedGreenWh");
+        Objects.requireNonNull(dcFutureShortMean, "dcFutureShortMean");
+        Objects.requireNonNull(dcFutureShortTrend, "dcFutureShortTrend");
+        Objects.requireNonNull(dcFutureLongMean, "dcFutureLongMean");
+        Objects.requireNonNull(dcFutureLongPeakTiming, "dcFutureLongPeakTiming");
+        Objects.requireNonNull(dcQueueSizes, "dcQueueSizes");
+        Objects.requireNonNull(dcUtilizations, "dcUtilizations");
+        Objects.requireNonNull(dcAvailablePes, "dcAvailablePes");
+        Objects.requireNonNull(dcRamUtilizations, "dcRamUtilizations");
+        Objects.requireNonNull(batchCloudletPes, "batchCloudletPes");
+        Objects.requireNonNull(batchCloudletMi, "batchCloudletMi");
+        Objects.requireNonNull(upcomingCloudletsPesDistribution, "upcomingCloudletsPesDistribution");
+
+        if (dcCurrentGreenPowerW.length != numDatacenters
+                || dcCurrentPowerW.length != numDatacenters
+                || dcGreenRatio.length != numDatacenters
+                || dcCumulativeWastedGreenWh.length != numDatacenters
+                || dcFutureShortMean.length != numDatacenters
+                || dcFutureShortTrend.length != numDatacenters
+                || dcFutureLongMean.length != numDatacenters
+                || dcFutureLongPeakTiming.length != numDatacenters
+                || dcQueueSizes.length != numDatacenters
+                || dcUtilizations.length != numDatacenters
+                || dcAvailablePes.length != numDatacenters
+                || dcRamUtilizations.length != numDatacenters) {
+            throw new IllegalArgumentException("All per-datacenter arrays must have length == numDatacenters");
+        }
+        if (batchCloudletPes.length != batchCloudletMi.length) {
+            throw new IllegalArgumentException("batchCloudletPes and batchCloudletMi must have the same length");
+        }
+        if (upcomingCloudletsPesDistribution.length != 3) {
+            throw new IllegalArgumentException("upcomingCloudletsPesDistribution must have length 3 [small, medium, large]");
+        }
+
         // Defensive copies for arrays
         this.dcCurrentGreenPowerW = Arrays.copyOf(dcCurrentGreenPowerW, dcCurrentGreenPowerW.length);
         this.dcCurrentPowerW = Arrays.copyOf(dcCurrentPowerW, dcCurrentPowerW.length);
@@ -393,7 +434,7 @@ public class GlobalObservationState {
                 "GlobalObservationState{" +
                 "numDCs=%d, " +
                 "clock=%.2fs, " +
-                "dcGreenPower=%s kW, " +
+                "dcGreenPower=%s W, " +
                 "dcQueueSizes=%s, " +
                 "dcUtilizations=%s, " +
                 "dcAvailablePes=%s, " +
