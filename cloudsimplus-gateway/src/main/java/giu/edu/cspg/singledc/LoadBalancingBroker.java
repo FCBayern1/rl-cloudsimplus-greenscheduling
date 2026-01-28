@@ -137,15 +137,28 @@ public class LoadBalancingBroker extends DatacenterBrokerSimple {
      * @param currentClock The current simulation clock time.
      */
     public List<Cloudlet> getCloudletsToQueueAtThisTimestep(double targetTime, double startTime, double currentClock) {
-        final List<Cloudlet> cloudletsToQueue = cloudletsQueue.stream()
-                .takeWhile(cloudlet -> cloudlet.getSubmissionDelay() <= targetTime)
-                .collect(Collectors.toList());
+        // IMPORTANT:
+        // PriorityQueue.stream() does NOT guarantee encounter order (it is not sorted iteration),
+        // so using takeWhile() here can miss eligible cloudlets or stop too early.
+        //
+        // Correct approach: repeatedly peek/poll the min element (by submissionDelay).
+        final List<Cloudlet> cloudletsToQueue = new ArrayList<>();
+        while (!cloudletsQueue.isEmpty()) {
+            final Cloudlet next = cloudletsQueue.peek();
+            if (next == null) {
+                break;
+            }
+            if (next.getSubmissionDelay() <= targetTime) {
+                cloudletsToQueue.add(cloudletsQueue.poll());
+            } else {
+                break;
+            }
+        }
         return cloudletsToQueue;
     }
 
     public void queueCloudletsAtThisTimestep(List<Cloudlet> cloudletsToQueue, double startTime, double currentClock) {
         if (!cloudletsToQueue.isEmpty()) {
-            cloudletsQueue.removeAll(cloudletsToQueue); // Remove from the submission queue
             LOGGER.info("[{} - {}]: Queueing {} cloudlets", startTime, currentClock, cloudletsToQueue.size());
             queueCloudletList(cloudletsToQueue); // Add to the internal queue
         } else {

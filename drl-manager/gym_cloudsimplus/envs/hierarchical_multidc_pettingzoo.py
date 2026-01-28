@@ -48,19 +48,6 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         - "local_agent_0", ..., "local_agent_N": Handle VM scheduling per DC
 
     All agents act simultaneously in each timestep (parallel execution).
-
-    Example:
-        >>> config = {...}  # Your environment config
-        >>> env = HierarchicalMultiDCParallelEnv(config)
-        >>> observations, infos = env.reset()
-        >>>
-        >>> actions = {
-        ...     "global_agent": np.array([0, 1, 2, 0, 1]),  # Route 5 cloudlets
-        ...     "local_agent_0": 3,  # Assign to VM 3 in DC 0
-        ...     "local_agent_1": 1,  # Assign to VM 1 in DC 1
-        ...     "local_agent_2": 5   # Assign to VM 5 in DC 2
-        ... }
-        >>> observations, rewards, terminations, truncations, infos = env.step(actions)
     """
 
     metadata = {

@@ -34,7 +34,6 @@ public class HierarchicalMultiDCGateway {
     private SimulationSettings settings;
     private List<DatacenterConfig> datacenterConfigs;
 
-    private int currentStep = 0;
     private boolean configured = false;
 
     public HierarchicalMultiDCGateway() {
@@ -226,7 +225,6 @@ public class HierarchicalMultiDCGateway {
      * @param dcParams Datacenter parameters
      * @return List of turbine IDs
      */
-    @SuppressWarnings("unchecked")
     private List<Integer> parseTurbineIds(Map<String, Object> dcParams) {
         List<Integer> turbineIds = new ArrayList<>();
 
@@ -268,7 +266,6 @@ public class HierarchicalMultiDCGateway {
         }
 
         LOGGER.info("Resetting simulation with seed: {}", seed);
-        currentStep = 0;
 
         // Create simulation core if not exists
         if (simulationCore == null) {
@@ -303,7 +300,6 @@ public class HierarchicalMultiDCGateway {
             throw new IllegalStateException("Simulation not initialized. Call reset() first.");
         }
 
-        currentStep++;
         return simulationCore.executeHierarchicalStep(globalActions, localActionsMap);
     }
 
@@ -346,7 +342,15 @@ public class HierarchicalMultiDCGateway {
     public GlobalObservationState getGlobalObservation() {
         if (simulationCore == null) {
             // Return empty observation
-            return GlobalObservationState.createEmpty(1);
+            // createEmpty(int) is deprecated; use the batch-size aware overload.
+            // Use settings batch size if available to keep observation shape consistent.
+            final int numDatacenters = (datacenterConfigs != null && !datacenterConfigs.isEmpty())
+                    ? datacenterConfigs.size()
+                    : 1;
+            final int batchSize = (settings != null)
+                    ? settings.getGlobalRoutingBatchSize()
+                    : 5;
+            return GlobalObservationState.createEmpty(numDatacenters, batchSize);
         }
         return simulationCore.getGlobalObservation();
     }

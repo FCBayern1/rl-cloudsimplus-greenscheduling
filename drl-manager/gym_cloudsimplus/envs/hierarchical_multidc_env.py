@@ -83,7 +83,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         self._setup_observation_spaces()
         self._setup_action_spaces()
 
-        logger.info(f"HierarchicalMultiDCEnv initialized with {self.num_datacenters} datacenters")
+        logger.info(f"HierarchicalMultiDCEnv initialised with {self.num_datacenters} datacenters")
         logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
 
     def _setup_observation_spaces(self):
