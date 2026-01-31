@@ -605,6 +605,38 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
+        // If a DC is missing from localActions, it means "no local decision provided this step".
+        // We still need to mark the action as invalid when cloudlets are waiting, otherwise
+        // reward calculation will default it to "valid" and skip the invalid-action penalty.
+        for (DatacenterInstance dc : datacenterInstances) {
+            if (dc == null) {
+                continue;
+            }
+            final int dcId = dc.getId();
+            if (results.containsKey(dcId)) {
+                continue; // already processed via provided action (or invalid dcKey resolution)
+            }
+
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker == null) {
+                // If broker is missing, treat as invalid/no-op.
+                results.put(dcId, false);
+                continue;
+            }
+
+            // Missing action behaves like an implicit NoAssign decision.
+            // Penalize only when there is work waiting.
+            if (localBroker.hasWaitingCloudlets()) {
+                LOGGER.debug(
+                        "DC {}: No local action provided but {} cloudlets are waiting. Invalid action.",
+                        dcId, localBroker.getWaitingCloudletCount()
+                );
+                results.put(dcId, false);
+            } else {
+                results.put(dcId, true);
+            }
+        }
+
         return results;
     }
 
