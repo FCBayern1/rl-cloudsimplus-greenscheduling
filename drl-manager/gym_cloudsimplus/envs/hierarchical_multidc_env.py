@@ -469,32 +469,25 @@ class HierarchicalMultiDCEnv(gym.Env):
             logger.error(f"Invalid action format: {e}")
             raise ValueError(f"Invalid action format. Expected dict with 'global' and 'local' keys.") from e
 
-        # Get actual number of cloudlets in global waiting queue (batch routing mode)
-        try:
-            num_available = self.java_env.getGlobalWaitingCloudletsCount()
-        except Exception as e:
-            logger.error(f"Failed to get global waiting cloudlets count: {e}")
-            # Continue with 0 if this fails
-            num_available = 0
-
         # Process global actions:
         # - Each element is a datacenter index in [0, num_datacenters - 1]
         # - Actions are one-to-one mapped to DC indices; there is no explicit NoAssign.
         # - If there are more actions than available cloudlets, extra actions are ignored.
-        # Convert actions to DC indices and drop out-of-range values
+        # Convert actions to DC indices and clamp out-of-range values
         global_actions_filtered = []
         for i, action_val in enumerate(global_actions):
             action_int = int(action_val)
-            dc_index = action_int
-            if 0 <= dc_index < self.num_datacenters:
-                global_actions_filtered.append(dc_index)
+            if action_int < 0:
+                logger.warning(f"Global action[{i}] = {action_int} < 0, clamping to 0")
+                dc_index = 0
+            elif action_int >= self.num_datacenters:
+                logger.warning(
+                    f"Global action[{i}] = {action_int} >= {self.num_datacenters}, clamping to {self.num_datacenters - 1}"
+                )
+                dc_index = self.num_datacenters - 1
             else:
-                logger.warning(f"Global action[{i}] = {action_int} out of range, skipping")
-        
-        # Trim to available cloudlets
-        if len(global_actions_filtered) > num_available:
-            logger.debug(f"Trimming global actions from {len(global_actions_filtered)} to {num_available} (queue size)")
-            global_actions_filtered = global_actions_filtered[:num_available]
+                dc_index = action_int
+            global_actions_filtered.append(dc_index)
         
         global_actions = global_actions_filtered
 
@@ -504,8 +497,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         # - action=1 → targetVmId=0 (VM 0)
         # - action=n → targetVmId=n-1 (VM n-1)
         try:
+            # Ensure every DC has an explicit local action; default to NoAssign (0)
             local_actions_java = {}
-            for dc_id, agent_action in local_actions_map.items():
+            for dc_id in range(self.num_datacenters):
+                agent_action = local_actions_map.get(dc_id, 0)
                 # Map agent action to Java targetVmId
                 target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
                 local_actions_java[int(dc_id)] = target_vm_id

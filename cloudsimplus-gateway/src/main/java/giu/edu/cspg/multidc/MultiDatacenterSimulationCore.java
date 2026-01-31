@@ -604,10 +604,10 @@ public class MultiDatacenterSimulationCore {
                 }
             }
         }
-
         // If a DC is missing from localActions, it means "no local decision provided this step".
         // We still need to mark the action as invalid when cloudlets are waiting, otherwise
         // reward calculation will default it to "valid" and skip the invalid-action penalty.
+        
         for (DatacenterInstance dc : datacenterInstances) {
             if (dc == null) {
                 continue;
