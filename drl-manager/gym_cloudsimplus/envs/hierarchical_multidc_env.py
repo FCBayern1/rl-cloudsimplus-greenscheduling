@@ -58,7 +58,20 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         self.config = config
         self.py4j_port = config.get("py4j_port", 25333)
-        self.num_datacenters = len(config.get("datacenters", [{"datacenter_id": 0}]))
+        # Cache DC configs and build a stable index <-> dcId mapping.
+        # Internally we use dcIndex (0..N-1) for array indexing and observation spaces.
+        self.dc_configs = config.get("datacenters")
+        if not self.dc_configs:
+            self.dc_configs = [{"datacenter_id": 0}]
+
+        self.num_datacenters = len(self.dc_configs)
+        self.dc_ids = [
+            int(dc.get("datacenter_id", idx)) for idx, dc in enumerate(self.dc_configs)
+        ]
+        self.dc_id_to_index = {dc_id: idx for idx, dc_id in enumerate(self.dc_ids)}
+        self.dc_index_to_id = {idx: dc_id for idx, dc_id in enumerate(self.dc_ids)}
+        if len(self.dc_id_to_index) != len(self.dc_ids):
+            logger.warning("Duplicate datacenter_id values detected in config; dcId->index mapping may be ambiguous.")
         
         # Fixed batch size for global routing decisions (key parameter)
         self.global_routing_batch_size = config.get("global_routing_batch_size", 10)
@@ -186,9 +199,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             "initial_m_vm_count": 5,
             "initial_l_vm_count": 3,
         }
-        dc_configs = self.config.get("datacenters")
-        if not dc_configs:
-            dc_configs = [dc_defaults.copy()]
+        dc_configs = self.dc_configs or [dc_defaults.copy()]
 
         self.dc_host_counts: List[int] = [
             int(dc.get("hosts_count", dc_defaults["hosts_count"])) for dc in dc_configs
@@ -249,6 +260,7 @@ class HierarchicalMultiDCEnv(gym.Env):
           extra actions are simply ignored (trimmed to queue length).
         
         Local Agents: Assign one cloudlet per DC per step.
+        - Local action keys are dc_index (0..N-1)
         """
         # Global action space: fixed-size batch of routing decisions.
         # Each element is a DC index ∈ {0, ..., num_datacenters-1}.
@@ -434,7 +446,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         Args:
             action: Dictionary containing:
                 - 'global': List of datacenter indices for arriving cloudlets
-                - 'local': Dict mapping datacenter_id -> vm_id
+                - 'local': Dict mapping dc_index -> vm_id
 
         Returns:
             observations: Dict with 'global' and 'local' observations
@@ -465,6 +477,20 @@ class HierarchicalMultiDCEnv(gym.Env):
                 raise ValueError(
                     f"'local' actions must be a dict, got {type(local_actions_map)}"
                 )
+
+            # Enforce explicit dcIndex usage for local actions (0..N-1).
+            # If you have dcId keys, convert them to indices before calling step().
+            for raw_key in local_actions_map.keys():
+                try:
+                    key_int = int(raw_key)
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f"Local action key '{raw_key}' is not an integer dcIndex."
+                    )
+                if key_int < 0 or key_int >= self.num_datacenters:
+                    raise ValueError(
+                        f"Local action key '{raw_key}' is out of dcIndex range [0, {self.num_datacenters - 1}]."
+                    )
         except Exception as e:
             logger.error(f"Invalid action format: {e}")
             raise ValueError(f"Invalid action format. Expected dict with 'global' and 'local' keys.") from e
@@ -499,12 +525,16 @@ class HierarchicalMultiDCEnv(gym.Env):
         try:
             # Ensure every DC has an explicit local action; default to NoAssign (0)
             local_actions_java = {}
-            for dc_id in range(self.num_datacenters):
-                agent_action = local_actions_map.get(dc_id, 0)
+            for dc_index in range(self.num_datacenters):
+                dc_id = self.dc_index_to_id.get(dc_index, dc_index)
+                agent_action = local_actions_map.get(dc_index, 0)
                 # Map agent action to Java targetVmId
                 target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
                 local_actions_java[int(dc_id)] = target_vm_id
-                logger.debug(f"DC {dc_id}: agent_action={agent_action} → targetVmId={target_vm_id}")
+                logger.debug(
+                    "DC index %d (dcId=%s): agent_action=%s → targetVmId=%d",
+                    dc_index, dc_id, agent_action, target_vm_id
+                )
         except Exception as e:
             logger.error(f"Failed to convert local actions: {e}")
             raise ValueError(f"Invalid local action format. DC IDs and VM IDs must be integers.") from e
@@ -519,12 +549,12 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Execute step in Java simulation
         try:
             logger.info(f"[STEP {self.current_step + 1}] Calling Java with global_actions={global_actions_python}, local_actions={local_actions_python}")
-            print(f"[DEBUG HierarchicalMultiDCEnv] Calling Java step with {len(global_actions_python)} global actions")
+            logger.debug("Calling Java step with %d global actions", len(global_actions_python))
             result = self.java_env.step(global_actions_python, local_actions_python)
-            print(f"[DEBUG HierarchicalMultiDCEnv] Java step returned successfully")
+            logger.debug("Java step returned successfully")
         except Exception as e:
             logger.error(f"Failed to execute step in Java simulation: {e}")
-            print(f"[DEBUG HierarchicalMultiDCEnv] Java step FAILED: {e}")
+            logger.debug("Java step FAILED: %s", e)
             raise RuntimeError(
                 f"Failed to execute simulation step. Check Java logs for details."
             ) from e
@@ -574,9 +604,20 @@ class HierarchicalMultiDCEnv(gym.Env):
         local_obs_java = result.getLocalObservations()
         local_obs = {}
         for dc_id in local_obs_java:
-            obs_state = local_obs_java[dc_id]
+            try:
+                obs_state = (
+                    local_obs_java.get(dc_id)
+                    if hasattr(local_obs_java, "get")
+                    else local_obs_java[dc_id]
+                )
+            except Exception:
+                obs_state = None
             if obs_state is not None:
-                dc_index = int(dc_id)
+                dc_id_int = int(dc_id)
+                dc_index = self.dc_id_to_index.get(dc_id_int)
+                if dc_index is None:
+                    logger.warning("Unknown datacenter_id in reset observations: %s", dc_id_int)
+                    continue
                 local_obs[dc_index] = self._convert_local_observation(dc_index, obs_state)
 
         return {
@@ -595,9 +636,24 @@ class HierarchicalMultiDCEnv(gym.Env):
         """
         info_java = result.getInfo()
         info = {}
+        # Be robust to Py4J Map proxies vs auto-converted Python dicts.
+        # Prefer keySet()/get() when available.
+        try:
+            if hasattr(info_java, "keySet") and hasattr(info_java, "get"):
+                for key in info_java.keySet():
+                    value = info_java.get(key)
+                    info[str(key)] = self._convert_java_value(value)
+                return info
+        except Exception:
+            pass
+
+        # Fallback: assume it behaves like a Python mapping / iterable of keys
         for key in info_java:
-            value = info_java[key]
-            # Convert Java objects to Python native types
+            try:
+                value = info_java[key]
+            except Exception:
+                # Last resort: try .get(key) without default
+                value = info_java.get(key) if hasattr(info_java, "get") else None
             info[str(key)] = self._convert_java_value(value)
         return info
 
@@ -727,11 +783,37 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Parse local observations
         local_obs_map_java = result.getLocalObservations()
         local_obs = {}
-        for dc_id in range(self.num_datacenters):
-            if dc_id in local_obs_map_java:
-                obs_state = local_obs_map_java[dc_id]
+        if local_obs_map_java is None:
+            return {"global": global_obs, "local": local_obs}
+
+        # Be robust to Py4J Map proxies vs auto-converted Python dicts:
+        # iterate actual keys provided by Java rather than assuming 0..N-1 membership works.
+        try:
+            keys_iter = local_obs_map_java.keySet() if hasattr(local_obs_map_java, "keySet") else local_obs_map_java
+            for dc_id_raw in keys_iter:
+                dc_id = int(dc_id_raw)
+                dc_index = self.dc_id_to_index.get(dc_id)
+                if dc_index is None:
+                    logger.warning("Unknown datacenter_id in step observations: %s", dc_id)
+                    continue
+                try:
+                    obs_state = (
+                        local_obs_map_java.get(dc_id_raw)
+                        if hasattr(local_obs_map_java, "get")
+                        else local_obs_map_java[dc_id_raw]
+                    )
+                except Exception:
+                    # Fallback: attempt Python-int lookup
+                    obs_state = (
+                        local_obs_map_java.get(dc_id)
+                        if hasattr(local_obs_map_java, "get")
+                        else local_obs_map_java[dc_id]
+                    )
+
                 if obs_state is not None:
-                    local_obs[dc_id] = self._convert_local_observation(dc_id, obs_state)
+                    local_obs[dc_index] = self._convert_local_observation(dc_index, obs_state)
+        except Exception as e:
+            logger.error("Failed to parse local observations map: %s", e)
 
         return {
             "global": global_obs,
@@ -748,16 +830,23 @@ class HierarchicalMultiDCEnv(gym.Env):
         Returns:
             {
                 'global': float,
-                'local': {dc_id: float}
+                'local': {dc_index: float}
             }
         """
         global_reward = result.getGlobalReward()
 
         local_rewards_java = result.getLocalRewards()
-        local_rewards = {
-            dc_id: local_rewards_java.get(dc_id, 0.0)
-            for dc_id in range(self.num_datacenters)
-        }
+        local_rewards = {}
+        for dc_index in range(self.num_datacenters):
+            dc_id = self.dc_index_to_id.get(dc_index, dc_index)
+            try:
+                if hasattr(local_rewards_java, "get"):
+                    reward_val = local_rewards_java.get(dc_id, 0.0)
+                else:
+                    reward_val = local_rewards_java[dc_id]
+            except Exception:
+                reward_val = 0.0
+            local_rewards[dc_index] = reward_val
 
         return {
             "global": global_reward,
@@ -773,9 +862,25 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         # Convert Java Map to Python dict with serializable values
         info = {}
-        for key in info_java.keySet():
-            value = info_java.get(key)
-            # Convert Java objects to Python native types
+        # Be robust to Py4J Map proxies vs auto-converted Python dicts.
+        # Prefer keySet()/get() when available.
+        try:
+            if hasattr(info_java, "keySet") and hasattr(info_java, "get"):
+                for key in info_java.keySet():
+                    value = info_java.get(key)
+                    info[str(key)] = self._convert_java_value(value)
+                info["episode_step"] = self.current_step
+                info["episode_reward"] = self.episode_reward
+                return info
+        except Exception:
+            pass
+
+        # Fallback: assume it behaves like a Python mapping / iterable of keys
+        for key in info_java:
+            try:
+                value = info_java[key]
+            except Exception:
+                value = info_java.get(key) if hasattr(info_java, "get") else None
             info[str(key)] = self._convert_java_value(value)
 
         info["episode_step"] = self.current_step
@@ -916,13 +1021,26 @@ class HierarchicalMultiDCEnv(gym.Env):
         - If no VM has enough resources: allow all VMs (Java handles penalty)
 
         Args:
-            dc_id: Datacenter ID
+            dc_id: Datacenter index (0..N-1). Must be an index.
 
         Returns:
             mask: Boolean array of shape (num_vms+1,) where True = action allowed
         """
-        # Fallback: allow all actions if environment not initialized
-        if self.java_env is None or dc_id >= self.num_datacenters or dc_id < 0:
+        # Enforce explicit dcIndex usage to avoid id/index ambiguity.
+        dc_index = dc_id
+        if dc_index < 0 or dc_index >= self.num_datacenters:
+            if dc_id in self.dc_id_to_index:
+                raise ValueError(
+                    f"get_local_action_masks expects dcIndex. Received dcId={dc_id}. "
+                    "Convert to dcIndex before calling."
+                )
+            raise ValueError(
+                f"get_local_action_masks expects dcIndex in [0, {self.num_datacenters - 1}]. "
+                f"Received {dc_id}."
+            )
+
+        # Fallback: allow all actions if environment not initialized or invalid index
+        if self.java_env is None or dc_index >= self.num_datacenters or dc_index < 0:
             logger.warning(f"Cannot generate mask for DC {dc_id}, allowing all actions")
             return np.ones(self.local_action_space.n, dtype=bool)
 
@@ -932,7 +1050,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 logger.debug(f"No observations available yet, allowing all actions for DC {dc_id}")
                 return np.ones(self.local_action_space.n, dtype=bool)
 
-            local_obs = self.last_observations["local"].get(dc_id)
+            local_obs = self.last_observations["local"].get(dc_index)
             if local_obs is None:
                 logger.warning(f"No observation for DC {dc_id}, allowing all actions")
                 return np.ones(self.local_action_space.n, dtype=bool)
@@ -946,7 +1064,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             return np.ones(self.local_action_space.n, dtype=bool)
 
         # Get actual VM count for this DC
-        dc_vm_count = self._get_dc_vm_count(dc_id)
+        dc_vm_count = self._get_dc_vm_count(dc_index)
         
         # Initialize mask (all False)
         mask = np.zeros(self.local_action_space.n, dtype=bool)
