@@ -478,7 +478,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                     f"'local' actions must be a dict, got {type(local_actions_map)}"
                 )
 
-            # Enforce explicit dcIndex usage for local actions (0..N-1).
+            # Explicit dcIndex usage for local actions (0..N-1).
             # If you have dcId keys, convert them to indices before calling step().
             for raw_key in local_actions_map.keys():
                 try:

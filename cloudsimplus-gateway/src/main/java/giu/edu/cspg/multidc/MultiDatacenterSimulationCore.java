@@ -201,6 +201,13 @@ public class MultiDatacenterSimulationCore {
         proceedClockTo(settings.getMinTimeBetweenEvents());
         LOGGER.info("Simulation clock initialized to {}", currentClock);
 
+        // === Step 7: Preload arrivals for the first decision point ===
+        // Keep observation semantics as post-arrival/pre-routing:
+        // obs_0 should already include cloudlets that arrive in the first routing window.
+        globalBroker.processArrivingCloudlets(currentClock, timestepSize);
+        LOGGER.info("Initial arrivals processed. Global waiting queue size: {}",
+                globalBroker.getGlobalWaitingCloudletsCount());
+
         LOGGER.info("Multi-datacenter simulation initialized successfully");
     }
 
@@ -372,10 +379,17 @@ public class MultiDatacenterSimulationCore {
         // === Phase 3: Advance Simulation Time ===
         advanceSimulationTime();
 
-        // === Phase 3.5: Update Energy Metrics for All Datacenters ===
+        // === Phase 3.1: Preload arrivals for the next decision point ===
+        // After advancing time, enqueue cloudlets arriving in the next routing window
+        // so the returned observation is post-arrival/pre-routing for the next step.
+        globalBroker.processArrivingCloudlets(currentClock, timestepSize);
+        LOGGER.debug("Processed arrivals for next decision point. Global queue size: {}",
+                globalBroker.getGlobalWaitingCloudletsCount());
+
+        // === Phase 3.2: Update Energy Metrics for All Datacenters ===
         updateAllDatacenterEnergyMetrics();
         
-        // === Phase 3.6: Update Cloudlet Completion Counts ===
+        // === Phase 3.3: Update Cloudlet Completion Counts ===
         updateCloudletCompletionCounts();
 
         // === Phase 4: Collect Observations ===
@@ -426,20 +440,17 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
-     * Execute global routing phase: process arrivals and route batch to datacenters.
+     * Execute global routing phase: route a batch to datacenters.
      * 
-     * Two-stage process:
-     * 1. Process newly arriving cloudlets → add to global waiting queue
-     * 2. Get a batch from waiting queue → route to datacenters based on global actions
+     * Arrivals are processed outside this method (reset + post-advance phase),
+     * so this method only consumes the existing global waiting queue.
      */
     private int executeGlobalRouting(List<Integer> globalActions) {
-        // Stage 1: Process newly arriving cloudlets (add to waiting queue)
-        globalBroker.processArrivingCloudlets(currentClock, timestepSize);
-        
+        // The queue at this point is already post-arrival/pre-routing for this step.
         int queueSize = globalBroker.getGlobalWaitingCloudletsCount();
-        LOGGER.debug("Global queue size after arrivals: {}", queueSize);
+        LOGGER.debug("Global queue size before routing: {}", queueSize);
 
-        // Stage 2: Get batch for routing (up to the size of global actions provided)
+        // Get batch for routing (up to the size of global actions provided)
         int batchSize = globalActions.size();
         List<Cloudlet> cloudletsToRoute = globalBroker.getBatchForRouting(batchSize);
 
