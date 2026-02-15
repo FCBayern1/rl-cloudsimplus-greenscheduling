@@ -1011,6 +1011,56 @@ class HierarchicalMultiDCEnv(gym.Env):
             return 0
         return self.java_env.getGlobalWaitingCloudletsCount()
 
+    def get_global_action_mask(self, global_obs: Dict[str, Any]) -> np.ndarray:
+        """
+        Generate slot-level mask for global MultiDiscrete routing action.
+
+        Mask semantics:
+        - mask[i] = 1.0: slot i corresponds to a real cloudlet in the upcoming batch
+        - mask[i] = 0.0: slot i is padding (no cloudlet)
+
+        Preferred source is batch_cloudlet_pes/mi arrays (direct slot-level signals).
+        Fallback uses upcoming_cloudlets_count to derive a valid prefix length.
+
+        Args:
+            global_obs: Global observation dict.
+
+        Returns:
+            np.ndarray of shape (global_routing_batch_size,), dtype float32.
+        """
+        batch_size = int(self.global_routing_batch_size)
+        if batch_size <= 0:
+            return np.zeros((0,), dtype=np.float32)
+
+        try:
+            pes = np.asarray(global_obs.get("batch_cloudlet_pes", []), dtype=np.int64)
+            mi = np.asarray(global_obs.get("batch_cloudlet_mi", []), dtype=np.int64)
+
+            # Use slot-level batch features when available.
+            if pes.size > 0 and mi.size > 0:
+                use_len = min(batch_size, int(pes.size), int(mi.size))
+                mask = np.zeros(batch_size, dtype=np.float32)
+                if use_len > 0:
+                    valid_slots = (pes[:use_len] > 0) & (mi[:use_len] > 0)
+                    mask[:use_len] = valid_slots.astype(np.float32)
+                return mask
+        except Exception as e:
+            logger.debug("Failed to build global action mask from batch arrays: %s", e)
+
+        # Fallback: derive valid prefix from queue count.
+        try:
+            upcoming_count = int(global_obs.get("upcoming_cloudlets_count", 0))
+            valid_len = max(0, min(batch_size, upcoming_count))
+            mask = np.zeros(batch_size, dtype=np.float32)
+            mask[:valid_len] = 1.0
+            return mask
+        except Exception as e:
+            logger.warning(
+                "Failed to build global action mask from upcoming_cloudlets_count (%s). "
+                "Allowing all global action slots.", e
+            )
+            return np.ones(batch_size, dtype=np.float32)
+
     def get_local_action_masks(self, dc_id: int) -> np.ndarray:
         """
         Generate action mask for a specific datacenter's local agent.

@@ -141,11 +141,17 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         obs_spaces = {}
 
-        # Global agent observation space (NO action mask).
-        # The global policy currently uses DictObsModel, which ignores action masks,
-        # so we only expose the underlying observation.
+        # Global agent observation space with slot-level action mask.
+        # action_mask shape equals global_routing_batch_size:
+        # - 1.0: real cloudlet exists for that slot
+        # - 0.0: padding slot (no cloudlet)
         obs_spaces["global_agent"] = spaces.Dict({
             "observation": self.base_env.global_observation_space,
+            "action_mask": spaces.Box(
+                low=0.0, high=1.0,
+                shape=(self.global_routing_batch_size,),
+                dtype=np.float32
+            ),
         })
 
         # Local agents observation spaces
@@ -404,9 +410,29 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         flat_obs = {}
 
-        # Global agent observation (no action mask for global routing)
+        # Global agent observation with slot-level mask for MultiDiscrete routing.
+        global_obs = hierarchical_obs["global"]
+        try:
+            global_action_mask = self.base_env.get_global_action_mask(global_obs)
+            if global_action_mask.shape[0] != self.global_routing_batch_size:
+                logger.warning(
+                    "global_action_mask length %d != expected %d, padding/trimming accordingly",
+                    global_action_mask.shape[0],
+                    self.global_routing_batch_size,
+                )
+                fixed_mask = np.zeros(self.global_routing_batch_size, dtype=np.float32)
+                copy_len = min(self.global_routing_batch_size, global_action_mask.shape[0])
+                fixed_mask[:copy_len] = global_action_mask[:copy_len]
+                global_action_mask = fixed_mask
+            else:
+                global_action_mask = global_action_mask.astype(np.float32)
+        except Exception as e:
+            logger.error(f"Failed to get global action mask: {e}")
+            global_action_mask = np.ones(self.global_routing_batch_size, dtype=np.float32)
+
         flat_obs["global_agent"] = {
-            "observation": hierarchical_obs["global"],
+            "observation": global_obs,
+            "action_mask": global_action_mask,
         }
 
         # Local agents observations with action masks (UNIFIED padded format)
