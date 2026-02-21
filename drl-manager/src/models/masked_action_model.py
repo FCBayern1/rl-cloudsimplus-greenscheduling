@@ -9,6 +9,7 @@ For RLlib legacy API (enable_rl_module_and_learner=False), these models:
 Models:
 - MaskedActionModel: Applies action masking (for local agents with Discrete actions)
 - DictObsModel: No masking, just handles Dict obs (for global agent with MultiDiscrete)
+- GlobalMultiDiscreteMaskedModel: Slot-level masking for global MultiDiscrete routing
 """
 
 import copy
@@ -139,6 +140,100 @@ class DictObsModel(TorchModelV2, nn.Module):
         Returns:
             Value function predictions
         """
+        return self.base_model.value_function()
+
+
+class GlobalMultiDiscreteMaskedModel(TorchModelV2, nn.Module):
+    """
+    Global policy model for MultiDiscrete actions with slot-level masking.
+    """
+
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
+        nn.Module.__init__(self)
+
+        assert isinstance(obs_space, gym.spaces.Dict), \
+            f"GlobalMultiDiscreteMaskedModel requires Dict obs space, got {type(obs_space)}"
+        assert "observation" in obs_space.spaces, \
+            "Dict obs space must have 'observation' key"
+        assert "action_mask" in obs_space.spaces, \
+            "Dict obs space must have 'action_mask' key"
+        assert isinstance(action_space, gym.spaces.MultiDiscrete), \
+            f"GlobalMultiDiscreteMaskedModel expects MultiDiscrete action space, got {type(action_space)}"
+
+        self.true_obs_space = obs_space.spaces["observation"]
+        self.nvec = list(action_space.nvec)  # Per-slot categorical sizes (typically [num_dcs] * batch_slots)
+        self.num_slots = len(self.nvec)      # Number of slots/heads (== global_routing_batch_size)
+        self.total_logits = int(sum(self.nvec))
+        if self.total_logits != num_outputs:
+            print(
+                "[GlobalMultiDiscreteMaskedModel] WARNING: sum(nvec) != num_outputs: "
+                f"{self.total_logits} != {num_outputs}"
+            )
+
+        base_model_config = copy.deepcopy(model_config) if model_config else {}
+        base_model_config["custom_model"] = None
+        self.base_model = ModelCatalog.get_model_v2(
+            obs_space=self.true_obs_space,
+            action_space=action_space,
+            num_outputs=num_outputs,
+            model_config=base_model_config,
+            framework="torch",
+            name=name + "_base",
+        )
+
+    @override(TorchModelV2)
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> (TensorType, List[TensorType]):
+        obs_dict = input_dict["obs"]
+        true_obs = obs_dict["observation"]
+        action_mask = obs_dict["action_mask"]
+
+        base_input = {"obs": true_obs}
+        logits, base_state = self.base_model(base_input, state, seq_lens)
+
+        if not isinstance(action_mask, torch.Tensor):
+            action_mask = torch.as_tensor(action_mask, dtype=torch.float32, device=logits.device)
+        else:
+            action_mask = action_mask.to(logits.device).float()
+
+        if action_mask.dim() == 1:
+            action_mask = action_mask.unsqueeze(0)
+        if action_mask.shape[0] != logits.shape[0]:
+            if action_mask.shape[0] == 1:
+                action_mask = action_mask.expand(logits.shape[0], -1)
+            else:
+                action_mask = action_mask[:1, :].expand(logits.shape[0], -1)
+
+        if action_mask.shape[-1] > self.num_slots:
+            action_mask = action_mask[..., :self.num_slots]
+        elif action_mask.shape[-1] < self.num_slots:
+            pad = self.num_slots - action_mask.shape[-1]
+            action_mask = torch.cat(
+                [action_mask, torch.zeros(action_mask.shape[0], pad, device=action_mask.device)],
+                dim=-1,
+            )
+
+        repeats = torch.tensor(self.nvec, dtype=torch.long, device=action_mask.device)
+        logits_mask = torch.repeat_interleave(action_mask, repeats, dim=-1)
+        masked_logits = logits * logits_mask
+        return masked_logits, base_state
+
+    @override(TorchModelV2)
+    def value_function(self) -> TensorType:
         return self.base_model.value_function()
 
 

@@ -46,7 +46,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
-from src.models.masked_action_model import MaskedActionModel, DictObsModel
+from src.models.masked_action_model import (
+    MaskedActionModel,
+    DictObsModel,
+    GlobalMultiDiscreteMaskedModel,
+)
 from ray.rllib.models import ModelCatalog
 
 # Setup logging
@@ -212,6 +216,15 @@ def create_rllib_config(
         if "You have already registered" not in str(e):
             raise
 
+    try:
+        ModelCatalog.register_custom_model(
+            "global_masked_multidiscrete_model", GlobalMultiDiscreteMaskedModel
+        )
+        logger.info("Registered custom RLlib model: global_masked_multidiscrete_model")
+    except Exception as e:
+        if "You have already registered" not in str(e):
+            raise
+
     # Create a sample environment to get spaces
     env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
@@ -260,7 +273,9 @@ def create_rllib_config(
             "_disable_preprocessor_api": disable_preproc,
         }
 
-    global_model_cfg = build_policy_model_cfg(global_model_config, "dict_obs_model")
+    global_model_cfg = build_policy_model_cfg(
+        global_model_config, "global_masked_multidiscrete_model"
+    )
     local_policy_cfg = build_policy_model_cfg(local_model_config, "masked_action_model")
 
     policies = {
