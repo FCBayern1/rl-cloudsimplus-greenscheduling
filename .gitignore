@@ -153,5 +153,16 @@ SWF_Prediction/**/*.ckpt
 # Logback configuration (local only)
 cloudsimplus-gateway/src/main/resources/logback.xml
 
+# AI/IDE metadata (local only)
+.claude/
+.cursor/
+
 # Local experiment config (do not track future local tweaks)
 config.yml
+
+# Local docs/agent notes (do not track)
+AGENTS.md
+README_CN.md
+
+# Local planning notes
+todo_plan.md
