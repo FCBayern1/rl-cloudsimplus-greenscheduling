@@ -145,6 +145,10 @@ public class HierarchicalMultiDCGateway {
                 .hostStorage(getLongParam(dcParams, "host_storage", 100000))
                 // VM configuration
                 .smallVmPes(getIntParam(dcParams, "small_vm_pes", 2))
+                .vmPeMips(getLongParam(
+                        dcParams,
+                        "vm_pe_mips",
+                        getLongParam(dcParams, "host_pe_mips", 50000)))
                 .smallVmRam(getLongParam(dcParams, "small_vm_ram", 8192))
                 .smallVmBw(getLongParam(dcParams, "small_vm_bw", 1000))
                 .smallVmStorage(getLongParam(dcParams, "small_vm_storage", 4000))

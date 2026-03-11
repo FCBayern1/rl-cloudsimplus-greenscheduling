@@ -29,7 +29,7 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
     """
     GTrXL-based RLModule for Local Agents with Action Masking.
     
-    Structure:
+    Structure:2
     - Observation Embedding (Linear)
     - GTrXL Backbone (Gated Transformer)
     - Policy Head (Linear)

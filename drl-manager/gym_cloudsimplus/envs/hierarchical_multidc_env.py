@@ -1,4 +1,10 @@
 """
+debug_ga_obs.py -- 调试观测
+src/baselines/evaluate.py -- 基线评估（full/Simple 都用）
+tests/verify_action_mask_logic.py, tests/test_reset_gymnasium_compliance.py, tests/test_green_energy.py -- 测试
+
+hierarchical_multidc_pettingzoo.py 直接使用
+
 Hierarchical Multi-Datacenter Reinforcement Learning Environment
 
 This environment implements a two-level hierarchical MARL system:
@@ -11,6 +17,13 @@ Architecture:
 
 import logging
 import time
+import subprocess
+import socket
+import os
+import signal
+import atexit
+import shutil
+import json
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 import gymnasium as gym
@@ -18,6 +31,24 @@ from gymnasium import spaces
 from py4j.java_gateway import JavaGateway, GatewayParameters, Py4JNetworkError
 
 logger = logging.getLogger(__name__)
+
+
+# region agent log
+def _write_debug_log(hypothesis_id: str, location: str, message: str, data: Dict[str, Any]):
+    try:
+        with open("/home/joshua/rl-cloudsimplus-greenscheduling/.cursor/debug-f7b29b.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": "f7b29b",
+                "runId": "pre-fix",
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+            }) + "\n")
+    except Exception:
+        pass
+# endregion
 
 
 class HierarchicalMultiDCEnv(gym.Env):
@@ -33,7 +64,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         - Local: Discrete(num_vms_per_dc) for each datacenter
 
     Observation Space:
-        - Global: Aggregated state of all datacenters (green power, queues, utilization)
+        - Global: Aggregated state of all datacenters (green power, queues, utilisation)
         - Local: Per-DC state (VM loads, local queues, next cloudlet)
     """
 
@@ -49,7 +80,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             config: Configuration dictionary containing:
                 - multi_datacenter_enabled: bool
                 - datacenters: List[dict] of datacenter configurations
-                - py4j_port: int (default 25333)
+                - py4j_port: int (optional, if not provided, a free port is found and a new Java process is launched)
                 - global_routing_batch_size: int (cloudlets to route per step, default 5)
                 - max_arriving_cloudlets: int (deprecated, for backward compatibility)
                 - ... other CloudSim Plus settings
@@ -57,7 +88,24 @@ class HierarchicalMultiDCEnv(gym.Env):
         super(HierarchicalMultiDCEnv, self).__init__()
 
         self.config = config
-        self.py4j_port = config.get("py4j_port", 25333)
+
+        # When True, only build observation/action spaces without launching Java.
+        # Used by training scripts that need space shapes for policy construction.
+        self._spaces_only = bool(config.get("spaces_only", False))
+
+        # Java Gateway Process Management
+        self.java_process = None
+        self.py4j_port = config.get("py4j_port")
+
+        if not self._spaces_only:
+            if self.py4j_port is None or self.py4j_port == 0:
+                self.py4j_port = self._find_free_port()
+                self._launch_java_gateway(self.py4j_port)
+            else:
+                logger.info(f"Using existing Java gateway on port {self.py4j_port}")
+        else:
+            logger.info("spaces_only mode: skipping Java gateway launch")
+
         # Cache DC configs and build a stable index <-> dcId mapping.
         # Internally we use dcIndex (0..N-1) for array indexing and observation spaces.
         self.dc_configs = config.get("datacenters")
@@ -98,6 +146,132 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         logger.info(f"HierarchicalMultiDCEnv initialised with {self.num_datacenters} datacenters")
         logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
+
+    def _find_free_port(self) -> int:
+        """Find a free TCP port on localhost."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+            return port
+
+    def _launch_java_gateway(self, port: int):
+        """
+        Launch a dedicated Java CloudSim Plus Gateway process on the specified port.
+        """
+        # Locate the gradlew script
+        # Assuming we are running from the project root or drl-manager
+        # Try to find cloudsimplus-gateway directory
+        
+        possible_roots = [
+            os.getcwd(),
+            os.path.join(os.getcwd(), ".."),
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        ]
+        
+        gateway_dir = None
+        for root in possible_roots:
+            candidate = os.path.join(root, "cloudsimplus-gateway")
+            if os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "gradlew")):
+                gateway_dir = candidate
+                break
+        
+        if not gateway_dir:
+            raise RuntimeError("Could not find cloudsimplus-gateway directory with gradlew script.")
+
+        gradlew_path = os.path.join(gateway_dir, "gradlew")
+        
+        # Prepare command
+        # Use --no-daemon to avoid lingering Gradle daemons for each worker
+        # Use -q to reduce noise
+        cmd = [
+            gradlew_path,
+            "--no-daemon",
+            "-PappMainClass=giu.edu.cspg.MainMultiDC",
+            "run",
+            "-q",
+            f"--args=--port {port}",
+        ]
+        
+        logger.info(f"Launching Java Gateway on port {port}...")
+        logger.debug(f"Command: {' '.join(cmd)}")
+        # region agent log
+        _write_debug_log(
+            "H2",
+            "hierarchical_multidc_env.py:177",
+            "launch_java_gateway",
+            {
+                "port": port,
+                "cwd": os.getcwd(),
+                "gateway_dir": gateway_dir,
+                "cmd": cmd,
+            },
+        )
+        # endregion
+        
+        # Launch process
+        # Redirect stdout/stderr to a log file for debugging
+        log_dir = os.path.join(os.getcwd(), "logs", "java_gateways")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(log_dir, f"gateway_{port}.log")
+        
+        self._java_log_file = open(log_file_path, "w")
+        
+        try:
+            self.java_process = subprocess.Popen(
+                cmd,
+                cwd=gateway_dir,
+                stdout=self._java_log_file,
+                stderr=subprocess.STDOUT,
+                preexec_fn=os.setsid  # Create new process group for easier cleanup
+            )
+            
+            # Wait for the server to be ready
+            # We'll poll the port until it's open
+            max_retries = 60  # Wait up to 60 seconds (Gradle build might take time)
+            for i in range(max_retries):
+                if self.java_process.poll() is not None:
+                    # region agent log
+                    _write_debug_log(
+                        "H1",
+                        "hierarchical_multidc_env.py:201",
+                        "java_process_exited_early",
+                        {
+                            "port": port,
+                            "returncode": self.java_process.returncode,
+                            "log_file_path": log_file_path,
+                        },
+                    )
+                    # endregion
+                    raise RuntimeError(f"Java process exited prematurely with code {self.java_process.returncode}. Check logs at {log_file_path}")
+                
+                if self._is_port_open(port):
+                    logger.info(f"Java Gateway is ready on port {port}")
+                    return
+                
+                time.sleep(1.0)
+                if i % 5 == 0:
+                    logger.info(f"Waiting for Java Gateway on port {port} ({i}/{max_retries})...")
+            
+            raise RuntimeError(f"Timed out waiting for Java Gateway on port {port}")
+            
+        except Exception as e:
+            logger.error(f"Failed to launch Java Gateway: {e}")
+            if self.java_process:
+                self.java_process.kill()
+            if self._java_log_file:
+                self._java_log_file.close()
+            raise
+
+    def _is_port_open(self, port: int) -> bool:
+        """Check if a TCP port is open and listening."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)
+            try:
+                s.connect(("127.0.0.1", port))
+                return True
+            except (ConnectionRefusedError, socket.timeout):
+                return False
 
     def _setup_observation_spaces(self):
         """
@@ -991,6 +1165,23 @@ class HierarchicalMultiDCEnv(gym.Env):
             finally:
                 self.gateway = None
                 self.java_env = None
+        
+        # Terminate the Java process if we launched it
+        if self.java_process:
+            try:
+                logger.info(f"Terminating Java Gateway process (PID {self.java_process.pid})...")
+                os.killpg(os.getpgid(self.java_process.pid), signal.SIGTERM)
+                self.java_process.wait(timeout=5)
+            except Exception as e:
+                logger.warning(f"Error terminating Java process: {e}")
+                try:
+                    os.killpg(os.getpgid(self.java_process.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            finally:
+                self.java_process = None
+                if hasattr(self, '_java_log_file') and self._java_log_file:
+                    self._java_log_file.close()
 
     def get_num_datacenters(self) -> int:
         """Get the number of datacenters in the environment."""

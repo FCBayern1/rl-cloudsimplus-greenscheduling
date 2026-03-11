@@ -49,6 +49,7 @@ public class DatacenterConfig {
     // === VM Configuration ===
     // Small VM (base tier)
     private final int smallVmPes;
+    private final Long vmPeMips;            // MIPS capacity per VM PE
     private final long smallVmRam;
     private final long smallVmBw;
     private final long smallVmStorage;
@@ -268,6 +269,7 @@ public class DatacenterConfig {
                 .hostProfile("LOW_POWER", 3)
                 // VM config
                 .smallVmPes(2)
+                .vmPeMips(50000L)
                 .smallVmRam(8192)
                 .smallVmBw(1000)
                 .smallVmStorage(4000)
@@ -301,6 +303,7 @@ public class DatacenterConfig {
                 .hostBw(50000L)
                 .hostStorage(100000L)
                 .smallVmPes(2)
+                .vmPeMips(50000L)
                 .smallVmRam(8192)
                 .smallVmBw(1000)
                 .smallVmStorage(4000)

@@ -1,6 +1,9 @@
 package giu.edu.cspg;
 
 import java.net.InetAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
@@ -17,6 +20,26 @@ import py4j.GatewayServer;
 public class MainMultiDC {
 
     private static final Logger logger = LoggerFactory.getLogger(MainMultiDC.class.getSimpleName());
+
+    // #region agent log
+    private static void writeDebugLog(String hypothesisId, String location, String message, String dataJson) {
+        try {
+            String payload = String.format(
+                    "{\"sessionId\":\"f7b29b\",\"runId\":\"pre-fix\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\",\"data\":%s,\"timestamp\":%d}%n",
+                    hypothesisId,
+                    location,
+                    message,
+                    dataJson,
+                    System.currentTimeMillis());
+            Files.writeString(
+                    Path.of("/home/joshua/rl-cloudsimplus-greenscheduling/.cursor/debug-f7b29b.log"),
+                    payload,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND);
+        } catch (Exception ignored) {
+        }
+    }
+    // #endregion
 
     private static int resolveGatewayPort(String[] args) {
         // Priority:
@@ -72,6 +95,16 @@ public class MainMultiDC {
         // Configure Py4J gateway server
         InetAddress all = InetAddress.getByName("0.0.0.0");
         int gatewayPort = resolveGatewayPort(args);
+        // Use the standard CallbackClient object expected by Py4J's constructor.
+        // This matches the single-DC gateway startup path and avoids the NPE seen
+        // when cbClient is null during multi-worker JVM startup.
+        // #region agent log
+        writeDebugLog(
+                "H1",
+                "MainMultiDC.java:97",
+                "construct_gateway_server",
+                String.format("{\"gatewayPort\":%d,\"callbackClientMode\":\"default_python_port\",\"argsCount\":%d}", gatewayPort, args == null ? 0 : args.length));
+        // #endregion
         GatewayServer gatewayServer = new GatewayServer(
                 multiDCGateway,
                 gatewayPort,

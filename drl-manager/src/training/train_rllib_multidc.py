@@ -129,16 +129,24 @@ def env_creator(config: Dict[str, Any]):
     Returns:
         RLlib-wrapped PettingZoo environment
     """
+    # FORCE DYNAMIC PORT allocation for parallel training.
+    # We remove 'py4j_port' from config so HierarchicalMultiDCEnv
+    # launches its own private Java Gateway instance on a free port.
+    # This prevents port conflicts when running multiple workers.
+    env_config = config.copy()
+    if "py4j_port" in env_config:
+        del env_config["py4j_port"]
+    
     # Check if simplified environment (no God's Eye features) is requested
-    env_id = config.get("env_id", "")
+    env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
 
     if use_simple:
         logger.info("Creating SIMPLIFIED PettingZoo environment (no God's Eye features)")
-        env = HierarchicalMultiDCParallelEnvSimple(config)
+        env = HierarchicalMultiDCParallelEnvSimple(env_config)
     else:
         logger.info("Creating standard PettingZoo environment (with God's Eye features)")
-        env = HierarchicalMultiDCParallelEnv(config)
+        env = HierarchicalMultiDCParallelEnv(env_config)
 
     # Wrap for RLlib (converts PettingZoo to RLlib format)
     return ParallelPettingZooEnv(env)
@@ -225,13 +233,17 @@ def create_rllib_config(
         if "You have already registered" not in str(e):
             raise
 
-    # Create a sample environment to get spaces
+    # Create a lightweight sample environment to query observation/action spaces.
+    # spaces_only=True skips JVM launch entirely.
+    sample_env_config = env_config.copy()
+    sample_env_config["spaces_only"] = True
+
     env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
     if use_simple:
-        sample_env = HierarchicalMultiDCParallelEnvSimple(env_config)
+        sample_env = HierarchicalMultiDCParallelEnvSimple(sample_env_config)
     else:
-        sample_env = HierarchicalMultiDCParallelEnv(env_config)
+        sample_env = HierarchicalMultiDCParallelEnv(sample_env_config)
 
     # Get observation and action spaces
     global_obs_space = sample_env.observation_space("global_agent")

@@ -484,8 +484,8 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         completion_rate_mi = global_energy_stats.get('completion_rate_mi', 0.0)
 
         logger.info(
-            "[CALLBACK DEBUG] Cloudlets: Finished %s / Received(routed) %s (finished_over_received=%.2%%), "
-            "Finished %s / Workload %s (finished_over_workload=%.2%%), completion_rate_mi=%.2%%",
+            "[CALLBACK DEBUG] Cloudlets: Finished %s / Received(routed) %s (finished_over_received=%.2f%%), "
+            "Finished %s / Workload %s (finished_over_workload=%.2f%%), completion_rate_mi=%.2f%%",
             total_cloudlets_finished,
             total_cloudlets_received,
             finished_over_received_rate * 100.0,

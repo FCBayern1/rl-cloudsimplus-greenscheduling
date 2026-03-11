@@ -115,15 +115,23 @@ class RLModulePettingZooEnv(ParallelPettingZooEnv):
 
 
 def env_creator(config: Dict[str, Any]):
-    env_id = config.get("env_id", "")
+    # FORCE DYNAMIC PORT allocation for parallel training.
+    # We remove 'py4j_port' from env_config so each EnvRunner/worker launches its
+    # own private Java Gateway instance on a free port. This prevents port
+    # conflicts and shared-state issues when running multiple workers.
+    env_config = config.copy()
+    if "py4j_port" in env_config:
+        del env_config["py4j_port"]
+
+    env_id = env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
 
     if use_simple:
         logger.info("Creating SIMPLIFIED PettingZoo environment")
-        env = HierarchicalMultiDCParallelEnvSimple(config)
+        env = HierarchicalMultiDCParallelEnvSimple(env_config)
     else:
         logger.info("Creating standard PettingZoo environment")
-        env = HierarchicalMultiDCParallelEnv(config)
+        env = HierarchicalMultiDCParallelEnv(env_config)
 
     return RLModulePettingZooEnv(env)
 
@@ -246,17 +254,22 @@ def create_rlmodule_config(
     """
     Create RLlib PPO configuration with GTrXL RLModule.
     """
-    # Create a sample environment to get spaces
-    env_id = env_config.get("env_id", "")
+    # Create a lightweight sample environment to query observation/action spaces.
+    # spaces_only=True skips JVM launch entirely.
+    sample_env_config = env_config.copy()
+    sample_env_config["spaces_only"] = True
+
+    env_id = sample_env_config.get("env_id", "")
     use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
 
     if use_simple:
-        sample_env = HierarchicalMultiDCParallelEnvSimple(env_config)
+        sample_env = HierarchicalMultiDCParallelEnvSimple(sample_env_config)
     else:
-        sample_env = HierarchicalMultiDCParallelEnv(env_config)
+        sample_env = HierarchicalMultiDCParallelEnv(sample_env_config)
 
-    # === DEBUG: Check env spaces vs actual observations ===
-    _debug_check_env_spaces(sample_env)
+    # Skip observation-vs-space debug check in spaces_only mode (no Java backend).
+    if not sample_env_config.get("spaces_only"):
+        _debug_check_env_spaces(sample_env)
 
     global_obs_space = sample_env.observation_space("global_agent")
     global_action_space = sample_env.action_space("global_agent")
@@ -363,6 +376,10 @@ def create_rlmodule_config(
         .env_runners(
             num_env_runners=training_config.get("num_workers", 0),
             num_envs_per_env_runner=1,
+            sample_timeout_s=training_config.get(
+                "sample_timeout_s",
+                max(300.0, env_config.get("max_episode_length", 4000) * 0.15),
+            ),
         )
         .learners(
             num_learners=1 if num_gpus > 0 else 0,
@@ -396,7 +413,7 @@ def train_rlmodule_gtrxl(
     training_config: Dict[str, Any],
     output_dir: str
 ):
-    # Initialize Ray
+    # Initialise Ray
     if not ray.is_initialized():
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
         os.environ["OMP_NUM_THREADS"] = "1"
@@ -428,9 +445,22 @@ def train_rlmodule_gtrxl(
         output_dir=output_dir
     )
 
-    # Stopping criteria
+    # Stopping criteria -- use both env-step and iteration limits.
+    # num_env_steps_sampled_lifetime can stay at 0 when the env runner
+    # sampling times out (sample_timeout_s < episode duration).  Adding a
+    # training_iteration ceiling guarantees training terminates even if the
+    # step counter is broken.
     total_timesteps = training_config.get("total_timesteps", 100000)
-    stop_criteria = {"num_env_steps_sampled_lifetime": total_timesteps}
+    train_batch_size = training_config.get("train_batch_size", 4000)
+    max_iterations = max(1, (total_timesteps // train_batch_size) + 5)
+    stop_criteria = {
+        "num_env_steps_sampled_lifetime": total_timesteps,
+        "training_iteration": max_iterations,
+    }
+    logger.info(
+        f"Stop criteria: num_env_steps_sampled_lifetime>={total_timesteps} "
+        f"OR training_iteration>={max_iterations}"
+    )
 
     # Checkpointing
     checkpoint_freq = training_config.get("checkpoint_freq_timesteps", 10000)
@@ -465,6 +495,19 @@ def train_rlmodule_gtrxl(
 
     logger.info("Starting GTrXL Training...")
     results = tuner.fit()
+
+    # region agent log
+    import json as _json, time as _time
+    _dbg_path = "/home/joshua/rl-cloudsimplus-greenscheduling/.cursor/debug-f7b29b.log"
+    try:
+        best = results.get_best_result()
+        _m = best.metrics if best else {}
+        _payload = {"sessionId":"f7b29b","hypothesisId":"post-fix","location":"train_rlmodule_gtrxl.py:results","message":"training_finished",
+            "data":{"num_env_steps_sampled_lifetime":_m.get("num_env_steps_sampled_lifetime"),"training_iteration":_m.get("training_iteration"),"done":_m.get("done"),"episode_reward_mean":_m.get("episode_reward_mean"),"timers":_m.get("timers")},"timestamp":int(_time.time()*1000)}
+        with open(_dbg_path,"a") as _f: _f.write(_json.dumps(_payload)+"\n")
+    except Exception as _e:
+        with open(_dbg_path,"a") as _f: _f.write(_json.dumps({"sessionId":"f7b29b","message":"log_error","data":{"err":str(_e)},"timestamp":int(_time.time()*1000)})+"\n")
+    # endregion
 
     if hasattr(results, 'errors') and results.errors:
         raise RuntimeError(f"Training failed: {results.errors}")

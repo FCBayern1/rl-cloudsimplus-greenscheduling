@@ -389,6 +389,7 @@ public class DatacenterSetup {
         for (int i = 0; i < config.getInitialSmallVmCount(); i++) {
             Vm vm = createVm(
                     vmIdCounter++,
+                    config.getVmPeMips(),
                     config.getSmallVmPes(),
                     config.getSmallVmRam(),
                     config.getSmallVmBw(),
@@ -403,6 +404,7 @@ public class DatacenterSetup {
         for (int i = 0; i < config.getInitialMediumVmCount(); i++) {
             Vm vm = createVm(
                     vmIdCounter++,
+                    config.getVmPeMips(),
                     mediumPes,
                     mediumRam,
                     config.getSmallVmBw() * config.getMediumVmMultiplier(),
@@ -417,6 +419,7 @@ public class DatacenterSetup {
         for (int i = 0; i < config.getInitialLargeVmCount(); i++) {
             Vm vm = createVm(
                     vmIdCounter++,
+                    config.getVmPeMips(),
                     largePes,
                     largeRam,
                     config.getSmallVmBw() * config.getLargeVmMultiplier(),
@@ -435,8 +438,8 @@ public class DatacenterSetup {
     /**
      * Helper method to create a single VM.
      */
-    private static Vm createVm(int id, int pes, long ram, long bw, long storage) {
-        Vm vm = new VmSimple(id, 1000, pes);  // 1000 MIPS per PE
+    private static Vm createVm(int id, long vmPeMips, int pes, long ram, long bw, long storage) {
+        Vm vm = new VmSimple(id, vmPeMips, pes);
         vm.setRam(ram)
                 .setBw(bw)
                 .setSize(storage)
