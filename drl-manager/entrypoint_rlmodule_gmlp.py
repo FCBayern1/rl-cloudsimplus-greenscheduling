@@ -101,6 +101,8 @@ def main():
             sort_keys=False,
         )
 
+    env_config["gateway_log_dir"] = str(output_dir)
+
     train_rlmodule_gmlp(
         env_config=env_config,
         global_model_config=global_model_config,

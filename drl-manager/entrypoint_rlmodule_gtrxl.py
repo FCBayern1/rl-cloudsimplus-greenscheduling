@@ -6,6 +6,17 @@ This script runs the training process using the Gated Transformer-XL architectur
 
 Usage:
     python entrypoint_rlmodule_gtrxl.py --experiment experiment_multi_dc_10 --total-timesteps 100000
+
+Stopping criteria (OR -- whichever fires first):
+    1. num_env_steps_sampled_lifetime >= total_timesteps
+       Total environment steps (across all workers) reach the budget set by
+       --total-timesteps (default from config: training.total_timesteps).
+    2. training_iteration >= (total_timesteps // train_batch_size) + 5
+       Fallback ceiling on SGD iterations.  Prevents infinite runs when
+       sample_timeout_s causes env runners to return empty batches and the
+       step counter stays at 0.
+
+Both are configured in train_rlmodule_gtrxl.train_rlmodule_gtrxl().
 """
 
 import os
@@ -175,6 +186,8 @@ def main():
             'training_config': training_config,
         }, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     logger.info(f"Saved experiment config to: {config_save_path}")
+
+    env_config["gateway_log_dir"] = str(output_dir)
 
     try:
         train_rlmodule_gtrxl(

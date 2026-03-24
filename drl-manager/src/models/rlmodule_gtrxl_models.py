@@ -173,17 +173,17 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         # === DEBUG: One-time dump of batch structure ===
         if not self._debug_dumped:
             self._debug_dumped = True
-            logger.error("=" * 70)
-            logger.error(f"=== [{self.__class__.__name__}] DEBUG DUMP (first batch) ===")
-            logger.error("=" * 70)
-            logger.error(f"self.obs_dim (from space) = {self.obs_dim}")
-            logger.error(f"flat_obs.shape = {tuple(flat_obs.shape)}")
-            logger.error(f"flat_obs.dtype = {flat_obs.dtype}")
+            logger.debug("=" * 70)
+            logger.debug(f"=== [{self.__class__.__name__}] DEBUG DUMP (first batch) ===")
+            logger.debug("=" * 70)
+            logger.debug(f"self.obs_dim (from space) = {self.obs_dim}")
+            logger.debug(f"flat_obs.shape = {tuple(flat_obs.shape)}")
+            logger.debug(f"flat_obs.dtype = {flat_obs.dtype}")
 
             obs = batch.get(Columns.OBS, batch.get("obs", {}))
-            logger.error(f"raw obs type = {type(obs)}")
+            logger.debug(f"raw obs type = {type(obs)}")
             if isinstance(obs, dict):
-                logger.error(f"raw obs keys = {list(obs.keys())}")
+                logger.debug(f"raw obs keys = {list(obs.keys())}")
 
             # Print each key's tensor shape
             def dump_shapes(prefix, o):
@@ -191,14 +191,14 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
                     for k in sorted(o.keys()):
                         dump_shapes(f"{prefix}.{k}", o[k])
                 elif isinstance(o, torch.Tensor):
-                    logger.error(f"{prefix}: tensor shape={tuple(o.shape)} dtype={o.dtype}")
+                    logger.debug(f"{prefix}: tensor shape={tuple(o.shape)} dtype={o.dtype}")
                 else:
                     try:
                         import numpy as np
                         arr = np.asarray(o)
-                        logger.error(f"{prefix}: array shape={arr.shape} dtype={arr.dtype}")
+                        logger.debug(f"{prefix}: array shape={arr.shape} dtype={arr.dtype}")
                     except Exception:
-                        logger.error(f"{prefix}: {type(o)}")
+                        logger.debug(f"{prefix}: {type(o)}")
 
             if isinstance(obs, dict):
                 dump_shapes("obs", obs)
@@ -206,14 +206,14 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
             # Check if it looks like flattened sequence
             feat_dim = flat_obs.shape[-1]
             if feat_dim != self.obs_dim:
-                logger.error(f"!!! DIMENSION MISMATCH: model expects {self.obs_dim}, got {feat_dim} !!!")
+                logger.warning(f"DIMENSION MISMATCH: model expects {self.obs_dim}, got {feat_dim}")
                 if feat_dim % self.obs_dim == 0 and feat_dim > self.obs_dim:
                     T = feat_dim // self.obs_dim
-                    logger.error(f"Looks like flattened sequence: {feat_dim} = {self.obs_dim} * T({T})")
+                    logger.warning(f"Looks like flattened sequence: {feat_dim} = {self.obs_dim} * T({T})")
 
-            logger.error("=" * 70)
-            logger.error("=== END DEBUG DUMP ===")
-            logger.error("=" * 70)
+            logger.debug("=" * 70)
+            logger.debug("=== END DEBUG DUMP ===")
+            logger.debug("=" * 70)
 
         # === FAIL FAST: Check feature dimension ===
         feat_dim = flat_obs.shape[-1]
@@ -489,17 +489,17 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         # === DEBUG: One-time dump of batch structure ===
         if not self._debug_dumped:
             self._debug_dumped = True
-            logger.error("=" * 70)
-            logger.error(f"=== [{self.__class__.__name__}] DEBUG DUMP (first batch) ===")
-            logger.error("=" * 70)
-            logger.error(f"self.obs_dim (from space) = {self.obs_dim}")
-            logger.error(f"flat_obs.shape = {tuple(flat_obs.shape)}")
-            logger.error(f"flat_obs.dtype = {flat_obs.dtype}")
+            logger.debug("=" * 70)
+            logger.debug(f"=== [{self.__class__.__name__}] DEBUG DUMP (first batch) ===")
+            logger.debug("=" * 70)
+            logger.debug(f"self.obs_dim (from space) = {self.obs_dim}")
+            logger.debug(f"flat_obs.shape = {tuple(flat_obs.shape)}")
+            logger.debug(f"flat_obs.dtype = {flat_obs.dtype}")
 
             raw_obs = batch.get(Columns.OBS, batch.get("obs", {}))
-            logger.error(f"raw obs type = {type(raw_obs)}")
+            logger.debug(f"raw obs type = {type(raw_obs)}")
             if isinstance(raw_obs, dict):
-                logger.error(f"raw obs keys = {list(raw_obs.keys())}")
+                logger.debug(f"raw obs keys = {list(raw_obs.keys())}")
 
             # Print each key's tensor shape
             def dump_shapes(prefix, o):
@@ -507,14 +507,14 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
                     for k in sorted(o.keys()):
                         dump_shapes(f"{prefix}.{k}", o[k])
                 elif isinstance(o, torch.Tensor):
-                    logger.error(f"{prefix}: tensor shape={tuple(o.shape)} dtype={o.dtype}")
+                    logger.debug(f"{prefix}: tensor shape={tuple(o.shape)} dtype={o.dtype}")
                 else:
                     try:
                         import numpy as np
                         arr = np.asarray(o)
-                        logger.error(f"{prefix}: array shape={arr.shape} dtype={arr.dtype}")
+                        logger.debug(f"{prefix}: array shape={arr.shape} dtype={arr.dtype}")
                     except Exception:
-                        logger.error(f"{prefix}: {type(o)}")
+                        logger.debug(f"{prefix}: {type(o)}")
 
             if isinstance(raw_obs, dict):
                 dump_shapes("obs", raw_obs)
@@ -522,14 +522,14 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             # Check if it looks like flattened sequence
             feat_dim = flat_obs.shape[-1]
             if feat_dim != self.obs_dim:
-                logger.error(f"!!! DIMENSION MISMATCH: model expects {self.obs_dim}, got {feat_dim} !!!")
+                logger.warning(f"DIMENSION MISMATCH: model expects {self.obs_dim}, got {feat_dim}")
                 if feat_dim % self.obs_dim == 0 and feat_dim > self.obs_dim:
                     T = feat_dim // self.obs_dim
-                    logger.error(f"Looks like flattened sequence: {feat_dim} = {self.obs_dim} * T({T})")
+                    logger.warning(f"Looks like flattened sequence: {feat_dim} = {self.obs_dim} * T({T})")
 
-            logger.error("=" * 70)
-            logger.error("=== END DEBUG DUMP ===")
-            logger.error("=" * 70)
+            logger.debug("=" * 70)
+            logger.debug("=== END DEBUG DUMP ===")
+            logger.debug("=" * 70)
 
         # === FAIL FAST: Check feature dimension ===
         feat_dim = flat_obs.shape[-1]

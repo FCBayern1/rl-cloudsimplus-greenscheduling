@@ -211,7 +211,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         
         # Launch process
         # Redirect stdout/stderr to a log file for debugging
-        log_dir = os.path.join(os.getcwd(), "logs", "java_gateways")
+        log_dir = self.config["gateway_log_dir"]
         os.makedirs(log_dir, exist_ok=True)
         log_file_path = os.path.join(log_dir, f"gateway_{port}.log")
         

@@ -219,6 +219,8 @@ Examples:
         }, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     logger.info(f"Saved experiment config to: {config_save_path}")
 
+    env_config["gateway_log_dir"] = str(output_dir)
+
     logger.info(f"Experiment: {args.experiment}")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Seed: {seed}")

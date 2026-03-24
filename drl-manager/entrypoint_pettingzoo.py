@@ -424,6 +424,8 @@ Examples:
 
     print()
 
+    env_config["gateway_log_dir"] = str(Path(args.output_dir).resolve())
+
     # Start training
     try:
         train_rllib(

@@ -380,6 +380,7 @@ def create_rlmodule_config(
                 "sample_timeout_s",
                 max(300.0, env_config.get("max_episode_length", 4000) * 0.15),
             ),
+            create_env_on_local_worker=training_config.get("num_workers", 0) == 0,
         )
         .learners(
             num_learners=1 if num_gpus > 0 else 0,
