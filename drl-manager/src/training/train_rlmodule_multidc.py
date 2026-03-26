@@ -336,6 +336,7 @@ def create_rlmodule_config(
         .env_runners(
             num_env_runners=training_config.get("num_workers", 0),
             num_envs_per_env_runner=1,
+            sample_timeout_s=None,
         )
         .learners(
             # New API: GPU is configured in learners, not resources

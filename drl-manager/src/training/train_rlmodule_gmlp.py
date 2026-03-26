@@ -192,7 +192,7 @@ def create_rlmodule_gmlp_config(
         .environment(env="multidc_env", env_config=env_config)
         .rl_module(rl_module_spec=rl_module_spec)
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn, policies_to_train=list(policies))
-        .env_runners(num_env_runners=training_config.get("num_workers", 0), num_envs_per_env_runner=1)
+        .env_runners(num_env_runners=training_config.get("num_workers", 0), num_envs_per_env_runner=1, sample_timeout_s=None)
         .learners(num_learners=1 if num_gpus > 0 else 0, num_gpus_per_learner=num_gpus if num_gpus > 0 else 0)
         .training(
             train_batch_size=training_config.get("train_batch_size", 4000),

@@ -376,10 +376,7 @@ def create_rlmodule_config(
         .env_runners(
             num_env_runners=training_config.get("num_workers", 0),
             num_envs_per_env_runner=1,
-            sample_timeout_s=training_config.get(
-                "sample_timeout_s",
-                max(300.0, env_config.get("max_episode_length", 4000) * 0.15),
-            ),
+            sample_timeout_s=None,
             create_env_on_local_worker=training_config.get("num_workers", 0) == 0,
         )
         .learners(
@@ -446,22 +443,12 @@ def train_rlmodule_gtrxl(
         output_dir=output_dir
     )
 
-    # Stopping criteria -- use both env-step and iteration limits.
-    # num_env_steps_sampled_lifetime can stay at 0 when the env runner
-    # sampling times out (sample_timeout_s < episode duration).  Adding a
-    # training_iteration ceiling guarantees training terminates even if the
-    # step counter is broken.
     total_timesteps = training_config.get("total_timesteps", 100000)
     train_batch_size = training_config.get("train_batch_size", 4000)
-    max_iterations = max(1, (total_timesteps // train_batch_size) + 5)
     stop_criteria = {
         "num_env_steps_sampled_lifetime": total_timesteps,
-        "training_iteration": max_iterations,
     }
-    logger.info(
-        f"Stop criteria: num_env_steps_sampled_lifetime>={total_timesteps} "
-        f"OR training_iteration>={max_iterations}"
-    )
+    logger.info(f"Stop criteria: num_env_steps_sampled_lifetime >= {total_timesteps}")
 
     # Checkpointing
     checkpoint_freq = training_config.get("checkpoint_freq_timesteps", 10000)
@@ -494,21 +481,25 @@ def train_rlmodule_gtrxl(
         run_config=run_config,
     )
 
-    logger.info("Starting GTrXL Training...")
+    logger.info(
+        "Starting GTrXL Training... train_batch_size=%d, target=%d env steps",
+        train_batch_size, total_timesteps,
+    )
     results = tuner.fit()
 
-    # region agent log
-    import json as _json, time as _time
-    _dbg_path = "/home/joshua/rl-cloudsimplus-greenscheduling/.cursor/debug-f7b29b.log"
     try:
         best = results.get_best_result()
-        _m = best.metrics if best else {}
-        _payload = {"sessionId":"f7b29b","hypothesisId":"post-fix","location":"train_rlmodule_gtrxl.py:results","message":"training_finished",
-            "data":{"num_env_steps_sampled_lifetime":_m.get("num_env_steps_sampled_lifetime"),"training_iteration":_m.get("training_iteration"),"done":_m.get("done"),"episode_reward_mean":_m.get("episode_reward_mean"),"timers":_m.get("timers")},"timestamp":int(_time.time()*1000)}
-        with open(_dbg_path,"a") as _f: _f.write(_json.dumps(_payload)+"\n")
-    except Exception as _e:
-        with open(_dbg_path,"a") as _f: _f.write(_json.dumps({"sessionId":"f7b29b","message":"log_error","data":{"err":str(_e)},"timestamp":int(_time.time()*1000)})+"\n")
-    # endregion
+        if best and best.metrics:
+            m = best.metrics
+            logger.info(
+                "Training finished: iterations=%s, num_env_steps_sampled_lifetime=%s, "
+                "episode_reward_mean=%s",
+                m.get("training_iteration"),
+                m.get("num_env_steps_sampled_lifetime"),
+                m.get("episode_reward_mean"),
+            )
+    except Exception:
+        logger.warning("Could not read final training metrics", exc_info=True)
 
     if hasattr(results, 'errors') and results.errors:
         raise RuntimeError(f"Training failed: {results.errors}")

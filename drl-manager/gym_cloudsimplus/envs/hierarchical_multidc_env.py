@@ -19,6 +19,7 @@ import logging
 import time
 import subprocess
 import socket
+import sys
 import os
 import signal
 import atexit
@@ -29,6 +30,9 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from py4j.java_gateway import JavaGateway, GatewayParameters, Py4JNetworkError
+
+if sys.platform != "win32":
+    import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -214,54 +218,79 @@ class HierarchicalMultiDCEnv(gym.Env):
         log_dir = self.config["gateway_log_dir"]
         os.makedirs(log_dir, exist_ok=True)
         log_file_path = os.path.join(log_dir, f"gateway_{port}.log")
-        
-        self._java_log_file = open(log_file_path, "w")
-        
+
+        # Serialize gradlew run across Ray workers: concurrent builds in the same
+        # cloudsimplus-gateway directory can corrupt build output and cause
+        # NoClassDefFoundError (e.g. HierarchicalResetResult) at runtime.
+        lock_file = None
         try:
-            self.java_process = subprocess.Popen(
-                cmd,
-                cwd=gateway_dir,
-                stdout=self._java_log_file,
-                stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid  # Create new process group for easier cleanup
-            )
-            
-            # Wait for the server to be ready
-            # We'll poll the port until it's open
-            max_retries = 60  # Wait up to 60 seconds (Gradle build might take time)
-            for i in range(max_retries):
-                if self.java_process.poll() is not None:
-                    # region agent log
-                    _write_debug_log(
-                        "H1",
-                        "hierarchical_multidc_env.py:201",
-                        "java_process_exited_early",
-                        {
-                            "port": port,
-                            "returncode": self.java_process.returncode,
-                            "log_file_path": log_file_path,
-                        },
-                    )
-                    # endregion
-                    raise RuntimeError(f"Java process exited prematurely with code {self.java_process.returncode}. Check logs at {log_file_path}")
-                
-                if self._is_port_open(port):
-                    logger.info(f"Java Gateway is ready on port {port}")
-                    return
-                
-                time.sleep(1.0)
-                if i % 5 == 0:
-                    logger.info(f"Waiting for Java Gateway on port {port} ({i}/{max_retries})...")
-            
-            raise RuntimeError(f"Timed out waiting for Java Gateway on port {port}")
-            
-        except Exception as e:
-            logger.error(f"Failed to launch Java Gateway: {e}")
-            if self.java_process:
-                self.java_process.kill()
-            if self._java_log_file:
-                self._java_log_file.close()
-            raise
+            if sys.platform != "win32":
+                lock_path = os.path.join(gateway_dir, ".py4j_gateway_launch.lock")
+                lock_file = open(lock_path, "a+", encoding="utf-8")
+                logger.info(
+                    "Waiting for exclusive gateway build lock (multi-worker safe)..."
+                )
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            self._java_log_file = open(log_file_path, "w")
+
+            try:
+                self.java_process = subprocess.Popen(
+                    cmd,
+                    cwd=gateway_dir,
+                    stdout=self._java_log_file,
+                    stderr=subprocess.STDOUT,
+                    preexec_fn=os.setsid  # Create new process group for easier cleanup
+                )
+
+                # Wait for the server to be ready
+                # We'll poll the port until it's open
+                max_retries = 600  # Gradle cold build + JVM can exceed 60s
+                for i in range(max_retries):
+                    if self.java_process.poll() is not None:
+                        # region agent log
+                        _write_debug_log(
+                            "H1",
+                            "hierarchical_multidc_env.py:201",
+                            "java_process_exited_early",
+                            {
+                                "port": port,
+                                "returncode": self.java_process.returncode,
+                                "log_file_path": log_file_path,
+                            },
+                        )
+                        # endregion
+                        raise RuntimeError(
+                            f"Java process exited prematurely with code {self.java_process.returncode}. "
+                            f"Check logs at {log_file_path}"
+                        )
+
+                    if self._is_port_open(port):
+                        logger.info(f"Java Gateway is ready on port {port}")
+                        return
+
+                    time.sleep(1.0)
+                    if i % 30 == 0 and i > 0:
+                        logger.info(
+                            f"Waiting for Java Gateway on port {port} ({i}/{max_retries}s)..."
+                        )
+
+                raise RuntimeError(f"Timed out waiting for Java Gateway on port {port}")
+
+            except Exception as e:
+                logger.error(f"Failed to launch Java Gateway: {e}")
+                if self.java_process:
+                    self.java_process.kill()
+                if self._java_log_file:
+                    self._java_log_file.close()
+                raise
+        finally:
+            if lock_file is not None:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                lock_file.close()
 
     def _is_port_open(self, port: int) -> bool:
         """Check if a TCP port is open and listening."""
