@@ -413,7 +413,7 @@ Examples:
             logger.warning(f"  Error: {e}")
             logger.warning(f"  Please ensure Java Gateway is running:")
             logger.warning(f"    cd cloudsimplus-gateway")
-            logger.warning(f"    ./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC")
+            logger.warning(f"    ./gradlew run -PappMainClass=exe.edu.cspg.MainMultiDC")
             logger.warning("")
             response = input("Continue anyway? (y/N): ")
             if response.lower() != 'y':

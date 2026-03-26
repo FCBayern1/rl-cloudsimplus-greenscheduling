@@ -57,7 +57,7 @@ java {
 def requestedMainClass = project.findProperty("appMainClass")
 
 application {
-    mainClass = requestedMainClass ?: 'giu.edu.cspg.Main'
+    mainClass = requestedMainClass ?: 'exe.edu.cspg.Main'
 }
 
 test {

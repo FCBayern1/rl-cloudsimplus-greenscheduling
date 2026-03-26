@@ -20,10 +20,10 @@
 ```bash
 cd cloudsimplus-gateway
 ./gradlew build -x test
-./gradlew run -PappMainClass=giu.edu.cspg.MainMultiDC
+./gradlew run -PappMainClass=exe.edu.cspg.MainMultiDC
 ```
 
-默认端口是 **25333**（Java 侧支持 `PY4J_PORT`/`CSPG_PY4J_PORT` 或 `--port` 参数；见 `giu.edu.cspg.MainMultiDC`）。
+默认端口是 **25333**（Java 侧支持 `PY4J_PORT`/`CSPG_PY4J_PORT` 或 `--port` 参数；见 `exe.edu.cspg.MainMultiDC`）。
 
 ### 3) 安装 Python 依赖（RLlib + PettingZoo）
 
@@ -71,7 +71,7 @@ python entrypoint_pettingzoo.py \
 ```bash
 cd cloudsimplus-gateway
 ./gradlew build -x test
-./gradlew run -PappMainClass=giu.edu.cspg.Main
+./gradlew run -PappMainClass=exe.edu.cspg.Main
 ```
 
 ### 2) 启动 Python 训练入口

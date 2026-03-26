@@ -121,7 +121,7 @@ def test_java_return_types():
         gateway = JavaGateway()
 
         # Get the multi-DC gateway
-        multi_dc_gateway = gateway.jvm.giu.edu.cspg.multidc.HierarchicalMultiDCGateway.getInstance()
+        multi_dc_gateway = gateway.jvm.exe.edu.cspg.multidc.HierarchicalMultiDCGateway.getInstance()
 
         # Configure with minimal settings
         settings = gateway.jvm.java.util.HashMap()

@@ -411,59 +411,20 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         global_term_completion_mi_sum = global_energy_stats.get('global_reward_term_completion_mi_sum', 0.0)
 
         # Episode metrics (use helper functions for API compatibility)
-        episode_reward = get_episode_reward(episode)
         episode_length = get_episode_length(episode)
 
-        # Extract per-agent rewards for hierarchical MARL analysis
+        # NOTE: per-agent rewards (global_agent_reward, local_agent_rewards,
+        # episode_reward) are computed LATER from Java info dict, not from
+        # episode.agent_episodes.  RLlib's new-API MultiAgentEpisode only
+        # exposes the *last rollout fragment's* SingleAgentEpisode objects in
+        # on_episode_end, so get_return() returns a partial (fragment-level)
+        # cumulative reward rather than the full episode total.
+        # The Java simulation core tracks episode-level cumulative reward
+        # component sums which are always accurate.
         global_agent_reward = 0.0
-        local_agent_rewards = {}  # Changed to dict for per-DC tracking
-
-        # NEW API: Try agent_episodes for MultiAgentEpisode
-        if hasattr(episode, 'agent_episodes'):
-            try:
-                agent_episodes = episode.agent_episodes
-                for agent_id, agent_ep in agent_episodes.items():
-                    try:
-                        reward = agent_ep.get_return() if hasattr(agent_ep, 'get_return') else 0.0
-                        if agent_id == 'global_agent':
-                            global_agent_reward = reward
-                            logger.debug(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
-                        elif agent_id.startswith('local_agent_'):
-                            try:
-                                dc_id = int(agent_id.split('_')[-1])
-                                local_agent_rewards[dc_id] = reward
-                                logger.debug(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
-                            except (ValueError, IndexError):
-                                pass
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.debug(f"[CALLBACK DEBUG] agent_episodes access failed: {e}")
-
-        # OLD API: Access agent_rewards dict from episode
-        # In RLlib, agent_rewards keys are tuples: (agent_id, policy_id)
-        if not local_agent_rewards and hasattr(episode, 'agent_rewards'):
-            agent_rewards_dict = episode.agent_rewards
-            logger.debug(f"[CALLBACK DEBUG] Agent rewards: {agent_rewards_dict}")
-
-            # Extract global agent reward
-            # Keys are tuples: (agent_id, policy_id)
-            for (agent_id, policy_id), reward in agent_rewards_dict.items():
-                if agent_id == 'global_agent':
-                    global_agent_reward = reward
-                    logger.debug(f"[CALLBACK DEBUG] Global agent reward: {global_agent_reward}")
-                elif agent_id.startswith('local_agent_'):
-                    # Extract DC ID from agent_id (e.g., "local_agent_0" -> 0)
-                    try:
-                        dc_id = int(agent_id.split('_')[-1])
-                        local_agent_rewards[dc_id] = reward
-                        logger.debug(f"[CALLBACK DEBUG] {agent_id} (DC {dc_id}) reward: {reward}")
-                    except (ValueError, IndexError):
-                        logger.warning(f"[CALLBACK DEBUG] Could not parse DC ID from {agent_id}")
-
-        # Calculate average local agent reward
-        local_agents_avg_reward = sum(local_agent_rewards.values()) / len(local_agent_rewards) if local_agent_rewards else 0.0
-        logger.info(f"[CALLBACK DEBUG] Average local agent reward: {local_agents_avg_reward} (from {len(local_agent_rewards)} agents)")
+        local_agent_rewards = {}
+        local_agents_avg_reward = 0.0
+        episode_reward = 0.0
 
         # === Completion + throughput metrics (align monitor.csv with what you care about) ===
         # NOTE:
@@ -501,38 +462,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # Increment episode counter
         self.episode_counter += 1
 
-        # Track best episode
-        if episode_reward > self.best_reward:
-            self.best_reward = episode_reward
-            self.best_episode_data = {
-                'episode': self.episode_counter,
-                'reward': episode_reward,
-                'length': episode_length,
-                'green_waste_wh': green_waste,
-                'green_used_wh': green_used,
-                'brown_used_wh': brown_used,
-                'total_energy_wh': total_energy,
-                'green_ratio': green_ratio,
-                'waste_ratio': waste_ratio,
-                'total_carbon_kg': total_carbon_kg,
-                'carbon_intensity_kg_per_kwh': carbon_intensity,
-                'carbon_per_mi': carbon_per_mi,
-                'global_carbon_signal_mean': global_carbon_signal_mean,
-                'global_carbon_signal_sum': global_carbon_signal_sum,
-                'global_carbon_penalty_norm_mean': global_carbon_penalty_norm_mean,
-                'global_carbon_penalty_norm_sum': global_carbon_penalty_norm_sum,
-                'global_term_local_sum': global_term_local_sum,
-                'global_term_carbon_sum': global_term_carbon_sum,
-                'global_term_waste_sum': global_term_waste_sum,
-                'global_term_throughput_sum': global_term_throughput_sum,
-                'global_term_completion_mi_sum': global_term_completion_mi_sum,
-                'global_agent_reward': global_agent_reward,
-                'local_agents_avg_reward': local_agents_avg_reward,
-                'completion_rate_mi': completion_rate_mi,
-                'finished_over_received_rate': finished_over_received_rate,
-                'finished_over_workload_cloudlets_rate': finished_over_workload_cloudlets_rate,
-            }
-            self._save_best_episode()
+        # NOTE: best-episode tracking moved to after Java reward computation below.
 
         # Add per-DC energy metrics for separate policy analysis
         dc_energy_metrics_raw = last_info.get('datacenter_energy_metrics', {})
@@ -583,7 +513,6 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 per_dc_cloudlets_received[dc_id] = dc_cloudlets_received
 
                 # Record per-DC metrics to TensorBoard (if supported)
-                # These will show up as "dc_0/green_used_wh", "dc_1/green_used_wh", etc.
                 per_dc_metrics = {
                     f"dc_{dc_id}/green_used_wh": dc_green,
                     f"dc_{dc_id}/brown_used_wh": dc_brown,
@@ -610,10 +539,78 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     except Exception:
                         pass
 
+        # ----------------------------------------------------------------
+        # Compute authoritative reward values from Java info dict.
+        #
+        # RLlib new-API's episode.agent_episodes only contains the last
+        # rollout fragment, so get_return() yields fragment-level partial
+        # rewards.  The Java simulation core tracks episode-cumulative
+        # reward component sums which are always accurate.
+        # ----------------------------------------------------------------
+        global_agent_reward = (
+            global_term_local_sum
+            + global_term_carbon_sum
+            + global_term_waste_sum
+            + global_term_throughput_sum
+            + global_term_completion_mi_sum
+        )
+
+        num_dcs = max(len(per_dc_mean_completion_times), 10)
+        for dc_id in range(num_dcs):
+            local_agent_rewards[dc_id] = (
+                per_dc_local_wait_sum.get(dc_id, 0.0)
+                + per_dc_local_util_sum.get(dc_id, 0.0)
+                + per_dc_local_queue_sum.get(dc_id, 0.0)
+                + per_dc_local_invalid_sum.get(dc_id, 0.0)
+                + per_dc_local_completion_sum.get(dc_id, 0.0)
+            )
+
+        local_agents_avg_reward = (
+            sum(local_agent_rewards.values()) / len(local_agent_rewards)
+            if local_agent_rewards else 0.0
+        )
+        episode_reward = global_agent_reward + sum(local_agent_rewards.values())
+
+        logger.info(
+            "[CALLBACK] Rewards from Java info: global=%.2f, local_avg=%.2f, episode_total=%.2f",
+            global_agent_reward, local_agents_avg_reward, episode_reward,
+        )
+
+        # Track best episode (must be after Java reward computation)
+        if episode_reward > self.best_reward:
+            self.best_reward = episode_reward
+            self.best_episode_data = {
+                'episode': self.episode_counter,
+                'reward': episode_reward,
+                'length': episode_length,
+                'green_waste_wh': green_waste,
+                'green_used_wh': green_used,
+                'brown_used_wh': brown_used,
+                'total_energy_wh': total_energy,
+                'green_ratio': green_ratio,
+                'waste_ratio': waste_ratio,
+                'total_carbon_kg': total_carbon_kg,
+                'carbon_intensity_kg_per_kwh': carbon_intensity,
+                'carbon_per_mi': carbon_per_mi,
+                'global_carbon_signal_mean': global_carbon_signal_mean,
+                'global_carbon_signal_sum': global_carbon_signal_sum,
+                'global_carbon_penalty_norm_mean': global_carbon_penalty_norm_mean,
+                'global_carbon_penalty_norm_sum': global_carbon_penalty_norm_sum,
+                'global_term_local_sum': global_term_local_sum,
+                'global_term_carbon_sum': global_term_carbon_sum,
+                'global_term_waste_sum': global_term_waste_sum,
+                'global_term_throughput_sum': global_term_throughput_sum,
+                'global_term_completion_mi_sum': global_term_completion_mi_sum,
+                'global_agent_reward': global_agent_reward,
+                'local_agents_avg_reward': local_agents_avg_reward,
+                'completion_rate_mi': completion_rate_mi,
+                'finished_over_received_rate': finished_over_received_rate,
+                'finished_over_workload_cloudlets_rate': finished_over_workload_cloudlets_rate,
+            }
+            self._save_best_episode()
+
         # Write to monitor.csv (episode-by-episode metrics)
         try:
-            # Determine number of DCs from available metrics
-            num_dcs = max(len(local_agent_rewards), len(per_dc_mean_completion_times), 10)
 
             # Build row with base metrics
             row = [

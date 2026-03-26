@@ -505,7 +505,7 @@ def main():
     else:
         # Full evaluation mode: requires Java Gateway
         logger.info("\n⚠️  Full evaluation requires Java Gateway running!")
-        logger.info("   Start it with: cd cloudsimplus-gateway && ./gradlew run -PappMainClass=giu.edu.cspg.multidc.HierarchicalMultiDCGateway")
+        logger.info("   Start it with: cd cloudsimplus-gateway && ./gradlew run -PappMainClass=exe.edu.cspg.MainMultiDC")
         logger.info("")
         
         results = evaluate_model(

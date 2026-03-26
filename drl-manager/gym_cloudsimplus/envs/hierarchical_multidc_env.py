@@ -187,7 +187,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         cmd = [
             gradlew_path,
             "--no-daemon",
-            "-PappMainClass=giu.edu.cspg.MainMultiDC",
+            "-PappMainClass=exe.edu.cspg.MainMultiDC",
             "run",
             "-q",
             f"--args=--port {port}",
