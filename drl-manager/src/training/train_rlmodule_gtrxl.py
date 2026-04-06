@@ -244,6 +244,35 @@ def _debug_check_env_spaces(sample_env):
     logger.info("=" * 70 + "\n")
 
 
+def _merged_gtrxl_model_settings(
+    local_model_config: Dict[str, Any], env_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge local_model.model with top-level experiment `gtrxl:` (config.yml naming)."""
+    m = dict(local_model_config.get("model", {}))
+    g = env_config.get("gtrxl") or {}
+    if not isinstance(g, dict):
+        return m
+    if "d_model" in g:
+        m["d_model"] = g["d_model"]
+    if "nhead" in g:
+        m["nhead"] = g["nhead"]
+    if "num_heads" in g:
+        m["nhead"] = g["num_heads"]
+    if "num_layers" in g:
+        m["num_layers"] = g["num_layers"]
+    if "dim_feedforward" in g:
+        m["dim_feedforward"] = g["dim_feedforward"]
+    if "d_ff" in g:
+        m["dim_feedforward"] = g["d_ff"]
+    if "dropout" in g:
+        m["dropout"] = g["dropout"]
+    if "mem_len" in g:
+        m["mem_len"] = g["mem_len"]
+    if "max_seq_len" in g:
+        m["max_seq_len"] = g["max_seq_len"]
+    return m
+
+
 def create_rlmodule_config(
     env_config: Dict[str, Any],
     global_model_config: Dict[str, Any],
@@ -289,15 +318,16 @@ def create_rlmodule_config(
     if not num_dcs:
         num_dcs = len(env_config.get("datacenters", []))
 
-    # GTrXL Configuration
-    # Extract from config or use defaults
+    # GTrXL Configuration (local_model.model + experiment `gtrxl:` block)
+    gm = _merged_gtrxl_model_settings(local_model_config, env_config)
     gtrxl_config = {
-        "d_model": local_model_config.get("model", {}).get("d_model", 128),
-        "nhead": local_model_config.get("model", {}).get("nhead", 4),
-        "num_layers": local_model_config.get("model", {}).get("num_layers", 2),
-        "dim_feedforward": local_model_config.get("model", {}).get("dim_feedforward", 256),
-        "dropout": local_model_config.get("model", {}).get("dropout", 0.0),
-        "max_seq_len": local_model_config.get("model", {}).get("max_seq_len", 20), # Default for recurrent models
+        "d_model": gm.get("d_model", 128),
+        "nhead": gm.get("nhead", 4),
+        "num_layers": gm.get("num_layers", 2),
+        "dim_feedforward": gm.get("dim_feedforward", 256),
+        "dropout": gm.get("dropout", 0.0),
+        "max_seq_len": int(gm.get("max_seq_len", 128)),
+        "mem_len": int(gm.get("mem_len", 16)),
     }
     
     logger.info(f"GTrXL Config: {gtrxl_config}")

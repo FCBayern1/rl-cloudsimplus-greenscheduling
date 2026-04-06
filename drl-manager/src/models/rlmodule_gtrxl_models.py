@@ -10,6 +10,7 @@ Architecture:
 
 from typing import Any, Dict, Optional, List
 import logging
+import numpy as np
 import torch
 import torch.nn as nn
 from gymnasium import spaces
@@ -24,6 +25,44 @@ from ray.rllib.utils.typing import TensorType
 from src.networks.gtrxl import GTrXL
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_gtrxl_state_in(
+    batch: Dict[str, Any],
+    batch_size: int,
+    num_layers: int,
+    mem_len: int,
+    d_model: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Optional[List[torch.Tensor]]:
+    """Build per-layer memory list from RLlib Columns.STATE_IN, or None to zero-init."""
+    si = batch.get(Columns.STATE_IN)
+    if not isinstance(si, dict) or si is None:
+        return None
+    raw = si.get("gtrxl_mem")
+    if raw is None:
+        return None
+    try:
+        t = torch.as_tensor(raw, device=device, dtype=dtype)
+        if t.dim() == 3:
+            t = t.unsqueeze(0).expand(batch_size, -1, -1, -1).contiguous()
+        elif t.dim() == 4:
+            if t.shape[0] == 1 and batch_size > 1:
+                t = t.expand(batch_size, -1, -1, -1).contiguous()
+            elif t.shape[0] != batch_size:
+                return None
+        else:
+            return None
+        if t.shape[1] != num_layers or t.shape[2] != mem_len or t.shape[3] != d_model:
+            return None
+        return [t[:, i].contiguous() for i in range(num_layers)]
+    except Exception:
+        return None
+
+
+def _gtrxl_state_out(memories: List[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    return {"gtrxl_mem": torch.stack(memories, dim=1)}
 
 class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     """
@@ -56,15 +95,20 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         num_layers = model_config.get("num_layers", 2)
         dim_feedforward = model_config.get("dim_feedforward", 256)
         dropout = model_config.get("dropout", 0.0)
+        mem_len = int(model_config.get("mem_len", 16))
+        max_seq_len = int(model_config.get("max_seq_len", 128))
+        max_seq_len = max(max_seq_len, mem_len + 32)
 
-        # Build GTrXL Backbone
+        # Build GTrXL Backbone (Transformer-XL-style memory between env steps)
         self.gtrxl = GTrXL(
             input_dim=self.obs_dim,
             d_model=d_model,
             nhead=nhead,
             num_layers=num_layers,
             dim_feedforward=dim_feedforward,
-            dropout=dropout
+            dropout=dropout,
+            mem_len=mem_len,
+            max_seq_len=max_seq_len,
         )
 
         # Heads
@@ -79,10 +123,20 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         logger.info(f"[{self.__class__.__name__}] obs_space={self.observation_space}")
         logger.info(f"[{self.__class__.__name__}] computed obs_dim={self.obs_dim}")
         logger.info(f"[{self.__class__.__name__}] action_dim={self.action_dim}")
-        logger.info(f"[{self.__class__.__name__}] d_model={d_model}, nhead={nhead}, num_layers={num_layers}")
+        logger.info(
+            f"[{self.__class__.__name__}] d_model={d_model}, nhead={nhead}, "
+            f"num_layers={num_layers}, mem_len={mem_len}"
+        )
 
-    # NOTE: get_initial_state removed to avoid RLlib treating this as stateful/recurrent
-    # which causes Connector v2 to expect time-major format (T, B, ...) instead of batch-first
+    @override(TorchRLModule)
+    def get_initial_state(self):
+        """Per-layer XL memory template (B dimension added by RLlib connectors)."""
+        return {
+            "gtrxl_mem": np.zeros(
+                (self.gtrxl.num_layers, self.gtrxl.mem_len, self.gtrxl.d_model),
+                dtype=np.float32,
+            )
+        }
 
     def _get_obs_dim(self, obs_space) -> int:
         """Calculate flat observation dimension (excluding action mask)."""
@@ -167,7 +221,7 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         return flat_obs, action_mask
 
     def _forward_pass(self, batch: Dict[str, Any], state_in: Any = None):
-        """Shared forward pass logic."""
+        """Shared forward pass logic. Returns logits, values, STATE_OUT content."""
         flat_obs, action_mask = self._extract_obs_and_mask(batch)
 
         # === DEBUG: One-time dump of batch structure ===
@@ -269,13 +323,19 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
             else:
                  # Default to adding time dim 1
                  flat_obs = flat_obs.unsqueeze(1)
-        
-        # Pass through GTrXL
-        # We ignore state passing for strictly GTrXL logic here
-        # (relying on Attention over the sequence provided)
-        # unless we implement full memory.
-        # We pass dummy state to satisfy signature.
-        features, _ = self.gtrxl(flat_obs, state=[])
+
+        B = flat_obs.shape[0]
+        memories_in = _parse_gtrxl_state_in(
+            batch,
+            B,
+            self.gtrxl.num_layers,
+            self.gtrxl.mem_len,
+            self.gtrxl.d_model,
+            flat_obs.device,
+            flat_obs.dtype,
+        )
+        features, memories_out = self.gtrxl(flat_obs, state=memories_in)
+        state_out = _gtrxl_state_out(memories_out)
 
         # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
         if not torch.isfinite(features).all():
@@ -324,23 +384,24 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
             # Use -1e9 instead of -inf for numerical stability
             logits = torch.where(valid, logits, torch.full_like(logits, -1e9))
 
-        return logits, values
+        return logits, values, state_out
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values = self._forward_pass(batch)
+        logits, values, state_out = self._forward_pass(batch)
         self._last_value = values
-        # NOTE: STATE_OUT removed to avoid RLlib Connector v2 time-rank issues
         return {
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
+            Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, _ = self._forward_pass(batch)
+        logits, _, state_out = self._forward_pass(batch)
         return {
             Columns.ACTION_DIST_INPUTS: logits,
+            Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
@@ -349,7 +410,7 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values = self._forward_pass(batch)
+        _, values, _ = self._forward_pass(batch)
         return values
 
     @override(TorchRLModule)
@@ -396,6 +457,9 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         num_layers = model_config.get("num_layers", 2)
         dim_feedforward = model_config.get("dim_feedforward", 256)
         dropout = model_config.get("dropout", 0.0)
+        mem_len = int(model_config.get("mem_len", 16))
+        max_seq_len = int(model_config.get("max_seq_len", 128))
+        max_seq_len = max(max_seq_len, mem_len + 32)
 
         self.gtrxl = GTrXL(
             input_dim=self.obs_dim,
@@ -403,7 +467,9 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             nhead=nhead,
             num_layers=num_layers,
             dim_feedforward=dim_feedforward,
-            dropout=dropout
+            dropout=dropout,
+            mem_len=mem_len,
+            max_seq_len=max_seq_len,
         )
 
         self.policy_head = nn.Linear(d_model, self.action_dim)
@@ -415,10 +481,19 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         logger.info(f"[{self.__class__.__name__}] obs_space={self.observation_space}")
         logger.info(f"[{self.__class__.__name__}] computed obs_dim={self.obs_dim}")
         logger.info(f"[{self.__class__.__name__}] action_dim={self.action_dim}")
-        logger.info(f"[{self.__class__.__name__}] d_model={d_model}, nhead={nhead}, num_layers={num_layers}")
+        logger.info(
+            f"[{self.__class__.__name__}] d_model={d_model}, nhead={nhead}, "
+            f"num_layers={num_layers}, mem_len={mem_len}"
+        )
 
-    # NOTE: get_initial_state removed to avoid RLlib treating this as stateful/recurrent
-    # which causes Connector v2 to expect time-major format (T, B, ...) instead of batch-first
+    @override(TorchRLModule)
+    def get_initial_state(self):
+        return {
+            "gtrxl_mem": np.zeros(
+                (self.gtrxl.num_layers, self.gtrxl.mem_len, self.gtrxl.d_model),
+                dtype=np.float32,
+            )
+        }
 
     def _get_obs_dim(self, obs_space) -> int:
         import numpy as np
@@ -554,7 +629,18 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         if flat_obs.dim() == 2:
             flat_obs = flat_obs.unsqueeze(1)
 
-        features, _ = self.gtrxl(flat_obs, state=[])
+        B = flat_obs.shape[0]
+        memories_in = _parse_gtrxl_state_in(
+            batch,
+            B,
+            self.gtrxl.num_layers,
+            self.gtrxl.mem_len,
+            self.gtrxl.d_model,
+            flat_obs.device,
+            flat_obs.dtype,
+        )
+        features, memories_out = self.gtrxl(flat_obs, state=memories_in)
+        state_out = _gtrxl_state_out(memories_out)
 
         # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
         if not torch.isfinite(features).all():
@@ -571,23 +657,24 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         logits = logits[:, -1, :]  # (B, A)
         values = values[:, -1]     # (B,)
 
-        return logits, values
+        return logits, values, state_out
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values = self._forward_pass(batch)
+        logits, values, state_out = self._forward_pass(batch)
         self._last_value = values
-        # NOTE: STATE_OUT removed to avoid RLlib Connector v2 time-rank issues
         return {
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
+            Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, _ = self._forward_pass(batch)
+        logits, _, state_out = self._forward_pass(batch)
         return {
             Columns.ACTION_DIST_INPUTS: logits,
+            Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
@@ -596,7 +683,7 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values = self._forward_pass(batch)
+        _, values, _ = self._forward_pass(batch)
         return values
 
     def _get_multi_categorical_cls(self, action_space):
