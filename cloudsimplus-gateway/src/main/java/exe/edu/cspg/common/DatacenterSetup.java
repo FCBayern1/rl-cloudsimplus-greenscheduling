@@ -151,8 +151,7 @@ public class DatacenterSetup {
                 settings.getHostBw(), settings.getHostStorage(), peList)
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerSpaceShared())
-                .setStateHistoryEnabled(true);
+                .setVmScheduler(new VmSchedulerSpaceShared());
 
         // Set power model for energy consumption tracking
         // PowerModelHostSimple: linear power model
@@ -180,8 +179,7 @@ public class DatacenterSetup {
                 profile.getBw(), profile.getStorage(), peList)
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerSpaceShared())
-                .setStateHistoryEnabled(true);
+                .setVmScheduler(new VmSchedulerSpaceShared());
 
         // Set power model based on real server characteristics
         // PowerModelHostSimple(maxPowerW, staticPowerPercent)
@@ -331,8 +329,7 @@ public class DatacenterSetup {
                 )
                 .setRamProvisioner(new ResourceProvisionerSimple())
                 .setBwProvisioner(new ResourceProvisionerSimple())
-                .setVmScheduler(new VmSchedulerSpaceShared())
-                .setStateHistoryEnabled(true);
+                .setVmScheduler(new VmSchedulerSpaceShared());
 
                 // Add default power model
                 double maxPower = 250.0; // Watts

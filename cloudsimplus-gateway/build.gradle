@@ -58,6 +58,13 @@ def requestedMainClass = project.findProperty("appMainClass")
 
 application {
     mainClass = requestedMainClass ?: 'exe.edu.cspg.Main'
+    applicationDefaultJvmArgs = [
+        '-Xmx4g',
+        '-Xms1g',
+        '-XX:+UseG1GC',
+        '-XX:+AlwaysPreTouch',
+        '-server',
+    ]
 }
 
 test {

@@ -385,6 +385,28 @@ def create_rlmodule_config(
     # Build PPO Config
     num_gpus = training_config.get("num_gpus", 0)
 
+    # Per-policy hyperparameter overrides for the global agent.
+    # The base .training() uses local_model_config (majority of policies).
+    # global_model_config overrides are applied via algorithm_config_overrides_per_module.
+    global_overrides = {}
+    _override_keys = {
+        "learning_rate": "lr",
+        "gamma": "gamma",
+        "gae_lambda": "lambda_",
+        "clip_range": "clip_param",
+        "ent_coef": "entropy_coeff",
+        "vf_coef": "vf_loss_coeff",
+        "max_grad_norm": "grad_clip",
+    }
+    for cfg_key, ppo_key in _override_keys.items():
+        if cfg_key in global_model_config:
+            global_overrides[ppo_key] = global_model_config[cfg_key]
+
+    per_module_overrides = {}
+    if global_overrides:
+        per_module_overrides["global_policy"] = PPOConfig.overrides(**global_overrides)
+        logger.info("Global policy overrides: %s", global_overrides)
+
     config = (
         PPOConfig()
         .api_stack(
@@ -402,6 +424,7 @@ def create_rlmodule_config(
             policies=policies,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=list(policies),
+            algorithm_config_overrides_per_module=per_module_overrides or None,
         )
         .env_runners(
             num_env_runners=training_config.get("num_workers", 0),
@@ -416,7 +439,7 @@ def create_rlmodule_config(
         .training(
             train_batch_size=training_config.get("train_batch_size", 4000),
             minibatch_size=training_config.get("sgd_minibatch_size", 128),
-            num_sgd_iter=training_config.get("num_sgd_iter", 10),
+            num_epochs=training_config.get("num_sgd_iter", 10),
             gamma=local_model_config.get("gamma", 0.99),
             lr=local_model_config.get("learning_rate", 3e-4),
             lambda_=local_model_config.get("gae_lambda", 0.95),
@@ -480,12 +503,14 @@ def train_rlmodule_gtrxl(
     }
     logger.info(f"Stop criteria: num_env_steps_sampled_lifetime >= {total_timesteps}")
 
-    # Checkpointing
+    # Checkpointing — keep best 3 by lowest carbon emission
     checkpoint_freq = training_config.get("checkpoint_freq_timesteps", 10000)
     checkpoint_config = air.CheckpointConfig(
         checkpoint_frequency=max(1, checkpoint_freq // training_config.get("train_batch_size", 5000)),
         checkpoint_at_end=True,
         num_to_keep=3,
+        checkpoint_score_attribute="env_runners/total_carbon_kg",
+        checkpoint_score_order="min",
     )
 
     # Reporter

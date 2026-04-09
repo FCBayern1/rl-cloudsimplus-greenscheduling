@@ -164,6 +164,11 @@ public class MultiDatacenterSimulationCore {
         epLocalInvalidSum.clear();
         epLocalCompletionSum.clear();
 
+        // Reset running-max carbon normalisation for EPISODE mode
+        if ("EPISODE".equals(settings.getCarbonNormalizationMode())) {
+            runningMaxCarbon = 1e-3;
+        }
+
         // === Step 1: Load Cloudlet Workload ===
         allCloudlets = loadAllCloudlets();
         LOGGER.info("Loaded {} cloudlets from workload trace", allCloudlets.size());
@@ -1181,10 +1186,29 @@ public class MultiDatacenterSimulationCore {
             signal = totalCarbonKg;
         }
 
-        // 3) Normalize by running max of the chosen signal
-        runningMaxCarbon = Math.max(runningMaxCarbon, signal);
+        // 3) Normalize the signal according to carbon_normalization_mode
+        final String normMode = settings.getCarbonNormalizationMode();
+        final double denominator;
+
+        if ("FIXED".equals(normMode)) {
+            double fixedMax = settings.getCarbonNormalizationFixedMax();
+            if (fixedMax <= 0.0) {
+                LOGGER.warn("carbon_normalization_mode=FIXED but carbon_normalization_fixed_max={} (<=0). "
+                        + "Falling back to RUNNING_MAX.", fixedMax);
+                runningMaxCarbon = Math.max(runningMaxCarbon, signal);
+                denominator = runningMaxCarbon;
+            } else {
+                denominator = fixedMax;
+            }
+        } else {
+            // RUNNING_MAX (default) or EPISODE — both use the same running-max logic,
+            // but EPISODE resets runningMaxCarbon in resetSimulation().
+            runningMaxCarbon = Math.max(runningMaxCarbon, signal);
+            denominator = runningMaxCarbon;
+        }
+
         double normalizedCarbon = Math.min(
-                signal / (runningMaxCarbon + EPSILON),
+                signal / (denominator + EPSILON),
                 CARBON_RATIO_MAX
         );
 
@@ -1194,11 +1218,11 @@ public class MultiDatacenterSimulationCore {
         epGlobalCarbonSignalSum += signal;
         epGlobalCarbonPenaltyNormSum += normalizedCarbon;
 
-        LOGGER.trace("  Carbon(mode={}): total={}kg, signal={}, runningMaxSignal={}, normalized={}",
-                mode,
+        LOGGER.trace("  Carbon(mode={}, norm={}): total={}kg, signal={}, denominator={}, normalized={}",
+                mode, normMode,
                 String.format("%.6f", totalCarbonKg),
                 String.format("%.8f", signal),
-                String.format("%.8f", runningMaxCarbon),
+                String.format("%.8f", denominator),
                 String.format("%.4f", normalizedCarbon));
 
         return normalizedCarbon;

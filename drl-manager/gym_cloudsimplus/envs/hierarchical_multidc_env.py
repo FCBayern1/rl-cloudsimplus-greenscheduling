@@ -377,7 +377,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 dtype=np.int32
             ),
             "batch_cloudlet_mi": spaces.Box(
-                low=0, high=1000000,  # Max MI for a cloudlet
+                low=0, high=2000000,  # Max MI for a cloudlet
                 shape=(self.global_routing_batch_size,),
                 dtype=np.int64
             ),
@@ -778,7 +778,8 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         # Update episode state
         self.current_step += 1
-        self.episode_reward += rewards["global"]
+        all_rewards = rewards["global"] + sum(rewards["local"].values())
+        self.episode_reward += all_rewards
         self.done = terminated or truncated
 
         # Store observations for action masking

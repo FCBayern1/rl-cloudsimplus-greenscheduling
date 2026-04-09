@@ -138,6 +138,24 @@ public class SimulationSettings {
      */
     private final String carbonPenaltyMode;
 
+    /**
+     * Controls how the carbon penalty signal is normalised.
+     *
+     * Options:
+     * - RUNNING_MAX: (default) divide by cross-episode running maximum of the signal.
+     * - FIXED: divide by a fixed constant ({@link #carbonNormalizationFixedMax}).
+     *          Keeps reward scale fully stationary across training.
+     * - EPISODE: running maximum that resets at the start of each episode.
+     */
+    private final String carbonNormalizationMode;
+
+    /**
+     * Fixed denominator for carbon normalisation when {@link #carbonNormalizationMode} is "FIXED".
+     * Must be > 0 when FIXED mode is active.  A good starting value can be estimated from
+     * the mean step-carbon of a few random-policy episodes.
+     */
+    private final double carbonNormalizationFixedMax;
+
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
     private final int turbineId;
@@ -297,11 +315,14 @@ public class SimulationSettings {
                 getDoubleParam(params, "global_completion_rate_coef", 0.0)
         );
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
+        this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();
+        this.carbonNormalizationFixedMax = getDoubleParam(params, "carbon_normalization_fixed_max", 0.0);
         LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
         LOGGER.info("Global Reward Shaping: throughput_mi_coef={}, completion_rate_mi_coef={}",
                 this.globalThroughputMiCoef, this.globalCompletionRateMiCoef);
-        LOGGER.info("Global Carbon Penalty Mode: {}", this.carbonPenaltyMode);
+        LOGGER.info("Global Carbon Penalty Mode: {}, Normalization: {} (fixedMax={})",
+                this.carbonPenaltyMode, this.carbonNormalizationMode, this.carbonNormalizationFixedMax);
 
         // Green Energy Configuration
         @SuppressWarnings("unchecked")
@@ -610,5 +631,19 @@ public class SimulationSettings {
      */
     public String getCarbonPenaltyMode() {
         return carbonPenaltyMode;
+    }
+
+    /**
+     * Returns the carbon normalisation mode ("RUNNING_MAX", "FIXED", or "EPISODE").
+     */
+    public String getCarbonNormalizationMode() {
+        return carbonNormalizationMode;
+    }
+
+    /**
+     * Returns the fixed max value for carbon normalisation (used when mode is "FIXED").
+     */
+    public double getCarbonNormalizationFixedMax() {
+        return carbonNormalizationFixedMax;
     }
 }
