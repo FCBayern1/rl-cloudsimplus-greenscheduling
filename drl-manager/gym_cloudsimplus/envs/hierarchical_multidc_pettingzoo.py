@@ -190,8 +190,16 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 shape=(self.max_vms,),
                 dtype=np.int32
             ),
-            "waiting_cloudlets": spaces.Discrete(100000),
-            "next_cloudlet_pes": spaces.Discrete(256),
+            "waiting_cloudlets": spaces.Box(
+                low=0, high=100000,
+                shape=(1,),
+                dtype=np.int32
+            ),
+            "next_cloudlet_pes": spaces.Box(
+                low=0, high=256,
+                shape=(1,),
+                dtype=np.int32
+            ),
             # Extra context features for parameter sharing
             "dc_id_onehot": spaces.Box(
                 low=0.0, high=1.0,

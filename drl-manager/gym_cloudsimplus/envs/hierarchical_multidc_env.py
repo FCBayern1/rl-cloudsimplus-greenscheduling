@@ -370,7 +370,11 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
-            "upcoming_cloudlets_count": spaces.Discrete(100000),  # Total cloudlets in global waiting queue (increased for large workloads)
+            "upcoming_cloudlets_count": spaces.Box(
+                low=0, high=100000,
+                shape=(1,),
+                dtype=np.int32
+            ),
             "batch_cloudlet_pes": spaces.Box(
                 low=0, high=100,  # Max PEs for a cloudlet
                 shape=(self.global_routing_batch_size,),
@@ -391,7 +395,11 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(1,),
                 dtype=np.float32
             ),
-            "recent_completed": spaces.Discrete(100000),  # Increased for large workloads
+            "recent_completed": spaces.Box(
+                low=0, high=100000,
+                shape=(1,),
+                dtype=np.int32
+            ),
         })
 
         # Local observation spaces (per datacenter)
@@ -449,8 +457,16 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(self.max_vms,),
                 dtype=np.int32
             ),
-            "waiting_cloudlets": spaces.Discrete(100000),  # Increased for large workloads
-            "next_cloudlet_pes": spaces.Discrete(256),  # Increased for cloudlets with more PEs
+            "waiting_cloudlets": spaces.Box(
+                low=0, high=100000,
+                shape=(1,),
+                dtype=np.int32
+            ),
+            "next_cloudlet_pes": spaces.Box(
+                low=0, high=256,
+                shape=(1,),
+                dtype=np.int32
+            ),
         })
 
     def _setup_action_spaces(self):
@@ -902,8 +918,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
             "dc_available_pes": np.array(global_obs_java.getDcAvailablePes(), dtype=np.int32),
             "dc_ram_utilizations": np.array(global_obs_java.getDcRamUtilizations(), dtype=np.float32),
-            # Clamp Discrete values to valid range to prevent one_hot errors
-            "upcoming_cloudlets_count": min(global_obs_java.getUpcomingCloudletsCount(), 99999),
+            "upcoming_cloudlets_count": np.array([min(int(global_obs_java.getUpcomingCloudletsCount()), 99999)], dtype=np.int32),
             "batch_cloudlet_pes": self._pad_batch_array(
                 np.array(global_obs_java.getBatchCloudletPes(), dtype=np.int32),
                 self.global_routing_batch_size, dtype=np.int32
@@ -914,7 +929,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             ),
             "upcoming_pes_distribution": np.array(global_obs_java.getUpcomingCloudletsPesDistribution(), dtype=np.int32),
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
-            "recent_completed": min(global_obs_java.getRecentCompletedCloudlets(), 99999),
+            "recent_completed": np.array([min(int(global_obs_java.getRecentCompletedCloudlets()), 99999)], dtype=np.int32),
         }
 
     def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
@@ -937,9 +952,8 @@ class HierarchicalMultiDCEnv(gym.Env):
             "vm_loads": self._pad_vector(vm_loads, self.max_vms, 0.0),
             "vm_types": self._pad_vector(vm_types, self.max_vms, 0),
             "vm_available_pes": self._pad_vector(vm_available_pes, self.max_vms, 0),
-            # Clamp Discrete values to valid range to prevent one_hot errors
-            "waiting_cloudlets": min(local_obs_java.getWaitingCloudlets(), 99999),
-            "next_cloudlet_pes": min(local_obs_java.getNextCloudletPes(), 255),
+            "waiting_cloudlets": np.array([min(int(local_obs_java.getWaitingCloudlets()), 99999)], dtype=np.int32),
+            "next_cloudlet_pes": np.array([min(int(local_obs_java.getNextCloudletPes()), 255)], dtype=np.int32),
         }
 
     def _get_dc_host_count(self, dc_id: int) -> int:
@@ -1327,8 +1341,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 return np.ones(self.local_action_space.n, dtype=bool)
 
             vm_available_pes = local_obs["vm_available_pes"]
-            waiting_cloudlets = local_obs["waiting_cloudlets"]
-            next_cloudlet_pes = local_obs["next_cloudlet_pes"]
+            waiting_cloudlets = int(np.asarray(local_obs["waiting_cloudlets"]).flat[0])
+            next_cloudlet_pes = int(np.asarray(local_obs["next_cloudlet_pes"]).flat[0])
 
         except Exception as e:
             logger.error(f"Failed to extract state for DC {dc_id}: {e}, allowing all actions")

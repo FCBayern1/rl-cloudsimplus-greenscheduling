@@ -457,6 +457,54 @@ def create_rlmodule_config(
     return config
 
 
+def _install_batch_debug_hook():
+    """Monkey-patch RLlib's batch() to log shape details when np.stack fails."""
+    import ray.rllib.utils.spaces.space_utils as _su
+    import numpy as np
+    import tree as _tree
+
+    _orig_batch = _su.batch
+
+    def _debug_batch(list_of_structs, individual_items_already_have_batch_dim=False):
+        try:
+            return _orig_batch(list_of_structs, individual_items_already_have_batch_dim)
+        except ValueError as e:
+            if "same shape" not in str(e):
+                raise
+            logger.error("=== BATCH SHAPE MISMATCH DEBUG ===")
+            logger.error("Number of items to batch: %d", len(list_of_structs))
+            for idx, item in enumerate(list_of_structs[:5]):
+                flat = _tree.flatten(item)
+                shapes = [np.asarray(x).shape for x in flat]
+                logger.error("  item[%d] leaf shapes: %s", idx, shapes)
+            if len(list_of_structs) > 5:
+                flat_last = _tree.flatten(list_of_structs[-1])
+                shapes_last = [np.asarray(x).shape for x in flat_last]
+                logger.error("  item[-1] leaf shapes: %s", shapes_last)
+            ref_flat = _tree.flatten(list_of_structs[0])
+            ref_shapes = [np.asarray(x).shape for x in ref_flat]
+            for idx, item in enumerate(list_of_structs[1:], 1):
+                flat = _tree.flatten(item)
+                for li, (rf, it) in enumerate(zip(ref_flat, flat)):
+                    rs, its = np.asarray(rf).shape, np.asarray(it).shape
+                    if rs != its:
+                        paths = _tree.flatten_with_path(list_of_structs[0])
+                        path_str = str(paths[li][0]) if li < len(paths) else f"leaf#{li}"
+                        logger.error(
+                            "  MISMATCH at item[%d] leaf %s: item[0] shape=%s vs item[%d] shape=%s",
+                            idx, path_str, rs, idx, its,
+                        )
+                        break
+                else:
+                    continue
+                break
+            logger.error("=== END DEBUG ===")
+            raise
+
+    _su.batch = _debug_batch
+    logger.info("Installed batch() debug hook for shape mismatch diagnostics")
+
+
 def train_rlmodule_gtrxl(
     env_config: Dict[str, Any],
     global_model_config: Dict[str, Any],
@@ -464,6 +512,8 @@ def train_rlmodule_gtrxl(
     training_config: Dict[str, Any],
     output_dir: str
 ):
+    _install_batch_debug_hook()
+
     # Initialise Ray
     if not ray.is_initialized():
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"

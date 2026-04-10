@@ -412,8 +412,38 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values, _, _ = self._forward_pass(batch)
-        return values
+        with torch.no_grad():
+            obs_key = Columns.OBS
+            raw_obs = batch.get(obs_key)
+            if raw_obs is None:
+                _, values, _, _ = self._forward_pass(batch)
+                return values
+
+            first_leaf = raw_obs
+            if isinstance(first_leaf, dict):
+                import tree as _tree
+                first_leaf = _tree.flatten(first_leaf)[0]
+            B_total = first_leaf.shape[0]
+            chunk = 64
+            if B_total <= chunk:
+                _, values, _, _ = self._forward_pass(batch)
+                return values
+
+            parts = []
+            for start in range(0, B_total, chunk):
+                end = min(start + chunk, B_total)
+                mini = {}
+                for k, v in batch.items():
+                    if isinstance(v, dict):
+                        import tree as _tree
+                        mini[k] = _tree.map_structure(lambda t: t[start:end], v)
+                    elif isinstance(v, torch.Tensor) and v.shape[0] == B_total:
+                        mini[k] = v[start:end]
+                    else:
+                        mini[k] = v
+                _, vals, _, _ = self._forward_pass(mini)
+                parts.append(vals)
+            return torch.cat(parts, dim=0)
 
     @override(TorchRLModule)
     def get_exploration_action_dist_cls(self):
@@ -689,8 +719,38 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values, _ = self._forward_pass(batch)
-        return values
+        with torch.no_grad():
+            obs_key = Columns.OBS
+            raw_obs = batch.get(obs_key)
+            if raw_obs is None:
+                _, values, _ = self._forward_pass(batch)
+                return values
+
+            first_leaf = raw_obs
+            if isinstance(first_leaf, dict):
+                import tree as _tree
+                first_leaf = _tree.flatten(first_leaf)[0]
+            B_total = first_leaf.shape[0]
+            chunk = 64
+            if B_total <= chunk:
+                _, values, _ = self._forward_pass(batch)
+                return values
+
+            parts = []
+            for start in range(0, B_total, chunk):
+                end = min(start + chunk, B_total)
+                mini = {}
+                for k, v in batch.items():
+                    if isinstance(v, dict):
+                        import tree as _tree
+                        mini[k] = _tree.map_structure(lambda t: t[start:end], v)
+                    elif isinstance(v, torch.Tensor) and v.shape[0] == B_total:
+                        mini[k] = v[start:end]
+                    else:
+                        mini[k] = v
+                _, vals, _ = self._forward_pass(mini)
+                parts.append(vals)
+            return torch.cat(parts, dim=0)
 
     def _get_multi_categorical_cls(self, action_space):
         input_lens = list(action_space.nvec)
