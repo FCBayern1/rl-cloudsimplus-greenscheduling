@@ -74,6 +74,13 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
 
         self.render_mode = render_mode
 
+        # CTDE (Centralized Training with Decentralized Execution) support.
+        # When enabled, each local agent's observation includes a "global_state"
+        # field containing the flattened global agent observation. This is used
+        # by a centralized critic during training; the actor ignores it.
+        ctde_cfg = config.get("ctde", {})
+        self.ctde_enabled = bool(ctde_cfg.get("enabled", False)) if isinstance(ctde_cfg, dict) else bool(ctde_cfg)
+
         # Wrap the base hierarchical environment (no modifications to original)
         logger.info("Creating base HierarchicalMultiDCEnv...")
         base_env = HierarchicalMultiDCEnv(config=config)
@@ -97,6 +104,9 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             dc_vm_counts = [self.base_env._get_dc_vm_count(i) for i in range(self.num_datacenters)]
             self.max_hosts = max(dc_host_counts) if dc_host_counts else 1
             self.max_vms = max(dc_vm_counts) if dc_vm_counts else 1
+
+        # Compute global_state_dim for CTDE (flattened global observation)
+        self.global_state_dim = self._compute_global_state_dim()
 
         # Local action space in base env is Discrete(max_vms + 1)
         self.max_actions = getattr(self.base_env, "local_action_space", None)
@@ -122,6 +132,21 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             f"HierarchicalMultiDCParallelEnv initialized with {len(self.agents)} agents: "
             f"{self.agents}"
         )
+
+    def _compute_global_state_dim(self) -> int:
+        """Compute the flattened dimension of the global agent's observation space."""
+        total = 0
+        for space in self.base_env.global_observation_space.spaces.values():
+            total += int(np.prod(space.shape))
+        return total
+
+    def _flatten_global_obs(self, global_obs: Dict[str, Any]) -> np.ndarray:
+        """Flatten a global observation dict into a 1D float32 array."""
+        parts = []
+        for key in sorted(global_obs.keys()):
+            val = np.asarray(global_obs[key], dtype=np.float32).flatten()
+            parts.append(val)
+        return np.concatenate(parts, axis=0)
 
     def _create_agent_list(self) -> List[str]:
         """
@@ -164,7 +189,7 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # NOTE: We expose a UNIFIED padded observation space for all local agents
         # to enable parameter sharing in RLlib. Heterogeneity is represented via
         # dc_id_onehot and valid_vm_mask.
-        unified_local_obs_space = spaces.Dict({
+        local_obs_dict = {
             "host_loads": spaces.Box(
                 low=0.0, high=1.0,
                 shape=(self.max_hosts,),
@@ -211,7 +236,21 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 shape=(self.max_vms,),
                 dtype=np.float32
             ),
-        })
+        }
+
+        # CTDE: add global_state to local agent observation for centralized critic
+        if self.ctde_enabled:
+            local_obs_dict["global_state"] = spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=(self.global_state_dim,),
+                dtype=np.float32
+            )
+            logger.info(
+                f"CTDE enabled: adding global_state (dim={self.global_state_dim}) "
+                f"to local agent observations for centralized critic"
+            )
+
+        unified_local_obs_space = spaces.Dict(local_obs_dict)
 
         for i in range(self.num_datacenters):
             obs_spaces[f"local_agent_{i}"] = spaces.Dict({
@@ -449,6 +488,10 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "action_mask": global_action_mask,
         }
 
+        # CTDE: pre-compute flattened global state once for all local agents
+        if self.ctde_enabled:
+            flat_global_state = self._flatten_global_obs(global_obs)
+
         # Local agents observations with action masks (UNIFIED padded format)
         for dc_id_raw, local_obs in hierarchical_obs["local"].items():
             # Ensure dc_id is Python int (Java may return Integer object)
@@ -479,6 +522,10 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 "dc_id_onehot": dc_id_onehot,
                 "valid_vm_mask": valid_vm_mask,
             }
+
+            # CTDE: include global state for centralized critic
+            if self.ctde_enabled:
+                unified_obs["global_state"] = flat_global_state
 
             # Get action mask for this local agent from base env (already size max_vms+1)
             try:

@@ -38,7 +38,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
-from src.models.rlmodule_gtrxl_models import GTrXLMaskedActionRLModule, GTrXLGlobalRLModule
+from src.models.rlmodule_gtrxl_models import (
+    GTrXLMaskedActionRLModule,
+    GTrXLGlobalRLModule,
+    CTDEGTrXLMaskedActionRLModule,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -329,8 +333,23 @@ def create_rlmodule_config(
         "max_seq_len": int(gm.get("max_seq_len", 128)),
         "mem_len": int(gm.get("mem_len", 16)),
     }
-    
+
     logger.info(f"GTrXL Config: {gtrxl_config}")
+
+    # CTDE: use centralized critic for local agents
+    ctde_cfg = env_config.get("ctde", {})
+    ctde_enabled = bool(ctde_cfg.get("enabled", False)) if isinstance(ctde_cfg, dict) else bool(ctde_cfg)
+
+    if ctde_enabled:
+        local_module_class = CTDEGTrXLMaskedActionRLModule
+        # Merge CTDE-specific critic config into model_config
+        local_model_cfg = dict(gtrxl_config)
+        if isinstance(ctde_cfg, dict):
+            local_model_cfg["critic_hidden_sizes"] = ctde_cfg.get("critic_hidden_sizes", [256, 256])
+        logger.info(f"CTDE enabled: using CTDEGTrXLMaskedActionRLModule for local agents")
+    else:
+        local_module_class = GTrXLMaskedActionRLModule
+        local_model_cfg = gtrxl_config
 
     if use_parameter_sharing:
         sample_local_agent = "local_agent_0"
@@ -346,10 +365,10 @@ def create_rlmodule_config(
                     model_config=gtrxl_config,
                 ),
                 "shared_local_policy": RLModuleSpec(
-                    module_class=GTrXLMaskedActionRLModule,
+                    module_class=local_module_class,
                     observation_space=unified_local_obs_space,
                     action_space=unified_local_action_space,
-                    model_config=gtrxl_config,
+                    model_config=local_model_cfg,
                 ),
             }
         )
@@ -370,10 +389,10 @@ def create_rlmodule_config(
         for dc_id in range(num_dcs):
             agent_name = f"local_agent_{dc_id}"
             rl_module_specs[f"local_policy_{dc_id}"] = RLModuleSpec(
-                module_class=GTrXLMaskedActionRLModule,
+                module_class=local_module_class,
                 observation_space=sample_env.observation_space(agent_name),
                 action_space=sample_env.action_space(agent_name),
-                model_config=gtrxl_config,
+                model_config=local_model_cfg,
             )
 
         rl_module_spec = MultiRLModuleSpec(rl_module_specs=rl_module_specs)
