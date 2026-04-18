@@ -58,6 +58,11 @@ public class GreenEnergyProvider {
     // This simulates different geographic locations with different local times
     private final int timeZoneOffsetRows;
 
+    // Divisor applied in COMPRESSED mode to scale raw CSV kW readings into the
+    // per-simulation-second power regime. Configurable from config.yml via
+    // "compressed_power_divisor"; defaults to 60.0.
+    private final double compressedPowerDivisor;
+
     /**
      * Convert the configured timezone offset (in "rows") into simulation-time seconds.
      *
@@ -119,15 +124,30 @@ public class GreenEnergyProvider {
      */
     public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
                               int shortTermRows, int longTermRows, int timeZoneOffsetRows) {
+        this(turbineId, csvFilePath, timeScalingMode, shortTermRows, longTermRows, timeZoneOffsetRows, 60.0);
+    }
+
+    /**
+     * Full-config constructor including the COMPRESSED-mode power divisor.
+     *
+     * @param compressedPowerDivisor divisor applied to wind power readings
+     *                               when {@code timeScalingMode == COMPRESSED}.
+     *                               Must be positive; a non-positive value
+     *                               falls back to the historical 60.0.
+     */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows, int timeZoneOffsetRows,
+                              double compressedPowerDivisor) {
         this.turbineId = turbineId;
         this.csvFilePath = resolveCsvPath(turbineId, csvFilePath);
         this.timeScalingMode = timeScalingMode;
         this.shortTermRows = shortTermRows;
         this.longTermRows = longTermRows;
         this.timeZoneOffsetRows = timeZoneOffsetRows;
+        this.compressedPowerDivisor = compressedPowerDivisor > 0 ? compressedPowerDivisor : 60.0;
 
-        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with CSV '{}', mode: {}, tzOffset: {} rows",
-                   turbineId, this.csvFilePath, timeScalingMode.getDescription(), timeZoneOffsetRows);
+        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with CSV '{}', mode: {}, tzOffset: {} rows, compressedDivisor: {}",
+                   turbineId, this.csvFilePath, timeScalingMode.getDescription(), timeZoneOffsetRows, this.compressedPowerDivisor);
         loadAndBuildSpline();
         LOGGER.info("GreenEnergyProvider initialized successfully");
     }
@@ -226,13 +246,8 @@ public class GreenEnergyProvider {
             double powerKW = powerSpline.value(adjustedTime);
             double powerW = Math.max(0, powerKW * 1000);
 
-            // COMPRESSED mode historically divided by 600 (one CSV row per second
-            // of sim time vs 600s in REAL_TIME). That left clean-DC wind at ~8%
-            // of peak demand for experiment_multi_5dc_carbon_v2 and killed the
-            // agent's learning signal. /60 keeps the same structural relationship
-            // but scales supply up 10× so mean wind ≈ peak demand on clean DCs.
             if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                powerW = powerW / 60.0;
+                powerW = powerW / compressedPowerDivisor;
             }
 
             return powerW;
@@ -292,7 +307,7 @@ public class GreenEnergyProvider {
                 double futurePowerW = Math.max(0, futurePowerKW * 1000);
 
                 if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                    futurePowerW = futurePowerW / 60.0;
+                    futurePowerW = futurePowerW / compressedPowerDivisor;
                 }
 
                 predictions[i] = futurePowerW;

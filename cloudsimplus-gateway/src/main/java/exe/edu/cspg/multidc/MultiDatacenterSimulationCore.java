@@ -346,7 +346,8 @@ public class MultiDatacenterSimulationCore {
                         config.getTimeScalingMode(),
                         config.getShortTermRows(),
                         config.getLongTermRows(),
-                        config.getTimeZoneOffsetRows()  // Apply timezone offset for geo-distribution
+                        config.getTimeZoneOffsetRows(),  // Apply timezone offset for geo-distribution
+                        config.getCompressedPowerDivisor()  // Configurable COMPRESSED-mode divisor
                 );
                 dcInstance.addGreenEnergyProvider(greenEnergyProvider);
             }

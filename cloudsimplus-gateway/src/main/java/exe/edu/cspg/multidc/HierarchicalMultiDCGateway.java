@@ -115,11 +115,18 @@ public class HierarchicalMultiDCGateway {
             return configs;
         }
 
-        // Multi-datacenter mode - parse list of DC configs
+        // Multi-datacenter mode - parse list of DC configs.
+        // Propagate any experiment-level green-energy settings (e.g. the
+        // COMPRESSED power divisor) down to each DC block as a default, so
+        // users can set it once at the top level without copying to every DC.
         Object dcListObj = params.get("datacenters");
         if (dcListObj instanceof List) {
             List<Map<String, Object>> dcList = (List<Map<String, Object>>) dcListObj;
+            Object globalDivisor = params.get("compressed_power_divisor");
             for (Map<String, Object> dcParams : dcList) {
+                if (globalDivisor != null) {
+                    dcParams.putIfAbsent("compressed_power_divisor", globalDivisor);
+                }
                 DatacenterConfig config = parseDatacenterConfig(dcParams);
                 configs.add(config);
             }
@@ -170,6 +177,8 @@ public class HierarchicalMultiDCGateway {
                 // Timezone offset for geo-distributed simulation (in CSV rows)
                 // 6 rows = 1 hour (each row = 10 min real time)
                 .timeZoneOffsetRows(getIntParam(dcParams, "time_zone_offset_rows", 0))
+                // Divisor applied in COMPRESSED mode (default 60)
+                .compressedPowerDivisor(getDoubleParam(dcParams, "compressed_power_divisor", 60.0))
                 // Carbon emission factors
                 .brownCarbonFactor(getDoubleParam(dcParams, "brown_carbon_factor", 0.5))
                 .greenCarbonFactor(getDoubleParam(dcParams, "green_carbon_factor", 0.01))

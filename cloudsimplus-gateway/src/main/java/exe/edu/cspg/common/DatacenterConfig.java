@@ -117,6 +117,16 @@ public class DatacenterConfig {
     @Builder.Default
     private final double greenCarbonFactor = 0.01;  // Default: 0.01 kg CO2/kWh (lifecycle emissions)
 
+    /**
+     * Divisor applied to wind power readings in COMPRESSED time-scaling mode.
+     * Historically 600 (real-time row interval in seconds). For the v2 carbon
+     * experiment it is set to 60 so that clean-DC mean wind lands near peak
+     * DC demand and the agent has a real feast/famine signal to learn from.
+     * Only used when {@code timeScalingMode == COMPRESSED}.
+     */
+    @Builder.Default
+    private final double compressedPowerDivisor = 60.0;
+
     // === VM Lifecycle Delays ===
     private final double vmStartupDelay;   // Time (sec) for VM to boot
     private final double vmShutdownDelay;  // Time (sec) before idle VM is destroyed
