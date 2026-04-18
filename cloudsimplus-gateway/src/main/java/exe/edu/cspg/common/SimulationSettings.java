@@ -156,6 +156,30 @@ public class SimulationSettings {
      */
     private final double carbonNormalizationFixedMax;
 
+    /**
+     * MI floor used in PER_MI carbon penalty mode.  Instead of returning CARBON_RATIO_MAX when
+     * no work completes in a step (which produces a constant saturating penalty that adds noise
+     * and no gradient), we divide by max(completedMI, carbonMiFloor).  When <=0, PER_MI falls
+     * back to the legacy "return CARBON_RATIO_MAX on idle" behaviour.
+     */
+    private final double carbonMiFloor;
+
+    /**
+     * SLA / Lagrangian constraint parameters.  The global reward can be shaped by an outer
+     * Lagrangian loop: r_train = r_step − λ · c_step, with λ updated between training
+     * iterations based on the episode-level violation c_ep.
+     *
+     * slaTarget (c*) — minimum acceptable completion rate (MI-based) for an episode.
+     * slaPendingTarget (d) — per-step threshold for pending_ratio = (received − finished) /
+     *   received.  c_step = max(0, pending_ratio − d) gives dense cost signal.
+     * slaLagrangianEnabled — flag purely for Java-side logging; the actual λ lives on the
+     *   Python side and multiplies c_step in the env wrapper.  Java only exposes the raw
+     *   cost signals in the info dict.
+     */
+    private final double slaTarget;
+    private final double slaPendingTarget;
+    private final boolean slaLagrangianEnabled;
+
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
     private final int turbineId;
@@ -317,12 +341,19 @@ public class SimulationSettings {
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();
         this.carbonNormalizationFixedMax = getDoubleParam(params, "carbon_normalization_fixed_max", 0.0);
+        this.carbonMiFloor = getDoubleParam(params, "carbon_mi_floor", 0.0);
+        this.slaTarget = getDoubleParam(params, "sla_target", 0.85);
+        this.slaPendingTarget = getDoubleParam(params, "sla_pending_target", 0.15);
+        this.slaLagrangianEnabled = getBoolParam(params, "sla_lagrangian_enabled", false);
         LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
         LOGGER.info("Global Reward Shaping: throughput_mi_coef={}, completion_rate_mi_coef={}",
                 this.globalThroughputMiCoef, this.globalCompletionRateMiCoef);
-        LOGGER.info("Global Carbon Penalty Mode: {}, Normalization: {} (fixedMax={})",
-                this.carbonPenaltyMode, this.carbonNormalizationMode, this.carbonNormalizationFixedMax);
+        LOGGER.info("Global Carbon Penalty Mode: {}, Normalization: {} (fixedMax={}, miFloor={})",
+                this.carbonPenaltyMode, this.carbonNormalizationMode,
+                this.carbonNormalizationFixedMax, this.carbonMiFloor);
+        LOGGER.info("SLA / Lagrangian: enabled={}, target(c*)={}, pending_target(d)={}",
+                this.slaLagrangianEnabled, this.slaTarget, this.slaPendingTarget);
 
         // Green Energy Configuration
         @SuppressWarnings("unchecked")
@@ -645,5 +676,29 @@ public class SimulationSettings {
      */
     public double getCarbonNormalizationFixedMax() {
         return carbonNormalizationFixedMax;
+    }
+
+    /**
+     * Returns the MI floor used in PER_MI carbon penalty mode.
+     * When > 0, PER_MI uses denominator = max(completedMI, carbonMiFloor) instead of
+     * saturating at CARBON_RATIO_MAX on idle steps, producing a smoother gradient.
+     */
+    public double getCarbonMiFloor() {
+        return carbonMiFloor;
+    }
+
+    /** Target completion rate (c*) — episode violation triggers λ increase. */
+    public double getSlaTarget() {
+        return slaTarget;
+    }
+
+    /** Per-step pending_ratio threshold (d) — excess above this feeds the Lagrangian. */
+    public double getSlaPendingTarget() {
+        return slaPendingTarget;
+    }
+
+    /** Whether the Python Lagrangian loop is active; purely informational on Java side. */
+    public boolean isSlaLagrangianEnabled() {
+        return slaLagrangianEnabled;
     }
 }

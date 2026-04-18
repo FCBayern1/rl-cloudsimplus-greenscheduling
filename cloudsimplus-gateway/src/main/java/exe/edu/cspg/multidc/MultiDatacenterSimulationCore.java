@@ -1169,18 +1169,24 @@ public class MultiDatacenterSimulationCore {
 
         if ("PER_MI".equals(mode)) {
             // Compute completed MI in this timestep across all datacenters.
-            // If no work completes, we apply maximum penalty to discourage "doing nothing" to reduce emissions.
             double completedMiThisStep = getCompletedMiThisStep();
-            if (completedMiThisStep <= 0.0) {
-                // IMPORTANT: Keep learning behavior identical to the previous implementation:
-                // return max penalty without updating runningMaxCarbon.
+            double miFloor = settings.getCarbonMiFloor();
+            if (miFloor > 0.0) {
+                // Smooth variant: divide by max(completedMI, miFloor).  Produces a bounded but
+                // non-saturating penalty on idle steps, yielding usable gradients instead of
+                // a constant CARBON_RATIO_MAX clip.
+                double denomMi = Math.max(completedMiThisStep, miFloor);
+                signal = totalCarbonKg / (denomMi + EPSILON); // kg/MI
+            } else if (completedMiThisStep <= 0.0) {
+                // Legacy behaviour (miFloor<=0): saturate on idle to discourage "doing nothing".
                 lastGlobalCarbonSignal = CARBON_RATIO_MAX;
                 lastGlobalCarbonPenaltyNorm = CARBON_RATIO_MAX;
                 epGlobalCarbonSignalSum += lastGlobalCarbonSignal;
                 epGlobalCarbonPenaltyNormSum += lastGlobalCarbonPenaltyNorm;
                 return CARBON_RATIO_MAX;
+            } else {
+                signal = totalCarbonKg / (completedMiThisStep + EPSILON); // kg/MI
             }
-            signal = totalCarbonKg / (completedMiThisStep + EPSILON); // kg/MI
         } else {
             // Default: TOTAL (kg) per timestep
             signal = totalCarbonKg;
@@ -1768,7 +1774,34 @@ public class MultiDatacenterSimulationCore {
         stats.put("total_workload_mi", totalWorkloadMi);
         stats.put("total_finished_mi", totalFinishedMi);
         stats.put("carbon_kg_per_mi", totalFinishedMi > 0 ? (totalCarbonKg / (totalFinishedMi + EPSILON)) : 0.0);
-        stats.put("completion_rate_mi", totalWorkloadMi > 0 ? (totalFinishedMi / (totalWorkloadMi + EPSILON)) : 0.0);
+        double completionRateMi = totalWorkloadMi > 0 ? (totalFinishedMi / (totalWorkloadMi + EPSILON)) : 0.0;
+        stats.put("completion_rate_mi", completionRateMi);
+
+        // ---------------------------------------------------------------------
+        // SLA / Lagrangian cost signals
+        // ---------------------------------------------------------------------
+        // pending_ratio = (received − finished) / received  (episode-to-date)
+        // c_step        = max(0, pending_ratio − d)          (dense per-step cost)
+        // c_ep          = max(0, c* − completion_rate_mi)    (episode-level cost)
+        // Python-side Lagrangian callback reads these keys, updates λ, and the env
+        // wrapper applies r_train_global = r_step − λ · c_step.
+        double pendingRatio;
+        if (totalCloudletsReceived > 0) {
+            long pendingCount = (long) totalCloudletsReceived - (long) totalCloudletsCompleted;
+            if (pendingCount < 0) pendingCount = 0;
+            pendingRatio = (double) pendingCount / (double) totalCloudletsReceived;
+        } else {
+            pendingRatio = 0.0;
+        }
+        double slaPendingTarget = settings.getSlaPendingTarget();
+        double slaTarget = settings.getSlaTarget();
+        double slaCostStep = Math.max(0.0, pendingRatio - slaPendingTarget);
+        double slaCostEpisode = Math.max(0.0, slaTarget - completionRateMi);
+        stats.put("sla_pending_ratio", pendingRatio);
+        stats.put("sla_cost_step", slaCostStep);
+        stats.put("sla_cost_episode", slaCostEpisode);
+        stats.put("sla_target", slaTarget);
+        stats.put("sla_pending_target", slaPendingTarget);
 
         // Expose the actual carbon penalty signal used by the global reward (pre-normalization)
         stats.put("global_carbon_signal_last", lastGlobalCarbonSignal);

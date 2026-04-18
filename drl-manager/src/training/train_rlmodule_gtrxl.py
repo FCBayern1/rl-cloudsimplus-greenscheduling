@@ -38,6 +38,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
+from src.callbacks.lagrangian_callback import LagrangianCallback
+from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from src.models.rlmodule_gtrxl_models import (
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
@@ -468,7 +470,10 @@ def create_rlmodule_config(
             grad_clip=local_model_config.get("max_grad_norm", 0.5),
         )
         .resources(num_gpus=num_gpus)
-        .callbacks(lambda: GreenEnergyLoggerCallback(log_dir=output_dir))
+        .callbacks(make_multi_callbacks([
+            lambda: GreenEnergyLoggerCallback(log_dir=output_dir),
+            lambda: LagrangianCallback(log_dir=output_dir),
+        ]))
         .debugging(log_level="INFO")
         .framework(framework="torch")
     )
@@ -630,6 +635,14 @@ def train_rlmodule_gtrxl(
 
     ray.shutdown()
     logger.info("Training completed.")
+
+    try:
+        from src.evaluation.auto_plot import plot_training_results
+        generated = plot_training_results(output_dir)
+        if generated:
+            logger.info("Auto-plot generated %d figures under %s/plots/", len(generated), output_dir)
+    except Exception:
+        logger.warning("auto_plot failed", exc_info=True)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:

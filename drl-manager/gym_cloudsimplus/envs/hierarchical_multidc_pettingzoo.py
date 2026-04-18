@@ -74,6 +74,18 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
 
         self.render_mode = render_mode
 
+        # Store full config dict so the wrapper can read live-updated entries
+        # (e.g. Lagrangian λ).  The inner "lagrangian" dict is shared-by-reference
+        # with RLlib's algorithm.config.env_config, so callback mutations are
+        # visible to step() without any explicit sync.
+        self.config = config
+
+        # Lagrangian state — filled by LagrangianCallback on each training
+        # iteration via set_lagrangian_lambda().  Missing/None → λ=0 (disabled).
+        lagrangian_cfg = config.get("lagrangian", {}) if isinstance(config, dict) else {}
+        self._lagrangian_cfg = lagrangian_cfg if isinstance(lagrangian_cfg, dict) else {}
+        self._lagrangian_enabled = bool(self._lagrangian_cfg.get("enabled", False))
+
         # CTDE (Centralized Training with Decentralized Execution) support.
         # When enabled, each local agent's observation includes a "global_state"
         # field containing the flattened global agent observation. This is used
@@ -147,6 +159,18 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             val = np.asarray(global_obs[key], dtype=np.float32).flatten()
             parts.append(val)
         return np.concatenate(parts, axis=0)
+
+    def set_lagrangian_lambda(self, new_lam: float) -> None:
+        """Update the Lagrangian multiplier for this env (called from callback).
+
+        Writes into the shared ``lagrangian`` dict so subsequent step() calls see
+        the new λ.  Used by ``algorithm.workers.foreach_env`` when num_workers>0;
+        with num_workers=0 the shared-dict reference handles propagation already,
+        but this method is kept for symmetry.
+        """
+        if not isinstance(self._lagrangian_cfg, dict):
+            self._lagrangian_cfg = {}
+        self._lagrangian_cfg["lambda"] = float(max(0.0, new_lam))
 
     def _create_agent_list(self) -> List[str]:
         """
@@ -420,12 +444,38 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         observations = self._hierarchical_to_flat_observations(hierarchical_obs)
         rewards = self._hierarchical_to_flat_rewards(hierarchical_rewards)
 
+        # -------------------------------------------------------------------
+        # Lagrangian SLA shaping on global agent reward only.
+        #   r_train_global = r_step_global − λ · c_step
+        # c_step comes from Java info (global_energy_stats.sla_cost_step).
+        # λ lives in self._lagrangian_cfg["lambda"] (updated between training
+        # iterations by LagrangianCallback).  Local rewards untouched.
+        # -------------------------------------------------------------------
+        lagrangian_penalty = 0.0
+        c_step = 0.0
+        lam = 0.0
+        if self._lagrangian_enabled:
+            try:
+                ges = hierarchical_info.get("global_energy_stats", {}) or {}
+                c_step = float(ges.get("sla_cost_step", 0.0) or 0.0)
+            except Exception:
+                c_step = 0.0
+            lam = float(self._lagrangian_cfg.get("lambda", 0.0) or 0.0)
+            if lam > 0.0 and c_step > 0.0 and "global_agent" in rewards:
+                lagrangian_penalty = lam * c_step
+                rewards["global_agent"] = rewards["global_agent"] - lagrangian_penalty
+
         # All agents share the same termination/truncation status
         terminations = {agent: terminated for agent in self.agents}
         truncations = {agent: truncated for agent in self.agents}
 
-        # Replicate info for all agents
-        infos = {agent: hierarchical_info.copy() for agent in self.agents}
+        # Replicate info for all agents.  Attach Lagrangian diagnostics so
+        # callbacks can log λ/penalty/c_step without recomputing them.
+        base_info = dict(hierarchical_info)
+        base_info["lagrangian_lambda"] = lam
+        base_info["lagrangian_c_step"] = c_step
+        base_info["lagrangian_penalty"] = lagrangian_penalty
+        infos = {agent: base_info.copy() for agent in self.agents}
 
         # Store for action masking
         self._last_observations = observations

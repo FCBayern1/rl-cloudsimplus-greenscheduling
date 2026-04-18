@@ -23,6 +23,66 @@ from ray.rllib.policy.sample_batch import SampleBatch
 logger = logging.getLogger(__name__)
 
 
+# Column order for best_episode_details.csv — must stay aligned with the row
+# writer in _save_best_episode().  Priority: rewards → carbon → task completion
+# → global reward breakdown → energy → carbon signal debug.  monitor.csv uses
+# a parallel order (see _init_csv / _init_csv_v2).
+BEST_EPISODE_CSV_HEADERS = [
+    # --- identifiers ---
+    'episode', 'length',
+    # --- rewards (most important) ---
+    'reward',                    # == episode_reward
+    'global_agent_reward',
+    'local_agents_avg_reward',
+    'local_agents_total_reward',
+    # --- carbon objective ---
+    'total_carbon_kg',
+    'carbon_per_mi',
+    'carbon_intensity_kg_per_kwh',
+    # --- task completion (MI-based is primary) ---
+    'completion_rate_mi',
+    'finished_over_received_rate',
+    'finished_over_workload_cloudlets_rate',
+    # --- global reward breakdown ---
+    'global_term_local_sum',
+    'global_term_carbon_sum',
+    'global_term_throughput_sum',
+    'global_term_completion_mi_sum',
+    'global_term_waste_sum',
+    # --- energy breakdown ---
+    'green_waste_wh', 'green_used_wh', 'brown_used_wh',
+    'total_energy_wh', 'green_ratio', 'waste_ratio',
+    # --- carbon signal debug ---
+    'global_carbon_signal_mean', 'global_carbon_signal_sum',
+    'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
+]
+
+
+# Appended at the end of every monitor.csv row — the *latest* per-policy
+# training metrics seen at that point in time.  "last_" prefix makes the
+# episode↔iteration mismatch explicit (one iter covers several episodes).
+MONITOR_TRAIN_METRIC_COLUMNS = [
+    'last_train_iteration',
+    'last_global_entropy', 'last_global_policy_loss', 'last_global_vf_loss',
+    'last_local_entropy',  'last_local_policy_loss',  'last_local_vf_loss',
+]
+
+
+# training_metrics.csv — one row per PPO iteration.  Wider than the inline
+# monitor.csv suffix: includes KL, grad norm, explained variance, LR.
+TRAINING_CSV_HEADERS = [
+    'iteration', 'env_steps_lifetime',
+    # Global policy
+    'global_entropy', 'global_policy_loss', 'global_vf_loss',
+    'global_vf_explained_var', 'global_mean_kl',
+    'global_grad_norm', 'global_learning_rate',
+    # Shared local policy
+    'local_entropy', 'local_policy_loss', 'local_vf_loss',
+    'local_vf_explained_var', 'local_mean_kl',
+    'local_grad_norm', 'local_learning_rate',
+]
+
+
 def safe_convert_to_dict(obj, key_name="object"):
     """
     Safely convert an object to a dictionary, handling:
@@ -249,6 +309,21 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         self.csv_initialized = False
         self.best_carbon_kg = float('inf')
         self.best_episode_data = None
+
+        # Training-metrics state (populated in on_train_result; consumed by
+        # on_episode_end so every monitor.csv row carries the *last seen*
+        # per-policy entropy / policy_loss / vf_loss).
+        self.training_csv_file = None
+        self._training_csv_init = False
+        self.latest_train_stats = {
+            'iteration': 0,
+            'global_entropy': float('nan'),
+            'global_policy_loss': float('nan'),
+            'global_vf_loss': float('nan'),
+            'local_entropy': float('nan'),
+            'local_policy_loss': float('nan'),
+            'local_vf_loss': float('nan'),
+        }
 
         # Initialize best_episode_file if log_dir is provided
         if self.log_dir:
@@ -619,35 +694,50 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # Write to monitor.csv (episode-by-episode metrics)
         try:
 
-            # Build row with base metrics
+            # Build row in the SAME priority order as the headers above.
             row = [
+                # --- identifiers ---
                 self.episode_counter,
+                episode_length,
+                # --- rewards ---
+                episode_reward,
+                global_agent_reward,
+                local_agents_avg_reward,
+                local_agents_total_reward,
+                # --- carbon objective ---
+                total_carbon_kg,
+                carbon_per_mi,
+                carbon_intensity,
+                # --- task completion (MI-based is primary) ---
+                completion_rate_mi,
+                finished_over_received_rate,
+                finished_over_workload_cloudlets_rate,
+                # --- global reward breakdown ---
+                global_term_local_sum,
+                global_term_carbon_sum,
+                global_term_throughput_sum,
+                global_term_completion_mi_sum,
+                global_term_waste_sum,
+                # --- energy breakdown ---
                 green_waste,
                 green_used,
                 brown_used,
                 total_energy,
                 green_ratio,
                 waste_ratio,
-                total_carbon_kg,
-                carbon_intensity,
-                carbon_per_mi,
+                # --- carbon signal debug ---
                 global_carbon_signal_mean,
                 global_carbon_signal_sum,
                 global_carbon_penalty_norm_mean,
                 global_carbon_penalty_norm_sum,
-                global_term_local_sum,
-                global_term_carbon_sum,
-                global_term_waste_sum,
-                global_term_throughput_sum,
-                global_term_completion_mi_sum,
-                episode_reward,
-                episode_length,
-                global_agent_reward,
-                local_agents_avg_reward,
-                local_agents_total_reward,
-                completion_rate_mi,
-                finished_over_received_rate,
-                finished_over_workload_cloudlets_rate,
+                # --- latest per-policy training stats ---
+                self.latest_train_stats.get('iteration', 0),
+                self.latest_train_stats.get('global_entropy', float('nan')),
+                self.latest_train_stats.get('global_policy_loss', float('nan')),
+                self.latest_train_stats.get('global_vf_loss', float('nan')),
+                self.latest_train_stats.get('local_entropy', float('nan')),
+                self.latest_train_stats.get('local_policy_loss', float('nan')),
+                self.latest_train_stats.get('local_vf_loss', float('nan')),
             ]
 
             # Add per-DC local rewards (local_reward_0, local_reward_1, ..., local_reward_9)
@@ -843,23 +933,38 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Write CSV headers
         try:
-            # Base headers
+            # Base headers — priority order: rewards → carbon → task completion →
+            # global reward breakdown → energy → carbon signal debug → per-DC.
             headers = [
-                'episode', 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
-                'total_energy_wh', 'green_ratio', 'waste_ratio', 'total_carbon_kg',
-                'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
-                # Carbon penalty debug signals (what global reward actually uses)
-                'global_carbon_signal_mean', 'global_carbon_signal_sum',
-                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
-                'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
-                'global_term_throughput_sum', 'global_term_completion_mi_sum',
-                'episode_reward', 'episode_length',
-                'global_agent_reward', 'local_agents_avg_reward', 'local_agents_total_reward',
-                # Primary completion metric (MI-based)
+                # --- identifiers ---
+                'episode', 'episode_length',
+                # --- rewards (most important) ---
+                'episode_reward',
+                'global_agent_reward',
+                'local_agents_avg_reward',
+                'local_agents_total_reward',
+                # --- carbon objective ---
+                'total_carbon_kg',
+                'carbon_per_mi',
+                'carbon_intensity_kg_per_kwh',
+                # --- task completion (MI-based is primary) ---
                 'completion_rate_mi',
-                # Disambiguated cloudlet-based completion rates
                 'finished_over_received_rate',
                 'finished_over_workload_cloudlets_rate',
+                # --- global reward breakdown (per-episode sums) ---
+                'global_term_local_sum',
+                'global_term_carbon_sum',
+                'global_term_throughput_sum',
+                'global_term_completion_mi_sum',
+                'global_term_waste_sum',
+                # --- energy breakdown ---
+                'green_waste_wh', 'green_used_wh', 'brown_used_wh',
+                'total_energy_wh', 'green_ratio', 'waste_ratio',
+                # --- carbon signal debug (what reward actually saw) ---
+                'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
+                # --- latest per-policy training stats (filled in on_train_result) ---
+                *MONITOR_TRAIN_METRIC_COLUMNS,
             ]
             num_dcs = 10
             for dc_id in range(num_dcs):
@@ -893,22 +998,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             try:
                 with open(self.best_episode_file, 'w', newline='') as f:
                     writer = csv.writer(f)
-                    writer.writerow([
-                        'episode', 'reward', 'length', 'green_waste_wh',
-                        'green_used_wh', 'brown_used_wh', 'total_energy_wh',
-                        'green_ratio', 'waste_ratio', 'total_carbon_kg',
-                        'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
-                        'global_carbon_signal_mean', 'global_carbon_signal_sum',
-                        'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
-                        'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
-                        'global_term_throughput_sum', 'global_term_completion_mi_sum',
-                        'global_agent_reward',
-                        'local_agents_avg_reward',
-                        'local_agents_total_reward',
-                        'completion_rate_mi',
-                        'finished_over_received_rate',
-                        'finished_over_workload_cloudlets_rate',
-                    ])
+                    writer.writerow(BEST_EPISODE_CSV_HEADERS)
                 logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
             except Exception as e:
                 logger.error(f"Failed to initialize best episode CSV: {e}")
@@ -945,33 +1035,38 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Write monitor.csv headers
         try:
-            # Base headers
+            # Base headers — priority order: rewards → carbon → task completion →
+            # global reward breakdown → energy → carbon signal debug → per-DC.
             headers = [
-                'episode',
-                'green_waste_wh',
-                'green_used_wh',
-                'brown_used_wh',
-                'total_energy_wh',
-                'green_ratio',
-                'waste_ratio',
-                'total_carbon_kg',
-                'carbon_intensity_kg_per_kwh',
-                'carbon_per_mi',
-                'global_carbon_signal_mean', 'global_carbon_signal_sum',
-                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
-                'global_term_local_sum',
-                'global_term_carbon_sum',
-                'global_term_waste_sum',
-                'global_term_throughput_sum',
-                'global_term_completion_mi_sum',
+                # --- identifiers ---
+                'episode', 'episode_length',
+                # --- rewards (most important) ---
                 'episode_reward',
-                'episode_length',
                 'global_agent_reward',
                 'local_agents_avg_reward',
                 'local_agents_total_reward',
+                # --- carbon objective ---
+                'total_carbon_kg',
+                'carbon_per_mi',
+                'carbon_intensity_kg_per_kwh',
+                # --- task completion (MI-based is primary) ---
                 'completion_rate_mi',
                 'finished_over_received_rate',
                 'finished_over_workload_cloudlets_rate',
+                # --- global reward breakdown (per-episode sums) ---
+                'global_term_local_sum',
+                'global_term_carbon_sum',
+                'global_term_throughput_sum',
+                'global_term_completion_mi_sum',
+                'global_term_waste_sum',
+                # --- energy breakdown ---
+                'green_waste_wh', 'green_used_wh', 'brown_used_wh',
+                'total_energy_wh', 'green_ratio', 'waste_ratio',
+                # --- carbon signal debug (what reward actually saw) ---
+                'global_carbon_signal_mean', 'global_carbon_signal_sum',
+                'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
+                # --- latest per-policy training stats (filled in on_train_result) ---
+                *MONITOR_TRAIN_METRIC_COLUMNS,
             ]
 
             # Add per-DC local reward headers
@@ -1015,33 +1110,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             try:
                 with open(self.best_episode_file, 'w', newline='') as f:
                     writer = csv.writer(f)
-                    writer.writerow([
-                        'episode',
-                        'reward',
-                        'length',
-                        'green_waste_wh',
-                        'green_used_wh',
-                        'brown_used_wh',
-                        'total_energy_wh',
-                        'green_ratio',
-                        'waste_ratio',
-                        'total_carbon_kg',
-                        'carbon_intensity_kg_per_kwh',
-                        'carbon_per_mi',
-                        'global_carbon_signal_mean', 'global_carbon_signal_sum',
-                        'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
-                        'global_term_local_sum',
-                        'global_term_carbon_sum',
-                        'global_term_waste_sum',
-                        'global_term_throughput_sum',
-                        'global_term_completion_mi_sum',
-                        'global_agent_reward',
-                        'local_agents_avg_reward',
-                        'local_agents_total_reward',
-                        'completion_rate_mi',
-                        'finished_over_received_rate',
-                        'finished_over_workload_cloudlets_rate',
-                    ])
+                    writer.writerow(BEST_EPISODE_CSV_HEADERS)
                 logger.info(f"Initialized best_episode_details.csv: {self.best_episode_file}")
             except Exception as e:
                 logger.error(f"Failed to initialize best episode CSV: {e}")
@@ -1053,50 +1122,45 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         try:
             # Overwrite file with current best episode
+            d = self.best_episode_data
             with open(self.best_episode_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                # Write header
+                writer.writerow(BEST_EPISODE_CSV_HEADERS)
                 writer.writerow([
-                    'episode', 'reward', 'length', 'green_waste_wh',
-                    'green_used_wh', 'brown_used_wh', 'total_energy_wh',
-                    'green_ratio', 'waste_ratio', 'total_carbon_kg',
-                    'carbon_intensity_kg_per_kwh', 'carbon_per_mi',
-                    'global_carbon_signal_mean', 'global_carbon_signal_sum',
-                    'global_carbon_penalty_norm_mean', 'global_carbon_penalty_norm_sum',
-                    'global_term_local_sum', 'global_term_carbon_sum', 'global_term_waste_sum',
-                    'global_term_throughput_sum', 'global_term_completion_mi_sum',
-                    'global_agent_reward', 'local_agents_avg_reward', 'local_agents_total_reward',
-                    'completion_rate_mi', 'finished_over_received_rate', 'finished_over_workload_cloudlets_rate',
-                ])
-                # Write data
-                writer.writerow([
-                    self.best_episode_data['episode'],
-                    self.best_episode_data['reward'],
-                    self.best_episode_data['length'],
-                    self.best_episode_data['green_waste_wh'],
-                    self.best_episode_data['green_used_wh'],
-                    self.best_episode_data['brown_used_wh'],
-                    self.best_episode_data['total_energy_wh'],
-                    self.best_episode_data['green_ratio'],
-                    self.best_episode_data['waste_ratio'],
-                    self.best_episode_data['total_carbon_kg'],
-                    self.best_episode_data['carbon_intensity_kg_per_kwh'],
-                    self.best_episode_data.get('carbon_per_mi', 0.0),
-                    self.best_episode_data.get('global_carbon_signal_mean', 0.0),
-                    self.best_episode_data.get('global_carbon_signal_sum', 0.0),
-                    self.best_episode_data.get('global_carbon_penalty_norm_mean', 0.0),
-                    self.best_episode_data.get('global_carbon_penalty_norm_sum', 0.0),
-                    self.best_episode_data.get('global_term_local_sum', 0.0),
-                    self.best_episode_data.get('global_term_carbon_sum', 0.0),
-                    self.best_episode_data.get('global_term_waste_sum', 0.0),
-                    self.best_episode_data.get('global_term_throughput_sum', 0.0),
-                    self.best_episode_data.get('global_term_completion_mi_sum', 0.0),
-                    self.best_episode_data.get('global_agent_reward', 0.0),
-                    self.best_episode_data.get('local_agents_avg_reward', 0.0),
-                    self.best_episode_data.get('local_agents_total_reward', 0.0),
-                    self.best_episode_data.get('completion_rate_mi', 0.0),
-                    self.best_episode_data.get('finished_over_received_rate', 0.0),
-                    self.best_episode_data.get('finished_over_workload_cloudlets_rate', 0.0),
+                    # --- identifiers ---
+                    d['episode'],
+                    d['length'],
+                    # --- rewards ---
+                    d['reward'],
+                    d.get('global_agent_reward', 0.0),
+                    d.get('local_agents_avg_reward', 0.0),
+                    d.get('local_agents_total_reward', 0.0),
+                    # --- carbon objective ---
+                    d['total_carbon_kg'],
+                    d.get('carbon_per_mi', 0.0),
+                    d['carbon_intensity_kg_per_kwh'],
+                    # --- task completion ---
+                    d.get('completion_rate_mi', 0.0),
+                    d.get('finished_over_received_rate', 0.0),
+                    d.get('finished_over_workload_cloudlets_rate', 0.0),
+                    # --- global reward breakdown ---
+                    d.get('global_term_local_sum', 0.0),
+                    d.get('global_term_carbon_sum', 0.0),
+                    d.get('global_term_throughput_sum', 0.0),
+                    d.get('global_term_completion_mi_sum', 0.0),
+                    d.get('global_term_waste_sum', 0.0),
+                    # --- energy breakdown ---
+                    d['green_waste_wh'],
+                    d['green_used_wh'],
+                    d['brown_used_wh'],
+                    d['total_energy_wh'],
+                    d['green_ratio'],
+                    d['waste_ratio'],
+                    # --- carbon signal debug ---
+                    d.get('global_carbon_signal_mean', 0.0),
+                    d.get('global_carbon_signal_sum', 0.0),
+                    d.get('global_carbon_penalty_norm_mean', 0.0),
+                    d.get('global_carbon_penalty_norm_sum', 0.0),
                 ])
             logger.info(
                 f"Updated best episode: Episode {self.best_episode_data['episode']} "
@@ -1105,45 +1169,121 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         except Exception as e:
             logger.error(f"Failed to save best episode: {e}")
 
+    # ------------------------------------------------------------------
+    # Training-metrics extraction & logging
+    # ------------------------------------------------------------------
+
+    def _extract_policy_stats(self, result: dict, policy_id: str) -> dict:
+        """
+        Pull entropy / policy_loss / vf_loss / explained_var / kl / grad_norm / lr
+        for one policy_id, tolerating both the new RLlib API
+        (``result["learners"]["<pid>"]``) and the legacy API
+        (``result["info"]["learner"]["<pid>"]["learner_stats"]``).
+        Returns a dict with NaN for any missing field.
+        """
+        nan = float('nan')
+        out = {
+            'entropy': nan, 'policy_loss': nan, 'vf_loss': nan,
+            'vf_explained_var': nan, 'mean_kl': nan,
+            'grad_norm': nan, 'learning_rate': nan,
+        }
+
+        def _pull(stats: dict):
+            if not isinstance(stats, dict):
+                return
+            out['entropy'] = stats.get('entropy', out['entropy'])
+            out['policy_loss'] = stats.get('policy_loss', out['policy_loss'])
+            out['vf_loss'] = stats.get('vf_loss', out['vf_loss'])
+            out['vf_explained_var'] = stats.get('vf_explained_var', out['vf_explained_var'])
+            out['mean_kl'] = stats.get('mean_kl_loss', stats.get('mean_kl', out['mean_kl']))
+            out['grad_norm'] = stats.get(
+                'gradients_default_optimizer_global_norm',
+                stats.get('grad_gnorm', out['grad_norm']),
+            )
+            out['learning_rate'] = stats.get(
+                'default_optimizer_learning_rate',
+                stats.get('cur_lr', out['learning_rate']),
+            )
+
+        # New API
+        learners = result.get("learners") or {}
+        if policy_id in learners:
+            _pull(learners[policy_id])
+        # Legacy API — only used to fill fields still NaN.
+        legacy = (result.get("info") or {}).get("learner") or {}
+        if policy_id in legacy:
+            _pull((legacy[policy_id] or {}).get("learner_stats") or {})
+        return out
+
+    def _init_training_csv(self):
+        """Create training_metrics.csv (one row per PPO iteration)."""
+        if self._training_csv_init:
+            return
+        log_dir = self.log_dir or './logs'
+        os.makedirs(log_dir, exist_ok=True)
+        self.training_csv_file = os.path.join(log_dir, "training_metrics.csv")
+        try:
+            with open(self.training_csv_file, 'w', newline='') as f:
+                csv.writer(f).writerow(TRAINING_CSV_HEADERS)
+            logger.info(f"Initialized training_metrics.csv: {self.training_csv_file}")
+            self._training_csv_init = True
+        except Exception as e:
+            logger.error(f"Failed to initialize training_metrics.csv: {e}")
+
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         """
-        Called at the end of Algorithm.train().
-
-        NOTE:
-        We now rely on RLlib/Ray Tune's built-in logging for policy/value losses,
-        and do NOT write additional loss metrics into the result dict.
-
-        This hook is kept only for optional console debugging, without touching
-        TensorBoard tags such as policy_loss/vf_loss.
-
-        Args:
-            algorithm: Current algorithm instance
-            result: Training result dict from the iteration
+        End-of-iteration hook.  Responsibilities:
+          1) Write one row to training_metrics.csv with full per-policy stats.
+          2) Cache the core 6 stats (global/local × entropy / policy_loss /
+             vf_loss) so every subsequent monitor.csv row carries them.
         """
         try:
-            iteration = result.get("training_iteration", 0)
+            iteration = int(result.get("training_iteration", 0))
+            env_steps = int(
+                result.get("num_env_steps_sampled_lifetime")
+                or (result.get("env_runners") or {}).get("num_env_steps_sampled_lifetime")
+                or 0
+            )
 
-            # Optional: print loss stats for debugging without altering result dict
-            learner_info = result.get("info", {}).get("learner", {})
-            if not learner_info:
-                return
+            g = self._extract_policy_stats(result, "global_policy")
+            l = self._extract_policy_stats(result, "shared_local_policy")
 
-            # Global agent (console only)
-            if "global_policy" in learner_info:
-                stats = learner_info["global_policy"].get("learner_stats", {})
-                pl = stats.get("policy_loss", None)
-                vl = stats.get("vf_loss", None)
-                if pl is not None and vl is not None:
-                    logger.info(f"[{iteration}] GlobalPolicy: policy_loss={pl:.5f}, value_loss={vl:.5f}")
+            # Cache for inline monitor.csv logging.
+            self.latest_train_stats = {
+                'iteration': iteration,
+                'global_entropy':      g['entropy'],
+                'global_policy_loss':  g['policy_loss'],
+                'global_vf_loss':      g['vf_loss'],
+                'local_entropy':       l['entropy'],
+                'local_policy_loss':   l['policy_loss'],
+                'local_vf_loss':       l['vf_loss'],
+            }
 
-            # Local agents (console only)
-            for policy_id, policy_info in learner_info.items():
-                if policy_id.startswith("local_policy_"):
-                    stats = policy_info.get("learner_stats", {})
-                    pl = stats.get("policy_loss", None)
-                    vl = stats.get("vf_loss", None)
-                    if pl is not None and vl is not None:
-                        logger.info(f"[{iteration}] {policy_id}: policy_loss={pl:.5f}, value_loss={vl:.5f}")
+            # Write to the dedicated training_metrics.csv.
+            self._init_training_csv()
+            if self.training_csv_file:
+                row = [
+                    iteration, env_steps,
+                    g['entropy'], g['policy_loss'], g['vf_loss'],
+                    g['vf_explained_var'], g['mean_kl'],
+                    g['grad_norm'], g['learning_rate'],
+                    l['entropy'], l['policy_loss'], l['vf_loss'],
+                    l['vf_explained_var'], l['mean_kl'],
+                    l['grad_norm'], l['learning_rate'],
+                ]
+                try:
+                    with open(self.training_csv_file, 'a', newline='') as f:
+                        csv.writer(f).writerow(row)
+                except Exception as e:
+                    logger.error(f"Failed to append training_metrics.csv row: {e}")
 
+            # Console summary (only if at least one loss was populated).
+            if not (np.isnan(g['policy_loss']) and np.isnan(l['policy_loss'])):
+                logger.info(
+                    f"[iter {iteration}] global: ent={g['entropy']:.3f} "
+                    f"pl={g['policy_loss']:.4f} vl={g['vf_loss']:.4f} | "
+                    f"local: ent={l['entropy']:.3f} "
+                    f"pl={l['policy_loss']:.4f} vl={l['vf_loss']:.4f}"
+                )
         except Exception as e:
-            logger.error(f"Failed to read learner stats: {e}", exc_info=True)
+            logger.error(f"on_train_result failed: {e}", exc_info=True)
