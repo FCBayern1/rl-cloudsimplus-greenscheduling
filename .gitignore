@@ -172,3 +172,22 @@ drl-manager/QoS_Reward_Optimization_Plan.md
 Mingwei_TowardsGreen (2).pdf
 drl-manager/PARALLEL_TRAINING.md
 drl-manager/QoS_Reward_Optimization_Plan.md
+
+# Gradle wrapper (local only, not tracked)
+cloudsimplus-gateway/gradlew
+cloudsimplus-gateway/gradlew.bat
+
+# Model checkpoints - TimeCAP
+drl-manager/**/*.pth
+drl-manager/**/*.pt
+drl-manager/**/*.ckpt
+
+# TimeCAP data files
+drl-manager/timecap_prediction/data/*.csv
+
+# Local run scripts
+run_*.sh
+
+# Local docs
+*.docx
+*.pdf
