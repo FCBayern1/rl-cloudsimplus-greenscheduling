@@ -226,8 +226,13 @@ public class GreenEnergyProvider {
             double powerKW = powerSpline.value(adjustedTime);
             double powerW = Math.max(0, powerKW * 1000);
 
+            // COMPRESSED mode historically divided by 600 (one CSV row per second
+            // of sim time vs 600s in REAL_TIME). That left clean-DC wind at ~8%
+            // of peak demand for experiment_multi_5dc_carbon_v2 and killed the
+            // agent's learning signal. /60 keeps the same structural relationship
+            // but scales supply up 10× so mean wind ≈ peak demand on clean DCs.
             if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                powerW = powerW / 600.0;
+                powerW = powerW / 60.0;
             }
 
             return powerW;
@@ -287,7 +292,7 @@ public class GreenEnergyProvider {
                 double futurePowerW = Math.max(0, futurePowerKW * 1000);
 
                 if (timeScalingMode == TimeScalingMode.COMPRESSED) {
-                    futurePowerW = futurePowerW / 600.0;
+                    futurePowerW = futurePowerW / 60.0;
                 }
 
                 predictions[i] = futurePowerW;
