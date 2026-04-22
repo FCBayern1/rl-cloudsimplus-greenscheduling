@@ -15,7 +15,11 @@ class Exp_Basic(object):
         self.model = self._build_model().to(self.device)
         if self.args.use_multi_gpu and self.args.use_gpu and dist.is_initialized():
             local_rank = int(os.environ.get('LOCAL_RANK', 0))
-            self.model = nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
+            self.model = nn.parallel.DistributedDataParallel(
+                self.model,
+                device_ids=[local_rank],
+                find_unused_parameters=True,
+            )
             if dist.get_rank() == 0:
                 print(f'Using DistributedDataParallel across {dist.get_world_size()} GPUs')
         self.raw_model = self.model.module if hasattr(self.model, 'module') else self.model
