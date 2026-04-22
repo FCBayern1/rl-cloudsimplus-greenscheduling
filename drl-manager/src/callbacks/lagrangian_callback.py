@@ -7,29 +7,39 @@ Formulation:
 
     L(π, λ) = −E[Σ r_step] + λ · E[c_ep]
     r_train_global = r_step − λ · c_step      (applied in env wrapper)
-    λ_{k+1} = max(0, λ_k + η_λ · (c_ep_avg − 0))
+    λ_{k+1} = max(0, λ_k + η_λ · (c_ep_avg − tol))
 
-Signals (Java side, `global_energy_stats`):
+Signals (Java side, ``global_energy_stats``):
   - sla_cost_step     : max(0, pending_ratio − d)       — dense, per-step
   - sla_cost_episode  : max(0, c* − completion_rate_mi) — sparse, evaluated per episode
+  - completion_rate_mi, sla_pending_ratio               — diagnostics
 
-Sync model:
-  - λ and the per-episode accumulator both live inside the shared
-    ``env_config["lagrangian"]`` dict, which the env holds by reference.
-  - **Accumulation is driven by the env**, not by RLlib's ``on_episode_end``
-    hook: under the new API stack (``enable_env_runner_and_connector_v2``),
-    ``on_episode_end`` does not fire reliably on every registered callback,
-    so the env appends (c_ep, c_step_mean, completion, pending) into
-    ``lagrangian["_accum"]`` whenever a terminated/truncated step is seen.
-  - The callback drains ``_accum`` in ``on_train_result``, runs dual ascent,
-    then resets the accumulator.  This is robust across RLlib versions.
+Data flow:
+  - Env applies the λ·c_step penalty every step using ``lagrangian["lambda"]``.
+  - Env exposes per-episode aggregates in the *terminal-step info dict*:
+        global_energy_stats.sla_cost_episode,
+        global_energy_stats.completion_rate_mi,
+        global_energy_stats.sla_pending_ratio,
+        info["lagrangian_c_step_mean_episode"].
+  - This callback reads them in ``on_episode_end`` (the same hook
+    ``GreenEnergyLoggerCallback`` uses, which works reliably under the new API
+    stack) and accumulates them into ``self._iter_episodes``.
+  - In ``on_train_result`` we drain that list, run dual ascent on the mean
+    episode-level violation, update λ, and push the new value to every env via
+    ``set_lagrangian_lambda`` (both the shared-dict ``env_config["lagrangian"]``
+    and remote envs through ``foreach_env``).  CSV logging happens here too.
+
+Why not mutate a shared dict directly from the env?  RLlib's env_config can be
+deep-copied or pickled when constructing EnvRunners, so a per-step mutation
+inside the env may land in a dict that the driver-side callback never sees.
+Going through ``on_episode_end`` + ``foreach_env`` is the stable pattern.
 """
 from __future__ import annotations
 
 import csv
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -49,15 +59,100 @@ LAGRANGIAN_CSV_HEADERS = [
 ]
 
 
+def _safe_float(v, default: float = 0.0) -> float:
+    try:
+        if v is None:
+            return default
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_last_info(episode) -> Dict[str, Any]:
+    """Pull the terminal info dict from a MultiAgentEpisode / EpisodeV2.
+
+    Mirrors the fallback ladder used in ``rllib_green_energy_logger`` so we
+    stay compatible with both API stacks.  Prefers ``global_agent`` but falls
+    back to any agent since all agents share the same info reference.
+    """
+    # New API: MultiAgentEpisode.get_infos() -> {agent_id: [info, info, ...]}
+    if hasattr(episode, "get_infos"):
+        try:
+            all_infos = episode.get_infos()
+            if isinstance(all_infos, dict) and all_infos:
+                for agent_key in ("global_agent",):
+                    lst = all_infos.get(agent_key)
+                    if lst:
+                        return lst[-1] or {}
+                # Any agent
+                for _, lst in all_infos.items():
+                    if lst:
+                        return lst[-1] or {}
+        except Exception as e:
+            logger.debug("[Lagrangian] get_infos() failed: %s", e)
+
+    # Old API: episode.last_info_for(agent_id)
+    if hasattr(episode, "last_info_for"):
+        try:
+            info = episode.last_info_for("global_agent")
+            if info:
+                return info
+        except Exception:
+            pass
+        try:
+            info = episode.last_info_for()
+            if info:
+                return info
+        except Exception:
+            pass
+
+    # Last resort: agent_to_last_info cache
+    if hasattr(episode, "agent_to_last_info"):
+        try:
+            agent_infos = episode.agent_to_last_info
+            if agent_infos:
+                first = next(iter(agent_infos.values()))
+                return first or {}
+        except Exception:
+            pass
+
+    return {}
+
+
+def _foreach_env_safely(algorithm, fn) -> None:
+    """Run ``fn(env)`` on every env across all API stacks.
+
+    Tries (in order):
+      - algorithm.env_runner_group (new API, includes local runner when
+        num_env_runners=0 and create_env_on_local_worker=True)
+      - algorithm.workers (old API)
+      - algorithm.env_runner (new API, local-only fallback)
+    """
+    for attr in ("env_runner_group", "workers"):
+        group = getattr(algorithm, attr, None)
+        if group is not None and hasattr(group, "foreach_env"):
+            try:
+                group.foreach_env(fn)
+                return
+            except Exception as e:
+                logger.debug("[Lagrangian] foreach_env via %s failed: %s", attr, e)
+    runner = getattr(algorithm, "env_runner", None)
+    if runner is not None and hasattr(runner, "foreach_env"):
+        try:
+            runner.foreach_env(fn)
+        except Exception as e:
+            logger.debug("[Lagrangian] foreach_env via env_runner failed: %s", e)
+
+
 class LagrangianCallback(DefaultCallbacks):
     """Maintain Lagrangian multiplier λ for the SLA completion-rate constraint.
 
     Configuration is read from ``algorithm.config.env_config["lagrangian"]``:
-        enabled      : bool         — master switch
-        lambda_init  : float = 0.0  — starting λ
-        lambda_lr    : float = 0.05 — step size for dual update
-        lambda_max   : float = 20.0 — hard cap to stop λ blowing up
-        c_ep_tolerance : float = 0.0 — deadband around 0 for λ updates
+        enabled        : bool         — master switch
+        lambda_init    : float = 0.0  — starting λ
+        lambda_lr      : float = 0.05 — step size for dual update
+        lambda_max     : float = 20.0 — hard cap to stop λ blowing up
+        c_ep_tolerance : float = 0.0  — deadband around 0 for λ updates
     """
 
     def __init__(self, log_dir: Optional[str] = None):
@@ -66,26 +161,24 @@ class LagrangianCallback(DefaultCallbacks):
         self._csv_path: Optional[str] = None
         self._csv_inited = False
 
-        # Resolved once we see the first algorithm reference
-        self._lagrangian_state: Optional[Dict[str, Any]] = None
-        self._hyperparams: Dict[str, float] = {
-            "lambda_lr": 0.05,
-            "lambda_max": 20.0,
-            "c_ep_tolerance": 0.0,
-        }
-        self._enabled: Optional[bool] = None
+        # Hyperparameters + λ — resolved once on first on_train_result.
+        self._hyperparams_loaded = False
+        self._enabled: bool = False
+        self._lambda: float = 0.0
+        self._lambda_init: float = 0.0
+        self._lambda_lr: float = 0.05
+        self._lambda_max: float = 20.0
+        self._c_ep_tolerance: float = 0.0
+        # Reference to algorithm.config.env_config["lagrangian"] so we can also
+        # write λ back into the shared dict for num_workers=0 runs (local env
+        # may or may not share the same dict — we try both channels).
+        self._shared_state: Optional[Dict[str, Any]] = None
 
-    # ---------- state resolution ----------
-    def _resolve_state(self, algorithm) -> Optional[Dict[str, Any]]:
-        """Locate the shared lagrangian dict on the algorithm's env_config.
+        # Per-iteration buffer of finished episodes.
+        self._iter_episodes: List[Dict[str, float]] = []
 
-        RLlib stores env_config under ``algorithm.config.env_config`` (a
-        FrozenDict in newer releases, plain dict otherwise).  The nested
-        "lagrangian" entry is a mutable dict regardless — we mutate in place.
-        """
-        if self._lagrangian_state is not None:
-            return self._lagrangian_state
-
+    # ---------- hyperparameter resolution ----------
+    def _load_hyperparams(self, algorithm) -> None:
         env_cfg = None
         cfg = getattr(algorithm, "config", None)
         if cfg is not None:
@@ -93,31 +186,87 @@ class LagrangianCallback(DefaultCallbacks):
             if env_cfg is None and hasattr(cfg, "to_dict"):
                 env_cfg = cfg.to_dict().get("env_config", {})
         if not isinstance(env_cfg, dict):
-            return None
+            self._hyperparams_loaded = True
+            return
 
         lag = env_cfg.get("lagrangian")
-        if not isinstance(lag, dict):
-            return None
+        if isinstance(lag, dict):
+            self._enabled = bool(lag.get("enabled", False))
+            self._lambda_init = _safe_float(lag.get("lambda_init"), 0.0)
+            self._lambda_lr = _safe_float(lag.get("lambda_lr"), 0.05)
+            self._lambda_max = _safe_float(lag.get("lambda_max"), 20.0)
+            self._c_ep_tolerance = _safe_float(lag.get("c_ep_tolerance"), 0.0)
+            self._lambda = _safe_float(lag.get("lambda", self._lambda_init), self._lambda_init)
+            lag["lambda"] = self._lambda  # ensure the key exists
+            self._shared_state = lag
 
-        # Ensure lambda key exists — otherwise envs can't read it.
-        lag.setdefault("lambda", float(lag.get("lambda_init", 0.0)))
-        self._lagrangian_state = lag
-        self._enabled = bool(lag.get("enabled", False))
-        self._hyperparams["lambda_lr"] = float(lag.get("lambda_lr", 0.05))
-        self._hyperparams["lambda_max"] = float(lag.get("lambda_max", 20.0))
-        self._hyperparams["c_ep_tolerance"] = float(lag.get("c_ep_tolerance", 0.0))
+        self._hyperparams_loaded = True
         logger.info(
-            "[Lagrangian] resolved state: enabled=%s, lambda_init=%.4f, lr=%.4f, max=%.1f",
-            self._enabled, lag["lambda"],
-            self._hyperparams["lambda_lr"], self._hyperparams["lambda_max"],
+            "[Lagrangian] hyperparams loaded: enabled=%s λ_init=%.4f lr=%.4f max=%.1f tol=%.4f",
+            self._enabled, self._lambda_init, self._lambda_lr, self._lambda_max,
+            self._c_ep_tolerance,
         )
-        return lag
+
+    # ---------- episode-level data collection ----------
+    def on_episode_end(
+        self,
+        *,
+        worker=None,
+        base_env=None,
+        policies=None,
+        episode=None,
+        env_index: Optional[int] = None,
+        env_runner=None,
+        metrics_logger=None,
+        **kwargs,
+    ) -> None:
+        if not self._hyperparams_loaded:
+            # algorithm handle not available here in the new API — rely on
+            # _load_hyperparams running in on_train_result.  Still record stats
+            # so the first iteration isn't wasted.
+            pass
+        if episode is None:
+            return
+
+        last_info = _extract_last_info(episode)
+        if not last_info:
+            logger.debug("[Lagrangian] on_episode_end: no info extracted")
+            return
+
+        ges_raw = last_info.get("global_energy_stats", {}) or {}
+        # Info may contain a Java Map — convert to dict defensively.
+        if not isinstance(ges_raw, dict):
+            try:
+                from src.callbacks.rllib_green_energy_logger import safe_convert_to_dict
+                ges = safe_convert_to_dict(ges_raw, "global_energy_stats")
+            except Exception:
+                ges = {}
+        else:
+            ges = ges_raw
+
+        c_ep = _safe_float(ges.get("sla_cost_episode"))
+        compl = _safe_float(ges.get("completion_rate_mi"))
+        pending = _safe_float(ges.get("sla_pending_ratio"))
+        c_step_mean = _safe_float(last_info.get("lagrangian_c_step_mean_episode"))
+
+        self._iter_episodes.append({
+            "c_ep": c_ep,
+            "c_step_mean": c_step_mean,
+            "completion": compl,
+            "pending": pending,
+        })
+        logger.info(
+            "[Lagrangian] episode done: c_ep=%.4f c_step_mean=%.4f compl=%.3f pending=%.3f",
+            c_ep, c_step_mean, compl, pending,
+        )
 
     # ---------- dual update per training iteration ----------
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        state = self._resolve_state(algorithm)
-        if state is None or not self._enabled:
-            self._reset_accum(state)
+        if not self._hyperparams_loaded:
+            self._load_hyperparams(algorithm)
+
+        if not self._enabled:
+            self._iter_episodes.clear()
             return
 
         iteration = int(result.get("training_iteration", 0))
@@ -127,53 +276,44 @@ class LagrangianCallback(DefaultCallbacks):
             or 0
         )
 
-        # Drain shared per-episode accumulator populated by the env.
-        accum = state.setdefault("_accum", {
-            "c_ep_sum": 0.0, "c_step_sum": 0.0,
-            "completion_sum": 0.0, "pending_sum": 0.0, "ep_count": 0,
-        })
-        ep_count = int(accum.get("ep_count", 0))
-        n = max(1, ep_count)
-        c_ep_mean = float(accum.get("c_ep_sum", 0.0)) / n
-        c_step_mean = float(accum.get("c_step_sum", 0.0)) / n
-        compl_mean = float(accum.get("completion_sum", 0.0)) / n
-        pending_mean = float(accum.get("pending_sum", 0.0)) / n
-
-        lam_prev = float(state.get("lambda", 0.0))
-        lr = self._hyperparams["lambda_lr"]
-        lam_max = self._hyperparams["lambda_max"]
-        tol = self._hyperparams["c_ep_tolerance"]
-
-        # Dual ascent on the episode-level violation.  c_ep is already
-        # max(0, c*-completion), so it's always ≥ 0 — when 0, we decay λ so
-        # policy can relax once SLA is comfortably met.
-        # Skip update when no episodes finished in this iteration (keeps λ stable).
+        ep_count = len(self._iter_episodes)
         if ep_count > 0:
-            violation = c_ep_mean - tol
-            lam_new = lam_prev + lr * violation
+            c_ep_mean = sum(e["c_ep"] for e in self._iter_episodes) / ep_count
+            c_step_mean = sum(e["c_step_mean"] for e in self._iter_episodes) / ep_count
+            compl_mean = sum(e["completion"] for e in self._iter_episodes) / ep_count
+            pending_mean = sum(e["pending"] for e in self._iter_episodes) / ep_count
+        else:
+            c_ep_mean = c_step_mean = compl_mean = pending_mean = 0.0
+
+        lam_prev = float(self._lambda)
+        if ep_count > 0:
+            violation = c_ep_mean - self._c_ep_tolerance
+            lam_new = lam_prev + self._lambda_lr * violation
             if violation <= 0.0:
+                # Decay λ when constraint is comfortably satisfied so policy
+                # can relax once SLA is met — keeps λ from latching high.
                 lam_new = max(0.0, lam_prev * 0.95)
-            lam_new = float(max(0.0, min(lam_new, lam_max)))
+            lam_new = float(max(0.0, min(lam_new, self._lambda_max)))
         else:
             lam_new = lam_prev
-        state["lambda"] = lam_new
+        self._lambda = lam_new
 
-        # Propagate to all envs (no-op for shared-dict workers but safe).
-        try:
-            def _push(env):
-                inner = env
-                if hasattr(inner, "par_env"):
-                    inner = inner.par_env
-                if hasattr(inner, "set_lagrangian_lambda"):
-                    inner.set_lagrangian_lambda(lam_new)
-            if hasattr(algorithm, "workers") and algorithm.workers is not None:
-                algorithm.workers.foreach_env(_push)
-            elif hasattr(algorithm, "env_runner_group") and algorithm.env_runner_group is not None:
-                algorithm.env_runner_group.foreach_env(_push)
-        except Exception as e:
-            logger.debug("[Lagrangian] foreach_env push failed: %s", e)
+        # Propagate λ to every env + the shared env_config dict (belt &
+        # suspenders: one of these is guaranteed to reach the env actually
+        # running step()).
+        if isinstance(self._shared_state, dict):
+            self._shared_state["lambda"] = lam_new
 
-        # Expose in result dict for TB/CLI.
+        def _push(env):
+            inner = env
+            if hasattr(inner, "par_env"):
+                inner = inner.par_env
+            if hasattr(inner, "set_lagrangian_lambda"):
+                inner.set_lagrangian_lambda(lam_new)
+
+        _foreach_env_safely(algorithm, _push)
+
+        # Expose in result for TB / CLI.
         result.setdefault("custom_metrics", {})
         result["custom_metrics"]["lagrangian_lambda"] = lam_new
         result["custom_metrics"]["lagrangian_c_ep_mean"] = c_ep_mean
@@ -192,21 +332,9 @@ class LagrangianCallback(DefaultCallbacks):
             c_ep_mean, c_step_mean, compl_mean, pending_mean, ep_count,
         ])
 
-        self._reset_accum(state)
+        self._iter_episodes.clear()
 
-    # ---------- helpers ----------
-    def _reset_accum(self, state: Optional[Dict[str, Any]]) -> None:
-        if not isinstance(state, dict):
-            return
-        accum = state.get("_accum")
-        if isinstance(accum, dict):
-            accum["c_ep_sum"] = 0.0
-            accum["c_step_sum"] = 0.0
-            accum["completion_sum"] = 0.0
-            accum["pending_sum"] = 0.0
-            accum["ep_count"] = 0
-        self._ep_count = 0
-
+    # ---------- CSV helpers ----------
     def _init_csv(self) -> None:
         if self._csv_inited:
             return

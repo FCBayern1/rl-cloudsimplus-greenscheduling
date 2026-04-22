@@ -85,17 +85,9 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         lagrangian_cfg = config.get("lagrangian", {}) if isinstance(config, dict) else {}
         self._lagrangian_cfg = lagrangian_cfg if isinstance(lagrangian_cfg, dict) else {}
         self._lagrangian_enabled = bool(self._lagrangian_cfg.get("enabled", False))
-        # Per-episode accumulator shared with LagrangianCallback by reference.
-        # Env writes on episode end (bypasses RLlib's on_episode_end which is
-        # unreliable under the new API stack); callback drains on_train_result.
-        self._lagrangian_cfg.setdefault("_accum", {
-            "c_ep_sum": 0.0,
-            "c_step_sum": 0.0,
-            "completion_sum": 0.0,
-            "pending_sum": 0.0,
-            "ep_count": 0,
-        })
-        # Per-episode running accumulator for c_step (env-side; drained on episode end).
+        # Per-episode running accumulator for c_step — exposed to callback via
+        # info at episode end (no shared-dict mutation, which doesn't survive
+        # RLlib's env_config serialization across the new API stack).
         self._ep_c_step_running_sum = 0.0
         self._ep_c_step_running_count = 0
 
@@ -483,33 +475,6 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             self._ep_c_step_running_sum += c_step
             self._ep_c_step_running_count += 1
 
-            # On episode end, drain into shared accumulator for the callback.
-            # The callback reads on_train_result and resets it.  This bypasses
-            # RLlib's on_episode_end hook entirely (unreliable under new stack).
-            if terminated or truncated:
-                try:
-                    c_ep = float(ges.get("sla_cost_episode", 0.0) or 0.0)
-                    compl = float(ges.get("completion_rate_mi", 0.0) or 0.0)
-                    pending = float(ges.get("sla_pending_ratio", 0.0) or 0.0)
-                except Exception:
-                    c_ep, compl, pending = 0.0, 0.0, 0.0
-                c_step_mean = (
-                    self._ep_c_step_running_sum / self._ep_c_step_running_count
-                    if self._ep_c_step_running_count > 0 else 0.0
-                )
-                accum = self._lagrangian_cfg.setdefault("_accum", {
-                    "c_ep_sum": 0.0, "c_step_sum": 0.0,
-                    "completion_sum": 0.0, "pending_sum": 0.0, "ep_count": 0,
-                })
-                accum["c_ep_sum"] = accum.get("c_ep_sum", 0.0) + c_ep
-                accum["c_step_sum"] = accum.get("c_step_sum", 0.0) + c_step_mean
-                accum["completion_sum"] = accum.get("completion_sum", 0.0) + compl
-                accum["pending_sum"] = accum.get("pending_sum", 0.0) + pending
-                accum["ep_count"] = accum.get("ep_count", 0) + 1
-                # Reset per-episode running counters for next episode.
-                self._ep_c_step_running_sum = 0.0
-                self._ep_c_step_running_count = 0
-
         # All agents share the same termination/truncation status
         terminations = {agent: terminated for agent in self.agents}
         truncations = {agent: truncated for agent in self.agents}
@@ -520,6 +485,18 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         base_info["lagrangian_lambda"] = lam
         base_info["lagrangian_c_step"] = c_step
         base_info["lagrangian_penalty"] = lagrangian_penalty
+        # On terminal step, expose per-episode c_step mean so the callback's
+        # on_episode_end hook can drive the dual update without needing a
+        # shared-dict channel (which doesn't survive env_config serialization).
+        if self._lagrangian_enabled and (terminated or truncated):
+            if self._ep_c_step_running_count > 0:
+                base_info["lagrangian_c_step_mean_episode"] = (
+                    self._ep_c_step_running_sum / self._ep_c_step_running_count
+                )
+            else:
+                base_info["lagrangian_c_step_mean_episode"] = 0.0
+            self._ep_c_step_running_sum = 0.0
+            self._ep_c_step_running_count = 0
         infos = {agent: base_info.copy() for agent in self.agents}
 
         # Store for action masking
