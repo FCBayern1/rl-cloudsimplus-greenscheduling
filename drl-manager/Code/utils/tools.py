@@ -25,8 +25,7 @@ def set_seed(fix_seed):
 
 # 检查路径是否存在
 def check_dir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
 
 def make_dir(args):
 
