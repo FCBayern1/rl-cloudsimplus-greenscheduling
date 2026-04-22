@@ -85,6 +85,19 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         lagrangian_cfg = config.get("lagrangian", {}) if isinstance(config, dict) else {}
         self._lagrangian_cfg = lagrangian_cfg if isinstance(lagrangian_cfg, dict) else {}
         self._lagrangian_enabled = bool(self._lagrangian_cfg.get("enabled", False))
+        # Per-episode accumulator shared with LagrangianCallback by reference.
+        # Env writes on episode end (bypasses RLlib's on_episode_end which is
+        # unreliable under the new API stack); callback drains on_train_result.
+        self._lagrangian_cfg.setdefault("_accum", {
+            "c_ep_sum": 0.0,
+            "c_step_sum": 0.0,
+            "completion_sum": 0.0,
+            "pending_sum": 0.0,
+            "ep_count": 0,
+        })
+        # Per-episode running accumulator for c_step (env-side; drained on episode end).
+        self._ep_c_step_running_sum = 0.0
+        self._ep_c_step_running_count = 0
 
         # CTDE (Centralized Training with Decentralized Execution) support.
         # When enabled, each local agent's observation includes a "global_state"
@@ -454,6 +467,7 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         lagrangian_penalty = 0.0
         c_step = 0.0
         lam = 0.0
+        ges: Dict[str, Any] = {}
         if self._lagrangian_enabled:
             try:
                 ges = hierarchical_info.get("global_energy_stats", {}) or {}
@@ -464,6 +478,37 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             if lam > 0.0 and c_step > 0.0 and "global_agent" in rewards:
                 lagrangian_penalty = lam * c_step
                 rewards["global_agent"] = rewards["global_agent"] - lagrangian_penalty
+
+            # Accumulate per-step c_step so we can report a per-episode mean.
+            self._ep_c_step_running_sum += c_step
+            self._ep_c_step_running_count += 1
+
+            # On episode end, drain into shared accumulator for the callback.
+            # The callback reads on_train_result and resets it.  This bypasses
+            # RLlib's on_episode_end hook entirely (unreliable under new stack).
+            if terminated or truncated:
+                try:
+                    c_ep = float(ges.get("sla_cost_episode", 0.0) or 0.0)
+                    compl = float(ges.get("completion_rate_mi", 0.0) or 0.0)
+                    pending = float(ges.get("sla_pending_ratio", 0.0) or 0.0)
+                except Exception:
+                    c_ep, compl, pending = 0.0, 0.0, 0.0
+                c_step_mean = (
+                    self._ep_c_step_running_sum / self._ep_c_step_running_count
+                    if self._ep_c_step_running_count > 0 else 0.0
+                )
+                accum = self._lagrangian_cfg.setdefault("_accum", {
+                    "c_ep_sum": 0.0, "c_step_sum": 0.0,
+                    "completion_sum": 0.0, "pending_sum": 0.0, "ep_count": 0,
+                })
+                accum["c_ep_sum"] = accum.get("c_ep_sum", 0.0) + c_ep
+                accum["c_step_sum"] = accum.get("c_step_sum", 0.0) + c_step_mean
+                accum["completion_sum"] = accum.get("completion_sum", 0.0) + compl
+                accum["pending_sum"] = accum.get("pending_sum", 0.0) + pending
+                accum["ep_count"] = accum.get("ep_count", 0) + 1
+                # Reset per-episode running counters for next episode.
+                self._ep_c_step_running_sum = 0.0
+                self._ep_c_step_running_count = 0
 
         # All agents share the same termination/truncation status
         terminations = {agent: terminated for agent in self.agents}

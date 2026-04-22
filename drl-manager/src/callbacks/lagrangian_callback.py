@@ -14,12 +14,15 @@ Signals (Java side, `global_energy_stats`):
   - sla_cost_episode  : max(0, c* − completion_rate_mi) — sparse, evaluated per episode
 
 Sync model:
-  - λ lives inside the shared ``env_config["lagrangian"]`` dict.
-  - With num_workers == 0 the env and callback share the same dict reference,
-    so writing ``self.lagrangian_state["lambda"] = new_lam`` is immediately
-    visible to the env's step().
-  - For num_workers > 0, ``algorithm.workers.foreach_env(lambda e: ...)`` is
-    used to push λ into each worker's env copies.
+  - λ and the per-episode accumulator both live inside the shared
+    ``env_config["lagrangian"]`` dict, which the env holds by reference.
+  - **Accumulation is driven by the env**, not by RLlib's ``on_episode_end``
+    hook: under the new API stack (``enable_env_runner_and_connector_v2``),
+    ``on_episode_end`` does not fire reliably on every registered callback,
+    so the env appends (c_ep, c_step_mean, completion, pending) into
+    ``lagrangian["_accum"]`` whenever a terminated/truncated step is seen.
+  - The callback drains ``_accum`` in ``on_train_result``, runs dual ascent,
+    then resets the accumulator.  This is robust across RLlib versions.
 """
 from __future__ import annotations
 
@@ -29,10 +32,6 @@ import os
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.env import BaseEnv
-from ray.rllib.evaluation import RolloutWorker
-from ray.rllib.evaluation.episode_v2 import EpisodeV2
-from ray.rllib.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +47,6 @@ LAGRANGIAN_CSV_HEADERS = [
     "pending_ratio_mean",   # last observed per-step pending ratio
     "num_episodes_in_iter",
 ]
-
-
-def _get_from_info(info: Dict[str, Any], path: str, default: float = 0.0) -> float:
-    """Dot-path lookup on nested info dict, returning float default on miss."""
-    node: Any = info
-    for key in path.split("."):
-        if isinstance(node, dict) and key in node:
-            node = node[key]
-        else:
-            return default
-    try:
-        return float(node)
-    except (TypeError, ValueError):
-        return default
 
 
 class LagrangianCallback(DefaultCallbacks):
@@ -80,13 +65,6 @@ class LagrangianCallback(DefaultCallbacks):
         self.log_dir = log_dir
         self._csv_path: Optional[str] = None
         self._csv_inited = False
-
-        # Per-iteration accumulators
-        self._ep_c_ep_sum = 0.0
-        self._ep_c_step_sum = 0.0
-        self._ep_completion_sum = 0.0
-        self._ep_pending_sum = 0.0
-        self._ep_count = 0
 
         # Resolved once we see the first algorithm reference
         self._lagrangian_state: Optional[Dict[str, Any]] = None
@@ -135,67 +113,11 @@ class LagrangianCallback(DefaultCallbacks):
         )
         return lag
 
-    # ---------- episode accounting ----------
-    def on_episode_end(
-        self,
-        *,
-        worker: RolloutWorker = None,
-        base_env: BaseEnv = None,
-        policies: Dict[str, Policy] = None,
-        episode: EpisodeV2 = None,
-        env_index: Optional[int] = None,
-        env_runner=None,
-        metrics_logger=None,
-        **kwargs,
-    ) -> None:
-        """Accumulate per-episode SLA violation and mean per-step cost.
-
-        Uses only the last step's info (episode-to-date cumulatives), which is
-        sufficient for ``completion_rate_mi`` and ``pending_ratio`` since the
-        Java side exposes them as running episode values.
-        """
-        last_info: Dict[str, Any] = {}
-
-        # New API path
-        if hasattr(episode, "get_infos"):
-            try:
-                all_infos = episode.get_infos()
-                if isinstance(all_infos, dict):
-                    for key in ("global_agent", *all_infos.keys()):
-                        lst = all_infos.get(key)
-                        if lst:
-                            last_info = lst[-1] or {}
-                            break
-            except Exception:
-                pass
-
-        # Old API fallback
-        if not last_info and hasattr(episode, "last_info_for"):
-            try:
-                last_info = episode.last_info_for("global_agent") or {}
-            except Exception:
-                last_info = {}
-
-        if not isinstance(last_info, dict):
-            return
-
-        c_ep = _get_from_info(last_info, "global_energy_stats.sla_cost_episode", 0.0)
-        c_step = _get_from_info(last_info, "global_energy_stats.sla_cost_step", 0.0)
-        compl = _get_from_info(last_info, "global_energy_stats.completion_rate_mi", 0.0)
-        pending = _get_from_info(last_info, "global_energy_stats.sla_pending_ratio", 0.0)
-
-        self._ep_c_ep_sum += c_ep
-        self._ep_c_step_sum += c_step
-        self._ep_completion_sum += compl
-        self._ep_pending_sum += pending
-        self._ep_count += 1
-
     # ---------- dual update per training iteration ----------
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         state = self._resolve_state(algorithm)
         if state is None or not self._enabled:
-            # No Lagrangian configured — reset accumulators and leave.
-            self._reset_accum()
+            self._reset_accum(state)
             return
 
         iteration = int(result.get("training_iteration", 0))
@@ -205,11 +127,17 @@ class LagrangianCallback(DefaultCallbacks):
             or 0
         )
 
-        n = max(1, self._ep_count)
-        c_ep_mean = self._ep_c_ep_sum / n
-        c_step_mean = self._ep_c_step_sum / n
-        compl_mean = self._ep_completion_sum / n
-        pending_mean = self._ep_pending_sum / n
+        # Drain shared per-episode accumulator populated by the env.
+        accum = state.setdefault("_accum", {
+            "c_ep_sum": 0.0, "c_step_sum": 0.0,
+            "completion_sum": 0.0, "pending_sum": 0.0, "ep_count": 0,
+        })
+        ep_count = int(accum.get("ep_count", 0))
+        n = max(1, ep_count)
+        c_ep_mean = float(accum.get("c_ep_sum", 0.0)) / n
+        c_step_mean = float(accum.get("c_step_sum", 0.0)) / n
+        compl_mean = float(accum.get("completion_sum", 0.0)) / n
+        pending_mean = float(accum.get("pending_sum", 0.0)) / n
 
         lam_prev = float(state.get("lambda", 0.0))
         lr = self._hyperparams["lambda_lr"]
@@ -219,12 +147,15 @@ class LagrangianCallback(DefaultCallbacks):
         # Dual ascent on the episode-level violation.  c_ep is already
         # max(0, c*-completion), so it's always ≥ 0 — when 0, we decay λ so
         # policy can relax once SLA is comfortably met.
-        violation = c_ep_mean - tol
-        lam_new = lam_prev + lr * violation
-        if violation <= 0.0:
-            # decay toward 0 (but not below)
-            lam_new = max(0.0, lam_prev * 0.95)
-        lam_new = float(max(0.0, min(lam_new, lam_max)))
+        # Skip update when no episodes finished in this iteration (keeps λ stable).
+        if ep_count > 0:
+            violation = c_ep_mean - tol
+            lam_new = lam_prev + lr * violation
+            if violation <= 0.0:
+                lam_new = max(0.0, lam_prev * 0.95)
+            lam_new = float(max(0.0, min(lam_new, lam_max)))
+        else:
+            lam_new = lam_prev
         state["lambda"] = lam_new
 
         # Propagate to all envs (no-op for shared-dict workers but safe).
@@ -253,23 +184,27 @@ class LagrangianCallback(DefaultCallbacks):
             "[Lagrangian iter %d] λ: %.4f → %.4f  (c_ep=%.4f, c_step=%.4f, "
             "compl=%.3f, pending=%.3f, eps=%d)",
             iteration, lam_prev, lam_new, c_ep_mean, c_step_mean,
-            compl_mean, pending_mean, self._ep_count,
+            compl_mean, pending_mean, ep_count,
         )
 
-        # Persist to CSV for post-hoc analysis.
         self._append_csv_row([
             iteration, env_steps, lam_new, lam_prev,
-            c_ep_mean, c_step_mean, compl_mean, pending_mean, self._ep_count,
+            c_ep_mean, c_step_mean, compl_mean, pending_mean, ep_count,
         ])
 
-        self._reset_accum()
+        self._reset_accum(state)
 
     # ---------- helpers ----------
-    def _reset_accum(self) -> None:
-        self._ep_c_ep_sum = 0.0
-        self._ep_c_step_sum = 0.0
-        self._ep_completion_sum = 0.0
-        self._ep_pending_sum = 0.0
+    def _reset_accum(self, state: Optional[Dict[str, Any]]) -> None:
+        if not isinstance(state, dict):
+            return
+        accum = state.get("_accum")
+        if isinstance(accum, dict):
+            accum["c_ep_sum"] = 0.0
+            accum["c_step_sum"] = 0.0
+            accum["completion_sum"] = 0.0
+            accum["pending_sum"] = 0.0
+            accum["ep_count"] = 0
         self._ep_count = 0
 
     def _init_csv(self) -> None:
