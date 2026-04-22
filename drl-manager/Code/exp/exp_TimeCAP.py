@@ -6,7 +6,9 @@ import warnings
 import numpy as np
 from tqdm import tqdm
 import torch.nn as nn
+import torch.distributed as dist
 from torch import optim
+from torch.utils.data import DistributedSampler, DataLoader
 from utils.metrics import metric
 from exp.exp_basic import Exp_Basic
 from data_provider.data_factory_TimeCAP import data_provider
@@ -101,7 +103,7 @@ class Exp_TimeCAP(Exp_Basic):
             self.logger.info("Epoch: {0}  Spend: {1:.0f} s | Train Loss: {2:.7f}  Vali Loss: {3:.7f}".format(epoch + 1, time.time() - epoch_time, train_loss, vali_loss))
 
             # early_stopping
-            early_stopping(val_loss = vali_loss, test_loss=None, model = self.model, path = self.best_checkpoints_path, model_name = self.args.model, epoch=epoch + 1, task_name=self.args.task_name, logger = self.logger)
+            early_stopping(val_loss = vali_loss, test_loss=None, model = self.raw_model, path = self.best_checkpoints_path, model_name = self.args.model, epoch=epoch + 1, task_name=self.args.task_name, logger = self.logger)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -168,38 +170,62 @@ class Exp_TimeCAP(Exp_Basic):
 
 
     def finetune(self):
+        use_ddp = self.args.use_multi_gpu and dist.is_initialized()
+        rank = dist.get_rank() if use_ddp else 0
+        is_main = rank == 0
+
         # Load Pretraining Models
         if self.args.load_checkpoints:
-            print(f'loading from {self.args.best_pretrain_path}')
+            if is_main:
+                print(f'loading from {self.args.best_pretrain_path}')
             state_dict = torch.load(self.args.best_pretrain_path, map_location=self.device)
-            self.model.load_state_dict(state_dict, strict=False) # 非严格匹配，忽略state_dict没有但是model有的层, 预训练保存的模型没有OSG_Head的
+            self.raw_model.load_state_dict(state_dict, strict=False)
             param_train = 0
             param_all = 0
-            for name, param in self.model.named_parameters(): # 冻住两个attention
+            for name, param in self.raw_model.named_parameters():
                 if any(k in name for k in ['attention']):
-                    print(name)
                     param.requires_grad = False
                     param_all += param.numel()
                 else:
                     param_train += param.numel()
                     param_all += param.numel()
-            print(f'trainable parameters num: {clever_format(param_train)}, all parameters num: {clever_format(param_all)},'f'ratio: {param_train / param_all * 100} %')
+            if is_main:
+                print(f'trainable parameters num: {clever_format(param_train)}, all parameters num: {clever_format(param_all)},'
+                      f'ratio: {param_train / param_all * 100} %')
 
         train_data, train_loader = self._get_data(flag='train')
+
+        # Replace train_loader with DistributedSampler when using DDP
+        if use_ddp:
+            train_sampler = DistributedSampler(train_data, shuffle=True)
+            train_loader = DataLoader(
+                train_data,
+                batch_size=self.args.batch_size,
+                sampler=train_sampler,
+                num_workers=self.args.num_workers,
+                pin_memory=True,
+                drop_last=self.args.drop_last,
+            )
+        else:
+            train_sampler = None
+
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True, delta=0)
+        early_stopping = EarlyStopping(patience=self.args.patience, verbose=is_main, delta=0)
         model_optim = self._select_optimizer(self.args.optimizer)
         criterion = self._select_criterion()
 
         # training
         for epoch in range(self.args.train_epochs):
+            if train_sampler is not None:
+                train_sampler.set_epoch(epoch)
+
             self.model.train()
             train_loss = []
             epoch_time = time.time()
 
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(tqdm(train_loader, file=sys.stdout)):
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(tqdm(train_loader, file=sys.stdout, disable=not is_main)):
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
@@ -215,7 +241,7 @@ class Exp_TimeCAP(Exp_Basic):
                 # loss function
                 loss_AR = criterion(outputs_AR, batch_y_AR)
                 loss_OS = criterion(outputs_OS, batch_y_OS)
-                loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :].detach(), outputs_OS[:, :self.args.pretrain_pred_len, :]) # 将自回归输出脱离计算图，那么损失就不会传递到AR头上,目的是让一次性生成的前半部分更像AR生成的，实现自蒸馏联合训练
+                loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :].detach(), outputs_OS[:, :self.args.pretrain_pred_len, :])
                 loss = self.args.lambda1 * loss_AR + self.args.lambda2 * loss_OS + self.args.lambda3 * loss_SD
 
                 train_loss.append(loss.item())
@@ -226,12 +252,21 @@ class Exp_TimeCAP(Exp_Basic):
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
-            print("Epoch: {0}  Spend: {1:.0f} s | Train Loss: {2:.7f}  Vali Loss: {3:.7f}  Test Loss: {4:.7f}".format(epoch + 1, time.time() - epoch_time, train_loss, vali_loss, test_loss))
-            self.logger.info("Epoch: {0}  Spend: {1:.0f} s | Train Loss: {2:.7f}  Vali Loss: {3:.7f}  Test Loss: {4:.7f}".format(epoch + 1, time.time() - epoch_time, train_loss, vali_loss, test_loss))
 
-            # Early Stopping
-            early_stopping(val_loss = vali_loss, test_loss=test_loss, model = self.model, path = self.best_checkpoints_path, model_name = self.args.model, epoch=epoch + 1, task_name=self.args.task_name, logger = self.logger)
-            if early_stopping.early_stop:
+            if is_main:
+                print("Epoch: {0}  Spend: {1:.0f} s | Train Loss: {2:.7f}  Vali Loss: {3:.7f}  Test Loss: {4:.7f}".format(epoch + 1, time.time() - epoch_time, train_loss, vali_loss, test_loss))
+                self.logger.info("Epoch: {0}  Spend: {1:.0f} s | Train Loss: {2:.7f}  Vali Loss: {3:.7f}  Test Loss: {4:.7f}".format(epoch + 1, time.time() - epoch_time, train_loss, vali_loss, test_loss))
+                early_stopping(val_loss=vali_loss, test_loss=test_loss, model=self.raw_model, path=self.best_checkpoints_path, model_name=self.args.model, epoch=epoch + 1, task_name=self.args.task_name, logger=self.logger)
+
+            # Broadcast early-stop decision to all ranks
+            if use_ddp:
+                stop_flag = torch.tensor([1 if early_stopping.early_stop else 0], dtype=torch.int, device=self.device)
+                dist.broadcast(stop_flag, src=0)
+                if stop_flag.item() == 1:
+                    if is_main:
+                        print("Early stopping")
+                    break
+            elif early_stopping.early_stop:
                 print("Early stopping")
                 break
 

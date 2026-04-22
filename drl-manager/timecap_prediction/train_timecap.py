@@ -32,6 +32,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import torch
+import torch.distributed as dist
 
 # ── 把 Code/ 加入 sys.path，使 exp/model/utils 可以正常 import ──────────────
 _DRLMANAGER_DIR = Path(__file__).resolve().parent.parent
@@ -65,6 +66,9 @@ def build_args(
     patience: int,
     use_gpu: bool,
     gpu: int,
+    use_multi_gpu: bool = False,
+    devices: str = "0",
+    num_workers: int = 4,
 ) -> SimpleNamespace:
     """
     构造 TimeCAP 所需的完整 args namespace。
@@ -94,7 +98,7 @@ def build_args(
         augmentation_ratio = 0,
         seasonal_patterns  = "Monthly",      # Dataset_Custom 不用，占位
         drop_last          = False,
-        num_workers        = 0,
+        num_workers        = num_workers,
         inverse            = False,
 
         # ── 序列长度 ──────────────────────────────────────────────
@@ -146,8 +150,8 @@ def build_args(
         use_gpu          = use_gpu and torch.cuda.is_available(),
         gpu              = gpu,
         gpu_type         = "cuda",
-        use_multi_gpu    = False,
-        devices          = "0",
+        use_multi_gpu    = use_multi_gpu,
+        devices          = devices,
 
         # ── 输出目录 ──────────────────────────────────────────────
         res_dir          = res_dir,
@@ -186,13 +190,24 @@ def save_model_args(args: SimpleNamespace, checkpoint_path: Path):
 
 
 def train(args: SimpleNamespace):
+    # DDP initialisation — must happen before any CUDA calls
+    if args.use_multi_gpu:
+        dist.init_process_group(backend='nccl')
+        local_rank = int(os.environ.get('LOCAL_RANK', 0))
+        rank = int(os.environ.get('RANK', 0))
+        args.gpu = local_rank  # point device at the correct GPU for this rank
+    else:
+        rank = 0
+    is_main = rank == 0
+
     set_seed(args.seed)
 
     # 检查数据文件
     data_file = Path(args.root_path) / args.data_path
     if not data_file.exists():
-        print(f"[ERROR] 数据文件不存在: {data_file}")
-        print("请先运行: python -m timecap_prediction.prepare_turbine_data")
+        if is_main:
+            print(f"[ERROR] 数据文件不存在: {data_file}")
+            print("请先运行: python -m timecap_prediction.prepare_turbine_data")
         sys.exit(1)
 
     # 推断 enc_in：读 CSV 头确认实际列数
@@ -212,46 +227,51 @@ def train(args: SimpleNamespace):
     # 设备
     if args.use_gpu:
         args.device = torch.device(f"cuda:{args.gpu}")
-        print(f"使用 GPU: cuda:{args.gpu}")
+        if is_main:
+            print(f"使用 GPU: cuda:{args.gpu}")
     else:
         args.device = torch.device("cpu")
-        print("使用 CPU")
+        if is_main:
+            print("使用 CPU")
 
-    print(f"\n=== TimeCAP Fine-tune 开始 ===")
-    print(f"数据文件  : {data_file}")
-    print(f"seq_len   : {args.seq_len}")
-    print(f"pred_len  : {args.pred_len}")
-    print(f"enc_in    : {args.enc_in}")
-    print(f"features  : {args.features}  (MS: 13路输入，只预测 Patv)")
-    print(f"batch_size: {args.batch_size}")
-    print(f"epochs    : {args.train_epochs}")
-    print(f"lr        : {args.learning_rate}")
-    print(f"setting   : {setting}")
+    if is_main:
+        print(f"\n=== TimeCAP Fine-tune 开始 ===")
+        print(f"数据文件  : {data_file}")
+        print(f"seq_len   : {args.seq_len}")
+        print(f"pred_len  : {args.pred_len}")
+        print(f"enc_in    : {args.enc_in}")
+        print(f"features  : {args.features}  (MS: 13路输入，只预测 Patv)")
+        print(f"batch_size: {args.batch_size}")
+        print(f"epochs    : {args.train_epochs}")
+        print(f"lr        : {args.learning_rate}")
+        print(f"setting   : {setting}")
 
     exp = Exp_TimeCAP(args, logger, model_dir, test_dir, setting)
 
-    print(f"\n>>> 开始训练 ...")
+    if is_main:
+        print(f"\n>>> 开始训练 ...")
     exp.finetune()
 
-    print(f"\n>>> 开始推理评估 ...")
-    mse, mae = exp.Inference()
-    print(f"\n评估结果 — MSE: {mse:.4f}  MAE: {mae:.4f}")
+    # Inference and checkpoint saving only on rank 0
+    if is_main:
+        print(f"\n>>> 开始推理评估 ...")
+        mse, mae = exp.Inference()
+        print(f"\n评估结果 — MSE: {mse:.4f}  MAE: {mae:.4f}")
 
-    # 保存 model_args.json
-    checkpoint_path = Path(exp.best_checkpoints_path)
-    if checkpoint_path.exists():
-        json_path = save_model_args(args, checkpoint_path)
-        print(f"\n训练完成！")
-        print(f"  Checkpoint : {checkpoint_path}")
-        print(f"  Args JSON  : {json_path}")
-        print(f"\n在 predictor 里使用：")
-        print(f"  TimeCAP_GreenPredictor(")
-        print(f"      checkpoint_path='{checkpoint_path}',")
-        print(f"      turbine_csv_paths={{1: '/path/to/Turbine_1_2021.csv'}},")
-        print(f"  )")
+        checkpoint_path = Path(exp.best_checkpoints_path)
+        if checkpoint_path.exists():
+            json_path = save_model_args(args, checkpoint_path)
+            print(f"\n训练完成！")
+            print(f"  Checkpoint : {checkpoint_path}")
+            print(f"  Args JSON  : {json_path}")
+        else:
+            print(f"[WARN] checkpoint 未找到: {checkpoint_path}")
+            mse, mae = float('nan'), float('nan')
     else:
-        print(f"[WARN] checkpoint 未找到: {checkpoint_path}")
-        print("可能训练过早终止，请检查日志。")
+        mse, mae = float('nan'), float('nan')
+
+    if args.use_multi_gpu and dist.is_initialized():
+        dist.destroy_process_group()
 
     return mse, mae
 
@@ -268,19 +288,25 @@ def parse_args():
     p.add_argument("--patience", type=int, default=5)
     p.add_argument("--gpu", type=int, default=0)
     p.add_argument("--no-gpu", action="store_true", help="强制使用 CPU")
+    p.add_argument("--multi-gpu", action="store_true", help="启用 DataParallel 多卡训练")
+    p.add_argument("--devices", type=str, default="0", help="多卡时使用的 GPU ID，如 '0,1,2,3'")
+    p.add_argument("--num-workers", type=int, default=4, help="DataLoader 并行进程数")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     cli = parse_args()
     args = build_args(
-        data_csv   = cli.data_csv,
-        res_dir    = cli.res_dir,
-        epochs     = cli.epochs,
-        batch_size = cli.batch_size,
-        lr         = cli.lr,
-        patience   = cli.patience,
-        use_gpu    = not cli.no_gpu,
-        gpu        = cli.gpu,
+        data_csv      = cli.data_csv,
+        res_dir       = cli.res_dir,
+        epochs        = cli.epochs,
+        batch_size    = cli.batch_size,
+        lr            = cli.lr,
+        patience      = cli.patience,
+        use_gpu       = not cli.no_gpu,
+        gpu           = cli.gpu,
+        use_multi_gpu = cli.multi_gpu,
+        devices       = cli.devices,
+        num_workers   = cli.num_workers,
     )
     train(args)

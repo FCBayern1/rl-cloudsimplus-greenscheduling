@@ -1,5 +1,7 @@
 import os
 import torch
+import torch.nn as nn
+import torch.distributed as dist
 from models import TimeCAP
 
 
@@ -11,6 +13,12 @@ class Exp_Basic(object):
         }
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)
+        if self.args.use_multi_gpu and self.args.use_gpu and dist.is_initialized():
+            local_rank = int(os.environ.get('LOCAL_RANK', 0))
+            self.model = nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
+            if dist.get_rank() == 0:
+                print(f'Using DistributedDataParallel across {dist.get_world_size()} GPUs')
+        self.raw_model = self.model.module if hasattr(self.model, 'module') else self.model
 
     def _build_model(self):
         raise NotImplementedError
@@ -18,9 +26,14 @@ class Exp_Basic(object):
 
     def _acquire_device(self):
         if self.args.use_gpu and self.args.gpu_type == 'cuda':
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.args.gpu) if not self.args.use_multi_gpu else self.args.devices
-            device = torch.device('cuda:{}'.format(self.args.gpu))
-            # print('Use GPU: cuda:{}'.format(self.args.gpu))
+            if self.args.use_multi_gpu:
+                # DDP: each process gets its GPU via LOCAL_RANK set by srun
+                local_rank = int(os.environ.get('LOCAL_RANK', 0))
+                device = torch.device(f'cuda:{local_rank}')
+                torch.cuda.set_device(local_rank)
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(self.args.gpu)
+                device = torch.device('cuda:{}'.format(self.args.gpu))
         elif self.args.use_gpu and self.args.gpu_type == 'mps':
             device = torch.device('mps')
             print('Use GPU: mps')
