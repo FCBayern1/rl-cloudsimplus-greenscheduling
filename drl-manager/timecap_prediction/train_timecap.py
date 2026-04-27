@@ -144,7 +144,7 @@ def build_args(
         batch_size       = batch_size,
         pretrain_batch_size = batch_size,
         patience         = patience,
-        use_amp          = False,
+        use_amp          = True,   # Phase 1: enable mixed precision (~1.5-2× speedup)
 
         # ── 设备 ──────────────────────────────────────────────────
         use_gpu          = use_gpu and torch.cuda.is_available(),

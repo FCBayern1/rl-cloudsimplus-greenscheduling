@@ -185,6 +185,9 @@ drl-manager/**/*.ckpt
 # TimeCAP data files
 drl-manager/timecap_prediction/data/*.csv
 
+# TimeCAP run artifacts (checkpoints, predictions, logs) - all local
+drl-manager/timecap_prediction/TimeCAP/
+
 # Local run scripts
 run_*.sh
 

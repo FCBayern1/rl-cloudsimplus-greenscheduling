@@ -120,6 +120,8 @@ class Exp_TimeCAP(Exp_Basic):
         os_total_loss = []
         self.model.eval()
 
+        use_amp = bool(getattr(self.args, "use_amp", False)) and torch.cuda.is_available()
+
         if isinstance(vali_loader, list):
             loaders = vali_loader
         else:
@@ -133,26 +135,27 @@ class Exp_TimeCAP(Exp_Basic):
                     f_dim = -1 if self.args.features == 'MS' else 0
                     batch_y_AR = torch.cat([batch_x[:, self.args.pretrain_pred_len:, f_dim:], batch_y[:, self.args.label_len:self.args.label_len + self.args.pretrain_pred_len, f_dim:]], dim=1)
 
-                    if self.args.task_name  == 'pretrain':
-                        outputs_AR, _, _ = self.model(batch_x, activate_os_head=False)
-                        outputs_AR = outputs_AR[:, :, f_dim:]
-                        loss = criterion(outputs_AR, batch_y_AR)
+                    with torch.cuda.amp.autocast(enabled=use_amp):
+                        if self.args.task_name  == 'pretrain':
+                            outputs_AR, _, _ = self.model(batch_x, activate_os_head=False)
+                            outputs_AR = outputs_AR[:, :, f_dim:]
+                            loss = criterion(outputs_AR, batch_y_AR)
 
-                    elif self.args.task_name == 'finetune':
-                        batch_y_OS = batch_y[:, self.args.label_len:, f_dim:]
-                        outputs_AR, outputs_OS, _ = self.model(batch_x, activate_os_head=True)
-                        outputs_AR = outputs_AR[:, :, f_dim:]
-                        outputs_OS = outputs_OS[:, :, f_dim:]
-                        loss_AR = criterion(outputs_AR, batch_y_AR)
-                        loss_OS = criterion(outputs_OS, batch_y_OS)
-                        loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :], outputs_OS[:, :self.args.pretrain_pred_len, :])
-                        # Sigmoid曲线融合
-                        if self.args.use_ar_head and self.args.use_os_head:
-                            loss = self.args.lambda1 * loss_AR + self.args.lambda2 * loss_OS + self.args.lambda3 * loss_SD
-                        elif self.args.use_ar_head and not self.args.use_os_head:
-                            loss = loss_AR
-                        elif not self.args.use_ar_head and self.args.use_os_head:
-                            loss = loss_OS
+                        elif self.args.task_name == 'finetune':
+                            batch_y_OS = batch_y[:, self.args.label_len:, f_dim:]
+                            outputs_AR, outputs_OS, _ = self.model(batch_x, activate_os_head=True)
+                            outputs_AR = outputs_AR[:, :, f_dim:]
+                            outputs_OS = outputs_OS[:, :, f_dim:]
+                            loss_AR = criterion(outputs_AR, batch_y_AR)
+                            loss_OS = criterion(outputs_OS, batch_y_OS)
+                            loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :], outputs_OS[:, :self.args.pretrain_pred_len, :])
+                            # Sigmoid曲线融合
+                            if self.args.use_ar_head and self.args.use_os_head:
+                                loss = self.args.lambda1 * loss_AR + self.args.lambda2 * loss_OS + self.args.lambda3 * loss_SD
+                            elif self.args.use_ar_head and not self.args.use_os_head:
+                                loss = loss_AR
+                            elif not self.args.use_ar_head and self.args.use_os_head:
+                                loss = loss_OS
 
                     total_loss.append(loss.item())
                     if self.args.task_name  == 'pretrain':
@@ -216,6 +219,11 @@ class Exp_TimeCAP(Exp_Basic):
         model_optim = self._select_optimizer(self.args.optimizer)
         criterion = self._select_criterion()
 
+        use_amp = bool(getattr(self.args, "use_amp", False)) and torch.cuda.is_available()
+        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+        if is_main:
+            print(f"[finetune] AMP mixed precision: {'ENABLED' if use_amp else 'disabled'}")
+
         # training
         for epoch in range(self.args.train_epochs):
             if train_sampler is not None:
@@ -233,20 +241,22 @@ class Exp_TimeCAP(Exp_Basic):
                 batch_y_AR = torch.cat([batch_x[:, self.args.pretrain_pred_len:, f_dim:], batch_y[:, self.args.label_len:self.args.label_len + self.args.pretrain_pred_len, f_dim:].to(self.device)], dim=1)
                 batch_y_OS = batch_y[:, self.args.label_len:, f_dim:]
 
-                # Forecasting
-                outputs_AR, outputs_OS, _ = self.model(batch_x, activate_os_head=True)
-                outputs_AR = outputs_AR[:, :, f_dim:]
-                outputs_OS = outputs_OS[:, :, f_dim:]
+                with torch.cuda.amp.autocast(enabled=use_amp):
+                    # Forecasting
+                    outputs_AR, outputs_OS, _ = self.model(batch_x, activate_os_head=True)
+                    outputs_AR = outputs_AR[:, :, f_dim:]
+                    outputs_OS = outputs_OS[:, :, f_dim:]
 
-                # loss function
-                loss_AR = criterion(outputs_AR, batch_y_AR)
-                loss_OS = criterion(outputs_OS, batch_y_OS)
-                loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :].detach(), outputs_OS[:, :self.args.pretrain_pred_len, :])
-                loss = self.args.lambda1 * loss_AR + self.args.lambda2 * loss_OS + self.args.lambda3 * loss_SD
+                    # loss function
+                    loss_AR = criterion(outputs_AR, batch_y_AR)
+                    loss_OS = criterion(outputs_OS, batch_y_OS)
+                    loss_SD = criterion(outputs_AR[:, -self.args.pretrain_pred_len:, :].detach(), outputs_OS[:, :self.args.pretrain_pred_len, :])
+                    loss = self.args.lambda1 * loss_AR + self.args.lambda2 * loss_OS + self.args.lambda3 * loss_SD
 
                 train_loss.append(loss.item())
-                loss.backward()
-                model_optim.step()
+                scaler.scale(loss).backward()
+                scaler.step(model_optim)
+                scaler.update()
 
             # Vali & Test Loss
             train_loss = np.average(train_loss)
