@@ -1,7 +1,7 @@
 """
 Gated Transformer-XL RLModule implementations for Multi-Datacenter Green Scheduling.
 
-This module provides RLModules that utilize the GTrXL architecture for both
+This module provides RLModules that utilise the GTrXL architecture for both
 Local Agents (with Action Masking) and the Global Agent.
 
 Architecture:
@@ -345,37 +345,50 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
         # Features: (B, T, d_model)
 
-        # Full-sequence logits and values (preserve time dim for recurrent training)
+        # Calculate logits and values over full sequence
         logits = self.policy_head(features)  # (B, T, A)
         values = self.value_head(features).squeeze(-1)  # (B, T)
 
-        return logits, values, state_out, action_mask
+        # === PPO expects per-sample outputs, not full sequences ===
+        # Slice to last timestep only - GTrXL uses history to predict current step
+        logits = logits[:, -1, :]  # (B, A)
+        values = values[:, -1]     # (B,)
 
-    def _apply_action_mask(
-        self, logits: torch.Tensor, action_mask: Optional[torch.Tensor]
-    ) -> torch.Tensor:
-        """Apply action masking to logits. Handles both (B, A) and (B, T, A)."""
-        if action_mask is None:
-            return logits
+        # Apply Masking with numerical stability fixes
+        if action_mask is not None:
+            # Slice mask to last timestep as well
+            if action_mask.dim() == 3:
+                # (B, T, A) -> (B, A)
+                action_mask = action_mask[:, -1, :]
+            elif action_mask.dim() == 2:
+                # Already (B, A) or (B*T, A)
+                B = logits.shape[0]
+                if action_mask.shape[0] != B:
+                    # (B*T, A) - take last T entries for each B
+                    # This is tricky; assume it's already aligned or reshape
+                    T = action_mask.shape[0] // B
+                    action_mask = action_mask.view(B, T, -1)[:, -1, :]
 
-        action_mask = torch.nan_to_num(action_mask, nan=0.0, posinf=0.0, neginf=0.0)
+            # Clean mask: replace NaN with 0
+            action_mask = torch.nan_to_num(action_mask, nan=0.0, posinf=0.0, neginf=0.0)
 
-        if logits.dim() == 3 and action_mask.dim() == 2:
-            action_mask = action_mask.unsqueeze(1).expand_as(logits)
+            valid = action_mask >= 0.5  # (B, A)
 
-        valid = action_mask >= 0.5
-        valid_cnt = valid.sum(dim=-1, keepdim=True)
-        no_valid = valid_cnt == 0
-        if no_valid.any():
-            valid = valid.clone()
-            valid[..., 0] = valid[..., 0] | no_valid.squeeze(-1)
+            # Fallback: if no valid action, force action 0 to be valid
+            valid_cnt = valid.sum(dim=-1, keepdim=True)  # (B, 1)
+            no_valid = valid_cnt == 0
+            if no_valid.any():
+                valid = valid.clone()
+                valid[:, 0] = valid[:, 0] | no_valid.squeeze(-1)
 
-        return torch.where(valid, logits, torch.full_like(logits, -1e9))
+            # Use -1e9 instead of -inf for numerical stability
+            logits = torch.where(valid, logits, torch.full_like(logits, -1e9))
+
+        return logits, values, state_out
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values, state_out, action_mask = self._forward_pass(batch)
-        logits = self._apply_action_mask(logits, action_mask)
+        logits, values, state_out = self._forward_pass(batch)
         self._last_value = values
         return {
             Columns.ACTION_DIST_INPUTS: logits,
@@ -385,65 +398,20 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, _, state_out, action_mask = self._forward_pass(batch)
-        logits = logits[:, -1, :]  # (B, A) - last timestep only
-        if action_mask is not None and action_mask.dim() == 3:
-            action_mask = action_mask[:, -1, :]
-        logits = self._apply_action_mask(logits, action_mask)
+        logits, _, state_out = self._forward_pass(batch)
         return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.ACTION_DIST_INPUTS: logits,
             Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values, state_out, action_mask = self._forward_pass(batch)
-        logits = logits[:, -1, :]  # (B, A)
-        values = values[:, -1]     # (B,)
-        if action_mask is not None and action_mask.dim() == 3:
-            action_mask = action_mask[:, -1, :]
-        logits = self._apply_action_mask(logits, action_mask)
-        self._last_value = values
-        return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
-            Columns.VF_PREDS: values.unsqueeze(1),
-            Columns.STATE_OUT: state_out,
-        }
+        return self._forward_train(batch, **kwargs)
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        with torch.no_grad():
-            obs_key = Columns.OBS
-            raw_obs = batch.get(obs_key)
-            if raw_obs is None:
-                _, values, _, _ = self._forward_pass(batch)
-                return values
-
-            first_leaf = raw_obs
-            if isinstance(first_leaf, dict):
-                import tree as _tree
-                first_leaf = _tree.flatten(first_leaf)[0]
-            B_total = first_leaf.shape[0]
-            chunk = 64
-            if B_total <= chunk:
-                _, values, _, _ = self._forward_pass(batch)
-                return values
-
-            parts = []
-            for start in range(0, B_total, chunk):
-                end = min(start + chunk, B_total)
-                mini = {}
-                for k, v in batch.items():
-                    if isinstance(v, dict):
-                        import tree as _tree
-                        mini[k] = _tree.map_structure(lambda t: t[start:end], v)
-                    elif isinstance(v, torch.Tensor) and v.shape[0] == B_total:
-                        mini[k] = v[start:end]
-                    else:
-                        mini[k] = v
-                _, vals, _, _ = self._forward_pass(mini)
-                parts.append(vals)
-            return torch.cat(parts, dim=0)
+        _, values, _ = self._forward_pass(batch)
+        return values
 
     @override(TorchRLModule)
     def get_exploration_action_dist_cls(self):
@@ -680,9 +648,14 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
             raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
 
-        # Full-sequence logits and values (preserve time dim for recurrent training)
+        # Calculate logits and values over full sequence
         logits = self.policy_head(features)  # (B, T, A)
         values = self.value_head(features).squeeze(-1)  # (B, T)
+
+        # === PPO expects per-sample outputs, not full sequences ===
+        # Slice to last timestep only - GTrXL uses history to predict current step
+        logits = logits[:, -1, :]  # (B, A)
+        values = values[:, -1]     # (B,)
 
         return logits, values, state_out
 
@@ -699,58 +672,19 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         logits, _, state_out = self._forward_pass(batch)
-        logits = logits[:, -1, :]  # (B, A) - last timestep only
         return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.ACTION_DIST_INPUTS: logits,
             Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values, state_out = self._forward_pass(batch)
-        logits = logits[:, -1, :]  # (B, A)
-        values = values[:, -1]     # (B,)
-        self._last_value = values
-        return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
-            Columns.VF_PREDS: values.unsqueeze(1),
-            Columns.STATE_OUT: state_out,
-        }
+        return self._forward_train(batch, **kwargs)
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        with torch.no_grad():
-            obs_key = Columns.OBS
-            raw_obs = batch.get(obs_key)
-            if raw_obs is None:
-                _, values, _ = self._forward_pass(batch)
-                return values
-
-            first_leaf = raw_obs
-            if isinstance(first_leaf, dict):
-                import tree as _tree
-                first_leaf = _tree.flatten(first_leaf)[0]
-            B_total = first_leaf.shape[0]
-            chunk = 64
-            if B_total <= chunk:
-                _, values, _ = self._forward_pass(batch)
-                return values
-
-            parts = []
-            for start in range(0, B_total, chunk):
-                end = min(start + chunk, B_total)
-                mini = {}
-                for k, v in batch.items():
-                    if isinstance(v, dict):
-                        import tree as _tree
-                        mini[k] = _tree.map_structure(lambda t: t[start:end], v)
-                    elif isinstance(v, torch.Tensor) and v.shape[0] == B_total:
-                        mini[k] = v[start:end]
-                    else:
-                        mini[k] = v
-                _, vals, _ = self._forward_pass(mini)
-                parts.append(vals)
-            return torch.cat(parts, dim=0)
+        _, values, _ = self._forward_pass(batch)
+        return values
 
     def _get_multi_categorical_cls(self, action_space):
         input_lens = list(action_space.nvec)
@@ -777,335 +711,3 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         Return attributes that are not needed for inference.
         """
         return ["value_head", "_last_value"]
-
-
-class CTDEGTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
-    """
-    CTDE (Centralized Training with Decentralized Execution) GTrXL RLModule
-    for Local Agents with Action Masking.
-
-    Architecture:
-    - Actor: local_obs -> Embedding -> GTrXL -> policy_head (decentralized)
-    - Critic: global_state + local_obs -> MLP -> value_head (centralized)
-
-    During inference, only the actor runs. The critic uses global state
-    (flattened global agent observation) concatenated with the local observation
-    to produce value estimates during training.
-    """
-
-    @override(TorchRLModule)
-    def setup(self):
-        model_config = self.model_config
-        obs_space = self.observation_space
-        action_space = self.action_space
-
-        # Action dim
-        if isinstance(action_space, spaces.Discrete):
-            self.action_dim = action_space.n
-        else:
-            raise ValueError("Local Agents require Discrete action space")
-
-        # Compute actor obs_dim (local observation only, excluding global_state)
-        self.obs_dim = self._get_local_obs_dim(obs_space)
-
-        # Compute global_state_dim for critic
-        self.global_state_dim = self._get_global_state_dim(obs_space)
-
-        # --- Actor: GTrXL backbone (same as non-CTDE) ---
-        d_model = model_config.get("d_model", 128)
-        nhead = model_config.get("nhead", 4)
-        num_layers = model_config.get("num_layers", 2)
-        dim_feedforward = model_config.get("dim_feedforward", 256)
-        dropout = model_config.get("dropout", 0.0)
-        mem_len = int(model_config.get("mem_len", 16))
-        max_seq_len = int(model_config.get("max_seq_len", 128))
-        max_seq_len = max(max_seq_len, mem_len + 32)
-
-        self.gtrxl = GTrXL(
-            input_dim=self.obs_dim,
-            d_model=d_model,
-            nhead=nhead,
-            num_layers=num_layers,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            mem_len=mem_len,
-            max_seq_len=max_seq_len,
-        )
-        self.policy_head = nn.Linear(d_model, self.action_dim)
-
-        # --- Critic: MLP on global_state + local_obs ---
-        critic_hidden_sizes = model_config.get("critic_hidden_sizes", [256, 256])
-        critic_input_dim = self.global_state_dim + self.obs_dim
-        critic_layers = []
-        prev_dim = critic_input_dim
-        for h in critic_hidden_sizes:
-            critic_layers.append(nn.Linear(prev_dim, h))
-            critic_layers.append(nn.ReLU())
-            prev_dim = h
-        critic_layers.append(nn.Linear(prev_dim, 1))
-        self.critic_mlp = nn.Sequential(*critic_layers)
-
-        # State management
-        self._last_value = None
-        self._debug_dumped = False
-
-        logger.info(
-            f"[{self.__class__.__name__}] CTDE Local Agent: "
-            f"actor_obs_dim={self.obs_dim}, global_state_dim={self.global_state_dim}, "
-            f"critic_input_dim={critic_input_dim}, "
-            f"d_model={d_model}, nhead={nhead}, num_layers={num_layers}, mem_len={mem_len}, "
-            f"critic_hidden={critic_hidden_sizes}"
-        )
-
-    @override(TorchRLModule)
-    def get_initial_state(self):
-        return {
-            "gtrxl_mem": np.zeros(
-                (self.gtrxl.num_layers, self.gtrxl.mem_len, self.gtrxl.d_model),
-                dtype=np.float32,
-            )
-        }
-
-    def _get_local_obs_dim(self, obs_space) -> int:
-        """Calculate flat observation dimension for actor (excluding global_state and action_mask)."""
-        if isinstance(obs_space, spaces.Dict) and "observation" in obs_space.spaces:
-            inner = obs_space.spaces["observation"]
-        else:
-            inner = obs_space
-
-        total = 0
-        if isinstance(inner, spaces.Dict):
-            for key, space in inner.spaces.items():
-                if key == "global_state":
-                    continue  # Exclude global_state from actor input
-                if isinstance(space, spaces.Box):
-                    total += int(np.prod(space.shape))
-                elif isinstance(space, spaces.Discrete):
-                    total += 1
-                else:
-                    total += int(np.prod(space.shape))
-        elif isinstance(inner, spaces.Box):
-            total = int(np.prod(inner.shape))
-        return total
-
-    def _get_global_state_dim(self, obs_space) -> int:
-        """Extract global_state dimension from observation space."""
-        if isinstance(obs_space, spaces.Dict) and "observation" in obs_space.spaces:
-            inner = obs_space.spaces["observation"]
-        else:
-            inner = obs_space
-
-        if isinstance(inner, spaces.Dict) and "global_state" in inner.spaces:
-            gs_space = inner.spaces["global_state"]
-            return int(np.prod(gs_space.shape))
-
-        logger.warning(
-            f"[{self.__class__.__name__}] No global_state found in observation space! "
-            f"Critic will use local obs only."
-        )
-        return 0
-
-    def _extract_obs_mask_and_global_state(self, batch: Dict[str, Any]):
-        """Extract local obs (for actor), action_mask, and global_state (for critic)."""
-        obs = batch.get(Columns.OBS, batch.get("obs", {}))
-
-        if isinstance(obs, dict) and "observation" in obs:
-            true_obs = obs["observation"]
-            action_mask = obs.get("action_mask", None)
-        else:
-            true_obs = obs
-            action_mask = None
-
-        # Separate global_state from local obs
-        global_state = None
-        if isinstance(true_obs, dict) and "global_state" in true_obs:
-            global_state = true_obs["global_state"]
-            if not isinstance(global_state, torch.Tensor):
-                global_state = torch.tensor(global_state, dtype=torch.float32)
-            global_state = global_state.float()
-            # Flatten local obs without global_state
-            local_tensors = []
-            for key in sorted(true_obs.keys()):
-                if key == "global_state":
-                    continue
-                val = true_obs[key]
-                if isinstance(val, torch.Tensor):
-                    local_tensors.append(val.float())
-            flat_local = self._normalize_and_cat(local_tensors)
-        else:
-            flat_local = self._flatten_obs(true_obs)
-
-        if action_mask is not None and not isinstance(action_mask, torch.Tensor):
-            action_mask = torch.tensor(action_mask, dtype=torch.float32)
-
-        return flat_local, action_mask, global_state
-
-    def _normalize_and_cat(self, tensors: list) -> torch.Tensor:
-        """Normalize tensor dimensions and concatenate along last dim."""
-        if not tensors:
-            raise ValueError("No tensors to concatenate")
-        max_dim = max(t.dim() for t in tensors)
-        final = []
-        for t in tensors:
-            if t.dim() < max_dim:
-                if max_dim == 3 and t.dim() == 2:
-                    t = t.unsqueeze(-1)
-                elif max_dim == 3 and t.dim() == 1:
-                    t = t.unsqueeze(1).unsqueeze(2)
-                elif max_dim == 2 and t.dim() == 1:
-                    t = t.unsqueeze(1)
-            final.append(t)
-        return torch.cat(final, dim=-1)
-
-    def _flatten_obs(self, obs) -> torch.Tensor:
-        """Flatten dict observation to single tensor."""
-        if isinstance(obs, torch.Tensor):
-            return obs.float()
-        tensors = []
-        for key in sorted(obs.keys()):
-            val = obs[key]
-            if isinstance(val, dict):
-                val = self._flatten_obs(val)
-            if isinstance(val, torch.Tensor):
-                tensors.append(val.float())
-        if not tensors:
-            raise ValueError("No tensors found in observation")
-        return self._normalize_and_cat(tensors)
-
-    def _apply_action_mask(self, logits, action_mask):
-        if action_mask is None:
-            return logits
-        action_mask = torch.nan_to_num(action_mask, nan=0.0, posinf=0.0, neginf=0.0)
-        if logits.dim() == 3 and action_mask.dim() == 2:
-            action_mask = action_mask.unsqueeze(1).expand_as(logits)
-        valid = action_mask >= 0.5
-        valid_cnt = valid.sum(dim=-1, keepdim=True)
-        no_valid = valid_cnt == 0
-        if no_valid.any():
-            valid = valid.clone()
-            valid[..., 0] = valid[..., 0] | no_valid.squeeze(-1)
-        return torch.where(valid, logits, torch.full_like(logits, -1e9))
-
-    def _actor_forward(self, flat_local_obs, batch):
-        """Run actor: local obs through GTrXL -> logits."""
-        obs = flat_local_obs
-        if obs.dim() == 2:
-            obs = obs.unsqueeze(1)  # (B, 1, F)
-
-        B = obs.shape[0]
-        memories_in = _parse_gtrxl_state_in(
-            batch, B,
-            self.gtrxl.num_layers, self.gtrxl.mem_len, self.gtrxl.d_model,
-            obs.device, obs.dtype,
-        )
-        features, memories_out = self.gtrxl(obs, state=memories_in)
-        state_out = _gtrxl_state_out(memories_out)
-        logits = self.policy_head(features)  # (B, T, A)
-        return logits, state_out
-
-    def _critic_forward(self, flat_local_obs, global_state):
-        """Run centralized critic: concat(global_state, local_obs) -> value."""
-        # Handle time dimension: if local obs has (B, T, F), expand global_state
-        if flat_local_obs.dim() == 3:
-            B, T, _ = flat_local_obs.shape
-            if global_state.dim() == 2:
-                global_state = global_state.unsqueeze(1).expand(B, T, -1)
-            critic_input = torch.cat([global_state, flat_local_obs], dim=-1)
-        elif flat_local_obs.dim() == 2:
-            if global_state.dim() == 3:
-                global_state = global_state.squeeze(1)
-            critic_input = torch.cat([global_state, flat_local_obs], dim=-1)
-        else:
-            critic_input = torch.cat([global_state, flat_local_obs], dim=-1)
-
-        values = self.critic_mlp(critic_input).squeeze(-1)
-        return values
-
-    @override(TorchRLModule)
-    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        flat_local, action_mask, global_state = self._extract_obs_mask_and_global_state(batch)
-
-        # Actor
-        logits, state_out = self._actor_forward(flat_local, batch)
-        logits = self._apply_action_mask(logits, action_mask)
-
-        # Critic (centralized)
-        if global_state is not None:
-            actor_features = flat_local
-            if actor_features.dim() == 2:
-                actor_features = actor_features.unsqueeze(1)
-            values = self._critic_forward(actor_features, global_state)
-        else:
-            # Fallback when global_state is missing
-            values = torch.zeros(
-                logits.shape[0], logits.shape[1] if logits.dim() == 3 else 1,
-                device=logits.device,
-            )
-
-        self._last_value = values
-        return {
-            Columns.ACTION_DIST_INPUTS: logits,
-            Columns.VF_PREDS: values,
-            Columns.STATE_OUT: state_out,
-        }
-
-    @override(TorchRLModule)
-    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        flat_local, action_mask, _ = self._extract_obs_mask_and_global_state(batch)
-        logits, state_out = self._actor_forward(flat_local, batch)
-        logits = logits[:, -1, :]  # Last timestep
-        if action_mask is not None and action_mask.dim() == 3:
-            action_mask = action_mask[:, -1, :]
-        logits = self._apply_action_mask(logits, action_mask)
-        return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
-            Columns.STATE_OUT: state_out,
-        }
-
-    @override(TorchRLModule)
-    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        flat_local, action_mask, global_state = self._extract_obs_mask_and_global_state(batch)
-
-        # Actor
-        logits, state_out = self._actor_forward(flat_local, batch)
-        logits = logits[:, -1, :]  # Last timestep
-        if action_mask is not None and action_mask.dim() == 3:
-            action_mask = action_mask[:, -1, :]
-        logits = self._apply_action_mask(logits, action_mask)
-
-        # Critic
-        if global_state is not None:
-            actor_obs_2d = flat_local if flat_local.dim() == 2 else flat_local[:, -1, :]
-            gs_2d = global_state if global_state.dim() == 2 else global_state[:, -1, :]
-            values = self._critic_forward(actor_obs_2d, gs_2d)
-        else:
-            values = torch.zeros(flat_local.shape[0], device=flat_local.device)
-
-        self._last_value = values
-        return {
-            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
-            Columns.VF_PREDS: values.unsqueeze(1),
-            Columns.STATE_OUT: state_out,
-        }
-
-    @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any], embeddings=None):
-        with torch.no_grad():
-            flat_local, _, global_state = self._extract_obs_mask_and_global_state(batch)
-            if global_state is not None:
-                return self._critic_forward(flat_local, global_state)
-            # Fallback: return zeros if no global state available
-            if flat_local.dim() == 3:
-                return torch.zeros(flat_local.shape[0], flat_local.shape[1], device=flat_local.device)
-            return torch.zeros(flat_local.shape[0], device=flat_local.device)
-
-    @override(TorchRLModule)
-    def get_exploration_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(TorchRLModule)
-    def get_inference_action_dist_cls(self):
-        return TorchCategorical
-
-    def get_non_inference_attributes(self):
-        return ["critic_mlp", "_last_value"]
