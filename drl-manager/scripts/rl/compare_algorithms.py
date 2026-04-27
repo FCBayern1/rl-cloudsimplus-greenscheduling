@@ -3,7 +3,7 @@
 Compare multiple scheduling algorithms including heuristics and RL models.
 
 Usage:
-    python scripts/compare_algorithms.py --experiment experiment_multi_dc_10_5k --episodes 1
+    python scripts/rl/compare_algorithms.py --experiment experiment_multi_dc_10_5k --episodes 1
 """
 
 import argparse
@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from datetime import datetime
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add drl-manager/ to path so we can import its modules (script lives in drl-manager/scripts/rl/)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import numpy as np
 import pandas as pd
@@ -57,7 +57,7 @@ ALGORITHMS = {
 def load_config(experiment_name: str) -> dict:
     """Load experiment configuration from config.yml"""
     import yaml
-    config_path = Path(__file__).parent.parent.parent / "config.yml"
+    config_path = Path(__file__).resolve().parent.parent.parent.parent / "config.yml"
     with open(config_path, 'r') as f:
         all_config = yaml.safe_load(f)
 
@@ -226,7 +226,7 @@ def main():
         output_dir = Path(args.output_dir)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = Path(__file__).parent.parent / "compare_result" / f"comparison_{timestamp}"
+        output_dir = Path(__file__).resolve().parent.parent.parent / "compare_result" / f"comparison_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Select algorithms to run

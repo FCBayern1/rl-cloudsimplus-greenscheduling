@@ -220,12 +220,12 @@ python scripts/compare_algorithms.py --experiment experiment_multi_dc_5 --episod
 两份生成器脚本（功能类似）：
 
 - `data-analysis/generate_workload.py`
-- `drl-manager/scripts/generate_workload.py`（额外支持 `--min-length/--max-length`）
+- `drl-manager/scripts/workload/generate_workload.py`（额外支持 `--min-length/--max-length`）
 
 示例（生成 CSV trace）：
 
 ```bash
-python drl-manager/scripts/generate_workload.py \
+python drl-manager/scripts/workload/generate_workload.py \
   --type poisson --arrival-rate 1.0 --duration 1000 \
   --output cloudsimplus-gateway/src/main/resources/traces/my_workload.csv \
   --seed 42

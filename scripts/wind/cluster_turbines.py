@@ -50,9 +50,9 @@ def compute_features(power_series: pd.Series) -> dict:
 
 def main():
     # Paths
-    base_dir = Path(__file__).parent.parent
+    base_dir = Path(__file__).resolve().parent.parent.parent
     simplified_dir = base_dir / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"
-    output_dir = base_dir / "scripts/turbine_clusters"
+    output_dir = Path(__file__).resolve().parent / "clusters"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Find all 2021 CSV files

@@ -402,9 +402,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Resolve path
+    # Resolve path: project_root is drl-manager/ (script lives in drl-manager/scripts/wind/)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
+    project_root = os.path.dirname(os.path.dirname(script_dir))
     output_dir = os.path.join(project_root, args.output_dir) if not os.path.isabs(args.output_dir) else args.output_dir
 
     # Check if directory exists

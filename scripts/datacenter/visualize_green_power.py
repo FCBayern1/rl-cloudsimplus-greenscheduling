@@ -10,7 +10,7 @@ CSV time series:
 For multi-turbine datacenters, it sums power across turbine_ids.
 
 Example:
-  python scripts/visualize_green_power.py \
+  python scripts/datacenter/visualize_green_power.py \
     --config config.yml \
     --experiment experiment_multi_dc_10 \
     --datacenters 0,1,2,3,4 \
@@ -23,7 +23,7 @@ Simulation-style (recommended for COMPRESSED mode):
   - Day0 starts at the beginning of each dataset (after the 12-row warmup in COMPRESSED mode)
   - offset-days=1 shows the next 24h block, offset-days=2 shows the 2nd day block, etc.
 
-  python scripts/visualize_green_power.py \
+  python scripts/datacenter/visualize_green_power.py \
     --config config.yml \
     --experiment experiment_multi_dc_10 \
     --datacenters 0,1,2,3,4 \

@@ -97,9 +97,9 @@ def plot_turbines_grid(turbine_files: list, output_dir: Path, fig_num: int):
 
 def main():
     # Paths
-    base_dir = Path(__file__).parent.parent
+    base_dir = Path(__file__).resolve().parent.parent.parent
     simplified_dir = base_dir / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"
-    output_dir = base_dir / "scripts/wind_power_plots"
+    output_dir = Path(__file__).resolve().parent / "plots"
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
