@@ -341,14 +341,37 @@ class LagrangianCallback(DefaultCallbacks):
             lam_new = lam_prev
         self._lambda = lam_new
 
+        push_results: List[str] = []
+
         def _push(env):
             inner = env
+            outer_type = type(env).__name__
+            unwrapped = False
             if hasattr(inner, "par_env"):
                 inner = inner.par_env
+                unwrapped = True
+            inner_type = type(inner).__name__
             if hasattr(inner, "set_lagrangian_lambda"):
                 inner.set_lagrangian_lambda(lam_new)
+                # Read back to verify the write landed.
+                cfg = getattr(inner, "_lagrangian_cfg", None)
+                read_back = cfg.get("lambda") if isinstance(cfg, dict) else "NO_CFG"
+                push_results.append(
+                    f"OK outer={outer_type} unwrapped={unwrapped} "
+                    f"inner={inner_type} set λ={lam_new:.4f} read_back={read_back}"
+                )
+            else:
+                push_results.append(
+                    f"NO_METHOD outer={outer_type} unwrapped={unwrapped} "
+                    f"inner={inner_type} (no set_lagrangian_lambda)"
+                )
 
         _foreach_env_safely(algorithm, _push)
+        if push_results:
+            for r in push_results:
+                logger.info("[Lagrangian push] %s", r)
+        else:
+            logger.warning("[Lagrangian push] _push was never called — foreach path failed silently")
 
         # Surface in custom_metrics so TB / progress.csv show λ trajectory.
         result.setdefault("custom_metrics", {})
