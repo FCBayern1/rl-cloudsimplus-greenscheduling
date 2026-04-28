@@ -50,21 +50,23 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 import torch
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Path bootstrap so we can import TimeCAP from drl-manager/Code/
+# Path bootstrap so we can import TimeCAP from drl-manager/Code/.
+# Code/ must come BEFORE src/ — otherwise `from models.TimeCAP import Model`
+# resolves to src/models (an unrelated RL-side package) and fails.
 # ---------------------------------------------------------------------------
-_TIMECAP_CODE_DIR = str(Path(__file__).resolve().parent.parent / "Code")
-if _TIMECAP_CODE_DIR not in sys.path:
-    sys.path.insert(0, _TIMECAP_CODE_DIR)
-
-# Also need the src/ directory for CSVFeatureLoader
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
+
+_TIMECAP_CODE_DIR = str(Path(__file__).resolve().parent.parent / "Code")
+if _TIMECAP_CODE_DIR not in sys.path:
+    sys.path.insert(0, _TIMECAP_CODE_DIR)
 
 from prediction.csv_feature_loader import CSVFeatureLoader  # noqa: E402
 
@@ -112,13 +114,79 @@ _DEFAULT_MODEL_CONFIG: Dict = {
     "scope": 0,
 }
 
-# 13 feature columns matching the SDWPF split CSVs
-_DEFAULT_FEATURE_COLUMNS: List[str] = [
+# v1 — 13 raw feature columns matching the SDWPF split CSVs
+_V1_FEATURE_COLUMNS: List[str] = [
     "Wspd", "Wdir", "Etmp", "Itmp", "Ndir",
     "Pab1", "Prtv", "T2m",
     "Sp", "RelH", "Wspd_w", "Wdir_w",
     "Patv",
 ]
+
+# v2 — 23 engineered feature columns matching turbines_all134_2021_v2.csv
+# (column order MUST match drl-manager/timecap_prediction/engineer_features.py)
+_V2_FEATURE_COLUMNS: List[str] = [
+    "Wspd", "Wspd_cubed",
+    "Etmp", "Itmp", "Pab1", "Prtv", "T2m", "Sp", "RelH", "Wspd_w",
+    "Wdir_sin", "Wdir_cos",
+    "Ndir_sin", "Ndir_cos",
+    "Wdir_w_sin", "Wdir_w_cos",
+    "hour_sin", "hour_cos", "doy_sin", "doy_cos", "dow_sin", "dow_cos",
+    "Patv",
+]
+
+# Backwards compat alias
+_DEFAULT_FEATURE_COLUMNS: List[str] = _V1_FEATURE_COLUMNS
+
+# Candidate timestamp column names found in raw turbine CSVs
+_TIME_COL_CANDIDATES = ("date", "Tmstamp", "timestamp", "time")
+
+
+def _derive_v2_features(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Take a raw SDWPF-style turbine DataFrame (with the v1 13 columns plus a
+    timestamp column) and return a DataFrame containing the 23 v2 columns in
+    the canonical order. Mirrors drl-manager/timecap_prediction/engineer_features.py.
+    """
+    df = raw_df.copy()
+
+    time_col = next((c for c in _TIME_COL_CANDIDATES if c in df.columns), None)
+    if time_col is None:
+        raise ValueError(
+            f"v2 feature derivation needs a timestamp column "
+            f"(one of {_TIME_COL_CANDIDATES}); found columns={list(df.columns)}"
+        )
+
+    # Wspd^3 — physics prior (P ~ V^3)
+    if "Wspd" not in df.columns:
+        raise ValueError("v2 derivation requires 'Wspd' column.")
+    df["Wspd_cubed"] = (df["Wspd"].astype(np.float64) ** 3).astype(np.float32)
+
+    # sin/cos for direction columns (degrees)
+    for c in ("Wdir", "Ndir", "Wdir_w"):
+        if c not in df.columns:
+            raise ValueError(f"v2 derivation requires angle column '{c}'.")
+        rad = np.deg2rad(df[c].astype(np.float64).values)
+        df[f"{c}_sin"] = np.sin(rad).astype(np.float32)
+        df[f"{c}_cos"] = np.cos(rad).astype(np.float32)
+
+    # Cyclical time features (must use the SAME normalisation as engineer_features.py:
+    #   hour ÷ 24, doy ÷ 366, dow ÷ 7)
+    dt = pd.to_datetime(df[time_col])
+    hour = dt.dt.hour + dt.dt.minute / 60.0
+    doy = dt.dt.dayofyear.astype(np.float64)
+    dow = dt.dt.dayofweek.astype(np.float64)
+    df["hour_sin"] = np.sin(2 * np.pi * hour / 24.0).astype(np.float32)
+    df["hour_cos"] = np.cos(2 * np.pi * hour / 24.0).astype(np.float32)
+    df["doy_sin"] = np.sin(2 * np.pi * doy / 366.0).astype(np.float32)
+    df["doy_cos"] = np.cos(2 * np.pi * doy / 366.0).astype(np.float32)
+    df["dow_sin"] = np.sin(2 * np.pi * dow / 7.0).astype(np.float32)
+    df["dow_cos"] = np.cos(2 * np.pi * dow / 7.0).astype(np.float32)
+
+    missing = [c for c in _V2_FEATURE_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"v2 derivation produced incomplete frame; missing {missing}")
+
+    return df[_V2_FEATURE_COLUMNS].copy()
 
 
 def _dict_to_namespace(d: Dict) -> SimpleNamespace:
@@ -139,8 +207,10 @@ class TimeCAP_GreenPredictor:
     compute_god_eye_features() to obtain the four observation features.
     """
 
-    # Default 13-feature columns in the SDWPF turbine CSVs
-    DEFAULT_FEATURE_COLUMNS: List[str] = _DEFAULT_FEATURE_COLUMNS
+    # Default 13-feature columns in the SDWPF turbine CSVs (v1)
+    DEFAULT_FEATURE_COLUMNS: List[str] = _V1_FEATURE_COLUMNS
+    V1_FEATURE_COLUMNS: List[str] = _V1_FEATURE_COLUMNS
+    V2_FEATURE_COLUMNS: List[str] = _V2_FEATURE_COLUMNS
 
     def __init__(
         self,
@@ -154,6 +224,8 @@ class TimeCAP_GreenPredictor:
         device: str = "cpu",
         csv_start_offset: int = 12,
         feature_columns: Optional[List[str]] = None,
+        feature_set: str = "v1",
+        auto_derive_features: bool = True,
     ):
         """
         Parameters
@@ -182,7 +254,19 @@ class TimeCAP_GreenPredictor:
         csv_start_offset:
             Row offset applied by Java (default 12). simulation_step=0 → CSV row 12.
         feature_columns:
-            Column names to read from the turbine CSV. Defaults to the 13 SDWPF columns.
+            Explicit column names to feed the model. If provided, takes precedence
+            over feature_set. Otherwise resolved from feature_set.
+        feature_set:
+            Either "v1" (13 raw SDWPF features — matches the baseline 4358062
+            checkpoint) or "v2" (23 engineered features incl. Wspd^3, sin/cos
+            angle pairs, and hour/doy/dow cyclic encodings — matches the
+            Phase 1 retrain).
+        auto_derive_features:
+            When feature_set="v2" and the raw turbine CSVs only contain the v1
+            schema, set True to compute the engineered columns in memory at
+            construction time (mirrors engineer_features.py). The CSV must
+            contain a timestamp column named one of: 'date', 'Tmstamp',
+            'timestamp', 'time'.
         """
         self.seq_len = seq_len
         self.pred_len = pred_len
@@ -191,7 +275,18 @@ class TimeCAP_GreenPredictor:
         self.device = torch.device(device)
         self.turbine_ids = list(turbine_csv_paths.keys())
 
-        self.feature_columns = feature_columns or _DEFAULT_FEATURE_COLUMNS
+        # Resolve feature column list: explicit > feature_set
+        if feature_set not in ("v1", "v2"):
+            raise ValueError(f"feature_set must be 'v1' or 'v2', got {feature_set!r}")
+        self.feature_set = feature_set
+        self.auto_derive_features = auto_derive_features
+
+        if feature_columns is not None:
+            self.feature_columns = feature_columns
+        elif feature_set == "v2":
+            self.feature_columns = _V2_FEATURE_COLUMNS
+        else:
+            self.feature_columns = _V1_FEATURE_COLUMNS
         self.num_features = len(self.feature_columns)
         # Patv must be present; it is used as the prediction target
         if "Patv" not in self.feature_columns:
@@ -209,13 +304,25 @@ class TimeCAP_GreenPredictor:
         self.model = self._build_model(resolved_config, checkpoint_path)
         self.model_args = _dict_to_namespace(resolved_config)
 
-        # CSV feature loader (reuses existing infrastructure)
+        # CSV feature loader (reuses existing infrastructure).
+        # In v2+auto_derive mode we first load with the raw v1 column list (so
+        # angle/raw columns survive), then replace the per-turbine DataFrames
+        # with the engineered v2 frames computed from the original CSVs.
+        needs_derive = (feature_set == "v2") and auto_derive_features
+        loader_columns = (
+            list(_V1_FEATURE_COLUMNS) if needs_derive else self.feature_columns
+        )
         self.feature_loader = CSVFeatureLoader(
             turbine_csv_paths=turbine_csv_paths,
             csv_timestep_seconds=600,
-            feature_columns=self.feature_columns,
+            feature_columns=loader_columns,
             csv_start_offset=csv_start_offset,
         )
+
+        if needs_derive:
+            self._derive_v2_into_loader(turbine_csv_paths)
+            # Keep the loader's metadata in sync with the actual frames it now holds
+            self.feature_loader.feature_columns = list(self.feature_columns)
 
         # Per-turbine max Patv (kW) – mirrors Java's maxPowerKw computation
         self.max_power_kw: Dict[int, float] = {}
@@ -400,6 +507,44 @@ class TimeCAP_GreenPredictor:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _derive_v2_into_loader(self, turbine_csv_paths: Dict[int, str]) -> None:
+        """
+        Re-read each raw turbine CSV, run _derive_v2_features on it, and replace
+        the DataFrame stored inside self.feature_loader.turbine_data. After this
+        call get_feature_at_time(tid, step) returns a 23-element v2 row.
+        """
+        for tid, path in turbine_csv_paths.items():
+            try:
+                raw_df = pd.read_csv(path)
+            except Exception as exc:
+                logger.error(f"Turbine {tid}: failed to re-read raw CSV {path}: {exc}")
+                continue
+
+            try:
+                v2_df = _derive_v2_features(raw_df)
+            except Exception as exc:
+                logger.error(
+                    f"Turbine {tid}: v2 feature derivation failed: {exc}. "
+                    "Falling back to v1 frame zero-padded to v2 width."
+                )
+                v1_df = self.feature_loader.turbine_data.get(tid)
+                if v1_df is None:
+                    continue
+                v2_df = pd.DataFrame(
+                    np.zeros((len(v1_df), len(_V2_FEATURE_COLUMNS)), dtype=np.float32),
+                    columns=_V2_FEATURE_COLUMNS,
+                )
+                # Carry over Patv at minimum so the AR head has a target signal
+                if "Patv" in v1_df.columns:
+                    v2_df["Patv"] = v1_df["Patv"].values
+
+            v2_df.fillna(0.0, inplace=True)
+            self.feature_loader.turbine_data[tid] = v2_df
+            logger.info(
+                f"Turbine {tid}: v2 feature derivation complete "
+                f"({len(v2_df)} rows, {v2_df.shape[1]} columns)"
+            )
 
     @staticmethod
     def _resolve_model_config(checkpoint_path: str, override: Optional[Dict]) -> Dict:
