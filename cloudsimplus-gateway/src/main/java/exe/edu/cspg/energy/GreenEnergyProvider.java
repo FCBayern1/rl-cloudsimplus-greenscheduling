@@ -58,20 +58,31 @@ public class GreenEnergyProvider {
     // This simulates different geographic locations with different local times
     private final int timeZoneOffsetRows;
 
+    // Global simulation warm-up offset (in rows). Added on top of timeZoneOffsetRows
+    // so the simulation can start at row (warmup + tz) instead of (tz), giving every
+    // DC at least `warmup` rows of real CSV history before sim_step=0 — eliminates
+    // cold-start for downstream forecasters (e.g. TimeCAP). Defaults to 0.
+    private final int simulationWarmupRows;
+
     // Divisor applied in COMPRESSED mode to scale raw CSV kW readings into the
     // per-simulation-second power regime. Configurable from config.yml via
     // "compressed_power_divisor"; defaults to 60.0.
     private final double compressedPowerDivisor;
 
     /**
-     * Convert the configured timezone offset (in "rows") into simulation-time seconds.
+     * Convert the configured time-zone + warm-up offset (in "rows") into
+     * simulation-time seconds.
      *
      * - In {@link TimeScalingMode#COMPRESSED}: simulation time is treated as row index, so 1 row == 1 second.
      * - In {@link TimeScalingMode#REAL_TIME}: wind data points are typically 600s apart, so 1 row == 600 seconds.
+     *
+     * The warmup offset is added so the same row index is used uniformly across
+     * "where is now in the CSV" lookups (current power, future trend features,
+     * etc.) — i.e. sim_step=0 corresponds to CSV row (timeZoneOffsetRows + simulationWarmupRows).
      */
     private double getTimeZoneOffsetSeconds() {
         final double rowSeconds = timeScalingMode != null ? timeScalingMode.getTypicalInterval() : 1.0;
-        return ((double) timeZoneOffsetRows) * rowSeconds;
+        return ((double) (timeZoneOffsetRows + simulationWarmupRows)) * rowSeconds;
     }
 
     /**
@@ -128,7 +139,9 @@ public class GreenEnergyProvider {
     }
 
     /**
-     * Full-config constructor including the COMPRESSED-mode power divisor.
+     * Full-config constructor (legacy: no simulation warm-up offset). Delegates
+     * to the 8-arg constructor with simulationWarmupRows = 0 so existing call
+     * sites keep working unchanged.
      *
      * @param compressedPowerDivisor divisor applied to wind power readings
      *                               when {@code timeScalingMode == COMPRESSED}.
@@ -138,16 +151,34 @@ public class GreenEnergyProvider {
     public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
                               int shortTermRows, int longTermRows, int timeZoneOffsetRows,
                               double compressedPowerDivisor) {
+        this(turbineId, csvFilePath, timeScalingMode, shortTermRows, longTermRows,
+             timeZoneOffsetRows, compressedPowerDivisor, 0);
+    }
+
+    /**
+     * Full-config constructor including the global simulation warm-up offset.
+     *
+     * @param simulationWarmupRows extra row offset added on top of
+     *                             timeZoneOffsetRows so sim_step=0 maps to
+     *                             CSV row (timeZoneOffsetRows + simulationWarmupRows).
+     *                             Recommended: 96 (= 16 h history available
+     *                             at episode start). Use 0 for legacy behaviour.
+     */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows, int timeZoneOffsetRows,
+                              double compressedPowerDivisor, int simulationWarmupRows) {
         this.turbineId = turbineId;
         this.csvFilePath = resolveCsvPath(turbineId, csvFilePath);
         this.timeScalingMode = timeScalingMode;
         this.shortTermRows = shortTermRows;
         this.longTermRows = longTermRows;
         this.timeZoneOffsetRows = timeZoneOffsetRows;
+        this.simulationWarmupRows = Math.max(0, simulationWarmupRows);
         this.compressedPowerDivisor = compressedPowerDivisor > 0 ? compressedPowerDivisor : 60.0;
 
-        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with CSV '{}', mode: {}, tzOffset: {} rows, compressedDivisor: {}",
-                   turbineId, this.csvFilePath, timeScalingMode.getDescription(), timeZoneOffsetRows, this.compressedPowerDivisor);
+        LOGGER.info("Initialising GreenEnergyProvider for turbine {} with CSV '{}', mode: {}, tzOffset: {} rows, warmup: {} rows, compressedDivisor: {}",
+                   turbineId, this.csvFilePath, timeScalingMode.getDescription(),
+                   timeZoneOffsetRows, this.simulationWarmupRows, this.compressedPowerDivisor);
         loadAndBuildSpline();
         LOGGER.info("GreenEnergyProvider initialized successfully");
     }

@@ -97,6 +97,22 @@ public class DatacenterConfig {
     @Builder.Default
     private final int timeZoneOffsetRows = 0;
 
+    /**
+     * Global simulation warm-up offset (in CSV rows) added on top of every DC's
+     * timeZoneOffsetRows. Lets the simulation start at CSV row
+     *     simulation_warmup_rows + time_zone_offset_rows
+     * instead of row time_zone_offset_rows, so that the past 96 rows of CSV data
+     * are always available as real history for downstream forecasters
+     * (e.g. TimeCAP) — eliminates the cold-start period without breaking the
+     * geographic time-zone semantics of timeZoneOffsetRows.
+     *
+     * Default 0 (no warm-up). Recommended 96 (= 16 h, matches TimeCAP seq_len).
+     * Same value should be set globally; the parser propagates a top-level
+     * `simulation_warmup_rows` to every DC config.
+     */
+    @Builder.Default
+    private final int simulationWarmupRows = 0;
+
     // === Carbon Emission Factors ===
     /**
      * Carbon emission factor for brown energy (kg CO2 per kWh).

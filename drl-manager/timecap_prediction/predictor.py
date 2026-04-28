@@ -47,7 +47,7 @@ import sys
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -222,7 +222,7 @@ class TimeCAP_GreenPredictor:
         short_term_steps: int = 3,
         long_term_steps: int = 144,
         device: str = "cpu",
-        csv_start_offset: int = 12,
+        csv_start_offset: Union[int, Dict[int, int]] = 0,
         feature_columns: Optional[List[str]] = None,
         feature_set: str = "v1",
         auto_derive_features: bool = True,
@@ -252,7 +252,13 @@ class TimeCAP_GreenPredictor:
         device:
             Torch device string ("cpu" or "cuda").
         csv_start_offset:
-            Row offset applied by Java (default 12). simulation_step=0 → CSV row 12.
+            Row offset added to sim_step when reading the CSV. Two forms:
+              * int — single offset shared by all turbines. simulation_step=0
+                reads CSV row ``csv_start_offset``. Default 0.
+              * Dict[turbine_id, int] — per-turbine offset. Use this in
+                multi-DC setups where each DC has a different
+                time_zone_offset_rows; the value should be
+                ``tz_offset_rows[dc_of_turbine] + simulation_warmup_rows``.
         feature_columns:
             Explicit column names to feed the model. If provided, takes precedence
             over feature_set. Otherwise resolved from feature_set.
@@ -380,62 +386,85 @@ class TimeCAP_GreenPredictor:
     # Inference
     # ------------------------------------------------------------------
 
-    def predict(self) -> Optional[np.ndarray]:
+    def _forward_one_turbine(self, turbine_id: int) -> Optional[np.ndarray]:
         """
-        Run TimeCAP one-shot head to forecast Patv for the next *pred_len* steps.
-
-        The history buffer is zero-padded at the front during the cold-start
-        period (before seq_len steps have been observed), so predictions are
-        available from step 0.
+        Run TimeCAP's one-shot head for a single turbine using its current
+        history buffer. Zero-pads at the front when the buffer is not yet full.
 
         Returns
         -------
-        np.ndarray of shape (pred_len,), Patv in kW, averaged across turbines.
-        Returns None only if the model raises an unexpected exception.
+        np.ndarray of shape (pred_len,), Patv in kW, clipped to ≥ 0.
+        None on inference failure.
         """
-        turbine_preds: List[np.ndarray] = []
+        hist = list(self._history[turbine_id])
 
-        for tid in self.turbine_ids:
-            hist = list(self._history[tid])
+        # Zero-pad at the front if we haven't seen seq_len steps yet
+        if len(hist) < self.seq_len:
+            pad_rows = self.seq_len - len(hist)
+            hist = [np.zeros(self.num_features, dtype=np.float32)] * pad_rows + hist
 
-            # Zero-pad at the front if we haven't seen seq_len steps yet
-            if len(hist) < self.seq_len:
-                pad_rows = self.seq_len - len(hist)
-                hist = [np.zeros(self.num_features, dtype=np.float32)] * pad_rows + hist
+        x = np.stack(hist, axis=0)                                         # (seq_len, num_features)
+        x_tensor = torch.from_numpy(x).unsqueeze(0).float().to(self.device)  # (1, seq_len, num_features)
 
-            # Stack → (seq_len, num_features) → batch → (1, seq_len, num_features)
-            x = np.stack(hist, axis=0)
-            x_tensor = torch.from_numpy(x).unsqueeze(0).float().to(self.device)
-
-            try:
-                with torch.no_grad():
-                    # Returns (dec_out_AR, dec_out_OS, attns)
-                    # dec_out_OS shape: (1, pred_len, enc_in)  — one-shot head
-                    _, dec_out_OS, _ = self.model(x_tensor, activate_os_head=True)
-
-                if dec_out_OS is None:
-                    logger.warning(
-                        f"Turbine {tid}: OS head returned None. "
-                        "Check that task_name='finetune' in model config."
-                    )
-                    turbine_preds.append(np.zeros(self.pred_len, dtype=np.float32))
-                    continue
-
-                # Extract Patv channel and clip negatives (power ≥ 0)
-                pred_patv = dec_out_OS[0, :, self.patv_idx].cpu().numpy()  # (pred_len,)
-                pred_patv = np.clip(pred_patv, 0.0, None)
-                turbine_preds.append(pred_patv.astype(np.float32))
-
-            except Exception as exc:
-                logger.error(f"Turbine {tid}: TimeCAP inference failed: {exc}", exc_info=True)
-                return None
-
-        if not turbine_preds:
+        try:
+            with torch.no_grad():
+                # Returns (dec_out_AR, dec_out_OS, attns); OS shape: (1, pred_len, enc_in)
+                _, dec_out_OS, _ = self.model(x_tensor, activate_os_head=True)
+        except Exception as exc:
+            logger.error(f"Turbine {turbine_id}: TimeCAP inference failed: {exc}", exc_info=True)
             return None
 
-        # Simple average across turbines
-        # (Could weight by max_power_kw to match Java's weighted aggregation)
-        return np.mean(turbine_preds, axis=0)  # (pred_len,)
+        if dec_out_OS is None:
+            logger.warning(
+                f"Turbine {turbine_id}: OS head returned None. "
+                "Check that task_name='finetune' in model config."
+            )
+            return np.zeros(self.pred_len, dtype=np.float32)
+
+        pred_patv = dec_out_OS[0, :, self.patv_idx].cpu().numpy()  # (pred_len,)
+        return np.clip(pred_patv, 0.0, None).astype(np.float32)
+
+    def predict(self) -> Optional[np.ndarray]:
+        """
+        Run TimeCAP one-shot head to forecast Patv for the next *pred_len* steps,
+        averaged (simple arithmetic mean) across all turbines.
+
+        For God's-Eye-style DC aggregation that needs maxPower-weighted means,
+        use :meth:`predict_per_turbine` and aggregate externally instead.
+
+        Returns
+        -------
+        np.ndarray of shape (pred_len,), Patv in kW.
+        Returns None on inference failure.
+        """
+        preds: List[np.ndarray] = []
+        for tid in self.turbine_ids:
+            p = self._forward_one_turbine(tid)
+            if p is None:
+                return None
+            preds.append(p)
+        if not preds:
+            return None
+        return np.mean(preds, axis=0)
+
+    def predict_per_turbine(self) -> Optional[Dict[int, np.ndarray]]:
+        """
+        Same as :meth:`predict` but returns a dict mapping turbine_id → (pred_len,)
+        forecast — without the cross-turbine averaging step. Useful when an
+        external aggregator (e.g. Java-style maxPower-weighted mean per DC)
+        needs per-turbine values.
+
+        Returns
+        -------
+        dict {turbine_id: np.ndarray of shape (pred_len,)}, or None on failure.
+        """
+        out: Dict[int, np.ndarray] = {}
+        for tid in self.turbine_ids:
+            p = self._forward_one_turbine(tid)
+            if p is None:
+                return None
+            out[tid] = p
+        return out
 
     # ------------------------------------------------------------------
     # Feature computation  (mirrors Java GreenEnergyProvider)

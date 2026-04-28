@@ -346,17 +346,18 @@ public class MultiDatacenterSimulationCore {
                         config.getTimeScalingMode(),
                         config.getShortTermRows(),
                         config.getLongTermRows(),
-                        config.getTimeZoneOffsetRows(),  // Apply timezone offset for geo-distribution
-                        config.getCompressedPowerDivisor()  // Configurable COMPRESSED-mode divisor
+                        config.getTimeZoneOffsetRows(),       // per-DC tz offset (geo)
+                        config.getCompressedPowerDivisor(),   // COMPRESSED-mode divisor
+                        config.getSimulationWarmupRows()      // global sim warm-up (eliminates cold start)
                 );
                 dcInstance.addGreenEnergyProvider(greenEnergyProvider);
             }
             LOGGER.info("Created {} GreenEnergyProvider(s) for DC {} with turbines {} (mode: {}, " +
-                       "forecast: short={}rows, long={}rows, tzOffset={}rows)",
+                       "forecast: short={}rows, long={}rows, tzOffset={}rows, warmup={}rows)",
                     turbineIds.size(), config.getDatacenterId(), turbineIds,
                     config.getTimeScalingMode().getDescription(),
                     config.getShortTermRows(), config.getLongTermRows(),
-                    config.getTimeZoneOffsetRows());
+                    config.getTimeZoneOffsetRows(), config.getSimulationWarmupRows());
         }
 
         return dcInstance;

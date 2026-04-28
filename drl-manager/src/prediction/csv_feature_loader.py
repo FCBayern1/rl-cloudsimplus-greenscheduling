@@ -14,7 +14,7 @@ Time Alignment (COMPRESSED mode):
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class CSVFeatureLoader:
         turbine_csv_paths: Dict[int, str],
         csv_timestep_seconds: int = 600,
         feature_columns: Optional[List[str]] = None,
-        csv_start_offset: int = 12
+        csv_start_offset: Union[int, Dict[int, int]] = 0,
     ):
         """
         Initialize the CSV feature loader.
@@ -45,13 +45,32 @@ class CSVFeatureLoader:
                                e.g., {1: "path/to/turbine_001.csv", ...}
             csv_timestep_seconds: Time interval between CSV rows (default: 600s = 10min)
             feature_columns: List of feature column names (default: 13 features)
-            csv_start_offset: Starting row offset in CSV (default: 12)
-                             simulation_step=0 → CSV row 12
-                             Ensures sufficient lookback history
+            csv_start_offset: CSV row offset applied to sim_step. Two forms:
+
+                * int — single offset shared by every turbine. ``sim_step=0``
+                  reads CSV row ``csv_start_offset`` for all turbines.
+
+                * Dict[turbine_id, int] — per-turbine offset. Required when
+                  different turbines/DCs are at different time zones. Turbines
+                  not in the dict fall back to offset 0.
+
+                Default is 0 (no offset). Set to (tz_offset_rows + warmup_rows)
+                per turbine to mirror Java's GreenEnergyProvider row indexing.
         """
         self.turbine_csv_paths = turbine_csv_paths
         self.csv_timestep_seconds = csv_timestep_seconds
-        self.csv_start_offset = csv_start_offset
+
+        # Normalise csv_start_offset into a per-turbine dict for uniform lookup
+        if isinstance(csv_start_offset, dict):
+            self._per_turbine_offset: Dict[int, int] = {
+                int(k): int(v) for k, v in csv_start_offset.items()
+            }
+            self._default_offset: int = 0
+            self.csv_start_offset = self._per_turbine_offset      # legacy alias
+        else:
+            self._per_turbine_offset = {}
+            self._default_offset = int(csv_start_offset)
+            self.csv_start_offset = int(csv_start_offset)         # legacy scalar
 
         # Default 13-feature columns
         if feature_columns is None:
@@ -112,26 +131,38 @@ class CSVFeatureLoader:
             except Exception as e:
                 logger.error(f"Failed to load CSV for turbine {turbine_id}: {e}")
 
-    def sim_time_to_csv_index(self, simulation_time: float) -> int:
+    def offset_for(self, turbine_id: Optional[int]) -> int:
+        """
+        Return the CSV-row offset that should be added to sim_step for the
+        given turbine. Falls back to the loader-wide default for turbines that
+        weren't explicitly listed in a per-turbine offset dict.
+        """
+        if turbine_id is None:
+            return self._default_offset
+        return self._per_turbine_offset.get(int(turbine_id), self._default_offset)
+
+    def sim_time_to_csv_index(
+        self,
+        simulation_time: float,
+        turbine_id: Optional[int] = None,
+    ) -> int:
         """
         Convert simulation time to CSV row index.
 
         Args:
-            simulation_time: Simulation time in seconds (actually simulation_step in COMPRESSED mode)
+            simulation_time: Simulation step (= seconds in COMPRESSED mode).
+            turbine_id: If a per-turbine offset map was provided to __init__,
+                supply the turbine_id so the matching offset is applied. Pass
+                None (or omit) for the loader-wide scalar offset.
 
         Returns:
-            CSV row index
-
-        Example (COMPRESSED mode):
-            simulation_step=0 → CSV row 12 (Java skips first 12 rows)
-            simulation_step=1 → CSV row 13
-            simulation_step=2 → CSV row 14
+            CSV row index = simulation_step + offset_for(turbine_id).
+            May be negative if simulation_step is negative and there's no
+            offset large enough to cover the gap — callers must handle this
+            (typically by zero-padding).
         """
-        # In COMPRESSED mode: 1 simulation_step = 1 second = 1 CSV row
-        # Java skips first 12 rows, so we add offset
         simulation_step = int(simulation_time)
-        actual_csv_row = simulation_step + self.csv_start_offset
-        return actual_csv_row
+        return simulation_step + self.offset_for(turbine_id)
 
     def get_historical_features(
         self,
@@ -156,8 +187,8 @@ class CSVFeatureLoader:
 
         df = self.turbine_data[turbine_id]
 
-        # Get current CSV index
-        current_idx = self.sim_time_to_csv_index(current_sim_time)
+        # Get current CSV index (per-turbine offset honours geo time zones)
+        current_idx = self.sim_time_to_csv_index(current_sim_time, turbine_id)
 
         # Calculate start index
         start_idx = current_idx - lookback_steps + 1
@@ -208,7 +239,7 @@ class CSVFeatureLoader:
             return None
 
         df = self.turbine_data[turbine_id]
-        idx = self.sim_time_to_csv_index(sim_time)
+        idx = self.sim_time_to_csv_index(sim_time, turbine_id)
 
         if idx < 0 or idx >= len(df):
             return None

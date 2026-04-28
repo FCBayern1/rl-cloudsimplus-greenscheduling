@@ -148,8 +148,137 @@ class HierarchicalMultiDCEnv(gym.Env):
         self._setup_observation_spaces()
         self._setup_action_spaces()
 
+        # Optional: TimeCAP-based forecast provider replaces Java's God's Eye
+        # (oracle/ground-truth) future trend features when green_oracle_mode == "timecap".
+        # Skipped in spaces_only mode (training scripts that only need space shapes).
+        self.green_oracle_mode = str(config.get("green_oracle_mode", "godeye")).lower()
+        if self.green_oracle_mode not in ("godeye", "timecap"):
+            raise ValueError(
+                f"config['green_oracle_mode']={self.green_oracle_mode!r}; "
+                "expected 'godeye' or 'timecap'."
+            )
+        self.timecap_provider = None
+        self._timecap_warmup_on_reset = False
+        if self.green_oracle_mode == "timecap" and not self._spaces_only:
+            self.timecap_provider = self._build_timecap_provider(config)
+
         logger.info(f"HierarchicalMultiDCEnv initialised with {self.num_datacenters} datacenters")
         logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
+        logger.info(f"  green_oracle_mode: {self.green_oracle_mode} "
+                    f"(provider={'on' if self.timecap_provider is not None else 'off'})")
+
+    def _build_timecap_provider(self, config: Dict[str, Any]):
+        """
+        Construct a TimeCAPGodEyeProvider from this env's dc_configs and the
+        ``timecap`` block of ``config``. Returns None (and logs a warning) if
+        no green-enabled DCs declare any turbine_ids.
+
+        Expected config layout:
+            green_oracle_mode: timecap
+            timecap:
+              checkpoint: <path>           # required
+              feature_set: v1              # "v1" (baseline) or "v2" (Phase 1)
+              forecast_every: 6            # 1=every step (GPU); 6=every sim hour (CPU)
+              device: cpu                  # or "cuda"
+              csv_dir: cloudsimplus-gateway/src/main/resources/windProduction/split
+              csv_year: 2021
+              csv_start_offset: 0          # CSV row at sim_step=0 (Java's tz_offset_rows
+                                           # is per-DC; this is one-size-fits-all for now)
+              warmup_on_reset: false
+        """
+        # Lazy import — avoids loading torch in spaces_only / godeye mode
+        import sys
+        from pathlib import Path as _Path
+        _src_dir = _Path(__file__).resolve().parents[2] / "src"
+        if str(_src_dir) not in sys.path:
+            sys.path.insert(0, str(_src_dir))
+        from prediction.timecap_godeye_provider import TimeCAPGodEyeProvider
+
+        tc_cfg = config.get("timecap") or {}
+        ckpt = tc_cfg.get("checkpoint")
+        if not ckpt:
+            raise ValueError(
+                "green_oracle_mode='timecap' requires config['timecap']['checkpoint'] to be set."
+            )
+
+        # Resolve csv_dir relative to repo root if a relative path was given
+        csv_dir = _Path(tc_cfg.get(
+            "csv_dir",
+            "cloudsimplus-gateway/src/main/resources/windProduction/split",
+        ))
+        if not csv_dir.is_absolute():
+            repo_root = _Path(__file__).resolve().parents[3]
+            csv_dir = repo_root / csv_dir
+        if not csv_dir.is_dir():
+            raise FileNotFoundError(
+                f"timecap.csv_dir does not exist: {csv_dir} "
+                "(needs the 13-feature SDWPF split CSVs, NOT the simplified 2-col files)"
+            )
+
+        csv_year = int(tc_cfg.get("csv_year", 2021))
+
+        # Build {dc_id: [turbine_ids]}, {turbine_id: csv_path}, {dc_id: tz_offset}
+        # from dc_configs. Skip DCs that aren't green-enabled or have no turbines.
+        dc_assignments: Dict[int, list] = {}
+        turbine_csv_paths: Dict[int, str] = {}
+        dc_tz_offsets: Dict[int, int] = {}
+        for idx, dc_cfg in enumerate(self.dc_configs):
+            if not dc_cfg.get("green_energy_enabled", False):
+                continue
+            tids = dc_cfg.get("turbine_ids") or []
+            if not tids:
+                continue
+            dc_id = self.dc_ids[idx]
+            dc_assignments[dc_id] = [int(t) for t in tids]
+            dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0))
+            for t in tids:
+                t = int(t)
+                csv_path = csv_dir / f"Turbine_{t}_{csv_year}.csv"
+                if not csv_path.is_file():
+                    raise FileNotFoundError(
+                        f"Turbine CSV not found: {csv_path} "
+                        f"(DC {dc_id}, turbine_id={t})"
+                    )
+                turbine_csv_paths[t] = str(csv_path)
+
+        if not dc_assignments:
+            logger.warning(
+                "green_oracle_mode='timecap' requested but no green-enabled DCs declare "
+                "turbine_ids; falling back to godeye (Java oracle) for this run."
+            )
+            return None
+
+        # Pull simulation_warmup_rows from the top-level env config (matching Java's
+        # plumbing in HierarchicalMultiDCGateway, which propagates this same key from
+        # top-level into each per-DC params dict).
+        sim_warmup_rows = int(config.get("simulation_warmup_rows", 0))
+
+        provider = TimeCAPGodEyeProvider(
+            dc_assignments        = dc_assignments,
+            turbine_csv_paths     = turbine_csv_paths,
+            checkpoint_path       = str(ckpt),
+            feature_set           = str(tc_cfg.get("feature_set", "v1")),
+            forecast_every        = int(tc_cfg.get("forecast_every", 6)),
+            device                = str(tc_cfg.get("device", "cpu")),
+            csv_start_offset      = int(tc_cfg.get("csv_start_offset", 0)),
+            dc_tz_offsets         = dc_tz_offsets,
+            simulation_warmup_rows= sim_warmup_rows,
+        )
+        self._timecap_warmup_on_reset = bool(tc_cfg.get("warmup_on_reset", False))
+        logger.info(
+            "TimeCAP green-oracle ready: ckpt=%s | feature_set=%s | "
+            "forecast_every=%d | device=%s | dcs=%s | turbines=%s | "
+            "warmup_rows=%d | dc_tz_offsets=%s",
+            ckpt,
+            tc_cfg.get("feature_set", "v1"),
+            int(tc_cfg.get("forecast_every", 6)),
+            tc_cfg.get("device", "cpu"),
+            sorted(dc_assignments.keys()),
+            sorted(turbine_csv_paths.keys()),
+            sim_warmup_rows,
+            dc_tz_offsets,
+        )
+        return provider
 
     def _find_free_port(self) -> int:
         """Find a free TCP port on localhost."""
@@ -637,6 +766,16 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.episode_reward = 0.0
         self.done = False
 
+        # Reset TimeCAP rolling buffers BEFORE we parse the first observation
+        # (because _convert_global_observation will push the first row).
+        if self.timecap_provider is not None:
+            self.timecap_provider.reset()
+            if self._timecap_warmup_on_reset:
+                # Pushes seq_len real CSV rows starting at sim_step=0 — eliminates
+                # the cold-start zero-pad period at the cost of "looking 16h ahead"
+                # at episode start. Off by default; enable only for evaluation runs.
+                self.timecap_provider.warmup(start_step=0)
+
         # Parse observations from HierarchicalResetResult
         try:
             # Reset returns HierarchicalResetResult (only observations and info)
@@ -901,18 +1040,24 @@ class HierarchicalMultiDCEnv(gym.Env):
     def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
         """
         Convert Java GlobalObservationState to Python dict.
+
+        When ``green_oracle_mode == "timecap"``, the four ``dc_future_*`` keys are
+        overwritten with TimeCAP forecasts instead of Java's CSV-truth God's Eye
+        values. All other keys are unaffected. Java still computes its own
+        oracle 4-tuple — we just discard it on the Python side, leaving Java's
+        execution path bit-identical so the comparison is clean.
         """
-        return {
+        obs = {
             # Green energy metrics
             "dc_current_green_power_w": np.array(global_obs_java.getDcCurrentGreenPowerW(), dtype=np.float32),
             "dc_current_power_w": np.array(global_obs_java.getDcCurrentPowerW(), dtype=np.float32),
             "dc_green_ratio": np.array(global_obs_java.getDcGreenRatio(), dtype=np.float32),
             "dc_cumulative_wasted_green_wh": np.array(global_obs_java.getDcCumulativeWastedGreenWh(), dtype=np.float32),
-            # Future energy trend features (God's Eye mode)
-            "dc_future_short_mean": np.array(global_obs_java.getDcFutureShortMean(), dtype=np.float32),
-            "dc_future_short_trend": np.array(global_obs_java.getDcFutureShortTrend(), dtype=np.float32),
-            "dc_future_long_mean": np.array(global_obs_java.getDcFutureLongMean(), dtype=np.float32),
-            "dc_future_long_peak_timing": np.array(global_obs_java.getDcFutureLongPeakTiming(), dtype=np.float32),
+            # Future energy trend features (filled below — godeye truth or TimeCAP forecast)
+            "dc_future_short_mean": None,
+            "dc_future_short_trend": None,
+            "dc_future_long_mean": None,
+            "dc_future_long_peak_timing": None,
             # Resource metrics
             "dc_queue_sizes": np.array(global_obs_java.getDcQueueSizes(), dtype=np.int32),
             "dc_utilizations": np.array(global_obs_java.getDcUtilizations(), dtype=np.float32),
@@ -931,6 +1076,39 @@ class HierarchicalMultiDCEnv(gym.Env):
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
             "recent_completed": np.array([min(int(global_obs_java.getRecentCompletedCloudlets()), 99999)], dtype=np.int32),
         }
+
+        # ── Future-trend features ────────────────────────────────────────
+        if self.timecap_provider is None:
+            # Oracle / God's Eye path: pass through Java's CSV-truth values
+            obs["dc_future_short_mean"]       = np.array(global_obs_java.getDcFutureShortMean(),       dtype=np.float32)
+            obs["dc_future_short_trend"]      = np.array(global_obs_java.getDcFutureShortTrend(),      dtype=np.float32)
+            obs["dc_future_long_mean"]        = np.array(global_obs_java.getDcFutureLongMean(),        dtype=np.float32)
+            obs["dc_future_long_peak_timing"] = np.array(global_obs_java.getDcFutureLongPeakTiming(),  dtype=np.float32)
+        else:
+            # TimeCAP forecast path — use Java's authoritative simulation clock
+            # rather than self.current_step (which lags by 1 inside step()).
+            sim_step = int(round(float(global_obs_java.getCurrentClock())))
+            feats = self.timecap_provider.step_and_get(sim_step)
+
+            short_mean       = np.full(self.num_datacenters, 0.5, dtype=np.float32)
+            short_trend      = np.zeros(self.num_datacenters,       dtype=np.float32)
+            long_mean        = np.full(self.num_datacenters, 0.5,  dtype=np.float32)
+            long_peak_timing = np.full(self.num_datacenters, 0.5,  dtype=np.float32)
+
+            for i in range(self.num_datacenters):
+                dc_id = self.dc_ids[i]
+                if dc_id not in feats:
+                    # DC has no green energy / no turbines → leave neutral
+                    continue
+                f = feats[dc_id]
+                short_mean[i], short_trend[i], long_mean[i], long_peak_timing[i] = f
+
+            obs["dc_future_short_mean"]       = short_mean
+            obs["dc_future_short_trend"]      = short_trend
+            obs["dc_future_long_mean"]        = long_mean
+            obs["dc_future_long_peak_timing"] = long_peak_timing
+
+        return obs
 
     def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
         """
