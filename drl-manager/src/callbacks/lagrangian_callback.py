@@ -124,21 +124,55 @@ def _extract_last_info(episode) -> Dict[str, Any]:
 
 
 def _foreach_env_safely(algorithm, fn) -> None:
-    """Run ``fn(env)`` on every env across all API stacks."""
-    for attr in ("env_runner_group", "workers"):
-        group = getattr(algorithm, attr, None)
-        if group is not None and hasattr(group, "foreach_env"):
-            try:
-                group.foreach_env(fn)
-                return
-            except Exception as e:
-                logger.debug("[Lagrangian] foreach_env via %s failed: %s", attr, e)
-    runner = getattr(algorithm, "env_runner", None)
-    if runner is not None and hasattr(runner, "foreach_env"):
+    """Run ``fn(env)`` on every env across all API stacks.
+
+    New API (``MultiAgentEnvRunner``) has no ``foreach_env`` method — only
+    ``EnvRunnerGroup.foreach_env`` exists, and *it* tries to call
+    ``w.foreach_env(...)`` on each runner, which silently AttributeErrors
+    on the new stack.  So we route via ``foreach_worker`` (always available)
+    and extract ``runner.env`` ourselves.  Old API ``RolloutWorker`` does
+    expose ``foreach_env``; we keep that branch as a fallback.
+    """
+    def _runner_to_env_fn(runner):
+        env = getattr(runner, "env", None)
+        if env is None:
+            return None
+        # New API may wrap envs in a vector; unwrap if possible.
+        sub_envs = getattr(env, "envs", None)
+        if isinstance(sub_envs, (list, tuple)) and sub_envs:
+            for sub in sub_envs:
+                fn(sub)
+            return None
+        fn(env)
+        return None
+
+    # New API path.
+    group = getattr(algorithm, "env_runner_group", None)
+    if group is not None and hasattr(group, "foreach_worker"):
         try:
-            runner.foreach_env(fn)
+            group.foreach_worker(_runner_to_env_fn, local_env_runner=True)
+            return
         except Exception as e:
-            logger.debug("[Lagrangian] foreach_env via env_runner failed: %s", e)
+            logger.debug("[Lagrangian] foreach_worker via env_runner_group failed: %s", e)
+
+    # Old API path: RolloutWorker exposes foreach_env directly.
+    workers = getattr(algorithm, "workers", None)
+    if workers is not None and hasattr(workers, "foreach_env"):
+        try:
+            workers.foreach_env(fn)
+            return
+        except Exception as e:
+            logger.debug("[Lagrangian] foreach_env via workers failed: %s", e)
+
+    # Last resort: local-only single env_runner attribute.
+    runner = getattr(algorithm, "env_runner", None)
+    if runner is not None:
+        env = getattr(runner, "env", None)
+        if env is not None:
+            try:
+                fn(env)
+            except Exception as e:
+                logger.debug("[Lagrangian] direct env_runner.env push failed: %s", e)
 
 
 def _read_env_runner_metric(result: dict, key: str, default: float = 0.0) -> float:

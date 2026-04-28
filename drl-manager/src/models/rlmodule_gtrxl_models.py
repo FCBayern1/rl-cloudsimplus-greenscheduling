@@ -345,50 +345,40 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
         # Features: (B, T, d_model)
 
-        # Calculate logits and values over full sequence
+        # Full-sequence logits and values (preserve time dim — slicing to the
+        # current step is a per-method concern, not a forward-pass concern.
+        # Collapsing the time dim here breaks compute_values during GAE,
+        # which expects (B, T) values for a (B, T, F) batch.
         logits = self.policy_head(features)  # (B, T, A)
         values = self.value_head(features).squeeze(-1)  # (B, T)
 
-        # === PPO expects per-sample outputs, not full sequences ===
-        # Slice to last timestep only - GTrXL uses history to predict current step
-        logits = logits[:, -1, :]  # (B, A)
-        values = values[:, -1]     # (B,)
+        return logits, values, state_out, action_mask
 
-        # Apply Masking with numerical stability fixes
-        if action_mask is not None:
-            # Slice mask to last timestep as well
-            if action_mask.dim() == 3:
-                # (B, T, A) -> (B, A)
-                action_mask = action_mask[:, -1, :]
-            elif action_mask.dim() == 2:
-                # Already (B, A) or (B*T, A)
-                B = logits.shape[0]
-                if action_mask.shape[0] != B:
-                    # (B*T, A) - take last T entries for each B
-                    # This is tricky; assume it's already aligned or reshape
-                    T = action_mask.shape[0] // B
-                    action_mask = action_mask.view(B, T, -1)[:, -1, :]
+    def _apply_action_mask(
+        self, logits: torch.Tensor, action_mask: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Apply action masking to logits.  Handles both (B, A) and (B, T, A)."""
+        if action_mask is None:
+            return logits
 
-            # Clean mask: replace NaN with 0
-            action_mask = torch.nan_to_num(action_mask, nan=0.0, posinf=0.0, neginf=0.0)
+        action_mask = torch.nan_to_num(action_mask, nan=0.0, posinf=0.0, neginf=0.0)
 
-            valid = action_mask >= 0.5  # (B, A)
+        if logits.dim() == 3 and action_mask.dim() == 2:
+            action_mask = action_mask.unsqueeze(1).expand_as(logits)
 
-            # Fallback: if no valid action, force action 0 to be valid
-            valid_cnt = valid.sum(dim=-1, keepdim=True)  # (B, 1)
-            no_valid = valid_cnt == 0
-            if no_valid.any():
-                valid = valid.clone()
-                valid[:, 0] = valid[:, 0] | no_valid.squeeze(-1)
+        valid = action_mask >= 0.5
+        valid_cnt = valid.sum(dim=-1, keepdim=True)
+        no_valid = valid_cnt == 0
+        if no_valid.any():
+            valid = valid.clone()
+            valid[..., 0] = valid[..., 0] | no_valid.squeeze(-1)
 
-            # Use -1e9 instead of -inf for numerical stability
-            logits = torch.where(valid, logits, torch.full_like(logits, -1e9))
-
-        return logits, values, state_out
+        return torch.where(valid, logits, torch.full_like(logits, -1e9))
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, values, state_out = self._forward_pass(batch)
+        logits, values, state_out, action_mask = self._forward_pass(batch)
+        logits = self._apply_action_mask(logits, action_mask)
         self._last_value = values
         return {
             Columns.ACTION_DIST_INPUTS: logits,
@@ -398,19 +388,38 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        logits, _, state_out = self._forward_pass(batch)
+        logits, _, state_out, action_mask = self._forward_pass(batch)
+        # GTrXL uses history to predict the current step → take the last ts.
+        logits = logits[:, -1, :]  # (B, A)
+        if action_mask is not None and action_mask.dim() == 3:
+            action_mask = action_mask[:, -1, :]
+        logits = self._apply_action_mask(logits, action_mask)
+        # Stateful modules must preserve the leading T=1 dim that RLlib's
+        # AddSingleTsTimeRankToBatch connector inserted, so the matching
+        # RemoveSingleTsTimeRankFromBatch connector can squeeze it back out.
         return {
-            Columns.ACTION_DIST_INPUTS: logits,
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
             Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        return self._forward_train(batch, **kwargs)
+        logits, values, state_out, action_mask = self._forward_pass(batch)
+        logits = logits[:, -1, :]  # (B, A)
+        values = values[:, -1]     # (B,)
+        if action_mask is not None and action_mask.dim() == 3:
+            action_mask = action_mask[:, -1, :]
+        logits = self._apply_action_mask(logits, action_mask)
+        self._last_value = values
+        return {
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.VF_PREDS: values.unsqueeze(1),
+            Columns.STATE_OUT: state_out,
+        }
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values, _ = self._forward_pass(batch)
+        _, values, _, _ = self._forward_pass(batch)
         return values
 
     @override(TorchRLModule)
@@ -648,14 +657,10 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
             raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
 
-        # Calculate logits and values over full sequence
+        # Full-sequence logits and values (slicing happens per-method to keep
+        # compute_values working correctly for (B, T, F) batches during GAE).
         logits = self.policy_head(features)  # (B, T, A)
         values = self.value_head(features).squeeze(-1)  # (B, T)
-
-        # === PPO expects per-sample outputs, not full sequences ===
-        # Slice to last timestep only - GTrXL uses history to predict current step
-        logits = logits[:, -1, :]  # (B, A)
-        values = values[:, -1]     # (B,)
 
         return logits, values, state_out
 
@@ -672,14 +677,23 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         logits, _, state_out = self._forward_pass(batch)
+        logits = logits[:, -1, :]  # (B, A)
         return {
-            Columns.ACTION_DIST_INPUTS: logits,
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
             Columns.STATE_OUT: state_out,
         }
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        return self._forward_train(batch, **kwargs)
+        logits, values, state_out = self._forward_pass(batch)
+        logits = logits[:, -1, :]  # (B, A)
+        values = values[:, -1]     # (B,)
+        self._last_value = values
+        return {
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.VF_PREDS: values.unsqueeze(1),
+            Columns.STATE_OUT: state_out,
+        }
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:

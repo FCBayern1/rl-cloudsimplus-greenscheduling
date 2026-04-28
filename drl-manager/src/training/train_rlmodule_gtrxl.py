@@ -43,8 +43,13 @@ from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from src.models.rlmodule_gtrxl_models import (
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
-    CTDEGTrXLMaskedActionRLModule,
 )
+# CTDE module is optional — the class was removed in the lag-modification
+# refactor and is only needed when ctde.enabled=true in the env config.
+try:
+    from src.models.rlmodule_gtrxl_models import CTDEGTrXLMaskedActionRLModule
+except ImportError:
+    CTDEGTrXLMaskedActionRLModule = None
 
 # Setup logging
 logging.basicConfig(
@@ -343,6 +348,12 @@ def create_rlmodule_config(
     ctde_enabled = bool(ctde_cfg.get("enabled", False)) if isinstance(ctde_cfg, dict) else bool(ctde_cfg)
 
     if ctde_enabled:
+        if CTDEGTrXLMaskedActionRLModule is None:
+            raise ImportError(
+                "ctde.enabled=true but CTDEGTrXLMaskedActionRLModule was removed "
+                "from src.models.rlmodule_gtrxl_models. Either set ctde.enabled=false "
+                "or restore the class."
+            )
         local_module_class = CTDEGTrXLMaskedActionRLModule
         # Merge CTDE-specific critic config into model_config
         local_model_cfg = dict(gtrxl_config)
