@@ -344,26 +344,43 @@ class LagrangianCallback(DefaultCallbacks):
         push_results: List[str] = []
 
         def _push(env):
-            inner = env
-            outer_type = type(env).__name__
-            unwrapped = False
-            if hasattr(inner, "par_env"):
-                inner = inner.par_env
-                unwrapped = True
-            inner_type = type(inner).__name__
-            if hasattr(inner, "set_lagrangian_lambda"):
-                inner.set_lagrangian_lambda(lam_new)
-                # Read back to verify the write landed.
-                cfg = getattr(inner, "_lagrangian_cfg", None)
+            # The env handed in by RLlib is wrapped:
+            #   gym.OrderEnforcing → RLModulePettingZooEnv → HierarchicalMultiDCParallelEnv
+            # Walk every common unwrap attribute (.env, .par_env, .unwrapped,
+            # .base_env) until we find set_lagrangian_lambda or run out.
+            chain: List[str] = []
+            current = env
+            chain.append(type(current).__name__)
+            target = None
+            visited = {id(current)}
+            for _ in range(8):  # bounded walk to avoid pathological loops
+                if hasattr(current, "set_lagrangian_lambda"):
+                    target = current
+                    break
+                # Try common wrapper attributes in priority order.
+                next_env = None
+                for attr in ("par_env", "env", "unwrapped", "base_env"):
+                    cand = getattr(current, attr, None)
+                    if cand is not None and id(cand) not in visited and cand is not current:
+                        next_env = cand
+                        break
+                if next_env is None:
+                    break
+                current = next_env
+                visited.add(id(current))
+                chain.append(type(current).__name__)
+            if target is not None:
+                target.set_lagrangian_lambda(lam_new)
+                cfg = getattr(target, "_lagrangian_cfg", None)
                 read_back = cfg.get("lambda") if isinstance(cfg, dict) else "NO_CFG"
                 push_results.append(
-                    f"OK outer={outer_type} unwrapped={unwrapped} "
-                    f"inner={inner_type} set λ={lam_new:.4f} read_back={read_back}"
+                    f"OK chain={'→'.join(chain)} set λ={lam_new:.4f} "
+                    f"read_back={read_back}"
                 )
             else:
                 push_results.append(
-                    f"NO_METHOD outer={outer_type} unwrapped={unwrapped} "
-                    f"inner={inner_type} (no set_lagrangian_lambda)"
+                    f"NO_METHOD chain={'→'.join(chain)} "
+                    "(set_lagrangian_lambda not found in unwrap path)"
                 )
 
         _foreach_env_safely(algorithm, _push)

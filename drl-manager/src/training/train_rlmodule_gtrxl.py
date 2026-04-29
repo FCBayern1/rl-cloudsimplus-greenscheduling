@@ -417,6 +417,28 @@ def create_rlmodule_config(
     # Build PPO Config
     num_gpus = training_config.get("num_gpus", 0)
 
+    # When the env-side TimeCAP provider needs CUDA, the env_runner (running
+    # in the main/driver process when num_workers=0) must have GPU access.
+    # Ray new API stack only gives the main process GPU when num_learners=0
+    # (algorithm.py:_get_learner_bundles); with num_learners>=1 the GPU goes
+    # to a remote learner actor and the driver gets {"GPU": 0}.  So when the
+    # user requests TimeCAP-on-cuda, force the learner to run in-process
+    # (num_learners=0) so it shares the same GPU allocation.
+    _tc_cfg = (env_config.get("timecap") or {}) if isinstance(env_config, dict) else {}
+    _env_needs_cuda = (
+        str(env_config.get("green_oracle_mode", "godeye") if isinstance(env_config, dict) else "godeye").lower() == "timecap"
+        and str(_tc_cfg.get("device", "cpu")).lower() == "cuda"
+    )
+    if _env_needs_cuda and num_gpus > 0:
+        _num_learners = 0
+        logger.info(
+            "TimeCAP requests CUDA → forcing num_learners=0 so the learner "
+            "shares the driver's GPU with the env_runner (avoids 'No CUDA "
+            "GPUs available' on the env side)."
+        )
+    else:
+        _num_learners = 1 if num_gpus > 0 else 0
+
     # Per-policy hyperparameter overrides for the global agent.
     # The base .training() uses local_model_config (majority of policies).
     # global_model_config overrides are applied via algorithm_config_overrides_per_module.
@@ -465,7 +487,7 @@ def create_rlmodule_config(
             create_env_on_local_worker=training_config.get("num_workers", 0) == 0,
         )
         .learners(
-            num_learners=1 if num_gpus > 0 else 0,
+            num_learners=_num_learners,
             num_gpus_per_learner=num_gpus if num_gpus > 0 else 0,
         )
         .training(

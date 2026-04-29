@@ -306,8 +306,9 @@ class TimeCAP_GreenPredictor:
         resolved_config["seq_len"] = seq_len
         resolved_config["pred_len"] = pred_len
 
-        # Build TimeCAP and load weights
+        # Build TimeCAP and load weights, then move to the requested device.
         self.model = self._build_model(resolved_config, checkpoint_path)
+        self.model = self.model.to(self.device)
         self.model_args = _dict_to_namespace(resolved_config)
 
         # CSV feature loader (reuses existing infrastructure).
@@ -637,7 +638,9 @@ class TimeCAP_GreenPredictor:
         if unexpected:
             logger.warning(f"Unexpected keys in checkpoint: {unexpected}")
 
-        device = torch.device("cpu")
-        model = model.to(device).eval()
+        # Loaded onto CPU here; the caller (__init__) moves it to self.device
+        # afterwards.  Don't hard-code CPU here or downstream forward passes
+        # will device-mismatch when self.device == cuda.
+        model = model.eval()
         logger.info(f"TimeCAP model loaded from {ckpt_path} ({sum(p.numel() for p in model.parameters()):,} params)")
         return model
