@@ -9,19 +9,34 @@ Design intent:
 - Length distribution matches existing dc10_20000 (200k-2M MI)
 - PES skewed small (most tasks 1-4 PEs)
 """
+import argparse
 import csv
 import math
 import random
 
-random.seed(42)
+parser = argparse.ArgumentParser(description="Generate diurnal carbon-v2 workload trace.")
+parser.add_argument("--out", type=str,
+    default="/home/joshua/rl-cloudsimplus-greenscheduling/cloudsimplus-gateway/src/main/resources/traces/dc5_carbon_v2_diurnal.csv",
+    help="Output CSV path (default: dc5_carbon_v2_diurnal.csv)")
+parser.add_argument("--base-rate", type=float, default=3.0,
+    help="Cloudlets/sec at diurnal trough; expected total ≈ base_rate × (1+peak_ratio)/2 × sim_duration")
+parser.add_argument("--peak-ratio", type=float, default=3.0,
+    help="Peak/trough arrival rate ratio")
+parser.add_argument("--sim-duration", type=int, default=6000,
+    help="Seconds of arrivals")
+parser.add_argument("--diurnal-period", type=int, default=3000,
+    help="One 'day' length in sim seconds")
+parser.add_argument("--seed", type=int, default=42, help="Random seed")
+args = parser.parse_args()
 
-OUT = "/home/joshua/rl-cloudsimplus-greenscheduling/cloudsimplus-gateway/src/main/resources/traces/dc5_carbon_v2_diurnal.csv"
+random.seed(args.seed)
 
-SIM_DURATION = 6000         # seconds of arrivals
-DIURNAL_PERIOD = 3000       # one "day" = 3000s of sim time
-BASE_RATE = 3.0             # cloudlets/sec at trough
-PEAK_RATIO = 3.0            # 3x more at peak
-N_TARGET = 28000            # approximate total cloudlet count
+OUT = args.out
+SIM_DURATION = args.sim_duration
+DIURNAL_PERIOD = args.diurnal_period
+BASE_RATE = args.base_rate
+PEAK_RATIO = args.peak_ratio
+N_TARGET = int(BASE_RATE * (1 + PEAK_RATIO) / 2 * SIM_DURATION)  # informational
 
 # Work out arrival rate lambda(t): base * (1 + (peak-1)*sin^2(pi*t/period))
 def rate(t):
