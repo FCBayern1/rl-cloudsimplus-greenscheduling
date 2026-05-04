@@ -47,7 +47,6 @@ Usage
         turbine_csv_paths = {1: "...Turbine_1_2021.csv", 15: "...", ...},
         checkpoint_path   = "drl-manager/timecap_prediction/TimeCAP/model/"
                             "finetune_TimeCAP_custom_sl96_baseline_4358062/ckpt_best.pth",
-        feature_set       = "v1",      # v1 (baseline) or v2 (Phase 1)
         forecast_every    = 6,         # one TimeCAP forward per simulated hour
         device            = "cpu",
     )
@@ -97,8 +96,6 @@ class TimeCAPGodEyeProvider:
         turbine_csv_paths: Dict[int, str],
         checkpoint_path: str,
         *,
-        feature_set: str = "v1",
-        auto_derive_features: Optional[bool] = None,
         forecast_every: int = 6,
         short_term_steps: int = 3,
         long_term_steps: int = 144,
@@ -122,12 +119,6 @@ class TimeCAPGodEyeProvider:
         checkpoint_path:
             TimeCAP fine-tuned ``ckpt_best.pth``. ``model_args.json`` must sit
             next to it (training writes it automatically).
-        feature_set:
-            "v1" → baseline 13-feature schema (matches ckpt 4358062);
-            "v2" → Phase 1 23-feature schema (engineered + cyclical time).
-        auto_derive_features:
-            Whether to auto-compute v2 engineered features at load time. If
-            None, defaults to True for v2 and False for v1.
         forecast_every:
             Re-run the TimeCAP forward pass every N simulation steps; between
             refreshes the cached 4-tuple is returned. With 10-min steps,
@@ -180,9 +171,6 @@ class TimeCAPGodEyeProvider:
         self.long_term_steps = max(1, int(long_term_steps))
         self.forecast_every = max(1, int(forecast_every))
 
-        if auto_derive_features is None:
-            auto_derive_features = (feature_set == "v2")
-
         # Filter csv_paths down to just the turbines we actually need
         used_csv_paths = {tid: turbine_csv_paths[tid] for tid in all_turbines}
 
@@ -212,8 +200,6 @@ class TimeCAPGodEyeProvider:
             long_term_steps=long_term_steps,
             device=device,
             csv_start_offset=effective_offset,
-            feature_set=feature_set,
-            auto_derive_features=auto_derive_features,
         )
         self.seq_len = self.predictor.seq_len
         self.pred_len = self.predictor.pred_len
@@ -227,11 +213,10 @@ class TimeCAPGodEyeProvider:
         self._dirty_steps: int = 0
 
         logger.info(
-            "TimeCAPGodEyeProvider ready: dcs=%s, turbines=%s, feature_set=%s, "
+            "TimeCAPGodEyeProvider ready: dcs=%s, turbines=%s, "
             "forecast_every=%d, device=%s, warmup_rows=%d, dc_tz_offsets=%s",
             self.dc_ids,
             sorted(self.predictor.turbine_ids),
-            feature_set,
             self.forecast_every,
             device,
             self.simulation_warmup_rows,

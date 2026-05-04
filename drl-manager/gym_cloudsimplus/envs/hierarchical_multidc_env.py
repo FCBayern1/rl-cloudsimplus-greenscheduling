@@ -177,7 +177,6 @@ class HierarchicalMultiDCEnv(gym.Env):
             green_oracle_mode: timecap
             timecap:
               checkpoint: <path>           # required
-              feature_set: v1              # "v1" (baseline) or "v2" (Phase 1)
               forecast_every: 6            # 1=every step (GPU); 6=every sim hour (CPU)
               device: cpu                  # or "cuda"
               csv_dir: cloudsimplus-gateway/src/main/resources/windProduction/split
@@ -257,7 +256,6 @@ class HierarchicalMultiDCEnv(gym.Env):
             dc_assignments        = dc_assignments,
             turbine_csv_paths     = turbine_csv_paths,
             checkpoint_path       = str(ckpt),
-            feature_set           = str(tc_cfg.get("feature_set", "v1")),
             forecast_every        = int(tc_cfg.get("forecast_every", 6)),
             device                = str(tc_cfg.get("device", "cpu")),
             csv_start_offset      = int(tc_cfg.get("csv_start_offset", 0)),
@@ -266,11 +264,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         )
         self._timecap_warmup_on_reset = bool(tc_cfg.get("warmup_on_reset", False))
         logger.info(
-            "TimeCAP green-oracle ready: ckpt=%s | feature_set=%s | "
+            "TimeCAP green-oracle ready: ckpt=%s | "
             "forecast_every=%d | device=%s | dcs=%s | turbines=%s | "
             "warmup_rows=%d | dc_tz_offsets=%s",
             ckpt,
-            tc_cfg.get("feature_set", "v1"),
             int(tc_cfg.get("forecast_every", 6)),
             tc_cfg.get("device", "cpu"),
             sorted(dc_assignments.keys()),

@@ -19,7 +19,6 @@ Usage (from repo root)
     python scripts/timecap/showcase_one_day.py
     python scripts/timecap/showcase_one_day.py --turbine 46 --date 2021-06-15
     python scripts/timecap/showcase_one_day.py \\
-        --feature-set v1 \\
         --checkpoint drl-manager/timecap_prediction/TimeCAP/model/finetune_TimeCAP_custom_sl96_baseline_4358062/ckpt_best.pth
 """
 
@@ -67,8 +66,6 @@ def parse_args():
                    help="Target date YYYY-MM-DD (must lie inside the CSV's coverage)")
     p.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT,
                    help="Path to ckpt_best.pth (model_args.json must sit next to it)")
-    p.add_argument("--feature-set", choices=["v1", "v2"], default="v1",
-                   help="Feature schema. v1 = baseline (13 raw), v2 = Phase 1 (23 engineered)")
     p.add_argument("--device", default="cpu", help="torch device, e.g. cpu, cuda, cuda:0")
     p.add_argument("--output", type=Path, default=None,
                    help="Output PNG. Default: drl-manager/timecap_prediction/figures/showcase_<turbine>_<date>.png")
@@ -124,7 +121,6 @@ def main():
     print(f"  csv         : {args.csv}")
     print(f"  date        : {args.date}")
     print(f"  checkpoint  : {args.checkpoint}")
-    print(f"  feature-set : {args.feature_set}")
     print(f"  device      : {args.device}")
 
     # Load CSV (only for index lookup + ground truth slicing — the predictor
@@ -142,8 +138,6 @@ def main():
     predictor = TimeCAP_GreenPredictor(
         checkpoint_path=str(args.checkpoint),
         turbine_csv_paths={args.turbine: str(args.csv)},
-        feature_set=args.feature_set,
-        auto_derive_features=(args.feature_set == "v2"),
         device=args.device,
     )
 
@@ -218,7 +212,7 @@ def main():
     ax.legend(loc="best", fontsize=10)
 
     out_path = args.output or (
-        DEFAULT_OUT_DIR / f"showcase_T{args.turbine}_{args.date}_{args.feature_set}.png"
+        DEFAULT_OUT_DIR / f"showcase_T{args.turbine}_{args.date}.png"
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()

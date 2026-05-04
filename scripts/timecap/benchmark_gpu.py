@@ -57,7 +57,6 @@ def parse_args():
     p.add_argument("--checkpoint", type=Path, default=DEFAULT_CKPT)
     p.add_argument("--csv-dir", type=Path, default=DEFAULT_CSV_DIR,
                    help="Directory containing Turbine_<id>_2021.csv files")
-    p.add_argument("--feature-set", choices=["v1", "v2"], default="v1")
     p.add_argument("--device", default="cuda",
                    help='"cuda", "cuda:0", or "cpu" (cpu is for sanity checks)')
     p.add_argument("--warmup-iters", type=int, default=10)
@@ -212,7 +211,6 @@ def main():
         props = torch.cuda.get_device_properties(device)
         print(f"  VRAM total   : {props.total_memory / 1e9:.1f} GB")
     print(f"  checkpoint   : {args.checkpoint}")
-    print(f"  feature-set  : {args.feature_set}")
     print(f"  warmup iters : {args.warmup_iters}")
     print(f"  bench iters  : {args.bench_iters}")
     print(f"  pid          : {os.getpid()}")
@@ -242,7 +240,6 @@ def main():
             dc_assignments={0: tids},
             turbine_csv_paths=csv_paths,
             checkpoint_path=str(args.checkpoint),
-            feature_set=args.feature_set,
             forecast_every=1,
             device=str(device),
         )
@@ -272,7 +269,6 @@ def main():
             dc_assignments={0: tids_full},
             turbine_csv_paths=csv_paths,
             checkpoint_path=str(args.checkpoint),
-            feature_set=args.feature_set,
             forecast_every=1,
             device=str(device),
         )

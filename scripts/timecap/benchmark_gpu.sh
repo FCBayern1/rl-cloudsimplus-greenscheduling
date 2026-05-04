@@ -23,7 +23,6 @@
 #   logs/timecap_gpu_bench_<jobid>.err — any errors / module load output
 #
 # Override anything via env vars before sbatch (all optional):
-#   FEATURE_SET=v1                 # or "v2" once Phase 1 ckpt is ready
 #   CHECKPOINT=/path/to/ckpt_best.pth
 #   TURBINE_COUNTS=1,4,16,64       # which N to sweep
 #   BENCH_ITERS=100                # timed forwards per data point
@@ -40,7 +39,6 @@ REPO_ROOT="/lus/lfs1aip2/projects/u6fy/rl-cloudsimplus-greenscheduling"
 cd "${REPO_ROOT}"
 
 # Defaults — override on the sbatch command line if you like
-FEATURE_SET="${FEATURE_SET:-v1}"
 CHECKPOINT="${CHECKPOINT:-${REPO_ROOT}/drl-manager/timecap_prediction/TimeCAP/model/finetune_TimeCAP_custom_sl96_baseline_4358062/ckpt_best.pth}"
 TURBINE_COUNTS="${TURBINE_COUNTS:-1,2,4,8,16,32,64,134}"
 BENCH_ITERS="${BENCH_ITERS:-100}"
@@ -51,7 +49,6 @@ echo "  Job ID         : ${SLURM_JOB_ID:-N/A}"
 echo "  Node           : $(hostname)"
 echo "  GPU(s) visible : ${CUDA_VISIBLE_DEVICES:-?}"
 echo "  CPUs per task  : ${SLURM_CPUS_PER_TASK:-?}"
-echo "  Feature set    : ${FEATURE_SET}"
 echo "  Checkpoint     : ${CHECKPOINT}"
 echo "  Turbine counts : ${TURBINE_COUNTS}"
 echo "  Bench iters    : ${BENCH_ITERS}  (warmup ${WARMUP_ITERS})"
@@ -66,7 +63,6 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
 python -u scripts/timecap/benchmark_gpu.py \
     --device "cuda" \
-    --feature-set "${FEATURE_SET}" \
     --checkpoint "${CHECKPOINT}" \
     --turbine-counts "${TURBINE_COUNTS}" \
     --bench-iters "${BENCH_ITERS}" \
