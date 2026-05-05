@@ -21,6 +21,7 @@ non-ensemble RLModules) are treated as no-ops here — their loss is whatever
 the base learner returned.
 """
 
+import logging
 from typing import Any, Dict, Optional
 
 import torch
@@ -32,6 +33,9 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
+
+
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_Q_LOSS_COEF = 0.5
@@ -52,6 +56,10 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         super().build()
         # Per-module call counter for `q_train_every_n_iters` gating.
         self._crd_call_counts: Dict[ModuleID, int] = {}
+        # M2.1: per-module call counter for the CRD hook itself, used to
+        # log "[CRD] hook reached for module X" only on the first hit so the
+        # log doesn't spam every minibatch.
+        self._crd_hook_logged: Dict[ModuleID, bool] = {}
 
     def compute_loss_for_module(
         self,
@@ -61,6 +69,12 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        # M2.1: CRD hook — entry point for forecast/routing/scheduling
+        # counterfactual computation. First version is a no-op that just logs
+        # once per module to verify the hook is reachable under the New API
+        # stack. M2.2-M2.5 will fill in the actual computation here.
+        self._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
+
         base_loss = super().compute_loss_for_module(
             module_id=module_id,
             config=config,
@@ -87,6 +101,37 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         return base_loss + coef * q_loss
 
     # ------------------------------------------------------------------ helpers
+
+    def _compute_crd_terms(
+        self,
+        *,
+        module_id: ModuleID,
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType],
+    ) -> None:
+        """
+        M2.1 placeholder — the entry point for EU-CRD counterfactual
+        computation. Later milestones (M2.2-M2.5) will:
+          - read batch[Columns.INFOS] and compute R_forecast → batch["crd_forecast"]
+          - call GreenQueueBalancedGlobalScheduler → batch["crd_baseline_action"]
+          - call module.compute_q_ensemble twice → batch["crd_dq"], ["crd_sigma2"]
+          - compute Δr proxy → batch["crd_dr"]
+
+        For now this is a no-op that logs once per module so we can confirm
+        in real training that the hook actually fires under the New API stack.
+        """
+        if not self._crd_hook_logged.get(module_id, False):
+            self._crd_hook_logged[module_id] = True
+            keys = sorted(batch.keys()) if isinstance(batch, dict) else "<not a dict>"
+            fwd_keys = sorted(fwd_out.keys()) if isinstance(fwd_out, dict) else "<not a dict>"
+            has_q_ens = (
+                isinstance(fwd_out, dict) and COL_Q_ENSEMBLE in fwd_out
+            )
+            logger.info(
+                f"[CRD] hook reached for module {module_id!r}; "
+                f"batch_keys={keys}; fwd_out_keys={fwd_keys}; "
+                f"has_q_ensemble={has_q_ens}"
+            )
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
