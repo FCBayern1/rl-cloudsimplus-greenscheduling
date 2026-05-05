@@ -151,5 +151,63 @@ def test_invalid_input_dim_raises():
         mod(torch.randn(2, 3, mod.d_model))  # 3-D input
 
 
+def test_sigma_decreases_as_q_heads_learn_consistent_targets():
+    """
+    M1.3 acceptance #3: σ² is a critic-maturity signal.
+
+    Setup: fixed (state, action, target) batch. Train the K trainable q_heads
+    by gradient descent on per-head MSE. Because the prior is FROZEN, the
+    `q_i + λ·p_i` outputs cannot all collapse to the same value — but the
+    *trainable* q_i parts should converge enough that σ² drops noticeably.
+
+    Important: σ² will NOT go to zero (frozen priors contribute persistent
+    variance λ²·Var_i[p_i(s)]). We assert σ² decreases by a meaningful
+    fraction, not that it vanishes.
+    """
+    torch.manual_seed(7)
+    mod = _make_module(d_model=8, action_dim=4, K=5, prior_lambda=3.0, hidden_dim=8)
+
+    # Fixed batch: 16 states, each labelled with one action and one target value.
+    B, A = 16, 4
+    state = torch.randn(B, mod.d_model)
+    action = torch.randint(0, A, (B,), dtype=torch.long)
+    target = torch.randn(B)  # arbitrary scalar Q-target per (s, a)
+
+    def measure_sigma_squared() -> float:
+        with torch.no_grad():
+            _, var = mod.compute_q_for_action(state, action)
+        return var.mean().item()
+
+    sigma2_before = measure_sigma_squared()
+
+    # Train: pull the chosen-action Q value of every head toward target.
+    optim = torch.optim.SGD(
+        [p for p in mod.parameters() if p.requires_grad], lr=0.05
+    )
+    for _ in range(400):
+        optim.zero_grad()
+        q_all = mod(state)                                 # (B, K, A)
+        idx = action.view(-1, 1, 1).expand(-1, mod.K, 1)
+        q_chosen = q_all.gather(2, idx).squeeze(-1)        # (B, K)
+        # K-head MSE — drives every head toward target on this fixed batch.
+        loss = (q_chosen - target.unsqueeze(1)).pow(2).mean()
+        loss.backward()
+        optim.step()
+
+    sigma2_after = measure_sigma_squared()
+
+    # σ² should drop by a meaningful margin. Threshold of 0.5× is conservative
+    # and easily met if training is working at all.
+    assert sigma2_after < sigma2_before * 0.5, (
+        f"σ² did not decrease enough: before={sigma2_before:.4f}, "
+        f"after={sigma2_after:.4f}. Expected at least 50% reduction."
+    )
+    # Sanity: σ² should not vanish entirely — the frozen priors enforce a floor.
+    assert sigma2_after > 1e-6, (
+        f"σ² collapsed to ~0 ({sigma2_after}); randomized priors should "
+        f"keep it strictly positive."
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
