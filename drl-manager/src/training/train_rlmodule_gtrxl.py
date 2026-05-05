@@ -12,6 +12,7 @@ It utilizes:
 import os
 import sys
 import argparse
+import math
 import yaml
 import logging
 import warnings
@@ -441,17 +442,21 @@ def create_rlmodule_config(
                 "GPUs available' on the env side)."
             )
         else:
-            # Remote env_runners each need GPU access for TimeCAP. Reserve
-            # 1 GPU for the learner; share the rest across runners. Fractional
-            # shares are fine — TimeCAP forecasts run every forecast_every steps.
+            # Remote env_runners each need GPU access for TimeCAP.  Reserve
+            # 1 GPU for the learner; pack runners onto the remaining GPUs.
+            # Ray treats fractional GPU >0.5 as exclusive (one actor per GPU),
+            # so the per-runner share must equal 1/runners_per_gpu so multiple
+            # runners actually share a card when GPUs are scarce.
             _num_learners = 1
             _num_gpus_per_learner = 1
-            _runner_share = max(0.1, (num_gpus - 1) / _num_workers)
-            _num_gpus_per_env_runner = min(1.0, _runner_share)
+            _runner_gpus = max(1, num_gpus - 1)
+            _runners_per_gpu = max(1, math.ceil(_num_workers / _runner_gpus))
+            _num_gpus_per_env_runner = 1.0 / _runners_per_gpu
             logger.info(
-                "TimeCAP requests CUDA + num_workers=%d → "
-                "num_gpus_per_env_runner=%.2f, learner gets 1 GPU.",
-                _num_workers, _num_gpus_per_env_runner,
+                "TimeCAP requests CUDA + num_workers=%d on %d GPUs → "
+                "%d runner(s) per GPU, num_gpus_per_env_runner=%.3f, "
+                "learner gets 1 GPU.",
+                _num_workers, num_gpus, _runners_per_gpu, _num_gpus_per_env_runner,
             )
     else:
         _num_learners = 1 if num_gpus > 0 else 0
