@@ -1,11 +1,12 @@
 """
-M2.1 — verify _compute_crd_terms hook is reached when compute_loss_for_module
-runs. This isolates the hook plumbing from the actual CF computation (which
-M2.2-M2.5 will fill in).
+Tests for the EU-CRD pieces inside CRDPPOTorchLearner.compute_loss_for_module:
+  M2.1 — hook is reached and gates correctly on crd_q_ensemble presence
+  M2.2 — forecast CF written to batch["crd_forecast"]
+  (M2.3-M2.5 add baseline action, ΔQ/σ², Δr in later milestones)
 
-We don't spin up a full PPO learner here. We construct a minimal subclass
-that bypasses super() and just verifies our hook is invoked exactly once
-per minibatch with the expected arguments.
+These tests deliberately bypass the full PPOTorchLearner setup — we exercise
+just the CRD-specific code paths via a StubLearner that overrides build()
+and compute_loss_for_module to skip the heavy machinery.
 
 Run from drl-manager/ :
     .venv/bin/python -m pytest tests/test_crd_compute_loss.py -v
@@ -19,34 +20,37 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.learners.crd_q_loss import CRDPPOTorchLearner
+from ray.rllib.core.columns import Columns
+from ray.rllib.evaluation.postprocessing import Postprocessing
+
+from src.learners.crd_q_loss import (
+    COL_CRD_FORECAST,
+    CRDPPOTorchLearner,
+)
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
 
 
 class _StubLearner(CRDPPOTorchLearner):
     """
-    Avoid the heavyweight PPOTorchLearner.build / .compute_loss_for_module
-    chain — we only want to test that:
-      1. our hook is called at the start of compute_loss_for_module
-      2. it sees the batch / fwd_out we passed in
-      3. log fires only once per module
-
-    super().compute_loss_for_module would require a real PPO config and
-    module registry, which is overkill for testing the hook itself.
+    Bypasses PPOTorchLearner.__init__ and .compute_loss_for_module's super
+    call, leaving only the CRD-specific code under test.
     """
 
-    def __init__(self):
-        # Skip PPOTorchLearner.__init__ — we don't need the full Learner setup.
-        # Just init the CRD-specific dicts.
+    def __init__(self, beta: float = 0.5, gamma: float = 0.3):
+        # Mirror what build() would set up.
         self._crd_call_counts = {}
         self._crd_hook_logged = {}
-        self.hook_calls = []  # record (module_id, batch_keys, fwd_keys)
+        self._crd_pred_missing_warned = {}
+        self.hook_calls = []  # observability for tests
+        self._beta = beta
+        self._gamma = gamma
+
+    def _read_module_forecast_config(self, module_id):
+        # Avoid the real `self.module[module_id].unwrapped()` plumbing.
+        return {"beta": self._beta, "gamma": self._gamma}
 
     def _compute_crd_terms(self, *, module_id, batch, fwd_out):
-        # Wrap the parent hook so we can observe it.
-        super()._compute_crd_terms(
-            module_id=module_id, batch=batch, fwd_out=fwd_out
-        )
+        super()._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
         self.hook_calls.append(
             (
                 module_id,
@@ -56,66 +60,237 @@ class _StubLearner(CRDPPOTorchLearner):
         )
 
     def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
-        # Minimal mirror of CRDPPOTorchLearner.compute_loss_for_module that
-        # exercises the hook but skips super() (which needs a real PPO setup).
+        # Mirror the M1.2/M2.1 entry: run CRD hook, then "pretend" PPO loss.
         self._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
-        # Pretend super() returned a scalar loss.
         return torch.tensor(0.0)
 
 
-def test_hook_invoked_once_per_minibatch():
-    learner = _StubLearner()
-    batch = {"obs": torch.randn(2, 3), "rewards": torch.zeros(2)}
-    fwd = {"vf_preds": torch.zeros(2)}
-    learner.compute_loss_for_module(module_id="global_policy", config=None, batch=batch, fwd_out=fwd)
-    assert len(learner.hook_calls) == 1
-    mid, b_keys, f_keys = learner.hook_calls[0]
-    assert mid == "global_policy"
-    assert b_keys == ("obs", "rewards")
-    assert f_keys == ("vf_preds",)
+# ---------------------------------------------------------------------------
+# Helpers for building synthetic batches
+# ---------------------------------------------------------------------------
 
 
-def test_hook_invoked_per_compute_loss_call():
-    """Each minibatch update calls compute_loss_for_module → hook fires every time."""
-    learner = _StubLearner()
-    batch = {"obs": torch.randn(2, 3)}
-    fwd = {}
-    for _ in range(5):
-        learner.compute_loss_for_module(module_id="m", config=None, batch=batch, fwd_out=fwd)
-    assert len(learner.hook_calls) == 5
+def _make_crd_info(actual=None, pred=None):
+    """Mirror what HierarchicalMultiDCEnv._collect_crd_info writes."""
+    info = {
+        "crd": {
+            "actual_wind_w": actual or [800_000.0, 0.0, 2_000_000.0],
+            "p_total_w": [1_500_000.0, 1_000_000.0, 500_000.0],
+            "timestep_hours": 1.0,
+            "green_carbon_factor": [0.0, 0.0, 0.04],
+            "brown_carbon_factor": [0.5, 0.5, 0.5],
+            "running_max_carbon": 1.0,
+        }
+    }
+    if pred is not None:
+        info["crd"]["predicted_wind_w"] = pred
+    return info
 
 
-def test_log_fires_only_once_per_module(caplog):
-    """Even if hook is called many times, the warn-once log should appear once per module."""
+def _ensemble_fwd_out(B=2, T=2, K=5, A=4):
+    return {COL_Q_ENSEMBLE: torch.zeros(B, T, K, A)}
+
+
+# ---------------------------------------------------------------------------
+# M2.1 — hook gating + warn-once log
+# ---------------------------------------------------------------------------
+
+
+def test_hook_skipped_when_no_q_ensemble_in_fwd_out(caplog):
+    """Without crd_q_ensemble in fwd_out, the hook is a silent no-op."""
     import logging
     learner = _StubLearner()
-    batch = {}
-    fwd = {}
+    with caplog.at_level(logging.INFO, logger="src.learners.crd_q_loss"):
+        learner.compute_loss_for_module(
+            module_id="vanilla", config=None, batch={"x": torch.zeros(1)}, fwd_out={"vf_preds": torch.zeros(1)}
+        )
+    crd_logs = [r for r in caplog.records if "[CRD]" in r.message]
+    assert crd_logs == [], "no CRD log should fire for non-ensemble modules"
+
+
+def test_hook_fires_when_q_ensemble_present(caplog):
+    import logging
+    learner = _StubLearner()
+    with caplog.at_level(logging.INFO, logger="src.learners.crd_q_loss"):
+        learner.compute_loss_for_module(
+            module_id="ensemble_m", config=None, batch={"x": torch.zeros(1)}, fwd_out=_ensemble_fwd_out()
+        )
+    crd_logs = [r for r in caplog.records if "[CRD] hook reached" in r.message]
+    assert len(crd_logs) == 1
+    assert "ensemble_m" in crd_logs[0].message
+
+
+def test_hook_log_fires_only_once_per_module(caplog):
+    """Repeated minibatches → hook called every time, but log fires once per module."""
+    import logging
+    learner = _StubLearner()
     with caplog.at_level(logging.INFO, logger="src.learners.crd_q_loss"):
         for _ in range(3):
-            learner.compute_loss_for_module(module_id="alpha", config=None, batch=batch, fwd_out=fwd)
+            learner.compute_loss_for_module(
+                module_id="alpha", config=None, batch={}, fwd_out=_ensemble_fwd_out()
+            )
         for _ in range(3):
-            learner.compute_loss_for_module(module_id="beta", config=None, batch=batch, fwd_out=fwd)
-    crd_log_lines = [r for r in caplog.records if "[CRD] hook reached" in r.message]
-    seen_modules = {r.message.split("module ")[1].split(";")[0] for r in crd_log_lines}
-    assert seen_modules == {"'alpha'", "'beta'"}, (
-        f"expected logs for both modules exactly once each; got {seen_modules}"
+            learner.compute_loss_for_module(
+                module_id="beta", config=None, batch={}, fwd_out=_ensemble_fwd_out()
+            )
+    crd_logs = [r for r in caplog.records if "[CRD] hook reached" in r.message]
+    seen = {r.message.split("module ")[1].split(";")[0] for r in crd_logs}
+    assert seen == {"'alpha'", "'beta'"}
+    assert len(crd_logs) == 2  # one per module
+    # Hook itself was called 6 times.
+    assert len(learner.hook_calls) == 6
+
+
+# ---------------------------------------------------------------------------
+# M2.2 — forecast CF static helper
+# ---------------------------------------------------------------------------
+
+
+def test_forecast_values_perfect_prediction_yields_zero():
+    """When predicted == actual for every transition, every R_forecast is 0."""
+    infos = [_make_crd_info(pred=[800_000.0, 0.0, 2_000_000.0]) for _ in range(5)]
+    rs, n_missing = CRDPPOTorchLearner._compute_forecast_cf_values(
+        infos, beta=0.5, gamma=0.3
     )
-    assert len(crd_log_lines) == 2
+    assert rs == [0.0] * 5
+    assert n_missing == 0
 
 
-def test_hook_records_q_ensemble_presence_in_log(caplog):
-    """When fwd_out has crd_q_ensemble, the hook should note has_q_ensemble=True."""
-    import logging
+def test_forecast_values_count_missing_predictions():
+    """Transitions without predicted_wind_w → R = 0 + n_missing increments."""
+    infos = [
+        _make_crd_info(),  # no pred
+        _make_crd_info(pred=[800_000.0, 0.0, 2_000_000.0]),  # has pred
+        _make_crd_info(),  # no pred
+    ]
+    rs, n_missing = CRDPPOTorchLearner._compute_forecast_cf_values(
+        infos, beta=1.0, gamma=1.0
+    )
+    assert len(rs) == 3
+    assert rs[0] == 0.0 and rs[2] == 0.0
+    assert rs[1] == 0.0  # perfect-pred → 0 anyway
+    assert n_missing == 2
+
+
+def test_forecast_values_correlate_with_injected_bias():
+    """Sweep predicted = actual * scale; R_forecast must track the scale (corr > 0.95)."""
+    import numpy as np
+    actual = [800_000.0, 0.0, 2_000_000.0]
+    scales = np.linspace(0.1, 2.0, 25)
+    infos = [_make_crd_info(actual=actual, pred=[a * s for a in actual]) for s in scales]
+    rs, _ = CRDPPOTorchLearner._compute_forecast_cf_values(
+        infos, beta=1.0, gamma=1.0
+    )
+    corr = float(np.corrcoef(scales, rs)[0, 1])
+    assert corr > 0.95, f"R_forecast does not track bias; corr={corr:.4f}"
+
+
+def test_forecast_values_handle_non_dict_infos_gracefully():
+    """Robustness: garbage in infos doesn't crash the static helper."""
+    infos = [None, "not a dict", 42, _make_crd_info(pred=[1, 1, 1])]
+    rs, n_missing = CRDPPOTorchLearner._compute_forecast_cf_values(
+        infos, beta=1.0, gamma=1.0
+    )
+    assert len(rs) == 4
+    assert rs[0] == rs[1] == rs[2] == 0.0
+    # The 4th (real CRD info) goes through forecast_cf_per_step normally.
+
+
+# ---------------------------------------------------------------------------
+# M2.2 — full hook path: writes batch[COL_CRD_FORECAST] with correct shape
+# ---------------------------------------------------------------------------
+
+
+def test_compute_crd_terms_writes_forecast_key_with_matching_shape():
+    """
+    `batch[Columns.REWARDS]` is (B, T) and our forecast tensor must reshape to
+    match so M5 can broadcast/multiply.
+    """
+    B, T = 2, 3
+    infos = [_make_crd_info(pred=[a * 0.5 for a in [800_000.0, 0.0, 2_000_000.0]]) for _ in range(B * T)]
+    batch = {
+        Columns.INFOS: infos,
+        Columns.REWARDS: torch.zeros(B, T),
+    }
     learner = _StubLearner()
-    fwd_with = {COL_Q_ENSEMBLE: torch.randn(2, 1, 5, 4)}
-    fwd_without = {}
-    with caplog.at_level(logging.INFO, logger="src.learners.crd_q_loss"):
-        learner.compute_loss_for_module(module_id="with", config=None, batch={}, fwd_out=fwd_with)
-        learner.compute_loss_for_module(module_id="without", config=None, batch={}, fwd_out=fwd_without)
-    msgs = [r.message for r in caplog.records if "[CRD]" in r.message]
-    assert any("has_q_ensemble=True" in m for m in msgs)
-    assert any("has_q_ensemble=False" in m for m in msgs)
+    learner.compute_loss_for_module(
+        module_id="m", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=B, T=T)
+    )
+    assert COL_CRD_FORECAST in batch
+    out = batch[COL_CRD_FORECAST]
+    assert out.shape == (B, T)
+    assert out.dtype == torch.float32
+
+
+def test_compute_crd_terms_skipped_when_no_q_ensemble():
+    """Non-ensemble module: forecast key must NOT appear in batch."""
+    batch = {
+        Columns.INFOS: [_make_crd_info(pred=[1, 1, 1])],
+        Columns.REWARDS: torch.zeros(1, 1),
+    }
+    learner = _StubLearner()
+    learner.compute_loss_for_module(
+        module_id="vanilla", config=None, batch=batch, fwd_out={"vf_preds": torch.zeros(1)}
+    )
+    assert COL_CRD_FORECAST not in batch
+
+
+def test_compute_crd_terms_skipped_when_no_infos():
+    """Missing Columns.INFOS → forecast key not added (no crash)."""
+    batch = {Columns.REWARDS: torch.zeros(1, 1)}
+    learner = _StubLearner()
+    learner.compute_loss_for_module(
+        module_id="m", config=None, batch=batch, fwd_out=_ensemble_fwd_out()
+    )
+    assert COL_CRD_FORECAST not in batch
+
+
+def test_compute_crd_terms_warns_once_when_predictions_missing(caplog):
+    """When predictions are absent, log a warn-once per module."""
+    import logging
+    infos_without_pred = [_make_crd_info() for _ in range(4)]  # no pred
+    batch = {Columns.INFOS: infos_without_pred, Columns.REWARDS: torch.zeros(2, 2)}
+    learner = _StubLearner()
+    with caplog.at_level(logging.WARNING, logger="src.learners.crd_q_loss"):
+        learner.compute_loss_for_module(
+            module_id="m1", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=2, T=2)
+        )
+        # Second call shouldn't double-log.
+        learner.compute_loss_for_module(
+            module_id="m1", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=2, T=2)
+        )
+    warnings = [r for r in caplog.records if "predicted_wind_w missing" in r.message]
+    assert len(warnings) == 1, f"expected 1 warn-once log, got {len(warnings)}"
+    # All 4 transitions still logged in the message body.
+    assert "4/4" in warnings[0].message
+    # Forecast values are still produced (all zeros).
+    assert COL_CRD_FORECAST in batch
+    assert (batch[COL_CRD_FORECAST] == 0).all()
+
+
+def test_compute_crd_terms_uses_module_beta_gamma():
+    """β=γ=0 makes R_forecast = 0 even when predictions are wildly wrong."""
+    infos = [_make_crd_info(pred=[0.0, 0.0, 0.0])] * 4  # heavily biased
+    batch = {Columns.INFOS: infos, Columns.REWARDS: torch.zeros(2, 2)}
+    learner = _StubLearner(beta=0.0, gamma=0.0)
+    learner.compute_loss_for_module(
+        module_id="m", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=2, T=2)
+    )
+    assert (batch[COL_CRD_FORECAST] == 0).all()
+
+
+def test_compute_crd_terms_forecast_tracks_bias_through_full_path():
+    """Optimistic prediction (over-estimates wind) → R_forecast > 0 in batch tensor."""
+    actual = [800_000.0, 0.0, 2_000_000.0]
+    optimistic = [a * 2.0 for a in actual]
+    infos = [_make_crd_info(actual=actual, pred=optimistic)] * 2
+    batch = {Columns.INFOS: infos, Columns.REWARDS: torch.zeros(1, 2)}
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    learner.compute_loss_for_module(
+        module_id="m", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=1, T=2)
+    )
+    out = batch[COL_CRD_FORECAST]
+    assert (out > 0).all(), f"optimistic forecast should give R_forecast > 0, got {out}"
 
 
 if __name__ == "__main__":
