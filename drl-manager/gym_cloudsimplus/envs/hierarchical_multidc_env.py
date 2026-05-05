@@ -144,6 +144,13 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.episode_reward = 0.0
         self.done = False
 
+        # CRD framework: cached per-DC carbon factors and timestep duration.
+        # These are stable for the simulation lifetime; populated lazily on first
+        # access from Java to avoid extra Py4J round-trips per step.
+        self._crd_green_factors: Optional[List[float]] = None
+        self._crd_brown_factors: Optional[List[float]] = None
+        self._crd_timestep_hours: Optional[float] = None
+
         # Define observation and action spaces
         self._setup_observation_spaces()
         self._setup_action_spaces()
@@ -991,6 +998,11 @@ class HierarchicalMultiDCEnv(gym.Env):
         Ensures all values are Python native types (serializable).
         """
         info_java = result.getInfo()
+        # Reset clears any cached static CRD values (factors / timestep) so the
+        # next step picks up freshly-configured values.
+        self._crd_green_factors = None
+        self._crd_brown_factors = None
+        self._crd_timestep_hours = None
         info = {}
         # Be robust to Py4J Map proxies vs auto-converted Python dicts.
         # Prefer keySet()/get() when available.
@@ -999,6 +1011,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 for key in info_java.keySet():
                     value = info_java.get(key)
                     info[str(key)] = self._convert_java_value(value)
+                info["crd"] = self._collect_crd_info()
                 return info
         except Exception:
             pass
@@ -1011,6 +1024,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 # Last resort: try .get(key) without default
                 value = info_java.get(key) if hasattr(info_java, "get") else None
             info[str(key)] = self._convert_java_value(value)
+        info["crd"] = self._collect_crd_info()
         return info
 
     def _pad_batch_array(self, arr: np.ndarray, target_size: int, dtype=np.int32) -> np.ndarray:
@@ -1264,6 +1278,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                     info[str(key)] = self._convert_java_value(value)
                 info["episode_step"] = self.current_step
                 info["episode_reward"] = self.episode_reward
+                info["crd"] = self._collect_crd_info()
                 return info
         except Exception:
             pass
@@ -1278,8 +1293,57 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
+        info["crd"] = self._collect_crd_info()
 
         return info
+
+    def _collect_crd_info(self) -> Dict[str, Any]:
+        """
+        Snapshot the per-step state needed by the CRD callback to compute the
+        forecast counterfactual analytically (no replay).
+
+        Fields written:
+        - actual_wind_w:     per-DC realized green power at end of step (W)
+        - p_total_w:         per-DC total power demand at end of step (W)
+        - running_max_carbon: simulator's current normalization denominator
+        - timestep_hours:    duration matching the carbon formula
+        - green_carbon_factor / brown_carbon_factor: per-DC kgCO2/kWh
+
+        Predicted wind (Ŵ_t) is added by WindPredictionWrapper if present;
+        the base env does not know about predictions.
+        """
+        if self.java_env is None:
+            return {}
+        try:
+            self._ensure_crd_static_cache()
+            actual_wind = list(self.java_env.getCurrentPerDcGreenPowerW())
+            p_total = list(self.java_env.getCurrentPerDcTotalPowerW())
+            running_max = float(self.java_env.getCurrentRunningMaxCarbon())
+            return {
+                "actual_wind_w": [float(x) for x in actual_wind],
+                "p_total_w": [float(x) for x in p_total],
+                "running_max_carbon": running_max,
+                "timestep_hours": self._crd_timestep_hours,
+                "green_carbon_factor": list(self._crd_green_factors or []),
+                "brown_carbon_factor": list(self._crd_brown_factors or []),
+            }
+        except Exception as e:
+            logger.warning(f"_collect_crd_info failed: {e}")
+            return {}
+
+    def _ensure_crd_static_cache(self) -> None:
+        """Lazily fetch carbon factors and timestep duration once per simulation."""
+        if self._crd_green_factors is not None:
+            return
+        if self.java_env is None:
+            return
+        self._crd_green_factors = [
+            float(x) for x in self.java_env.getCurrentPerDcGreenCarbonFactor()
+        ]
+        self._crd_brown_factors = [
+            float(x) for x in self.java_env.getCurrentPerDcBrownCarbonFactor()
+        ]
+        self._crd_timestep_hours = float(self.java_env.getCurrentTimestepHours())
     
     def _convert_java_value(self, value):
         """

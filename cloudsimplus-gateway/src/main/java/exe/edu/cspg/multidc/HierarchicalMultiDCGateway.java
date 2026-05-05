@@ -396,6 +396,144 @@ public class HierarchicalMultiDCGateway {
         configured = false;
     }
 
+    // ============================================================================
+    // CRD (Counterfactual Responsibility Decomposition) — analytical API
+    //
+    // These read-only accessors and pure-function evaluators let Python compute
+    // the forecast counterfactual reward without re-simulating. They use the
+    // simulator's current per-DC P_total (the demand at the end of the latest
+    // step) and the per-DC carbon factors from configuration.
+    //
+    // Convention: "counterfactual" methods do NOT mutate any simulation state.
+    // ============================================================================
+
+    /** Per-DC actual green power (W) at the current simulation clock. */
+    public double[] getCurrentPerDcGreenPowerW() {
+        if (simulationCore == null) return new double[0];
+        double clock = simulationCore.getCurrentClock();
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        double[] out = new double[dcs.size()];
+        for (int i = 0; i < dcs.size(); i++) {
+            out[i] = dcs.get(i).getCurrentGreenPowerW(clock);
+        }
+        return out;
+    }
+
+    /** Per-DC total power demand (W) — P_total used in the carbon formula. */
+    public double[] getCurrentPerDcTotalPowerW() {
+        if (simulationCore == null) return new double[0];
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        double[] out = new double[dcs.size()];
+        for (int i = 0; i < dcs.size(); i++) {
+            out[i] = dcs.get(i).getCurrentPowerW();
+        }
+        return out;
+    }
+
+    /** Per-DC green carbon factor (kgCO2/kWh) — stable across episode. */
+    public double[] getCurrentPerDcGreenCarbonFactor() {
+        if (simulationCore == null) return new double[0];
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        double[] out = new double[dcs.size()];
+        for (int i = 0; i < dcs.size(); i++) {
+            out[i] = dcs.get(i).getConfig().getGreenCarbonFactor();
+        }
+        return out;
+    }
+
+    /** Per-DC brown carbon factor (kgCO2/kWh). */
+    public double[] getCurrentPerDcBrownCarbonFactor() {
+        if (simulationCore == null) return new double[0];
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        double[] out = new double[dcs.size()];
+        for (int i = 0; i < dcs.size(); i++) {
+            out[i] = dcs.get(i).getConfig().getBrownCarbonFactor();
+        }
+        return out;
+    }
+
+    /** Timestep duration in hours (matches the value used in the carbon formula). */
+    public double getCurrentTimestepHours() {
+        if (simulationCore == null) return 0.0;
+        return simulationCore.getTimestepSize() / 3600.0;
+    }
+
+    /**
+     * Running-max carbon used by the normalized carbon penalty (read-only).
+     * Python may use this to reproduce the same Ĉ scaling for both actual and
+     * counterfactual carbon values.
+     */
+    public double getCurrentRunningMaxCarbon() {
+        return simulationCore != null ? simulationCore.getRunningMaxCarbon() : 1e-3;
+    }
+
+    /**
+     * Total carbon (kg CO2) summed across DCs under hypothetical green power.
+     * Holds P_total and carbon factors fixed at the simulator's current state.
+     *
+     * NOTE: parameter is {@code List<Double>} (not {@code double[]}) because
+     * Py4J's auto_convert maps Python lists to {@code java.util.ArrayList}, not
+     * to primitive arrays.
+     *
+     * @param greenPowerWPerDc per-DC hypothetical green power in Watts
+     *                         (must have length == numDatacenters)
+     * @return aggregated raw carbon kg, before any normalization
+     */
+    public double computeCounterfactualCarbonKg(List<Double> greenPowerWPerDc) {
+        if (simulationCore == null || greenPowerWPerDc == null) return 0.0;
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        if (greenPowerWPerDc.size() != dcs.size()) {
+            throw new IllegalArgumentException(
+                "greenPowerWPerDc size " + greenPowerWPerDc.size()
+                + " != numDatacenters " + dcs.size());
+        }
+        double durationHours = getCurrentTimestepHours();
+        double total = 0.0;
+        for (int i = 0; i < dcs.size(); i++) {
+            DatacenterInstance dc = dcs.get(i);
+            Double w = greenPowerWPerDc.get(i);
+            total += EnergyMetricsDelta.computeCarbonKg(
+                w == null ? 0.0 : w,
+                dc.getCurrentPowerW(),
+                durationHours,
+                dc.getConfig().getGreenCarbonFactor(),
+                dc.getConfig().getBrownCarbonFactor()
+            );
+        }
+        return total;
+    }
+
+    /**
+     * Aggregated waste ratio across DCs under hypothetical green power.
+     * Mirrors MultiDatacenterSimulationCore.calculateGreenWasteRatio() but uses
+     * the supplied wind power instead of the realized one.
+     */
+    public double computeCounterfactualWasteRatio(List<Double> greenPowerWPerDc) {
+        if (simulationCore == null || greenPowerWPerDc == null) return 0.0;
+        List<DatacenterInstance> dcs = simulationCore.getDatacenterInstances();
+        if (greenPowerWPerDc.size() != dcs.size()) {
+            throw new IllegalArgumentException(
+                "greenPowerWPerDc size " + greenPowerWPerDc.size()
+                + " != numDatacenters " + dcs.size());
+        }
+        double durationHours = getCurrentTimestepHours();
+        double totalUsed = 0.0;
+        double totalWasted = 0.0;
+        for (int i = 0; i < dcs.size(); i++) {
+            DatacenterInstance dc = dcs.get(i);
+            Double w = greenPowerWPerDc.get(i);
+            double[] uw = EnergyMetricsDelta.computeGreenUsedWastedWh(
+                w == null ? 0.0 : w,
+                dc.getCurrentPowerW(),
+                durationHours
+            );
+            totalUsed += uw[0];
+            totalWasted += uw[1];
+        }
+        double total = totalUsed + totalWasted;
+        return total > 0 ? totalWasted / total : 0.0;
+    }
+
     // === Helper methods for parameter parsing ===
 
     private int getIntParam(Map<String, Object> map, String key, int defaultValue) {

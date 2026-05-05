@@ -191,6 +191,16 @@ class WindPredictionWrapper(gym.Wrapper):
 
         self.step_count += 1
 
+        # CRD: surface horizon-0 prediction in info["crd"]["predicted_wind_w"]
+        # so the counterfactual callback can compute R^forecast analytically.
+        crd = info.get("crd")
+        if isinstance(crd, dict):
+            preds = obs.get("global", {}).get("dc_predicted_green_power_w")
+            if preds is not None:
+                preds_arr = np.asarray(preds, dtype=np.float32)
+                if preds_arr.ndim == 2 and preds_arr.shape[1] >= 1:
+                    crd["predicted_wind_w"] = preds_arr[:, 0].tolist()
+
         # Log statistics periodically
         if self.enable_logging and self.step_count % 100 == 0:
             self._log_statistics()

@@ -85,4 +85,50 @@ public class EnergyMetricsDelta {
             getGreenRatio() * 100, getWasteRatio() * 100, getCarbonIntensity()
         );
     }
+
+    // ============================================================================
+    // Pure analytical helpers for counterfactual reward evaluation (CRD framework).
+    //
+    // These mirror the per-DC formula applied in
+    // DatacenterInstance.updateEnergyMetrics() — kept side-effect-free so Python
+    // callbacks can re-evaluate carbon / waste under hypothetical wind power
+    // without re-simulating.
+    // ============================================================================
+
+    /**
+     * Split power demand over a step into green-used and green-wasted (Wh).
+     * Green energy is consumed first; the remainder of the demand becomes brown
+     * (= demandWh - greenUsedWh), and surplus green is wasted.
+     */
+    public static double[] computeGreenUsedWastedWh(
+            double availableGreenW, double demandW, double durationHours) {
+        double demandWh = Math.max(0.0, demandW) * durationHours;
+        double greenAvailableWh = Math.max(0.0, availableGreenW) * durationHours;
+        double greenUsedWh = Math.min(demandWh, greenAvailableWh);
+        double greenWastedWh = greenAvailableWh - greenUsedWh;
+        return new double[] { greenUsedWh, greenWastedWh };
+    }
+
+    /**
+     * Carbon emission (kg CO2) for a single (green, demand) pair over one step.
+     * Mirrors the formula in DatacenterInstance.updateEnergyMetrics() exactly.
+     */
+    public static double computeCarbonKg(
+            double availableGreenW, double demandW, double durationHours,
+            double greenFactor, double brownFactor) {
+        double[] uw = computeGreenUsedWastedWh(availableGreenW, demandW, durationHours);
+        double greenKWh = uw[0] / 1000.0;
+        double brownKWh = (Math.max(0.0, demandW) * durationHours - uw[0]) / 1000.0;
+        return greenKWh * greenFactor + brownKWh * brownFactor;
+    }
+
+    /**
+     * Per-step waste ratio: wasted / (used + wasted), 0 when no green is available.
+     */
+    public static double computeWasteRatio(
+            double availableGreenW, double demandW, double durationHours) {
+        double[] uw = computeGreenUsedWastedWh(availableGreenW, demandW, durationHours);
+        double total = uw[0] + uw[1];
+        return total > 0 ? uw[1] / total : 0.0;
+    }
 }
