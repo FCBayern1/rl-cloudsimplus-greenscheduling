@@ -429,15 +429,33 @@ def create_rlmodule_config(
         str(env_config.get("green_oracle_mode", "godeye") if isinstance(env_config, dict) else "godeye").lower() == "timecap"
         and str(_tc_cfg.get("device", "cpu")).lower() == "cuda"
     )
+    _num_workers = training_config.get("num_workers", 0)
+    _num_gpus_per_env_runner = 0
     if _env_needs_cuda and num_gpus > 0:
-        _num_learners = 0
-        logger.info(
-            "TimeCAP requests CUDA → forcing num_learners=0 so the learner "
-            "shares the driver's GPU with the env_runner (avoids 'No CUDA "
-            "GPUs available' on the env side)."
-        )
+        if _num_workers == 0:
+            _num_learners = 0
+            _num_gpus_per_learner = num_gpus
+            logger.info(
+                "TimeCAP requests CUDA → forcing num_learners=0 so the learner "
+                "shares the driver's GPU with the env_runner (avoids 'No CUDA "
+                "GPUs available' on the env side)."
+            )
+        else:
+            # Remote env_runners each need GPU access for TimeCAP. Reserve
+            # 1 GPU for the learner; share the rest across runners. Fractional
+            # shares are fine — TimeCAP forecasts run every forecast_every steps.
+            _num_learners = 1
+            _num_gpus_per_learner = 1
+            _runner_share = max(0.1, (num_gpus - 1) / _num_workers)
+            _num_gpus_per_env_runner = min(1.0, _runner_share)
+            logger.info(
+                "TimeCAP requests CUDA + num_workers=%d → "
+                "num_gpus_per_env_runner=%.2f, learner gets 1 GPU.",
+                _num_workers, _num_gpus_per_env_runner,
+            )
     else:
         _num_learners = 1 if num_gpus > 0 else 0
+        _num_gpus_per_learner = num_gpus if num_gpus > 0 else 0
 
     # Per-policy hyperparameter overrides for the global agent.
     # The base .training() uses local_model_config (majority of policies).
@@ -481,14 +499,15 @@ def create_rlmodule_config(
             algorithm_config_overrides_per_module=per_module_overrides or None,
         )
         .env_runners(
-            num_env_runners=training_config.get("num_workers", 0),
+            num_env_runners=_num_workers,
             num_envs_per_env_runner=1,
+            num_gpus_per_env_runner=_num_gpus_per_env_runner,
             sample_timeout_s=None,
-            create_env_on_local_worker=training_config.get("num_workers", 0) == 0,
+            create_env_on_local_worker=_num_workers == 0,
         )
         .learners(
             num_learners=_num_learners,
-            num_gpus_per_learner=num_gpus if num_gpus > 0 else 0,
+            num_gpus_per_learner=_num_gpus_per_learner,
         )
         .training(
             train_batch_size=training_config.get("train_batch_size", 4000),
