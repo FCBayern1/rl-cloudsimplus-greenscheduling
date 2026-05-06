@@ -33,6 +33,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 from src.baselines.global_schedulers import GreenQueueBalancedGlobalScheduler
+from src.crd.blender import CRDBlender
 from src.crd.cf_math import forecast_cf_per_step
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
 
@@ -70,6 +71,12 @@ COL_CRD_SIGMA2 = "crd_sigma2"
 # proxied by the load-std difference between actual and baseline routing.
 # Shape (B, T). Used by M3 soft-blending when σ²_tot is large (ΔQ untrusted).
 COL_CRD_DR = "crd_dr"
+# Custom batch columns where M3 writes the soft-blended routing-responsibility
+# signal R^routing_t = c(t)·ΔQ + (1-c(t))·Δr, plus diagnostics: c(t) per
+# transition and the scalar τ used for this minibatch.
+COL_CRD_R_ROUTING = "crd_r_routing"
+COL_CRD_C_T = "crd_c_t"
+COL_CRD_TAU = "crd_tau"
 
 
 class CRDPPOTorchLearner(PPOTorchLearner):
@@ -99,6 +106,9 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # M2.3: warn-once flag for missing decision-time signals
         # (dc_green_ratio / dc_queue_sizes) in info["crd"].
         self._crd_baseline_signal_warned: Dict[ModuleID, bool] = {}
+        # M3: per-module CRDBlender (stateful EMA of σ² + adaptive τ) that
+        # combines ΔQ and Δr into R^routing.
+        self._crd_blenders: Dict[ModuleID, CRDBlender] = {}
 
     def compute_loss_for_module(
         self,
@@ -190,6 +200,9 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         # M2.5: reward-level Δr fallback (load-std proxy).
         self._compute_dr(module_id=module_id, batch=batch)
+
+        # M3: blend ΔQ and Δr into R^routing using σ²-driven confidence gate.
+        self._compute_r_routing(module_id=module_id, batch=batch)
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -622,6 +635,82 @@ class CRDPPOTorchLearner(PPOTorchLearner):
             module = self.module[module_id].unwrapped()
             mcfg = getattr(module, "model_config", {}) or {}
             return (mcfg.get("crd", {}) or {}).get("delta_r", {}) or {}
+        except Exception:
+            return {}
+
+    # ------------------------------------------------------------------ M3
+
+    def _compute_r_routing(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        Soft-blend ΔQ and Δr into the routing-responsibility signal R^routing
+        used by M5's advantage rewrite.
+
+            c(t)         = exp(-σ²_tot(t) / τ(t))
+            R^routing_t  = c(t) · ΔQ_t + (1 - c(t)) · Δr_t
+
+        τ is adaptive (driven by an EMA of σ²) so the c(t) curriculum
+        smoothly transitions from "trust Δr" early in training (immature
+        critic, high σ²) to "trust ΔQ" later (mature critic discriminates
+        OOD actions). Per-module CRDBlender holds the EMA state.
+
+        Skips silently if any of (ΔQ, Δr, σ²) is missing — those happen for
+        non-routing modules where M2.4/M2.5 didn't produce outputs.
+        """
+        dq = batch.get(COL_CRD_DQ)
+        dr = batch.get(COL_CRD_DR)
+        sigma2 = batch.get(COL_CRD_SIGMA2)
+        if not (
+            isinstance(dq, torch.Tensor)
+            and isinstance(dr, torch.Tensor)
+            and isinstance(sigma2, torch.Tensor)
+        ):
+            return
+
+        blender = self._get_or_build_blender(module_id)
+        try:
+            r_routing, c_t, tau = blender.update_and_blend(
+                dq=dq, dr=dr.to(dq.dtype).to(dq.device), sigma2=sigma2
+            )
+        except Exception as e:
+            logger.warning(f"[CRD] R^routing blend failed for {module_id!r}: {e}")
+            return
+
+        # All three are detached: M5 will reweight advantages with R^routing
+        # but the gradient signal for the policy must come from PPO's GAE
+        # path, not from σ²/Q-head. (ΔQ/σ² were already detached upstream
+        # in M2.4; defensive .detach() here guards against future changes.)
+        batch[COL_CRD_R_ROUTING] = r_routing.detach()
+        batch[COL_CRD_C_T] = c_t.detach()
+        # τ is a scalar — store as a 0-d tensor for shape uniformity.
+        batch[COL_CRD_TAU] = torch.tensor(tau, dtype=torch.float32, device=dq.device)
+
+    def _get_or_build_blender(self, module_id: ModuleID) -> CRDBlender:
+        """Lazily construct one CRDBlender per module_id (cached)."""
+        if module_id in self._crd_blenders:
+            return self._crd_blenders[module_id]
+        cfg = self._read_module_blender_config(module_id)
+        blender = CRDBlender(
+            tau_0=float(cfg.get("tau_0", 1.0)),
+            kappa=float(cfg.get("kappa", 0.5)),
+            eta=float(cfg.get("eta", 0.05)),
+            ema_init=cfg.get("ema_init"),  # None ⇒ bootstrap on first batch
+        )
+        self._crd_blenders[module_id] = blender
+        logger.info(
+            f"[CRD] built blender for {module_id!r}: "
+            f"tau_0={blender.tau_0}, kappa={blender.kappa}, "
+            f"eta={blender.eta}, ema_init={blender.ema_init}"
+        )
+        return blender
+
+    def _read_module_blender_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.blender` from the module's model_config; default to {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("blender", {}) or {}
         except Exception:
             return {}
 

@@ -1,0 +1,142 @@
+"""
+M3 — Stateful soft-blender for the EU-CRD routing counterfactual.
+
+Combines the value-level signal (ΔQ from M2.4) and the reward-level fallback
+(Δr from M2.5) into a single per-transition routing-responsibility signal:
+
+    R^routing_t = c(t) · ΔQ_t + (1 - c(t)) · Δr_t
+
+where the confidence weight c(t) ∈ [0, 1] is driven by the per-transition
+ensemble-disagreement σ²_tot from M2.4:
+
+    c(t) = exp(-σ²_tot(t) / τ(t))
+
+The temperature τ adapts to training maturity via an EMA of σ²:
+
+    bar_σ²(t) ← (1-η)·bar_σ²(t-1) + η·mean(σ²_tot)
+    τ(t)      = τ_0 · exp(κ · bar_σ²(t))
+
+Larger bar_σ² (immature critic) → larger τ → c(t) less aggressive about
+penalising high-σ² transitions; as critic matures and bar_σ² shrinks, τ
+contracts and c(t) becomes a discriminative OOD signal — yielding an
+implicit curriculum from reward-level to value-level CFs without an
+externally tuned schedule (Osband et al., 2018; plan §3.3).
+
+Pure-Python/torch and free of any RLlib coupling: testable in isolation
+and reusable for future variants of the blending function.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import Optional, Tuple
+
+import torch
+
+
+@dataclass
+class CRDBlender:
+    """
+    Stateful EMA-driven blender for one (module_id) policy.
+
+    Attributes:
+        tau_0: base temperature τ_0; sets the floor for τ.
+        kappa: how aggressively τ stretches as bar_σ² grows.
+        eta:   EMA rate for bar_σ² (larger = more reactive, less stable).
+        ema_init: optional initial bar_σ². If None (default), the first
+            batch bootstraps the EMA with its own σ²-mean — avoids cold-start
+            bias toward an arbitrary constant.
+
+    Internal state:
+        bar_sigma2: running EMA of σ²_tot mean across all batches seen.
+    """
+
+    tau_0: float = 1.0
+    kappa: float = 0.5
+    eta: float = 0.05
+    ema_init: Optional[float] = None
+
+    bar_sigma2: Optional[float] = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        if self.ema_init is not None:
+            self.bar_sigma2 = float(self.ema_init)
+        if self.tau_0 <= 0.0:
+            raise ValueError(f"tau_0 must be > 0, got {self.tau_0}")
+        if not 0.0 < self.eta <= 1.0:
+            raise ValueError(f"eta must be in (0, 1], got {self.eta}")
+
+    # Cap on κ·bar_σ² to avoid float overflow when σ² explodes. e^60 ≈ 1e26
+    # is comfortably in float32 range; well past anything a healthy K-head
+    # ensemble should produce. If you hit this clamp regularly the q-heads
+    # have other problems.
+    _EXP_ARG_CLAMP = 60.0
+
+    def temperature(self) -> float:
+        """Current adaptive τ. Falls back to τ_0 if EMA hasn't bootstrapped."""
+        if self.bar_sigma2 is None:
+            return self.tau_0
+        arg = self.kappa * self.bar_sigma2
+        if arg > self._EXP_ARG_CLAMP:
+            arg = self._EXP_ARG_CLAMP
+        # exp(κ·bar_σ²) ≥ 1, so τ ≥ τ_0 always — c(t) can't run away to ∞.
+        return self.tau_0 * math.exp(arg)
+
+    def update_ema(self, sigma2: torch.Tensor) -> float:
+        """
+        Fold this minibatch's σ²-mean into the EMA. Bootstraps on first call
+        if `ema_init` was None.
+
+        Returns the post-update bar_σ² for diagnostic logging.
+        """
+        batch_mean = float(sigma2.detach().mean().item())
+        if self.bar_sigma2 is None:
+            self.bar_sigma2 = batch_mean
+        else:
+            self.bar_sigma2 = (1.0 - self.eta) * self.bar_sigma2 + self.eta * batch_mean
+        return self.bar_sigma2
+
+    def blend(
+        self,
+        dq: torch.Tensor,
+        dr: torch.Tensor,
+        sigma2: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, float]:
+        """
+        Pure (no-EMA-update) blend at the *current* τ. Use `update_and_blend`
+        in normal training; this method is exposed for tests and ablations.
+
+        Args:
+            dq, dr, sigma2: tensors of identical shape (B, T) (or any same shape).
+        Returns:
+            r_routing: c·dq + (1-c)·dr
+            c_t:       per-transition gate ∈ [0, 1]
+            tau:       scalar temperature actually used
+        """
+        if not (dq.shape == dr.shape == sigma2.shape):
+            raise ValueError(
+                f"shape mismatch: dq={tuple(dq.shape)}, dr={tuple(dr.shape)}, "
+                f"sigma2={tuple(sigma2.shape)}"
+            )
+        tau = max(self.temperature(), 1e-8)
+        # σ²_tot is non-negative by construction, so c_t ∈ (0, 1].
+        c_t = torch.exp(-sigma2 / tau)
+        r_routing = c_t * dq + (1.0 - c_t) * dr
+        return r_routing, c_t, float(tau)
+
+    def update_and_blend(
+        self,
+        dq: torch.Tensor,
+        dr: torch.Tensor,
+        sigma2: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, float]:
+        """
+        Idiomatic per-batch entry point: update the EMA with this batch's
+        σ²-mean *before* computing the blend, so τ reflects the freshly
+        observed uncertainty.
+
+        Returns same triple as `blend`.
+        """
+        self.update_ema(sigma2)
+        return self.blend(dq, dr, sigma2)

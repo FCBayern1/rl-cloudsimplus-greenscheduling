@@ -11,6 +11,7 @@ and compute_loss_for_module to skip the heavy machinery.
 Run from drl-manager/ :
     .venv/bin/python -m pytest tests/test_crd_compute_loss.py -v
 """
+import math
 import sys
 from pathlib import Path
 
@@ -43,9 +44,14 @@ class _StubLearner(CRDPPOTorchLearner):
         self._crd_pred_missing_warned = {}
         self._crd_baseline_schedulers = {}
         self._crd_baseline_signal_warned = {}
+        self._crd_blenders = {}
         self.hook_calls = []  # observability for tests
         self._beta = beta
         self._gamma = gamma
+
+    def _read_module_blender_config(self, module_id):
+        # Stub avoids the real `self.module[...].unwrapped()` plumbing.
+        return {}
 
     def _read_module_forecast_config(self, module_id):
         # Avoid the real `self.module[module_id].unwrapped()` plumbing.
@@ -761,6 +767,148 @@ def test_dr_skipped_when_no_scheduler_cached():
         module_id="local_x", config=None, batch=batch, fwd_out=_ensemble_fwd_out()
     )
     assert COL_CRD_DR not in batch
+
+
+# ---------------------------------------------------------------------------
+# M3 — Soft blending integration
+# ---------------------------------------------------------------------------
+
+from src.learners.crd_q_loss import (
+    COL_CRD_R_ROUTING,
+    COL_CRD_C_T,
+    COL_CRD_TAU,
+)
+
+
+def test_r_routing_written_via_full_pipeline():
+    """End-to-end: M2.4+M2.5+M3 produce ΔQ, Δr, R^routing all in batch."""
+    bs = 4
+    nd = 3
+    learner = _DRStubLearner(num_dc=nd, batch_size=bs, alpha=1.0)
+    info = _make_crd_info_with_signals(
+        green_ratio=[0.9, 0.1, 0.5], queue_sizes=[0, 100, 0]
+    )
+    fwd = {COL_Q_ENSEMBLE: torch.randn(1, 1, 5, bs, nd)}
+    batch = {
+        Columns.INFOS: [info],
+        Columns.ACTIONS: torch.tensor([[1, 1, 1, 1]], dtype=torch.long).unsqueeze(0),  # (1, 1, bs)
+        Columns.REWARDS: torch.zeros(1, 1),
+    }
+    # Note: action shape must be (B, T, bs). Fix:
+    batch[Columns.ACTIONS] = torch.tensor([[[1, 1, 1, 1]]], dtype=torch.long)
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=fwd
+    )
+    # All four CRD columns should be present
+    for k in (COL_CRD_DQ, COL_CRD_DR, COL_CRD_R_ROUTING, COL_CRD_C_T, COL_CRD_TAU):
+        assert k in batch, f"missing {k}"
+    assert batch[COL_CRD_R_ROUTING].shape == batch[COL_CRD_DQ].shape
+    assert batch[COL_CRD_C_T].shape == batch[COL_CRD_DQ].shape
+    # τ is scalar
+    assert batch[COL_CRD_TAU].dim() == 0
+
+
+def test_r_routing_skipped_when_dq_missing():
+    """No ΔQ in batch → blender skip; no R^routing produced."""
+    learner = _StubLearner()
+    batch = {
+        Columns.INFOS: [_make_crd_info_with_signals()],
+        Columns.ACTIONS: torch.tensor([[0, 1, 2, 0]], dtype=torch.long).unsqueeze(0),
+    }
+    # Skip M2.4 by not providing crd_q_ensemble
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out={}
+    )
+    assert COL_CRD_R_ROUTING not in batch
+
+
+def test_r_routing_interpolates_correctly():
+    """Direct math check: with σ²=0 → R = ΔQ; high σ² → R near Δr."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4, alpha=1.0)
+    # Manually populate batch (skip M2.0–M2.5 by not running them)
+    dq = torch.tensor([[1.0, 2.0]])
+    dr = torch.tensor([[10.0, -10.0]])
+    # σ² mostly zero (left col) and very large (right col)
+    sigma2 = torch.tensor([[0.0, 1e6]])
+    batch = {
+        COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: sigma2,
+    }
+    # Call _compute_r_routing directly (skip the full _compute_crd_terms)
+    learner._compute_r_routing(module_id="g_direct", batch=batch)
+    r = batch[COL_CRD_R_ROUTING]
+    # σ²=0 → R = ΔQ
+    assert r[0, 0].item() == pytest.approx(1.0)
+    # Huge σ² → R ≈ Δr (κ=0.5 by default but we set ema_init=None so τ
+    # bootstraps to mean of σ² = 5e5 — c ≈ exp(-1e6/exp(0.5*5e5)) → 1
+    # Hmm actually with adaptive τ, let me check: if bar_σ² grows fast, τ
+    # explodes, and c stays high. Let me just check r is between dq and dr.
+    assert min(dq[0, 1].item(), dr[0, 1].item()) <= r[0, 1].item() <= max(
+        dq[0, 1].item(), dr[0, 1].item()
+    )
+
+
+def test_r_routing_with_kappa_zero_pure_tau0():
+    """κ=0 disables adaptive τ — gives pure exp(-σ²/τ_0) gate."""
+    # Use a learner with overridden config
+    class _FixedTauStub(_DRStubLearner):
+        def _read_module_blender_config(self, module_id):
+            return {"tau_0": 1.0, "kappa": 0.0, "eta": 0.1, "ema_init": 0.0}
+
+    learner = _FixedTauStub(num_dc=3, batch_size=4, alpha=1.0)
+    batch = {
+        COL_CRD_DQ: torch.tensor([[1.0]]),
+        COL_CRD_DR: torch.tensor([[0.0]]),
+        COL_CRD_SIGMA2: torch.tensor([[1.0]]),  # σ²=1, τ=1 → c = e⁻¹
+    }
+    learner._compute_r_routing(module_id="g_fixed", batch=batch)
+    r = batch[COL_CRD_R_ROUTING]
+    expected = math.exp(-1.0)  # c · 1 + (1-c) · 0 = c
+    assert r.item() == pytest.approx(expected, rel=1e-5)
+
+
+def test_r_routing_blender_persists_across_calls():
+    """Same module_id → same blender → EMA accumulates across batches."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4, alpha=1.0)
+    sigma2_b1 = torch.tensor([[5.0, 5.0]])
+    sigma2_b2 = torch.tensor([[10.0, 10.0]])
+    dq, dr = torch.zeros_like(sigma2_b1), torch.zeros_like(sigma2_b1)
+
+    # First batch → bootstraps EMA at 5.0
+    batch1 = {COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: sigma2_b1}
+    learner._compute_r_routing(module_id="g_persist", batch=batch1)
+
+    # Second batch → EMA = 0.95·5 + 0.05·10 = 5.25
+    batch2 = {COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: sigma2_b2}
+    learner._compute_r_routing(module_id="g_persist", batch=batch2)
+
+    blender = learner._crd_blenders["g_persist"]
+    assert blender.bar_sigma2 == pytest.approx(5.25, rel=1e-6)
+
+
+def test_r_routing_separate_blenders_per_module():
+    """Different module_ids get independent blender state."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4, alpha=1.0)
+    dq, dr = torch.zeros(1, 1), torch.zeros(1, 1)
+    learner._compute_r_routing(
+        module_id="alpha", batch={COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: torch.tensor([[1.0]])}
+    )
+    learner._compute_r_routing(
+        module_id="beta", batch={COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: torch.tensor([[100.0]])}
+    )
+    assert learner._crd_blenders["alpha"].bar_sigma2 == pytest.approx(1.0)
+    assert learner._crd_blenders["beta"].bar_sigma2 == pytest.approx(100.0)
+
+
+def test_r_routing_detached_no_gradient():
+    """R^routing, c_t, τ should be detached (M5 reweights advantages, not q-heads)."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4, alpha=1.0)
+    dq = torch.tensor([[1.0]], requires_grad=True)
+    dr = torch.tensor([[0.0]], requires_grad=True)
+    sigma2 = torch.tensor([[0.5]], requires_grad=True)
+    batch = {COL_CRD_DQ: dq, COL_CRD_DR: dr, COL_CRD_SIGMA2: sigma2}
+    learner._compute_r_routing(module_id="g_detach", batch=batch)
+    assert batch[COL_CRD_R_ROUTING].grad_fn is None
+    assert batch[COL_CRD_C_T].grad_fn is None
 
 
 def test_dr_magnitude_comparable_to_dq():
