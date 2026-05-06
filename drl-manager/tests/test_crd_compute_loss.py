@@ -430,5 +430,170 @@ def test_baseline_action_uses_scheduler_static_helper_directly():
     assert actions_list == [list(expected)]
 
 
+# ---------------------------------------------------------------------------
+# M2.4 — ΔQ + σ²_tot via ensemble lookup
+# ---------------------------------------------------------------------------
+
+from src.learners.crd_q_loss import COL_CRD_DQ, COL_CRD_SIGMA2
+
+
+# --- Static helper tests (no learner instance) ---------------------------
+
+def test_dq_sigma2_local_shapes_and_var_nonneg():
+    """Local discrete action: q (B, T, K, A) + actions (B, T) → (B, T) outputs."""
+    B, T, K, A = 4, 3, 5, 6
+    q = torch.randn(B, T, K, A)
+    actual = torch.randint(0, A, (B, T), dtype=torch.long)
+    baseline = torch.randint(0, A, (B, T), dtype=torch.long)
+    dq, sig2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q, actual_action=actual, baseline_action=baseline
+    )
+    assert dq.shape == (B, T)
+    assert sig2.shape == (B, T)
+    assert (sig2 >= 0).all(), "σ²_tot must be non-negative"
+
+
+def test_dq_sigma2_global_shapes_and_var_nonneg():
+    """Global MultiDiscrete: q (B, T, K, bs, nd) + actions (B, T, bs)."""
+    B, T, K, bs, nd = 3, 2, 5, 4, 6
+    q = torch.randn(B, T, K, bs, nd)
+    actual = torch.randint(0, nd, (B, T, bs), dtype=torch.long)
+    baseline = torch.randint(0, nd, (B, T, bs), dtype=torch.long)
+    dq, sig2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q, actual_action=actual, baseline_action=baseline
+    )
+    assert dq.shape == (B, T)
+    assert sig2.shape == (B, T)
+    assert (sig2 >= 0).all()
+
+
+def test_dq_zero_when_actions_identical_local():
+    """If actual == baseline at every (b, t), ΔQ must be exactly 0."""
+    B, T, K, A = 3, 2, 5, 4
+    q = torch.randn(B, T, K, A)
+    a = torch.randint(0, A, (B, T), dtype=torch.long)
+    dq, sig2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q, actual_action=a, baseline_action=a
+    )
+    assert (dq.abs() < 1e-9).all(), f"dq should be zero when actions match: {dq}"
+    # σ²_tot should equal 2 × σ²(a)  (both terms identical).
+    q_a = CRDPPOTorchLearner._gather_q_chosen(q, a)
+    expected_var2 = 2.0 * q_a.var(dim=-1, unbiased=False)
+    assert torch.allclose(sig2, expected_var2, atol=1e-6)
+
+
+def test_dq_zero_when_actions_identical_global():
+    B, T, K, bs, nd = 2, 2, 5, 3, 4
+    q = torch.randn(B, T, K, bs, nd)
+    a = torch.randint(0, nd, (B, T, bs), dtype=torch.long)
+    dq, sig2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q, actual_action=a, baseline_action=a
+    )
+    assert (dq.abs() < 1e-9).all()
+
+
+def test_dq_sigma2_static_helper_matches_module_API_local():
+    """
+    Sanity: M2.4's static helper should match what M1.3's
+    `EnsembleQHeads.compute_q_for_action` produces for any single action,
+    since both compute mean/var over K at the chosen action.
+    """
+    from src.models.rlmodule_gtrxl_ensemble import EnsembleQHeads
+    torch.manual_seed(0)
+    K, A, d = 5, 4, 8
+    eqh = EnsembleQHeads(d_model=d, action_dim=A, K=K, prior_lambda=2.0, hidden_dim=8)
+    state = torch.randn(6, d)
+    a = torch.randint(0, A, (6,), dtype=torch.long)
+
+    # Single-action API path (M1.3)
+    mu1, var1 = eqh.compute_q_for_action(state, a)
+
+    # M2.4 path — feed identical actions for "actual" and "baseline" so dq=0,
+    # then the σ²_tot we get is 2 × var1; we just check var matches.
+    q_full = eqh(state)              # (6, K, A)
+    q_full = q_full.unsqueeze(1)     # (6, 1, K, A) — fake T=1 for static helper
+    a_t = a.unsqueeze(1)             # (6, 1)
+    dq, sig2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q_full, actual_action=a_t, baseline_action=a_t
+    )
+    assert (dq.abs() < 1e-6).all()
+    assert torch.allclose(sig2.squeeze(-1), 2.0 * var1, atol=1e-5)
+    # mu via gather should match mu1
+    q_a = CRDPPOTorchLearner._gather_q_chosen(q_full, a_t)
+    assert torch.allclose(q_a.mean(dim=-1).squeeze(-1), mu1, atol=1e-5)
+
+
+def test_dq_unexpected_q_dim_raises():
+    """3-D or 6-D q_ensemble should raise."""
+    bad_q = torch.randn(4, 5, 6)  # 3-D
+    a = torch.randint(0, 5, (4, 5), dtype=torch.long)
+    with pytest.raises(RuntimeError, match="Unexpected q_ensemble dim"):
+        CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+            q_ensemble=bad_q, actual_action=a, baseline_action=a
+        )
+
+
+# --- End-to-end via compute_loss_for_module -------------------------------
+
+def test_dq_sigma2_written_via_compute_loss_local():
+    """End-to-end: ensure batch[crd_dq] and [crd_sigma2] get written."""
+    learner = _StubLearner()  # no scheduler — but we'll feed baseline_action directly
+    B, T, K, A = 2, 2, 5, 4
+    q = torch.randn(B, T, K, A)
+    actions = torch.randint(0, A, (B, T), dtype=torch.long)
+    baseline = torch.randint(0, A, (B, T), dtype=torch.long)
+    fwd = {COL_Q_ENSEMBLE: q}
+    batch = {Columns.ACTIONS: actions, COL_CRD_BASELINE_ACTION: baseline}
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=fwd
+    )
+    assert COL_CRD_DQ in batch and COL_CRD_SIGMA2 in batch
+    assert batch[COL_CRD_DQ].shape == (B, T)
+    assert batch[COL_CRD_SIGMA2].shape == (B, T)
+    assert (batch[COL_CRD_SIGMA2] >= 0).all()
+
+
+def test_dq_skipped_when_no_baseline_action():
+    """Without batch[crd_baseline_action] (M2.3 didn't run), M2.4 stays silent."""
+    learner = _StubLearner()
+    fwd = {COL_Q_ENSEMBLE: torch.randn(2, 1, 5, 4)}
+    batch = {Columns.ACTIONS: torch.zeros(2, 1, dtype=torch.long)}
+    learner.compute_loss_for_module(
+        module_id="m", config=None, batch=batch, fwd_out=fwd
+    )
+    assert COL_CRD_DQ not in batch
+    assert COL_CRD_SIGMA2 not in batch
+
+
+def test_dq_skipped_when_no_q_ensemble():
+    """Non-ensemble module (no crd_q_ensemble in fwd_out) → M2.4 silent."""
+    learner = _StubLearner()
+    batch = {
+        Columns.ACTIONS: torch.zeros(2, 1, dtype=torch.long),
+        COL_CRD_BASELINE_ACTION: torch.zeros(2, 1, dtype=torch.long),
+    }
+    learner.compute_loss_for_module(
+        module_id="vanilla", config=None, batch=batch, fwd_out={"vf_preds": torch.zeros(2)}
+    )
+    assert COL_CRD_DQ not in batch
+
+
+def test_dq_sigma2_detached_no_gradient():
+    """Output tensors must be detached so M5 reweight doesn't grad-flow into q_heads."""
+    learner = _StubLearner()
+    B, T, K, A = 2, 1, 5, 4
+    q = torch.randn(B, T, K, A, requires_grad=True)
+    actions = torch.randint(0, A, (B, T), dtype=torch.long)
+    baseline = torch.randint(0, A, (B, T), dtype=torch.long)
+    fwd = {COL_Q_ENSEMBLE: q}
+    batch = {Columns.ACTIONS: actions, COL_CRD_BASELINE_ACTION: baseline}
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=fwd
+    )
+    # detached outputs have no grad_fn
+    assert batch[COL_CRD_DQ].grad_fn is None
+    assert batch[COL_CRD_SIGMA2].grad_fn is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

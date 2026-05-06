@@ -58,6 +58,10 @@ _DEFAULT_BASELINE_GREEN_WEIGHT = 0.6
 COL_CRD_FORECAST = "crd_forecast"
 # Custom batch column where M2.3 writes per-transition baseline action ã.
 COL_CRD_BASELINE_ACTION = "crd_baseline_action"
+# Custom batch columns where M2.4 writes ΔQ = μ(s,a) - μ(s,ã) and
+# σ²_tot = σ²(s,a) + σ²(s,ã). Both have shape (B, T).
+COL_CRD_DQ = "crd_dq"
+COL_CRD_SIGMA2 = "crd_sigma2"
 
 
 class CRDPPOTorchLearner(PPOTorchLearner):
@@ -170,6 +174,11 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         # M2.3: baseline (heuristic) action ã for the routing CF.
         self._compute_baseline_action(module_id=module_id, batch=batch)
+
+        # M2.4: ΔQ + σ²_tot via ensemble lookup (no extra trunk forward).
+        self._compute_dq_and_sigma2(
+            module_id=module_id, batch=batch, fwd_out=fwd_out
+        )
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -412,6 +421,126 @@ class CRDPPOTorchLearner(PPOTorchLearner):
             return (mcfg.get("crd", {}) or {}).get("baseline", {}) or {}
         except Exception:
             return {}
+
+    # ------------------------------------------------------------------ M2.4
+
+    def _compute_dq_and_sigma2(
+        self,
+        *,
+        module_id: ModuleID,
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType],
+    ) -> None:
+        """
+        Compute ΔQ = μ(s,a) - μ(s,ã) and σ²_tot = σ²(s,a) + σ²(s,ã) per
+        transition, where μ/σ² are the ensemble mean/variance from the K-head
+        Q-ensemble in `fwd_out[COL_Q_ENSEMBLE]`.
+
+        Reuses the forward-pass ensemble output rather than re-running the
+        GTrXL trunk via `module.compute_q_ensemble(batch, action)`. Saves an
+        entire trunk forward per call (PPO does multiple SGD epochs over the
+        same minibatch, so this matters).
+
+        Skips silently if either the Q-ensemble or the M2.3 baseline action
+        is absent (e.g., local agents in M2; M4 will wire those up).
+        """
+        q_ensemble = fwd_out.get(COL_Q_ENSEMBLE)
+        if not isinstance(q_ensemble, torch.Tensor):
+            return
+        actual_action = batch.get(Columns.ACTIONS)
+        baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
+        if actual_action is None or baseline_action is None:
+            return  # M2.3 didn't produce ã (non-routing module, etc.)
+
+        if not isinstance(actual_action, torch.Tensor):
+            actual_action = torch.as_tensor(actual_action, dtype=torch.long)
+        else:
+            actual_action = actual_action.long()
+        if not isinstance(baseline_action, torch.Tensor):
+            baseline_action = torch.as_tensor(baseline_action, dtype=torch.long)
+        else:
+            baseline_action = baseline_action.long()
+
+        try:
+            delta_q, sigma2_tot = self._compute_dq_and_sigma2_values(
+                q_ensemble=q_ensemble,
+                actual_action=actual_action,
+                baseline_action=baseline_action,
+            )
+        except Exception as e:
+            logger.warning(
+                f"[CRD] dq/sigma2 compute failed for {module_id!r}: {e}"
+            )
+            return
+
+        # Detach: M5 will broadcast these against advantages — they should
+        # not flow gradient back through the q-heads (q_loss in M1.2 is the
+        # canonical training signal for the ensemble).
+        batch[COL_CRD_DQ] = delta_q.detach()
+        batch[COL_CRD_SIGMA2] = sigma2_tot.detach()
+
+    @staticmethod
+    def _gather_q_chosen(
+        q_ensemble: torch.Tensor, action: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Gather Q values across the ensemble for the given action.
+
+        Layouts:
+          - Local discrete   q (B, T, K, A);          action (B, T)
+              → returns (B, T, K)
+          - Global MultiDisc q (B, T, K, bs, num_dc); action (B, T, bs)
+              → returns (B, T, K) — per-cloudlet mean over bs
+
+        Mirrors the gather pattern in `_compute_q_loss` so M1.2 and M2.4
+        agree on what "Q at action" means.
+        """
+        if q_ensemble.dim() == 4:
+            # Local: (B, T, K, A)
+            B, T, K, A = q_ensemble.shape
+            act = action
+            if act.dim() == 1:
+                act = act.unsqueeze(-1)  # (B, 1) — assume T==1
+            idx = act.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, K, 1)
+            return q_ensemble.gather(-1, idx).squeeze(-1)  # (B, T, K)
+        elif q_ensemble.dim() == 5:
+            # Global: (B, T, K, batch_size, num_dc)
+            B, T, K, bs, nd = q_ensemble.shape
+            act = action
+            if act.dim() == 2:
+                act = act.unsqueeze(1)  # (B, 1, batch_size) — assume T==1
+            idx = act.unsqueeze(2).unsqueeze(-1).expand(-1, -1, K, -1, 1)
+            q_per_cloudlet = q_ensemble.gather(-1, idx).squeeze(-1)  # (B,T,K,bs)
+            return q_per_cloudlet.mean(dim=-1)  # (B, T, K)
+        else:
+            raise RuntimeError(
+                f"Unexpected q_ensemble dim {q_ensemble.dim()} (shape "
+                f"{tuple(q_ensemble.shape)}); expected 4 (local) or 5 (global)."
+            )
+
+    @staticmethod
+    def _compute_dq_and_sigma2_values(
+        *,
+        q_ensemble: torch.Tensor,
+        actual_action: torch.Tensor,
+        baseline_action: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+            delta_q:    (B, T)   = μ(s, a) - μ(s, ã)
+            sigma2_tot: (B, T)   = σ²(s, a) + σ²(s, ã), always ≥ 0
+        Both averages/variances are taken over the K ensemble dimension.
+        """
+        q_a = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, actual_action)
+        q_b = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, baseline_action)
+        # mean / var over K dim (last after gather)
+        mu_a = q_a.mean(dim=-1)
+        mu_b = q_b.mean(dim=-1)
+        var_a = q_a.var(dim=-1, unbiased=False)
+        var_b = q_b.var(dim=-1, unbiased=False)
+        delta_q = mu_a - mu_b
+        sigma2_tot = var_a + var_b
+        return delta_q, sigma2_tot
 
     @staticmethod
     def _compute_forecast_cf_values(
