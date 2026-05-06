@@ -58,6 +58,11 @@ _DEFAULT_BASELINE_GREEN_WEIGHT = 0.6
 # `global_reward_alpha` (which may be 0 in carbon-only experiments) — Δr
 # only needs a meaningful non-zero magnitude for M3 soft-blending to work.
 _DEFAULT_ALPHA_DR = 1.0
+# Default M5 responsibility-weight floor. Per-transition ρ ∈ [ρ_min, 1]
+# clamping prevents the policy gradient from vanishing on transitions
+# where the agent's controllable share is dwarfed by exogenous forecast
+# error. Plan §3.4 default.
+_DEFAULT_RHO_MIN = 0.05
 
 # Custom batch column where M2.2 writes the per-transition R_forecast.
 COL_CRD_FORECAST = "crd_forecast"
@@ -77,6 +82,16 @@ COL_CRD_DR = "crd_dr"
 COL_CRD_R_ROUTING = "crd_r_routing"
 COL_CRD_C_T = "crd_c_t"
 COL_CRD_TAU = "crd_tau"
+# M4 (future) will write R_scheduling for local agents. M5 reads this when
+# present so global ρ_routing properly competes with all three components.
+COL_CRD_R_SCHEDULING = "crd_r_scheduling"
+# M5 writes per-transition responsibility weights. ρ_routing /
+# ρ_scheduling reach the policy gradient via the advantage rewrite;
+# ρ_forecast is logging-only (never multiplied — exogenous error stays
+# unattributed, which is the whole point of EU-CRD).
+COL_CRD_RHO_FORECAST = "crd_rho_forecast"
+COL_CRD_RHO_ROUTING = "crd_rho_routing"
+COL_CRD_RHO_SCHEDULING = "crd_rho_scheduling"
 
 
 class CRDPPOTorchLearner(PPOTorchLearner):
@@ -203,6 +218,11 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         # M3: blend ΔQ and Δr into R^routing using σ²-driven confidence gate.
         self._compute_r_routing(module_id=module_id, batch=batch)
+
+        # M5: per-transition responsibility weights ρ_k + reweight advantages.
+        # Must run BEFORE super().compute_loss_for_module so PPO's surrogate
+        # loss reads the reweighted ADVANTAGES tensor.
+        self._compute_responsibilities(module_id=module_id, batch=batch)
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -711,6 +731,112 @@ class CRDPPOTorchLearner(PPOTorchLearner):
             module = self.module[module_id].unwrapped()
             mcfg = getattr(module, "model_config", {}) or {}
             return (mcfg.get("crd", {}) or {}).get("blender", {}) or {}
+        except Exception:
+            return {}
+
+    # ------------------------------------------------------------------ M5
+
+    def _compute_responsibilities(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        Per-transition responsibility weights ρ_k = |R_k| / Σ|R_k'|, with a
+        floor at ρ_min (plan §3.4). Then reweight ADVANTAGES by ρ_routing so
+        PPO's surrogate loss only updates the policy on the agent's
+        controllable share of the credit.
+
+        Outputs (each shape (B, T)):
+          batch[crd_rho_forecast]    — logging only, NEVER multiplied
+          batch[crd_rho_routing]     — multiplier on global ADVANTAGES
+          batch[crd_rho_scheduling]  — multiplier on local ADVANTAGES (M4)
+
+        Side effect:
+          batch[Postprocessing.ADVANTAGES] *= ρ_routing  (per-transition)
+
+        Skips if R_routing isn't in batch (M3 didn't run, e.g. non-routing
+        module without a Q-ensemble forward).
+
+        VALUE_TARGETS is intentionally untouched: the V-head should still
+        learn the unbiased episode return so its bootstrapping for the
+        Q-head TD target (M1.2) stays correct.
+        """
+        r_routing = batch.get(COL_CRD_R_ROUTING)
+        if not isinstance(r_routing, torch.Tensor):
+            return
+
+        cfg = self._read_module_responsibility_config(module_id)
+        rho_min = float(cfg.get("rho_min", _DEFAULT_RHO_MIN))
+
+        # Components — fall back to zeros when a milestone hasn't produced
+        # them (e.g., crd_r_scheduling lands in M4).
+        r_f = batch.get(COL_CRD_FORECAST)
+        r_s = batch.get(COL_CRD_R_SCHEDULING)
+        zeros_like_r = torch.zeros_like(r_routing)
+        abs_f = (r_f.abs() if isinstance(r_f, torch.Tensor) else zeros_like_r).to(
+            r_routing.dtype
+        )
+        abs_r = r_routing.abs()
+        abs_s = (r_s.abs() if isinstance(r_s, torch.Tensor) else zeros_like_r).to(
+            r_routing.dtype
+        )
+
+        # Align shapes — forecast may have come in shaped (B, T) but also may
+        # have been reshaped to match REWARDS in M2.2; coerce to r_routing's
+        # shape if possible.
+        if abs_f.shape != abs_r.shape:
+            try:
+                abs_f = abs_f.reshape(abs_r.shape)
+            except RuntimeError:
+                abs_f = zeros_like_r
+        if abs_s.shape != abs_r.shape:
+            try:
+                abs_s = abs_s.reshape(abs_r.shape)
+            except RuntimeError:
+                abs_s = zeros_like_r
+
+        eps = 1e-8
+        total = abs_f + abs_r + abs_s + eps
+
+        # Per-transition raw ratios. ρ_forecast left without floor — it's
+        # logging-only and the floor would distort the diagnostic signal.
+        rho_f = abs_f / total
+        rho_r = (abs_r / total).clamp(min=rho_min)
+        rho_s = (abs_s / total).clamp(min=rho_min)
+
+        # Detach: ρ is a non-grad multiplier. The gradient signal for the
+        # policy comes from PPO's surrogate via the (reweighted) ADVANTAGES
+        # tensor, which carries no gradient itself either.
+        batch[COL_CRD_RHO_FORECAST] = rho_f.detach()
+        batch[COL_CRD_RHO_ROUTING] = rho_r.detach()
+        batch[COL_CRD_RHO_SCHEDULING] = rho_s.detach()
+
+        # ----------------- M5.2: actually reweight advantages -----------------
+        adv = batch.get(Postprocessing.ADVANTAGES)
+        if not isinstance(adv, torch.Tensor):
+            return  # No GAE output in this batch (probably a unit-test minibatch).
+
+        rho_view = rho_r.to(adv.dtype).to(adv.device)
+        if adv.shape != rho_view.shape:
+            try:
+                rho_view = rho_view.reshape(adv.shape)
+            except RuntimeError:
+                logger.warning(
+                    f"[CRD] rho_routing shape {tuple(rho_view.shape)} != "
+                    f"advantages shape {tuple(adv.shape)}; skipping reweight "
+                    f"for module {module_id!r}."
+                )
+                return
+
+        batch[Postprocessing.ADVANTAGES] = adv * rho_view
+
+    def _read_module_responsibility_config(
+        self, module_id: ModuleID
+    ) -> Dict[str, Any]:
+        """Pull `crd.responsibility` from the module's model_config; default {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("responsibility", {}) or {}
         except Exception:
             return {}
 

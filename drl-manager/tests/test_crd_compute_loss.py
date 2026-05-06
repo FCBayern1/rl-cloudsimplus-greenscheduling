@@ -53,6 +53,9 @@ class _StubLearner(CRDPPOTorchLearner):
         # Stub avoids the real `self.module[...].unwrapped()` plumbing.
         return {}
 
+    def _read_module_responsibility_config(self, module_id):
+        return {}
+
     def _read_module_forecast_config(self, module_id):
         # Avoid the real `self.module[module_id].unwrapped()` plumbing.
         return {"beta": self._beta, "gamma": self._gamma}
@@ -909,6 +912,201 @@ def test_r_routing_detached_no_gradient():
     learner._compute_r_routing(module_id="g_detach", batch=batch)
     assert batch[COL_CRD_R_ROUTING].grad_fn is None
     assert batch[COL_CRD_C_T].grad_fn is None
+
+
+# ---------------------------------------------------------------------------
+# M5 — Responsibility weights ρ + advantage rewrite
+# ---------------------------------------------------------------------------
+
+from src.learners.crd_q_loss import (
+    COL_CRD_RHO_FORECAST,
+    COL_CRD_RHO_ROUTING,
+    COL_CRD_RHO_SCHEDULING,
+    COL_CRD_R_SCHEDULING,
+)
+
+
+def test_rho_shapes_match_r_routing():
+    """ρ tensors should match R^routing's (B, T) shape."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4, alpha=1.0)
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1.0, 2.0]]),
+        COL_CRD_R_ROUTING: torch.tensor([[3.0, 4.0]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    for k in (COL_CRD_RHO_FORECAST, COL_CRD_RHO_ROUTING, COL_CRD_RHO_SCHEDULING):
+        assert k in batch
+        assert batch[k].shape == (1, 2)
+
+
+def test_rho_skipped_when_no_r_routing():
+    """Without R^routing in batch, no ρ produced."""
+    learner = _DRStubLearner()
+    batch = {COL_CRD_FORECAST: torch.tensor([[1.0]])}
+    learner._compute_responsibilities(module_id="m", batch=batch)
+    assert COL_CRD_RHO_ROUTING not in batch
+
+
+def test_rho_floor_applied_to_routing_and_scheduling():
+    """When |R_routing| ≪ |R_forecast|, ρ_routing should clamp at ρ_min."""
+    class _RhoStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.1}
+
+    learner = _RhoStub(num_dc=3, batch_size=4, alpha=1.0)
+    # Massive forecast error, tiny routing share
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1000.0]]),
+        COL_CRD_R_ROUTING: torch.tensor([[0.001]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    rho_r = batch[COL_CRD_RHO_ROUTING]
+    # raw ρ_routing = 0.001/1000.001 ≈ 1e-6; floor lifts it to 0.1
+    assert rho_r.item() == pytest.approx(0.1, rel=1e-6)
+
+
+def test_rho_no_floor_on_forecast():
+    """ρ_forecast is logging-only — should NOT be floored.
+
+    Verifies the diagnostic preserves true forecast attribution magnitude.
+    """
+    class _RhoStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.5}  # very high floor
+
+    learner = _RhoStub(num_dc=3, batch_size=4, alpha=1.0)
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[0.001]]),
+        COL_CRD_R_ROUTING: torch.tensor([[1000.0]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    # raw ρ_forecast = 0.001/1000.001 ≈ 1e-6; should NOT be floored.
+    assert batch[COL_CRD_RHO_FORECAST].item() < 1e-3
+
+
+def test_rho_advantages_unchanged_when_rho_eq_one():
+    """If ρ_routing ≈ 1 (R_routing dominates), ADVANTAGES barely changes."""
+    learner = _DRStubLearner()
+    adv_before = torch.tensor([[1.0, -2.0, 0.5]])
+    batch = {
+        COL_CRD_FORECAST: torch.zeros((1, 3)),  # no forecast share
+        COL_CRD_R_ROUTING: torch.ones((1, 3)),  # all weight on routing
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    # ρ_routing ≈ 1 → advantage ≈ original
+    adv_after = batch[Postprocessing.ADVANTAGES]
+    assert torch.allclose(adv_after, adv_before, atol=1e-6)
+
+
+def test_rho_advantages_scaled_to_floor_when_rho_min_dominates():
+    """If R_routing is tiny vs R_forecast, ρ_routing → floor → advantage scaled to floor."""
+    class _RhoStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.05}
+
+    learner = _RhoStub()
+    adv_before = torch.tensor([[10.0, -20.0]])
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1.0e6, 1.0e6]]),
+        COL_CRD_R_ROUTING: torch.tensor([[1.0e-6, 1.0e-6]]),
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    adv_after = batch[Postprocessing.ADVANTAGES]
+    # ρ_routing = max(tiny, 0.05) = 0.05 → adv_after = adv_before * 0.05
+    expected = adv_before * 0.05
+    assert torch.allclose(adv_after, expected, atol=1e-6)
+
+
+def test_rho_value_targets_untouched():
+    """Critical: VALUE_TARGETS must not be reweighted (V-head trains unbiased)."""
+    learner = _DRStubLearner()
+    vt_before = torch.tensor([[5.0, -3.0]])
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[100.0, 100.0]]),
+        COL_CRD_R_ROUTING: torch.tensor([[1.0, 1.0]]),
+        Postprocessing.ADVANTAGES: torch.zeros((1, 2)),
+        Postprocessing.VALUE_TARGETS: vt_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    assert torch.equal(batch[Postprocessing.VALUE_TARGETS], vt_before)
+
+
+def test_rho_forecast_not_applied_to_advantages():
+    """Even when ρ_forecast is large, advantages should be scaled by ρ_routing only."""
+    class _RhoStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.05}
+
+    learner = _RhoStub()
+    adv_before = torch.tensor([[10.0]])
+    # Forecast dominates → ρ_forecast ≈ 1, ρ_routing ≈ floor
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1.0e6]]),
+        COL_CRD_R_ROUTING: torch.tensor([[1.0e-6]]),
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    # Should be adv * 0.05 (the routing floor), NOT adv * ρ_forecast
+    assert batch[Postprocessing.ADVANTAGES].item() == pytest.approx(0.5, abs=1e-6)
+
+
+def test_rho_with_scheduling_component_split_three_ways():
+    """When all 3 components present, ρ_k should sum near 1 (modulo floor distortion)."""
+    class _RhoStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.0}  # disable floor for sum-to-1 check
+
+    learner = _RhoStub()
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1.0]]),
+        COL_CRD_R_ROUTING: torch.tensor([[2.0]]),
+        COL_CRD_R_SCHEDULING: torch.tensor([[3.0]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    rho_f = batch[COL_CRD_RHO_FORECAST].item()
+    rho_r = batch[COL_CRD_RHO_ROUTING].item()
+    rho_s = batch[COL_CRD_RHO_SCHEDULING].item()
+    # Σρ should be very close to 1 (only ε difference)
+    assert abs(rho_f + rho_r + rho_s - 1.0) < 1e-3
+    # And in expected ratio: 1 : 2 : 3
+    assert rho_r == pytest.approx(2.0 * rho_f, rel=1e-3)
+    assert rho_s == pytest.approx(3.0 * rho_f, rel=1e-3)
+
+
+def test_rho_detached_no_gradient():
+    """ρ tensors stored in batch should be detached."""
+    learner = _DRStubLearner()
+    rr = torch.tensor([[1.0]], requires_grad=True)
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[2.0]], requires_grad=True),
+        COL_CRD_R_ROUTING: rr,
+        Postprocessing.ADVANTAGES: torch.tensor([[1.0]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    for k in (COL_CRD_RHO_FORECAST, COL_CRD_RHO_ROUTING, COL_CRD_RHO_SCHEDULING):
+        assert batch[k].grad_fn is None, f"{k} should be detached"
+
+
+def test_rho_skipped_advantages_when_shape_mismatch(caplog):
+    """ρ shape mismatch with ADVANTAGES → log warning + leave adv unchanged."""
+    import logging
+    learner = _DRStubLearner()
+    adv_before = torch.tensor([1.0, 2.0, 3.0])  # 1-D shape (3,)
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[0.0, 0.0]]),
+        COL_CRD_R_ROUTING: torch.tensor([[1.0, 1.0]]),  # (1, 2) — won't reshape
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    with caplog.at_level(logging.WARNING, logger="src.learners.crd_q_loss"):
+        learner._compute_responsibilities(module_id="m", batch=batch)
+    # Advantages unchanged
+    assert torch.equal(batch[Postprocessing.ADVANTAGES], adv_before)
+    # ρ tensors still written though
+    assert COL_CRD_RHO_ROUTING in batch
+    # Warning logged
+    assert any("rho_routing shape" in r.message for r in caplog.records)
 
 
 def test_dr_magnitude_comparable_to_dq():
