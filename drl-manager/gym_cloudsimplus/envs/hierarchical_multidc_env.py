@@ -150,6 +150,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         self._crd_green_factors: Optional[List[float]] = None
         self._crd_brown_factors: Optional[List[float]] = None
         self._crd_timestep_hours: Optional[float] = None
+        # CRD framework: cache the most recent parsed global obs so
+        # _collect_crd_info can pull decision-time signals (queue sizes,
+        # green ratio) for the M2.3 baseline scheduler without extra Py4J calls.
+        self._last_global_obs_for_crd: Dict[str, Any] = {}
 
         # Define observation and action spaces
         self._setup_observation_spaces()
@@ -784,6 +788,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         try:
             # Reset returns HierarchicalResetResult (only observations and info)
             observations = self._parse_hierarchical_observation_from_reset(result)
+            self._last_global_obs_for_crd = observations.get("global", {})
             info = self._parse_info_from_reset(result)
         except Exception as e:
             logger.error(f"Failed to parse reset result: {e}")
@@ -927,6 +932,10 @@ class HierarchicalMultiDCEnv(gym.Env):
             rewards = self._parse_hierarchical_rewards(result)
             terminated = result.isTerminated()
             truncated = result.isTruncated()
+            # Cache the global obs so _collect_crd_info can read decision-time
+            # signals (queue sizes, green ratio) for the CRD baseline scheduler
+            # without making extra Py4J round-trips.
+            self._last_global_obs_for_crd = observations.get("global", {})
             info = self._parse_info(result)
         except Exception as e:
             logger.error(f"Failed to parse step result: {e}")
@@ -1319,7 +1328,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             actual_wind = list(self.java_env.getCurrentPerDcGreenPowerW())
             p_total = list(self.java_env.getCurrentPerDcTotalPowerW())
             running_max = float(self.java_env.getCurrentRunningMaxCarbon())
-            return {
+            crd: Dict[str, Any] = {
                 "actual_wind_w": [float(x) for x in actual_wind],
                 "p_total_w": [float(x) for x in p_total],
                 "running_max_carbon": running_max,
@@ -1327,6 +1336,18 @@ class HierarchicalMultiDCEnv(gym.Env):
                 "green_carbon_factor": list(self._crd_green_factors or []),
                 "brown_carbon_factor": list(self._crd_brown_factors or []),
             }
+            # M2.3: pass through decision-time signals for the baseline
+            # scheduler (GreenQueueBalanced needs dc_green_ratio + queue sizes).
+            # These come from the just-parsed global obs; both are arrays of
+            # length num_datacenters.
+            glb = self._last_global_obs_for_crd or {}
+            queue_sizes = glb.get("dc_queue_sizes")
+            green_ratio = glb.get("dc_green_ratio")
+            if queue_sizes is not None:
+                crd["dc_queue_sizes"] = [int(x) for x in queue_sizes]
+            if green_ratio is not None:
+                crd["dc_green_ratio"] = [float(x) for x in green_ratio]
+            return crd
         except Exception as e:
             logger.warning(f"_collect_crd_info failed: {e}")
             return {}

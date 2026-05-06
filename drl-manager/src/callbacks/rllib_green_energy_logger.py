@@ -35,6 +35,10 @@ BEST_EPISODE_CSV_HEADERS = [
     'global_agent_reward',
     'local_agents_avg_reward',
     'local_agents_total_reward',
+    # --- Lagrangian-aware view (what PPO actually saw) ---
+    'lagrangian_penalty_episode',
+    'global_agent_reward_after_lagrangian',
+    'episode_reward_after_lagrangian',
     # --- carbon objective ---
     'total_carbon_kg',
     'carbon_per_mi',
@@ -651,6 +655,26 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # Use global_agent_reward / local_agents_total_reward for per-policy analysis.
         episode_reward = global_agent_reward + local_agents_total_reward
 
+        # --- Lagrangian-aware reward view ---
+        # The PettingZoo env subtracts λ·c_step from `rewards["global_agent"]`
+        # at every step before returning to PPO. The Java-side
+        # global_agent_reward above does NOT include this subtraction (it's
+        # built from epGlobalTerm*Sum). Read the per-episode penalty sum
+        # from the env's terminal info and surface "after-Lagrangian"
+        # reward columns for the dashboard.
+        try:
+            lagrangian_penalty_episode = float(
+                last_info.get("lagrangian_penalty_episode_sum", 0.0) or 0.0
+            )
+        except (TypeError, ValueError):
+            lagrangian_penalty_episode = 0.0
+        global_agent_reward_after_lagrangian = (
+            global_agent_reward - lagrangian_penalty_episode
+        )
+        episode_reward_after_lagrangian = (
+            episode_reward - lagrangian_penalty_episode
+        )
+
         logger.info(
             "[CALLBACK] Rewards from Java info: global=%.2f, local_total=%.2f, "
             "episode_total(global+local)=%.2f",
@@ -685,6 +709,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_agent_reward': global_agent_reward,
                 'local_agents_avg_reward': local_agents_avg_reward,
                 'local_agents_total_reward': local_agents_total_reward,
+                'lagrangian_penalty_episode': lagrangian_penalty_episode,
+                'global_agent_reward_after_lagrangian': global_agent_reward_after_lagrangian,
+                'episode_reward_after_lagrangian': episode_reward_after_lagrangian,
                 'completion_rate_mi': completion_rate_mi,
                 'finished_over_received_rate': finished_over_received_rate,
                 'finished_over_workload_cloudlets_rate': finished_over_workload_cloudlets_rate,
@@ -704,6 +731,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 global_agent_reward,
                 local_agents_avg_reward,
                 local_agents_total_reward,
+                # --- Lagrangian-aware view (what PPO actually saw) ---
+                lagrangian_penalty_episode,
+                global_agent_reward_after_lagrangian,
+                episode_reward_after_lagrangian,
                 # --- carbon objective ---
                 total_carbon_kg,
                 carbon_per_mi,
@@ -943,6 +974,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_agent_reward',
                 'local_agents_avg_reward',
                 'local_agents_total_reward',
+                # --- Lagrangian-aware view: what the global agent actually
+                # saw during training. The Java-side `global_agent_reward`
+                # above is the pre-Lagrangian aggregate (Σ epGlobalTerm*Sum);
+                # the Python wrapper subtracts λ·c_step per step from it
+                # before handing reward to PPO. These three columns make the
+                # constraint pressure visible in the dashboard. ---
+                'lagrangian_penalty_episode',
+                'global_agent_reward_after_lagrangian',
+                'episode_reward_after_lagrangian',
                 # --- carbon objective ---
                 'total_carbon_kg',
                 'carbon_per_mi',
@@ -1045,6 +1085,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_agent_reward',
                 'local_agents_avg_reward',
                 'local_agents_total_reward',
+                # --- Lagrangian-aware view: what the global agent actually
+                # saw during training. The Java-side `global_agent_reward`
+                # above is the pre-Lagrangian aggregate (Σ epGlobalTerm*Sum);
+                # the Python wrapper subtracts λ·c_step per step from it
+                # before handing reward to PPO. These three columns make the
+                # constraint pressure visible in the dashboard. ---
+                'lagrangian_penalty_episode',
+                'global_agent_reward_after_lagrangian',
+                'episode_reward_after_lagrangian',
                 # --- carbon objective ---
                 'total_carbon_kg',
                 'carbon_per_mi',
@@ -1135,6 +1184,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     d.get('global_agent_reward', 0.0),
                     d.get('local_agents_avg_reward', 0.0),
                     d.get('local_agents_total_reward', 0.0),
+                    # --- Lagrangian-aware view ---
+                    d.get('lagrangian_penalty_episode', 0.0),
+                    d.get('global_agent_reward_after_lagrangian', d.get('global_agent_reward', 0.0)),
+                    d.get('episode_reward_after_lagrangian', d.get('reward', 0.0)),
                     # --- carbon objective ---
                     d['total_carbon_kg'],
                     d.get('carbon_per_mi', 0.0),

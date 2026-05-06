@@ -1215,8 +1215,15 @@ public class MultiDatacenterSimulationCore {
             denominator = runningMaxCarbon;
         }
 
+        // NOTE: do NOT add EPSILON to `denominator` here.  EPSILON=1e-8 is sized for
+        // dividing-by-MI (lines 1088, 1181, 1190) where the denominator is in the 1e6+
+        // range; FIXED mode lets the user supply `carbon_normalization_fixed_max` which
+        // is typically 1e-12..1e-9 (kg/MI) and would be silently dominated by EPSILON,
+        // producing `norm = signal × 1e8` instead of `signal / fixed_max`.  Use a
+        // dedicated tiny floor so we still avoid div-by-zero if `denominator` is 0.
+        final double denomFloor = 1e-30;
         double normalizedCarbon = Math.min(
-                signal / (denominator + EPSILON),
+                signal / Math.max(denominator, denomFloor),
                 CARBON_RATIO_MAX
         );
 

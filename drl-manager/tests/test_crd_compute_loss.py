@@ -41,6 +41,8 @@ class _StubLearner(CRDPPOTorchLearner):
         self._crd_call_counts = {}
         self._crd_hook_logged = {}
         self._crd_pred_missing_warned = {}
+        self._crd_baseline_schedulers = {}
+        self._crd_baseline_signal_warned = {}
         self.hook_calls = []  # observability for tests
         self._beta = beta
         self._gamma = gamma
@@ -48,6 +50,12 @@ class _StubLearner(CRDPPOTorchLearner):
     def _read_module_forecast_config(self, module_id):
         # Avoid the real `self.module[module_id].unwrapped()` plumbing.
         return {"beta": self._beta, "gamma": self._gamma}
+
+    def _get_or_build_baseline_scheduler(self, module_id):
+        # Tests don't go through `self.module[module_id].unwrapped()`; treat
+        # M2.3 baseline action as opt-in. The dedicated M2.3 tests below
+        # override this stub when they need a real scheduler.
+        return None
 
     def _compute_crd_terms(self, *, module_id, batch, fwd_out):
         super()._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
@@ -291,6 +299,135 @@ def test_compute_crd_terms_forecast_tracks_bias_through_full_path():
     )
     out = batch[COL_CRD_FORECAST]
     assert (out > 0).all(), f"optimistic forecast should give R_forecast > 0, got {out}"
+
+
+# ---------------------------------------------------------------------------
+# M2.3 — baseline action via GreenQueueBalancedGlobalScheduler
+# ---------------------------------------------------------------------------
+
+from src.baselines.global_schedulers import GreenQueueBalancedGlobalScheduler
+from src.learners.crd_q_loss import COL_CRD_BASELINE_ACTION
+
+
+class _BaselineStubLearner(_StubLearner):
+    """Like _StubLearner but provides a real GreenQueueBalanced scheduler so
+    the M2.3 path under test can produce ã without a real RLlib module."""
+
+    def __init__(self, num_dc=3, batch_size=4, **kw):
+        super().__init__(**kw)
+        self._fixed_scheduler = GreenQueueBalancedGlobalScheduler(
+            num_datacenters=num_dc, batch_size=batch_size
+        )
+
+    def _get_or_build_baseline_scheduler(self, module_id):
+        return self._fixed_scheduler
+
+
+def _make_crd_info_with_signals(green_ratio=None, queue_sizes=None, pred=None):
+    info = _make_crd_info(pred=pred)
+    info["crd"]["dc_green_ratio"] = green_ratio or [0.5, 0.5, 0.5]
+    info["crd"]["dc_queue_sizes"] = queue_sizes or [0, 0, 0]
+    return info
+
+
+def test_baseline_action_writes_key_and_correct_shape():
+    """Each transition gets a list[batch_size] of DC indices in [0, num_dc)."""
+    bs = 4
+    nd = 3
+    learner = _BaselineStubLearner(num_dc=nd, batch_size=bs)
+    infos = [
+        _make_crd_info_with_signals(green_ratio=[0.9, 0.1, 0.5], queue_sizes=[0, 5, 2]),
+        _make_crd_info_with_signals(green_ratio=[0.1, 0.9, 0.5], queue_sizes=[3, 0, 1]),
+    ]
+    batch = {Columns.INFOS: infos, Columns.ACTIONS: torch.zeros(2, bs, dtype=torch.long)}
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=2, T=1)
+    )
+    assert COL_CRD_BASELINE_ACTION in batch
+    out = batch[COL_CRD_BASELINE_ACTION]
+    assert out.shape == (2, bs), f"expected (2, {bs}), got {tuple(out.shape)}"
+    assert ((out >= 0) & (out < nd)).all(), f"DC indices out of range: {out}"
+
+
+def test_baseline_action_prefers_green_dc_when_load_is_balanced():
+    """With queue_sizes equal everywhere, scheduler should prefer high-green DC."""
+    bs = 5
+    nd = 3
+    learner = _BaselineStubLearner(num_dc=nd, batch_size=bs)
+    # DC 0 has 0.9 green ratio, others 0.1; queues all zero.
+    info = _make_crd_info_with_signals(
+        green_ratio=[0.9, 0.1, 0.1], queue_sizes=[0, 0, 0]
+    )
+    batch = {Columns.INFOS: [info], Columns.ACTIONS: torch.zeros(1, bs, dtype=torch.long)}
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=1, T=1)
+    )
+    out = batch[COL_CRD_BASELINE_ACTION].squeeze(0).tolist()
+    # First cloudlet must hit DC 0 (highest green, no queue penalty).
+    assert out[0] == 0, f"first cloudlet should go to DC 0, got {out}"
+    # Most cloudlets should still favour DC 0 even after queue grows.
+    assert out.count(0) >= bs // 2 + 1, f"DC 0 underused: {out}"
+
+
+def test_baseline_action_zero_default_when_signals_missing():
+    """No dc_green_ratio / dc_queue_sizes in info → baseline ã = all-zeros."""
+    bs = 3
+    nd = 3
+    learner = _BaselineStubLearner(num_dc=nd, batch_size=bs)
+    infos = [_make_crd_info()]  # no green_ratio / queue_sizes
+    batch = {Columns.INFOS: infos, Columns.ACTIONS: torch.zeros(1, bs, dtype=torch.long)}
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=1, T=1)
+    )
+    out = batch[COL_CRD_BASELINE_ACTION]
+    assert out.shape == (1, bs)
+    assert (out == 0).all(), f"missing signals should default to all-zero ã: {out}"
+
+
+def test_baseline_action_warn_once_per_module(caplog):
+    import logging
+    bs = 3
+    nd = 3
+    learner = _BaselineStubLearner(num_dc=nd, batch_size=bs)
+    infos = [_make_crd_info() for _ in range(2)]   # all missing signals
+    batch = {Columns.INFOS: infos, Columns.ACTIONS: torch.zeros(2, bs, dtype=torch.long)}
+    with caplog.at_level(logging.WARNING, logger="src.learners.crd_q_loss"):
+        for _ in range(3):
+            learner.compute_loss_for_module(
+                module_id="g", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=2, T=1)
+            )
+    warns = [r for r in caplog.records if "dc_queue_sizes/dc_green_ratio missing" in r.message]
+    assert len(warns) == 1, f"expected exactly 1 warn-once, got {len(warns)}"
+
+
+def test_baseline_action_skipped_when_no_scheduler():
+    """If _get_or_build_baseline_scheduler returns None (e.g., local agent),
+    no baseline_action key should appear."""
+    learner = _StubLearner()  # plain stub returns None scheduler
+    infos = [_make_crd_info_with_signals()]
+    batch = {Columns.INFOS: infos, Columns.ACTIONS: torch.zeros(1, dtype=torch.long)}
+    learner.compute_loss_for_module(
+        module_id="local_x", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=1, T=1)
+    )
+    assert COL_CRD_BASELINE_ACTION not in batch
+
+
+def test_baseline_action_uses_scheduler_static_helper_directly():
+    """Cross-check: _compute_baseline_action_values produces same actions as
+    a direct scheduler.schedule() call on the same input."""
+    bs = 4
+    nd = 3
+    sched = GreenQueueBalancedGlobalScheduler(num_datacenters=nd, batch_size=bs)
+    obs = {"dc_green_ratio": [0.9, 0.1, 0.5], "dc_queue_sizes": [0, 5, 2]}
+    expected = sched.schedule(obs)
+    info = _make_crd_info_with_signals(
+        green_ratio=obs["dc_green_ratio"], queue_sizes=obs["dc_queue_sizes"]
+    )
+    actions_list, n_missing = CRDPPOTorchLearner._compute_baseline_action_values(
+        infos=[info], num_dc=nd, scheduler=sched
+    )
+    assert n_missing == 0
+    assert actions_list == [list(expected)]
 
 
 if __name__ == "__main__":

@@ -90,6 +90,11 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # RLlib's env_config serialization across the new API stack).
         self._ep_c_step_running_sum = 0.0
         self._ep_c_step_running_count = 0
+        # Per-episode running sum of λ·c_step actually subtracted from the
+        # global agent's reward.  Exposed in terminal info so the logger can
+        # show "global reward AFTER Lagrangian" — otherwise monitor.csv
+        # reports the Java pre-penalty number, hiding the constraint pressure.
+        self._ep_lagrangian_penalty_sum = 0.0
 
         # CTDE (Centralized Training with Decentralized Execution) support.
         # When enabled, each local agent's observation includes a "global_state"
@@ -381,6 +386,13 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         logger.debug(f"Resetting PettingZoo environment (seed={seed})...")
 
+        # Defensive reset of per-episode Lagrangian accumulators (terminal step
+        # already clears them; this guards against partial episodes from
+        # truncation paths that may bypass the terminal branch).
+        self._ep_c_step_running_sum = 0.0
+        self._ep_c_step_running_count = 0
+        self._ep_lagrangian_penalty_sum = 0.0
+
         # Reset base environment
         hierarchical_obs, hierarchical_info = self.base_env.reset(seed=seed, options=options)
 
@@ -474,6 +486,9 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             # Accumulate per-step c_step so we can report a per-episode mean.
             self._ep_c_step_running_sum += c_step
             self._ep_c_step_running_count += 1
+            # Track per-episode total λ·c_step actually subtracted; surfaced
+            # at episode end so monitor.csv can show post-Lagrangian reward.
+            self._ep_lagrangian_penalty_sum += lagrangian_penalty
 
         # All agents share the same termination/truncation status
         terminations = {agent: terminated for agent in self.agents}
@@ -495,8 +510,10 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 )
             else:
                 base_info["lagrangian_c_step_mean_episode"] = 0.0
+            base_info["lagrangian_penalty_episode_sum"] = self._ep_lagrangian_penalty_sum
             self._ep_c_step_running_sum = 0.0
             self._ep_c_step_running_count = 0
+            self._ep_lagrangian_penalty_sum = 0.0
         infos = {agent: base_info.copy() for agent in self.agents}
 
         # Store for action masking

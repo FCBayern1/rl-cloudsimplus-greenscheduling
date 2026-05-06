@@ -32,6 +32,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.typing import ModuleID, TensorType
 
+from src.baselines.global_schedulers import GreenQueueBalancedGlobalScheduler
 from src.crd.cf_math import forecast_cf_per_step
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
 
@@ -48,9 +49,15 @@ _DEFAULT_TRAIN_EVERY = 1
 # getGlobalRewardGamma=0.3).
 _DEFAULT_BETA_FORECAST = 0.5
 _DEFAULT_GAMMA_FORECAST = 0.3
+# Default green-weight for the GreenQueueBalanced baseline scheduler in M2.3.
+# Mirrors `GreenQueueBalancedGlobalScheduler`'s own default; exposed as a
+# config knob so future experiments can sweep heuristic-strength.
+_DEFAULT_BASELINE_GREEN_WEIGHT = 0.6
 
 # Custom batch column where M2.2 writes the per-transition R_forecast.
 COL_CRD_FORECAST = "crd_forecast"
+# Custom batch column where M2.3 writes per-transition baseline action ã.
+COL_CRD_BASELINE_ACTION = "crd_baseline_action"
 
 
 class CRDPPOTorchLearner(PPOTorchLearner):
@@ -73,6 +80,13 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # the log every minibatch when the prediction pathway isn't active
         # (e.g., timecap-as-godeye experiments without WindPredictionWrapper).
         self._crd_pred_missing_warned: Dict[ModuleID, bool] = {}
+        # M2.3: per-module cache of the heuristic baseline scheduler used to
+        # produce ã. None entries mark modules where baseline action does not
+        # apply (e.g., local agents — those will be addressed in M4).
+        self._crd_baseline_schedulers: Dict[ModuleID, Optional[Any]] = {}
+        # M2.3: warn-once flag for missing decision-time signals
+        # (dc_green_ratio / dc_queue_sizes) in info["crd"].
+        self._crd_baseline_signal_warned: Dict[ModuleID, bool] = {}
 
     def compute_loss_for_module(
         self,
@@ -153,6 +167,9 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         # M2.2: forecast counterfactual.
         self._compute_forecast_cf(module_id=module_id, batch=batch)
+
+        # M2.3: baseline (heuristic) action ã for the routing CF.
+        self._compute_baseline_action(module_id=module_id, batch=batch)
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -235,6 +252,166 @@ class CRDPPOTorchLearner(PPOTorchLearner):
                 ref.device, dtype=ref.dtype
             )
         batch[COL_CRD_FORECAST] = forecast_tensor
+
+    # ------------------------------------------------------------------ M2.3
+
+    def _compute_baseline_action(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        Compute heuristic baseline action ã per transition and write
+        `batch[COL_CRD_BASELINE_ACTION]`.
+
+        For the global routing module this calls
+        `GreenQueueBalancedGlobalScheduler.schedule(obs)` per transition,
+        feeding it the decision-time `dc_green_ratio` and `dc_queue_sizes`
+        signals stashed by the env into `info["crd"]` (M0 / M2.3 prep).
+
+        Local-agent modules currently fall through (M4 will wire BestFit).
+        Returns silently if no usable scheduler exists or info data is missing.
+        """
+        sched = self._get_or_build_baseline_scheduler(module_id)
+        if sched is None:
+            return
+
+        infos = batch.get(Columns.INFOS)
+        if infos is None:
+            return
+
+        actions_list, n_missing_signals = self._compute_baseline_action_values(
+            infos=infos,
+            num_dc=sched.num_datacenters,
+            scheduler=sched,
+        )
+        if not actions_list:
+            return
+
+        # Warn once if many transitions lack the queue-size signal — this
+        # signals the env didn't populate the new info["crd"] keys (probably
+        # an outdated env version mid-rollout).
+        if n_missing_signals > 0 and not self._crd_baseline_signal_warned.get(
+            module_id, False
+        ):
+            self._crd_baseline_signal_warned[module_id] = True
+            frac = n_missing_signals / len(actions_list)
+            logger.warning(
+                f"[CRD] module {module_id!r}: dc_queue_sizes/dc_green_ratio "
+                f"missing in {n_missing_signals}/{len(actions_list)} "
+                f"({frac:.1%}); baseline ã defaults to all-zeros for those steps."
+            )
+
+        baseline_tensor = torch.tensor(actions_list, dtype=torch.long)
+        # Align shape with batch[ACTIONS] when possible — M2.4 will gather Q
+        # at this action so shape parity matters.
+        ref = batch.get(Columns.ACTIONS)
+        if isinstance(ref, torch.Tensor):
+            try:
+                if ref.numel() == baseline_tensor.numel():
+                    baseline_tensor = baseline_tensor.reshape(ref.shape).to(ref.device)
+            except RuntimeError:
+                # Shape mismatch (e.g., RLlib reshapes ACTIONS unexpectedly);
+                # leave baseline_tensor as (N, batch_size) and let M2.4 cope.
+                pass
+        batch[COL_CRD_BASELINE_ACTION] = baseline_tensor
+
+    @staticmethod
+    def _compute_baseline_action_values(
+        infos: Any, num_dc: int, scheduler: Any
+    ) -> tuple[list[list[int]], int]:
+        """
+        Static helper: walk the infos sequence, run the scheduler against the
+        decision-time signals stashed in info["crd"], return a flat list of
+        per-transition actions (each itself a list of length scheduler.batch_size).
+
+        `n_missing_signals` counts transitions where queue/green-ratio data
+        was absent — those default to all-zeros (a deterministic fallback).
+        """
+        actions_list: list[list[int]] = []
+        n_missing_signals = 0
+        zeros = [0.0] * num_dc
+        zero_action = [0] * scheduler.batch_size
+
+        for info in CRDPPOTorchLearner._iter_infos(infos):
+            crd = info.get("crd") if isinstance(info, dict) else None
+            if not isinstance(crd, dict):
+                actions_list.append(list(zero_action))
+                n_missing_signals += 1
+                continue
+            queue_sizes = crd.get("dc_queue_sizes")
+            green_ratio = crd.get("dc_green_ratio")
+            if queue_sizes is None or green_ratio is None:
+                actions_list.append(list(zero_action))
+                n_missing_signals += 1
+                continue
+            try:
+                actions = scheduler.schedule(
+                    {"dc_green_ratio": green_ratio, "dc_queue_sizes": queue_sizes}
+                )
+                actions_list.append([int(a) for a in actions])
+            except Exception:
+                actions_list.append(list(zero_action))
+                n_missing_signals += 1
+
+        return actions_list, n_missing_signals
+
+    def _get_or_build_baseline_scheduler(
+        self, module_id: ModuleID
+    ) -> Optional[Any]:
+        """
+        Lazily construct the heuristic baseline scheduler for the given module.
+        Cached after first build. Returns None for modules that don't have a
+        MultiDiscrete (= global routing) action space; those are skipped.
+        """
+        if module_id in self._crd_baseline_schedulers:
+            return self._crd_baseline_schedulers[module_id]
+        try:
+            module = self.module[module_id].unwrapped()
+            action_space = getattr(module, "action_space", None)
+            from gymnasium import spaces  # local import; avoid hard top-level dep
+
+            if not isinstance(action_space, spaces.MultiDiscrete):
+                # Local-agent module (Discrete) — defer to M4.
+                self._crd_baseline_schedulers[module_id] = None
+                return None
+            nvec = list(action_space.nvec)
+            if not nvec or any(int(n) != int(nvec[0]) for n in nvec):
+                # Heterogeneous nvec is unusual for routing; bail safely.
+                logger.warning(
+                    f"[CRD] {module_id!r} action_space.nvec={nvec} is not "
+                    "uniform; baseline scheduler skipped."
+                )
+                self._crd_baseline_schedulers[module_id] = None
+                return None
+            num_dc = int(nvec[0])
+            batch_size = len(nvec)
+            crd_cfg = self._read_module_baseline_config(module_id)
+            green_w = float(
+                crd_cfg.get("green_weight", _DEFAULT_BASELINE_GREEN_WEIGHT)
+            )
+            sched = GreenQueueBalancedGlobalScheduler(
+                num_datacenters=num_dc, batch_size=batch_size, green_weight=green_w
+            )
+            self._crd_baseline_schedulers[module_id] = sched
+            logger.info(
+                f"[CRD] built GreenQueueBalanced baseline for {module_id!r}: "
+                f"num_dc={num_dc}, batch_size={batch_size}, green_weight={green_w}"
+            )
+            return sched
+        except Exception as e:
+            logger.warning(
+                f"[CRD] failed to build baseline scheduler for {module_id!r}: {e}"
+            )
+            self._crd_baseline_schedulers[module_id] = None
+            return None
+
+    def _read_module_baseline_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.baseline` from the module's model_config; default to {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("baseline", {}) or {}
+        except Exception:
+            return {}
 
     @staticmethod
     def _compute_forecast_cf_values(
