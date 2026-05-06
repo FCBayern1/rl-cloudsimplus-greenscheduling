@@ -52,6 +52,15 @@ try:
 except ImportError:
     CTDEGTrXLMaskedActionRLModule = None
 
+# EU-CRD ensemble RLModules + custom learner. Activated by `crd.enabled=true`
+# in the env config; otherwise the existing vanilla GTrXL classes are used
+# and the run is bit-identical to pre-CRD baseline.
+from src.models.rlmodule_gtrxl_ensemble import (
+    GTrXLEnsembleGlobalRLModule,
+    GTrXLEnsembleMaskedActionRLModule,
+)
+from src.learners.crd_q_loss import CRDPPOTorchLearner
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -365,6 +374,42 @@ def create_rlmodule_config(
         local_module_class = GTrXLMaskedActionRLModule
         local_model_cfg = gtrxl_config
 
+    # ------------------------------------------------------------------
+    # EU-CRD switch: when crd.enabled=true in the env config, swap in the
+    # V+Q hybrid ensemble RLModules and the custom CRDPPOTorchLearner.
+    # The crd block is also merged into model_config so the RLModule helpers
+    # (_read_crd_ensemble_config etc.) can read their per-module sub-trees.
+    # When crd.enabled=false (default), this block is a no-op and the run
+    # is bit-identical to the pre-CRD baseline.
+    # ------------------------------------------------------------------
+    crd_cfg = env_config.get("crd", {}) or {}
+    crd_enabled = bool(crd_cfg.get("enabled", False)) if isinstance(crd_cfg, dict) else False
+    global_module_class = GTrXLGlobalRLModule
+    crd_learner_class: Optional[type] = None
+    if crd_enabled:
+        if ctde_enabled:
+            raise ValueError(
+                "crd.enabled=true is currently incompatible with ctde.enabled=true. "
+                "The CTDE local module has its own critic head and the EU-CRD Q-head "
+                "ensemble path hasn't been ported onto it. Disable one of the two."
+            )
+        global_module_class = GTrXLEnsembleGlobalRLModule
+        local_module_class = GTrXLEnsembleMaskedActionRLModule
+        # Inject the same crd block into both global + local model_config so
+        # `_read_crd_*_config` on the RLModule and learner side both find it.
+        gtrxl_config = dict(gtrxl_config)
+        gtrxl_config["crd"] = crd_cfg
+        local_model_cfg = dict(local_model_cfg)
+        local_model_cfg["crd"] = crd_cfg
+        crd_learner_class = CRDPPOTorchLearner
+        logger.info(
+            f"[EU-CRD] enabled — using "
+            f"{GTrXLEnsembleGlobalRLModule.__name__}/"
+            f"{GTrXLEnsembleMaskedActionRLModule.__name__} + "
+            f"{CRDPPOTorchLearner.__name__}; "
+            f"crd config keys: {sorted(crd_cfg.keys())}"
+        )
+
     if use_parameter_sharing:
         sample_local_agent = "local_agent_0"
         unified_local_obs_space = sample_env.observation_space(sample_local_agent)
@@ -373,7 +418,7 @@ def create_rlmodule_config(
         rl_module_spec = MultiRLModuleSpec(
             rl_module_specs={
                 "global_policy": RLModuleSpec(
-                    module_class=GTrXLGlobalRLModule,
+                    module_class=global_module_class,
                     observation_space=global_obs_space,
                     action_space=global_action_space,
                     model_config=gtrxl_config,
@@ -393,7 +438,7 @@ def create_rlmodule_config(
     else:
         rl_module_specs = {
             "global_policy": RLModuleSpec(
-                module_class=GTrXLGlobalRLModule,
+                module_class=global_module_class,
                 observation_space=global_obs_space,
                 action_space=global_action_space,
                 model_config=gtrxl_config,
@@ -515,16 +560,23 @@ def create_rlmodule_config(
             num_gpus_per_learner=_num_gpus_per_learner,
         )
         .training(
-            train_batch_size=training_config.get("train_batch_size", 4000),
-            minibatch_size=training_config.get("sgd_minibatch_size", 128),
-            num_epochs=training_config.get("num_sgd_iter", 10),
-            gamma=local_model_config.get("gamma", 0.99),
-            lr=local_model_config.get("learning_rate", 3e-4),
-            lambda_=local_model_config.get("gae_lambda", 0.95),
-            clip_param=local_model_config.get("clip_range", 0.2),
-            entropy_coeff=local_model_config.get("ent_coef", 0.01),
-            vf_loss_coeff=local_model_config.get("vf_coef", 0.5),
-            grad_clip=local_model_config.get("max_grad_norm", 0.5),
+            **{
+                "train_batch_size": training_config.get("train_batch_size", 4000),
+                "minibatch_size": training_config.get("sgd_minibatch_size", 128),
+                "num_epochs": training_config.get("num_sgd_iter", 10),
+                "gamma": local_model_config.get("gamma", 0.99),
+                "lr": local_model_config.get("learning_rate", 3e-4),
+                "lambda_": local_model_config.get("gae_lambda", 0.95),
+                "clip_param": local_model_config.get("clip_range", 0.2),
+                "entropy_coeff": local_model_config.get("ent_coef", 0.01),
+                "vf_loss_coeff": local_model_config.get("vf_coef", 0.5),
+                "grad_clip": local_model_config.get("max_grad_norm", 0.5),
+                # EU-CRD: only override learner_class when CRD is enabled.
+                # Passing the default sentinel (NotProvided) when disabled
+                # keeps RLlib's vanilla PPOTorchLearner.
+                **({"learner_class": crd_learner_class}
+                   if crd_learner_class is not None else {}),
+            }
         )
         .resources(num_gpus=num_gpus)
         .callbacks(make_multi_callbacks([
