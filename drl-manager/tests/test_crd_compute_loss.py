@@ -595,5 +595,209 @@ def test_dq_sigma2_detached_no_gradient():
     assert batch[COL_CRD_SIGMA2].grad_fn is None
 
 
+# ---------------------------------------------------------------------------
+# M2.5 — Δr fallback proxy (load-std difference)
+# ---------------------------------------------------------------------------
+
+from src.learners.crd_q_loss import COL_CRD_DR
+
+
+# --- Static helper tests --------------------------------------------------
+
+def test_dr_zero_when_actions_identical():
+    """If actual == baseline, queues are identical → load std identical → Δr=0."""
+    info = _make_crd_info_with_signals(queue_sizes=[2, 0, 5])
+    actual = torch.tensor([[0, 1, 2, 0]], dtype=torch.long)  # 1 transition × bs=4
+    drs = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual, baseline_actions=actual,
+        num_dc=3, alpha=1.0,
+    )
+    assert drs == [0.0]
+
+
+def test_dr_negative_when_baseline_balances_better():
+    """Baseline routing balances queues better → baseline_std < actual_std → Δr < 0."""
+    # Initial queues: very imbalanced ([0, 100, 0]); baseline routes to DC 0 and 2
+    # to balance, agent dumps everything onto DC 1 (worse).
+    info = _make_crd_info_with_signals(queue_sizes=[0, 100, 0])
+    actual_routing = torch.tensor([[1, 1, 1, 1]], dtype=torch.long)  # all to DC 1
+    baseline_routing = torch.tensor([[0, 2, 0, 2]], dtype=torch.long)  # spread
+    drs = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual_routing,
+        baseline_actions=baseline_routing,
+        num_dc=3, alpha=1.0,
+    )
+    assert len(drs) == 1
+    assert drs[0] < 0, f"baseline should beat actual → Δr<0; got {drs[0]}"
+
+
+def test_dr_positive_when_actual_balances_better():
+    """Symmetric: agent better than baseline → Δr > 0."""
+    info = _make_crd_info_with_signals(queue_sizes=[0, 100, 0])
+    actual_routing = torch.tensor([[0, 2, 0, 2]], dtype=torch.long)
+    baseline_routing = torch.tensor([[1, 1, 1, 1]], dtype=torch.long)
+    drs = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual_routing,
+        baseline_actions=baseline_routing,
+        num_dc=3, alpha=1.0,
+    )
+    assert drs[0] > 0, f"actual better → Δr>0; got {drs[0]}"
+
+
+def test_dr_alpha_scales_linearly():
+    info = _make_crd_info_with_signals(queue_sizes=[0, 100, 0])
+    actual = torch.tensor([[1, 1, 1, 1]], dtype=torch.long)
+    baseline = torch.tensor([[0, 2, 0, 2]], dtype=torch.long)
+    dr1 = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual, baseline_actions=baseline,
+        num_dc=3, alpha=1.0,
+    )[0]
+    dr2 = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual, baseline_actions=baseline,
+        num_dc=3, alpha=2.5,
+    )[0]
+    assert dr2 == pytest.approx(2.5 * dr1, rel=1e-6)
+
+
+def test_dr_zero_when_queue_sizes_missing():
+    """No dc_queue_sizes → Δr = 0 (graceful degrade, matches M2.3)."""
+    info = _make_crd_info()  # no queue_sizes
+    actual = torch.tensor([[0, 1, 2, 0]], dtype=torch.long)
+    baseline = torch.tensor([[1, 1, 1, 1]], dtype=torch.long)
+    drs = CRDPPOTorchLearner._compute_dr_values(
+        infos=[info], actual_actions=actual, baseline_actions=baseline,
+        num_dc=3, alpha=1.0,
+    )
+    assert drs == [0.0]
+
+
+def test_dr_handles_2d_action_tensor():
+    """Action tensors of shape (B, T, batch_size) get flattened to (N, bs)."""
+    infos = [_make_crd_info_with_signals(queue_sizes=[0, 0, 0]) for _ in range(4)]
+    # B=2, T=2, bs=3
+    actual = torch.tensor(
+        [[[0, 0, 0], [1, 1, 1]],
+         [[2, 2, 2], [0, 1, 2]]], dtype=torch.long
+    )
+    baseline = torch.tensor(
+        [[[0, 1, 2], [0, 1, 2]],
+         [[0, 1, 2], [0, 1, 2]]], dtype=torch.long
+    )
+    drs = CRDPPOTorchLearner._compute_dr_values(
+        infos=infos, actual_actions=actual, baseline_actions=baseline,
+        num_dc=3, alpha=1.0,
+    )
+    assert len(drs) == 4
+    # Last transition: actual = [0,1,2] → balanced, baseline = [0,1,2] → balanced
+    # So both stds are 0; Δr should be exactly 0.
+    assert drs[-1] == pytest.approx(0.0, abs=1e-9)
+    # First three transitions: actual is concentrated, baseline spreads → Δr < 0
+    assert all(d < 0 for d in drs[:3])
+
+
+# --- End-to-end via compute_loss_for_module -------------------------------
+
+class _DRStubLearner(_BaselineStubLearner):
+    """Adds an alpha override for the M2.5 Δr config reader."""
+    def __init__(self, alpha: float = 1.0, **kw):
+        super().__init__(**kw)
+        self._dr_alpha = alpha
+    def _read_module_dr_config(self, module_id):
+        return {"alpha": self._dr_alpha}
+
+
+def test_dr_written_via_compute_loss_end_to_end():
+    """Full path: M2.3 produces ã, M2.5 reads it + queue_sizes → Δr in batch."""
+    bs = 4
+    nd = 3
+    learner = _DRStubLearner(num_dc=nd, batch_size=bs, alpha=1.0)
+    info = _make_crd_info_with_signals(
+        green_ratio=[0.9, 0.1, 0.5],
+        queue_sizes=[0, 100, 0],
+    )
+    batch = {
+        Columns.INFOS: [info],
+        Columns.ACTIONS: torch.tensor([[1, 1, 1, 1]], dtype=torch.long),
+        Columns.REWARDS: torch.zeros(1, 1),
+    }
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=_ensemble_fwd_out(B=1, T=1)
+    )
+    # M2.3 produced baseline action; M2.5 used it
+    assert COL_CRD_DR in batch
+    out = batch[COL_CRD_DR]
+    # Reshape to match REWARDS (1, 1)
+    assert out.shape == (1, 1)
+    # Agent dumped everything to DC 1 (already at 100), baseline spread →
+    # baseline_std < actual_std → Δr < 0
+    assert out.item() < 0
+
+
+def test_dr_skipped_when_no_baseline_action():
+    """Without M2.3's baseline action in batch, M2.5 stays silent."""
+    learner = _DRStubLearner(num_dc=3, batch_size=4)
+    batch = {
+        Columns.INFOS: [_make_crd_info_with_signals()],
+        Columns.ACTIONS: torch.tensor([[0, 1, 2, 0]], dtype=torch.long),
+    }
+    # Skip M2.3 by providing no q_ensemble in fwd_out (so the gate kills the
+    # whole CRD pipeline — M2.5 inherits the skip).
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out={}
+    )
+    assert COL_CRD_DR not in batch
+
+
+def test_dr_skipped_when_no_scheduler_cached():
+    """If no GreenQueueBalanced scheduler was built (local agent), Δr can't
+    know num_dc → skip silently."""
+    learner = _StubLearner()  # plain stub, returns None scheduler
+    batch = {
+        Columns.INFOS: [_make_crd_info_with_signals()],
+        Columns.ACTIONS: torch.tensor([0], dtype=torch.long),
+        COL_CRD_BASELINE_ACTION: torch.tensor([0], dtype=torch.long),
+    }
+    learner.compute_loss_for_module(
+        module_id="local_x", config=None, batch=batch, fwd_out=_ensemble_fwd_out()
+    )
+    assert COL_CRD_DR not in batch
+
+
+def test_dr_magnitude_comparable_to_dq():
+    """Sanity check: Δr should not differ from ΔQ by orders of magnitude on
+    a typical batch — M3's soft blending would ignore Δr otherwise."""
+    bs = 4
+    nd = 3
+    learner = _DRStubLearner(num_dc=nd, batch_size=bs, alpha=1.0)
+    # Several transitions with varying queue distributions
+    infos = [
+        _make_crd_info_with_signals(queue_sizes=[0, 0, 5]),
+        _make_crd_info_with_signals(queue_sizes=[10, 0, 0]),
+        _make_crd_info_with_signals(queue_sizes=[2, 3, 1]),
+    ]
+    actions = torch.tensor([[1, 2, 0, 1], [2, 1, 0, 2], [0, 1, 2, 0]], dtype=torch.long)
+    K = 5
+    # q_ensemble standardish range
+    fwd = {COL_Q_ENSEMBLE: torch.randn(3, 1, K, bs, nd)}
+    # batch arrangement: B=3, T=1
+    batch = {
+        Columns.INFOS: infos,
+        Columns.ACTIONS: actions.unsqueeze(1),  # (3, 1, bs)
+        Columns.REWARDS: torch.zeros(3, 1),
+    }
+    learner.compute_loss_for_module(
+        module_id="g", config=None, batch=batch, fwd_out=fwd
+    )
+    dq = batch[COL_CRD_DQ]
+    dr = batch[COL_CRD_DR]
+    # Both should be order-of-magnitude similar (within 100x).
+    if dq.abs().max() > 0:
+        ratio = (dr.abs().max() + 1e-9) / (dq.abs().max() + 1e-9)
+        assert 1e-2 < ratio < 1e2, (
+            f"Δr / ΔQ magnitude ratio {ratio:.3g} out of range — "
+            f"M3 soft blending will be lopsided."
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

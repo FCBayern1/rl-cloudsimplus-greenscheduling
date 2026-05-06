@@ -53,6 +53,10 @@ _DEFAULT_GAMMA_FORECAST = 0.3
 # Mirrors `GreenQueueBalancedGlobalScheduler`'s own default; exposed as a
 # config knob so future experiments can sweep heuristic-strength.
 _DEFAULT_BASELINE_GREEN_WEIGHT = 0.6
+# Default α weight on the M2.5 Δr proxy. Independent of the env's
+# `global_reward_alpha` (which may be 0 in carbon-only experiments) — Δr
+# only needs a meaningful non-zero magnitude for M3 soft-blending to work.
+_DEFAULT_ALPHA_DR = 1.0
 
 # Custom batch column where M2.2 writes the per-transition R_forecast.
 COL_CRD_FORECAST = "crd_forecast"
@@ -62,6 +66,10 @@ COL_CRD_BASELINE_ACTION = "crd_baseline_action"
 # σ²_tot = σ²(s,a) + σ²(s,ã). Both have shape (B, T).
 COL_CRD_DQ = "crd_dq"
 COL_CRD_SIGMA2 = "crd_sigma2"
+# Custom batch column where M2.5 writes the reward-level fallback Δr,
+# proxied by the load-std difference between actual and baseline routing.
+# Shape (B, T). Used by M3 soft-blending when σ²_tot is large (ΔQ untrusted).
+COL_CRD_DR = "crd_dr"
 
 
 class CRDPPOTorchLearner(PPOTorchLearner):
@@ -179,6 +187,9 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         self._compute_dq_and_sigma2(
             module_id=module_id, batch=batch, fwd_out=fwd_out
         )
+
+        # M2.5: reward-level Δr fallback (load-std proxy).
+        self._compute_dr(module_id=module_id, batch=batch)
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -541,6 +552,145 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         delta_q = mu_a - mu_b
         sigma2_tot = var_a + var_b
         return delta_q, sigma2_tot
+
+    # ------------------------------------------------------------------ M2.5
+
+    def _compute_dr(self, *, module_id: ModuleID, batch: Dict[str, Any]) -> None:
+        """
+        Reward-level Δr fallback (proxy: load-std difference under actual vs
+        baseline routing).
+
+        The exact baseline reward would require either re-simulating the env
+        (no replay) or analytical reward decomposition that's costlier than
+        the value taken-from-Q-ensemble path (M2.4) anyway. For M3's soft
+        blending we only need Δr to satisfy:
+          - sign matches "agent vs baseline routing quality"
+          - magnitude on a comparable scale to ΔQ when σ² is large enough
+            that we'd actually fall back to it
+        We approximate the agent-controllable α·L term by the negative
+        load-imbalance (std of per-DC pending queue under each routing):
+            Δr ≈ α · [(-actual_load_std) - (-baseline_load_std)]
+               = α · (baseline_load_std - actual_load_std)
+        Other reward terms (β·Ĉ, γ·R_w) are assumed identical between actual
+        and baseline (they're forecast-driven, not routing-driven on the
+        same step), so they cancel in the difference.
+
+        Skips silently when the M2.3 baseline action wasn't produced
+        (non-routing module) or when the queue snapshot is missing.
+        """
+        baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
+        actual_action = batch.get(Columns.ACTIONS)
+        infos = batch.get(Columns.INFOS)
+        if baseline_action is None or actual_action is None or infos is None:
+            return
+
+        # Use the same source of truth M2.3 used (not the cache dict directly,
+        # so test stubs that override the method without populating the cache
+        # still see the right scheduler).
+        sched = self._get_or_build_baseline_scheduler(module_id)
+        if sched is None:
+            return  # No routing scheduler available (e.g., local agent) → skip.
+        num_dc = sched.num_datacenters
+
+        cfg = self._read_module_dr_config(module_id)
+        alpha = float(cfg.get("alpha", _DEFAULT_ALPHA_DR))
+
+        try:
+            dr_list = self._compute_dr_values(
+                infos=infos,
+                actual_actions=actual_action,
+                baseline_actions=baseline_action,
+                num_dc=num_dc,
+                alpha=alpha,
+            )
+        except Exception as e:
+            logger.warning(f"[CRD] Δr compute failed for {module_id!r}: {e}")
+            return
+
+        dr_tensor = torch.tensor(dr_list, dtype=torch.float32)
+        # Align shape with batch[REWARDS] (B, T) when possible.
+        ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
+        if isinstance(ref, torch.Tensor) and ref.numel() == dr_tensor.numel():
+            dr_tensor = dr_tensor.reshape(ref.shape).to(
+                ref.device, dtype=ref.dtype
+            )
+        batch[COL_CRD_DR] = dr_tensor
+
+    def _read_module_dr_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.delta_r` from the module's model_config; default to {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("delta_r", {}) or {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _compute_dr_values(
+        *,
+        infos: Any,
+        actual_actions: Any,
+        baseline_actions: Any,
+        num_dc: int,
+        alpha: float,
+    ) -> list[float]:
+        """
+        Static helper: walk the (info, actual_routing, baseline_routing)
+        triples and compute per-transition Δr.
+
+        Per-transition logic:
+            base_q = info["crd"]["dc_queue_sizes"]      # length num_dc
+            actual_q[dc]   = base_q[dc] + count(actual_routing == dc)
+            baseline_q[dc] = base_q[dc] + count(baseline_routing == dc)
+            Δr = α · (std(baseline_q) - std(actual_q))
+
+        Missing queue snapshot → Δr = 0 for that transition (deterministic
+        fallback, matches M2.3's approach).
+        """
+        # Coerce action tensors into a flat (N, batch_size) numpy form.
+        import numpy as np  # local import keeps heavy deps out of module top
+        if isinstance(actual_actions, torch.Tensor):
+            actual_np = actual_actions.detach().cpu().numpy()
+        else:
+            actual_np = np.asarray(actual_actions)
+        if isinstance(baseline_actions, torch.Tensor):
+            baseline_np = baseline_actions.detach().cpu().numpy()
+        else:
+            baseline_np = np.asarray(baseline_actions)
+        actual_np = actual_np.reshape(-1, actual_np.shape[-1])
+        baseline_np = baseline_np.reshape(-1, baseline_np.shape[-1])
+
+        infos_list = list(CRDPPOTorchLearner._iter_infos(infos))
+        n = min(len(infos_list), actual_np.shape[0], baseline_np.shape[0])
+
+        dr_values: list[float] = []
+        for i in range(n):
+            info = infos_list[i]
+            crd = info.get("crd") if isinstance(info, dict) else None
+            if not isinstance(crd, dict):
+                dr_values.append(0.0)
+                continue
+            base_q_raw = crd.get("dc_queue_sizes")
+            if base_q_raw is None or len(base_q_raw) != num_dc:
+                dr_values.append(0.0)
+                continue
+            base_q = np.asarray(base_q_raw, dtype=np.float64)
+
+            # Increment queues by routed cloudlet counts.
+            actual_inc = np.bincount(
+                actual_np[i].astype(np.int64), minlength=num_dc
+            )[:num_dc]
+            baseline_inc = np.bincount(
+                baseline_np[i].astype(np.int64), minlength=num_dc
+            )[:num_dc]
+            actual_q = base_q + actual_inc
+            baseline_q = base_q + baseline_inc
+
+            actual_std = float(actual_q.std())
+            baseline_std = float(baseline_q.std())
+            dr_values.append(alpha * (baseline_std - actual_std))
+
+        return dr_values
 
     @staticmethod
     def _compute_forecast_cf_values(
