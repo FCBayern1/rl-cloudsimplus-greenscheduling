@@ -732,11 +732,25 @@ public class MultiDatacenterSimulationCore {
      * - cloudletsFinishedWaitTimeLastTimestep: wait times of finished cloudlets
      */
     private void clearPerStepTrackingLists() {
+        // Per-DC cleanup: finished wait times + cloudletCreatedList.
+        // Clearing cloudletCreatedList mirrors singledc/SimulationCore.clearListsIfNeeded()
+        // and is gated on settings.isClearCreatedLists() (default true). Without this
+        // the list grows monotonically with episode length and CloudSim Plus per-step
+        // bookkeeping over it makes per-step latency grow linearly (observed 0.15s -> 1.32s
+        // in a 5000-step rollout). Safe because this env does not perform VM upscaling
+        // (the only CloudSim path that re-reads the created list).
+        boolean clear = settings.isClearCreatedLists();
         for (DatacenterInstance dc : datacenterInstances) {
             LoadBalancingBroker localBroker = dc.getLocalBroker();
             if (localBroker != null) {
                 localBroker.clearFinishedWaitTimes();
+                if (clear) {
+                    localBroker.getCloudletCreatedList().clear();
+                }
             }
+        }
+        if (clear && globalBroker != null) {
+            globalBroker.getCloudletCreatedList().clear();
         }
         LOGGER.trace("Cleared per-step tracking lists for all {} datacenters", datacenterInstances.size());
     }

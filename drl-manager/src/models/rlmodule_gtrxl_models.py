@@ -10,6 +10,7 @@ Architecture:
 
 from typing import Any, Dict, Optional, List
 import logging
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -25,6 +26,13 @@ from ray.rllib.utils.typing import TensorType
 from src.networks.gtrxl import GTrXL
 
 logger = logging.getLogger(__name__)
+
+# NaN/Inf health checks call torch.isfinite(...).all() and .item(), each of which
+# forces a CUDA sync and serialises the GPU pipeline.  Per minibatch they cost
+# ~1-2s on GH200 due to in-flight transformer kernels, dominating PPO update
+# time (observed 85min/iter for an 8000-sample batch).  Enable only when
+# debugging numerical issues by exporting GTRXL_DEBUG_NAN_CHECKS=1.
+_DEBUG_NAN_CHECKS = os.environ.get("GTRXL_DEBUG_NAN_CHECKS", "0") == "1"
 
 
 def _parse_gtrxl_state_in(
@@ -279,29 +287,30 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
                 f"Likely cause: env output != space declaration, OR sequence flattened into features."
             )
 
-        # === CHECKPOINT 1: Check if obs has NaN/Inf ===
-        if not torch.isfinite(flat_obs).all():
-            bad_ratio = (~torch.isfinite(flat_obs)).float().mean().item()
-            logger.error(f"[{self.__class__.__name__}] flat_obs has non-finite values! ratio={bad_ratio:.4f}")
-            # Log which positions have issues
-            bad_mask = ~torch.isfinite(flat_obs)
-            bad_indices = bad_mask.nonzero()[:10]  # First 10 bad positions
-            logger.error(f"First bad positions: {bad_indices.tolist()}")
-            raise ValueError(f"Non-finite values in flat_obs (ratio={bad_ratio:.4f})")
+        if _DEBUG_NAN_CHECKS:
+            # === CHECKPOINT 1: Check if obs has NaN/Inf ===
+            if not torch.isfinite(flat_obs).all():
+                bad_ratio = (~torch.isfinite(flat_obs)).float().mean().item()
+                logger.error(f"[{self.__class__.__name__}] flat_obs has non-finite values! ratio={bad_ratio:.4f}")
+                # Log which positions have issues
+                bad_mask = ~torch.isfinite(flat_obs)
+                bad_indices = bad_mask.nonzero()[:10]  # First 10 bad positions
+                logger.error(f"First bad positions: {bad_indices.tolist()}")
+                raise ValueError(f"Non-finite values in flat_obs (ratio={bad_ratio:.4f})")
 
-        # === CHECKPOINT 2: Check action_mask health ===
-        if action_mask is not None:
-            if not torch.isfinite(action_mask).all():
-                bad_ratio = (~torch.isfinite(action_mask)).float().mean().item()
-                logger.error(f"[{self.__class__.__name__}] action_mask has non-finite values! ratio={bad_ratio:.4f}")
-                raise ValueError(f"Non-finite values in action_mask (ratio={bad_ratio:.4f})")
+            # === CHECKPOINT 2: Check action_mask health ===
+            if action_mask is not None:
+                if not torch.isfinite(action_mask).all():
+                    bad_ratio = (~torch.isfinite(action_mask)).float().mean().item()
+                    logger.error(f"[{self.__class__.__name__}] action_mask has non-finite values! ratio={bad_ratio:.4f}")
+                    raise ValueError(f"Non-finite values in action_mask (ratio={bad_ratio:.4f})")
 
-            # Check for rows with no valid actions
-            valid_cnt = (action_mask >= 0.5).sum(dim=-1)  # (B, T) or (B*T,)
-            zero_rows = (valid_cnt == 0).sum().item()
-            if zero_rows > 0:
-                total_rows = valid_cnt.numel()
-                logger.warning(f"[{self.__class__.__name__}] Found {zero_rows}/{total_rows} rows with NO valid actions!")
+                # Check for rows with no valid actions
+                valid_cnt = (action_mask >= 0.5).sum(dim=-1)  # (B, T) or (B*T,)
+                zero_rows = (valid_cnt == 0).sum().item()
+                if zero_rows > 0:
+                    total_rows = valid_cnt.numel()
+                    logger.warning(f"[{self.__class__.__name__}] Found {zero_rows}/{total_rows} rows with NO valid actions!")
 
         # Handling Dimensions for Transformer
         # RLlib connectors usually provide (Batch, Time, Feat) if state is present
@@ -337,11 +346,12 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         features, memories_out = self.gtrxl(flat_obs, state=memories_in)
         state_out = _gtrxl_state_out(memories_out)
 
-        # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
-        if not torch.isfinite(features).all():
-            bad_ratio = (~torch.isfinite(features)).float().mean().item()
-            logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
-            raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
+        if _DEBUG_NAN_CHECKS:
+            # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
+            if not torch.isfinite(features).all():
+                bad_ratio = (~torch.isfinite(features)).float().mean().item()
+                logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
+                raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
 
         # Features: (B, T, d_model)
 
@@ -625,14 +635,15 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
                 f"Likely cause: env output != space declaration, OR sequence flattened into features."
             )
 
-        # === CHECKPOINT 1: Check if obs has NaN/Inf ===
-        if not torch.isfinite(flat_obs).all():
-            bad_ratio = (~torch.isfinite(flat_obs)).float().mean().item()
-            logger.error(f"[{self.__class__.__name__}] flat_obs has non-finite values! ratio={bad_ratio:.4f}")
-            bad_mask = ~torch.isfinite(flat_obs)
-            bad_indices = bad_mask.nonzero()[:10]
-            logger.error(f"First bad positions: {bad_indices.tolist()}")
-            raise ValueError(f"Non-finite values in flat_obs (ratio={bad_ratio:.4f})")
+        if _DEBUG_NAN_CHECKS:
+            # === CHECKPOINT 1: Check if obs has NaN/Inf ===
+            if not torch.isfinite(flat_obs).all():
+                bad_ratio = (~torch.isfinite(flat_obs)).float().mean().item()
+                logger.error(f"[{self.__class__.__name__}] flat_obs has non-finite values! ratio={bad_ratio:.4f}")
+                bad_mask = ~torch.isfinite(flat_obs)
+                bad_indices = bad_mask.nonzero()[:10]
+                logger.error(f"First bad positions: {bad_indices.tolist()}")
+                raise ValueError(f"Non-finite values in flat_obs (ratio={bad_ratio:.4f})")
 
         # Reshape for Transformer (B, 1, F) if flat
         if flat_obs.dim() == 2:
@@ -651,11 +662,12 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         features, memories_out = self.gtrxl(flat_obs, state=memories_in)
         state_out = _gtrxl_state_out(memories_out)
 
-        # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
-        if not torch.isfinite(features).all():
-            bad_ratio = (~torch.isfinite(features)).float().mean().item()
-            logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
-            raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
+        if _DEBUG_NAN_CHECKS:
+            # === CHECKPOINT 3: Check if GTrXL features have NaN/Inf ===
+            if not torch.isfinite(features).all():
+                bad_ratio = (~torch.isfinite(features)).float().mean().item()
+                logger.error(f"[{self.__class__.__name__}] GTrXL features has non-finite values! ratio={bad_ratio:.4f}")
+                raise ValueError(f"Non-finite values in GTrXL features (ratio={bad_ratio:.4f})")
 
         # Full-sequence logits and values (slicing happens per-method to keep
         # compute_values working correctly for (B, T, F) batches during GAE).
