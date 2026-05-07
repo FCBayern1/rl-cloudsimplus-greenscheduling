@@ -2,8 +2,13 @@
 """
 Compare multiple scheduling algorithms including heuristics and RL models.
 
+Each entry in ALGORITHMS may pin its own `experiment` (else --experiment is
+used as the default). Per-decision latency stats (mean / p50 / p95 / p99) are
+collected by `evaluate.py` and surfaced in a separate timing table.
+
 Usage:
-    python scripts/rl/compare_algorithms.py --experiment experiment_multi_dc_10_5k --episodes 1
+    python scripts/rl/compare_algorithms.py --episodes 3
+    python scripts/rl/compare_algorithms.py --algorithms PPO_GTrXL PPO_gMLP
 """
 
 import argparse
@@ -23,33 +28,73 @@ import pandas as pd
 # Algorithm Configurations
 # =============================================================================
 
+# Per-algorithm experiment + checkpoint pinning for the efficiency-analysis run.
+# - Each entry can declare its own `experiment`; if absent, falls back to the
+#   --experiment CLI arg.
+# - Heuristics (RR / PSO / GA) and the prediction-equipped PPO variants run on
+#   `experiment_multi_dc_10`. PPO_Simple runs on `experiment_multi_dc_simple`
+#   (no-God's-Eye env). PPO_GTrXL uses `experiment_multi_dc_11` to match its
+#   training config.
+# - shared_local mirrors how each checkpoint was actually trained, verified by
+#   inspecting the checkpoint's policies/ subdirectory:
+#     PPO_Simple   -> per-DC local_policy_{0..9}        (shared_local=False)
+#     PPO_MLP      -> shared_local_policy (PPO_PS run)  (shared_local=True)
+#     PPO_ResMLP   -> shared_local_policy               (shared_local=True)
+#     PPO_gMLP     -> shared_local_policy               (shared_local=True)
+#     PPO_GTrXL    -> shared_local_policy               (shared_local=True)
 ALGORITHMS = {
     "Round-Robin": {
         "type": "heuristic",
         "global": "round_robin",
         "local": "round_robin",
+        "experiment": "experiment_multi_dc_10",
     },
     "PSO": {
         "type": "heuristic",
         "global": "pso",
         "local": "pso",
+        "experiment": "experiment_multi_dc_10",
     },
     "GA": {
         "type": "heuristic",
         "global": "ga",
         "local": "ga",
+        "experiment": "experiment_multi_dc_10",
     },
-    "PPO_PS": {
+    "PPO_Simple": {
+        "type": "rllib",
+        "checkpoint": "../logs/experiment_multi_dc_simple/20251206_223544/multidc_training/PPO_multidc_env_e9ae5_00000_0_2025-12-06_22-35-48/checkpoint_000019",
+        "new_api": True,
+        "shared_local": False,
+        "experiment": "experiment_multi_dc_simple",
+    },
+    "PPO_MLP": {
         "type": "rllib",
         "checkpoint": "../logs/experiment_multi_dc_10_PPO_ParameterSharing/20251212_140553/multidc_training/PPO_multidc_env_ae560_00000_0_2025-12-12_14-05-57/checkpoint_000062",
         "new_api": False,
         "shared_local": True,
+        "experiment": "experiment_multi_dc_10",
     },
-    "GTrXL": {
+    "PPO_ResMLP": {
+        "type": "rllib",
+        "checkpoint": "../logs/experiment_multi_dc_10_ResMLP_RLModule/20260118_002206/multidc_resmlp_training/PPO_multidc_env_b9914_00000_0_2026-01-18_00-22-08/checkpoint_000019",
+        "new_api": True,
+        "shared_local": True,
+        "experiment": "experiment_multi_dc_10",
+    },
+    "PPO_gMLP": {
+        "type": "rllib",
+        "checkpoint": "../logs/experiment_multi_dc_10_gMLP_RLModule/20260117_123458/multidc_gmlp_training/PPO_multidc_env_f0526_00000_0_2026-01-17_12-35-00/checkpoint_000019",
+        "new_api": True,
+        "shared_local": True,
+        "experiment": "experiment_multi_dc_10",
+    },
+    "PPO_GTrXL": {
         "type": "rllib",
         "checkpoint": "../logs/experiment_multi_dc_11_GTrXL/20251228_025812/multidc_gtrxl_training/PPO_multidc_env_0d963_00000_0_2025-12-28_02-58-14/checkpoint_000019",
         "new_api": True,
-        "shared_local": False,
+        "shared_local": True,
+        "experiment": "experiment_multi_dc_11",
     },
 }
 
@@ -85,7 +130,8 @@ def run_heuristic_evaluation(global_sched: str, local_sched: str, config: dict,
 
 
 def run_rllib_evaluation(checkpoint: str, config: dict, num_episodes: int,
-                          seed: int, new_api: bool, shared_local: bool) -> list:
+                          seed: int, new_api: bool, shared_local: bool,
+                          py4j_port=None) -> list:
     """Run RLlib model evaluation."""
     from src.baselines.evaluate import run_rllib_evaluation as _run_rllib
 
@@ -98,6 +144,7 @@ def run_rllib_evaluation(checkpoint: str, config: dict, num_episodes: int,
         verbose=False,
         shared_local=shared_local,
         use_new_api=new_api,
+        py4j_port=py4j_port,
     )
     return results
 
@@ -107,7 +154,7 @@ def aggregate_results(results: list) -> dict:
     if not results:
         return {}
 
-    return {
+    out = {
         "episodes": len(results),
         "avg_episode_length": np.mean([r['episode_length'] for r in results]),
         "avg_routed_rate": np.mean([r['routed_rate'] for r in results]) * 100,
@@ -121,6 +168,18 @@ def aggregate_results(results: list) -> dict:
         "avg_carbon_intensity": np.mean([r.get('carbon_intensity', 0) for r in results]),
         "avg_carbon_per_cloudlet_g": np.mean([r['carbon_per_finished_cloudlet'] for r in results]) * 1000,
     }
+
+    # Per-decision latency: mean across episodes for mean/p50/p95/p99.
+    # p99/p95 are reported as the **average** of episode-level p99s, which
+    # is conservative but stable across runs. (Pooling per-decision samples
+    # across episodes would also work but is not available here.)
+    if results and "global_decision_us_mean" in results[0]:
+        for scope in ("global_decision", "local_decision"):
+            for stat in ("mean", "p50", "p95", "p99"):
+                key = f"{scope}_us_{stat}"
+                out[f"avg_{key}"] = float(np.mean([r.get(key, 0.0) for r in results]))
+            out[f"sum_{scope}_count"] = int(sum(r.get(f"{scope}_count", 0) for r in results))
+    return out
 
 
 def print_algorithm_summary(algo_name: str, stats: dict):
@@ -187,6 +246,37 @@ def print_comparison_table(all_results: dict):
     print("  Waste%: Percentage of green energy wasted (not used)")
     print("  CI: Carbon Intensity (kg CO2 per kWh)")
 
+    # Decision-latency table — only printed if any algorithm collected timing.
+    have_timing = any(
+        s and "avg_global_decision_us_mean" in s for s in all_results.values()
+    )
+    if have_timing:
+        print("\n" + "=" * 130)
+        print("PER-DECISION LATENCY (microseconds)")
+        print("=" * 130)
+        print(
+            f"{'Algorithm':<15} | "
+            f"{'G mean':>9} | {'G p50':>9} | {'G p95':>9} | {'G p99':>9} | "
+            f"{'L mean':>9} | {'L p50':>9} | {'L p95':>9} | {'L p99':>9}"
+        )
+        print("-" * 130)
+        for algo_name, stats in all_results.items():
+            if not stats or "avg_global_decision_us_mean" not in stats:
+                continue
+            print(
+                f"{algo_name:<15} | "
+                f"{stats['avg_global_decision_us_mean']:>9.1f} | "
+                f"{stats['avg_global_decision_us_p50']:>9.1f} | "
+                f"{stats['avg_global_decision_us_p95']:>9.1f} | "
+                f"{stats['avg_global_decision_us_p99']:>9.1f} | "
+                f"{stats['avg_local_decision_us_mean']:>9.1f} | "
+                f"{stats['avg_local_decision_us_p50']:>9.1f} | "
+                f"{stats['avg_local_decision_us_p95']:>9.1f} | "
+                f"{stats['avg_local_decision_us_p99']:>9.1f}"
+            )
+        print("=" * 130)
+        print("  G = global routing decision; L = local VM-selection decision")
+
 
 def save_results_csv(all_results: dict, output_path: str):
     """Save comparison results to CSV."""
@@ -204,9 +294,10 @@ def save_results_csv(all_results: dict, output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare scheduling algorithms")
-    parser.add_argument("--experiment", type=str, default="experiment_multi_dc_10_5k",
-                        help="Experiment name from config.yml")
-    parser.add_argument("--episodes", type=int, default=1,
+    parser.add_argument("--experiment", type=str, default="experiment_multi_dc_10",
+                        help="Default experiment (used when an algo entry in "
+                             "ALGORITHMS doesn't pin its own `experiment`)")
+    parser.add_argument("--episodes", type=int, default=3,
                         help="Number of episodes per algorithm")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
@@ -214,12 +305,31 @@ def main():
                         help="Output directory for results")
     parser.add_argument("--algorithms", type=str, nargs="+", default=None,
                         help="Specific algorithms to run (default: all)")
+    parser.add_argument("--py4j-port", type=int, default=None,
+                        help="If given, connect to an already-running Java "
+                             "gateway on this port. Default: auto-launch a "
+                             "fresh gateway per algorithm via env's "
+                             "_find_free_port + gradlew run subprocess.")
 
     args = parser.parse_args()
 
-    # Load config
-    print(f"Loading experiment: {args.experiment}")
-    config = load_config(args.experiment)
+    # Cache parsed configs so config.yml is read once per experiment.
+    # Returns a *copy* with py4j_port adjusted (None -> env auto-launches a
+    # free port, explicit int -> connect to existing gateway) and
+    # gateway_log_dir set so the auto-launch path has somewhere to redirect
+    # JVM stdout (matches what the training entrypoints do).
+    config_cache: dict = {}
+    def _get_config(name: str) -> dict:
+        if name not in config_cache:
+            print(f"Loading experiment: {name}")
+            config_cache[name] = load_config(name)
+        cfg = dict(config_cache[name])
+        if args.py4j_port is not None:
+            cfg["py4j_port"] = int(args.py4j_port)
+        else:
+            cfg["py4j_port"] = None  # signal env to auto-launch a free port
+        cfg["gateway_log_dir"] = str(output_dir / "gateways")
+        return cfg
 
     # Setup output directory
     if args.output_dir:
@@ -237,15 +347,18 @@ def main():
 
     print(f"\nAlgorithms to compare: {list(algos_to_run.keys())}")
     print(f"Episodes per algorithm: {args.episodes}")
-    print(f"Output directory: {output_dir}")
+    print(f"Default experiment    : {args.experiment}")
+    print(f"Output directory      : {output_dir}")
     print("=" * 60)
 
     all_results = {}
 
     for algo_name, algo_config in algos_to_run.items():
-        print(f"\n>>> Running {algo_name}...")
+        exp_name = algo_config.get("experiment", args.experiment)
+        print(f"\n>>> Running {algo_name} on {exp_name}...")
 
         try:
+            config = _get_config(exp_name)
             if algo_config["type"] == "heuristic":
                 results = run_heuristic_evaluation(
                     global_sched=algo_config["global"],
@@ -262,6 +375,7 @@ def main():
                     seed=args.seed,
                     new_api=algo_config.get("new_api", False),
                     shared_local=algo_config.get("shared_local", False),
+                    py4j_port=args.py4j_port,
                 )
             else:
                 print(f"Unknown algorithm type: {algo_config['type']}")

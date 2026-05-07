@@ -11,6 +11,7 @@ import argparse
 import sys
 import csv
 import logging
+import time
 import numpy as np
 import yaml
 from pathlib import Path
@@ -231,6 +232,30 @@ def _infer_use_new_api_from_checkpoint(checkpoint_path: str) -> bool:
     return False
 
 
+def _summarize_decision_latency(samples_ns: List[int], prefix: str) -> Dict[str, float]:
+    """Reduce per-decision latency samples (ns) to mean/p50/p95/p99 in microseconds.
+
+    Returns keys `{prefix}_us_mean`, `_us_p50`, `_us_p95`, `_us_p99`, `_count`.
+    Empty input yields zeros (kept rather than NaN so CSV writers don't choke).
+    """
+    if not samples_ns:
+        return {
+            f"{prefix}_us_mean": 0.0,
+            f"{prefix}_us_p50": 0.0,
+            f"{prefix}_us_p95": 0.0,
+            f"{prefix}_us_p99": 0.0,
+            f"{prefix}_count": 0,
+        }
+    arr = np.asarray(samples_ns, dtype=np.float64) / 1e3  # ns -> us
+    return {
+        f"{prefix}_us_mean": float(arr.mean()),
+        f"{prefix}_us_p50": float(np.percentile(arr, 50)),
+        f"{prefix}_us_p95": float(np.percentile(arr, 95)),
+        f"{prefix}_us_p99": float(np.percentile(arr, 99)),
+        f"{prefix}_count": int(arr.size),
+    }
+
+
 def _checkpoint_label_from_path(checkpoint_path: str) -> str:
     """
     Derive a readable label from a checkpoint path for compare tables.
@@ -322,13 +347,17 @@ def run_evaluation(
         obs, info = env.reset(seed=seed + ep)
         done = False
         steps = 0
+        global_decision_ns: List[int] = []
+        local_decision_ns: List[int] = []
 
         while not done:
             # Convert observation for global scheduler
             global_obs = _convert_global_obs_for_scheduler(obs['global'])
 
             # Global scheduling: select DC for each cloudlet in batch
+            t0 = time.perf_counter_ns()
             global_action = global_scheduler.schedule(global_obs)
+            global_decision_ns.append(time.perf_counter_ns() - t0)
 
             # Local scheduling: select VM for each DC
             local_actions = {}
@@ -340,7 +369,9 @@ def run_evaluation(
                 local_obs = _convert_local_obs_for_scheduler(obs['local'].get(dc_id, {}))
 
                 # Schedule
+                t0 = time.perf_counter_ns()
                 local_actions[dc_id] = local_schedulers[dc_id].schedule(local_obs, mask)
+                local_decision_ns.append(time.perf_counter_ns() - t0)
 
             # Execute action
             action = {'global': global_action, 'local': local_actions}
@@ -352,6 +383,8 @@ def run_evaluation(
         metrics = collect_metrics(info, num_dcs)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
+        metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
+        metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         all_results.append(metrics)
 
         if verbose:
@@ -449,6 +482,16 @@ def _print_summary(
     print(f"Avg Carbon Emission: {avg_carbon:.4f} kg")
     print(f"Avg Carbon Intensity: {avg_carbon_intensity:.4f} kg/kWh")
     print(f"Avg Carbon/Cloudlet: {avg_carbon_per_cloudlet*1000:.4f} g/task")
+
+    if results and "global_decision_us_mean" in results[0]:
+        gmean = np.mean([r["global_decision_us_mean"] for r in results])
+        gp95  = np.mean([r["global_decision_us_p95"]  for r in results])
+        gp99  = np.mean([r["global_decision_us_p99"]  for r in results])
+        lmean = np.mean([r["local_decision_us_mean"]  for r in results])
+        lp95  = np.mean([r["local_decision_us_p95"]   for r in results])
+        lp99  = np.mean([r["local_decision_us_p99"]   for r in results])
+        print(f"Decision latency  global: mean={gmean:.1f}us p95={gp95:.1f}us p99={gp99:.1f}us")
+        print(f"Decision latency  local : mean={lmean:.1f}us p95={lp95:.1f}us p99={lp99:.1f}us")
 
     # Per-DC completion summary
     print(f"\nPer-DC Cloudlets Finished:")
@@ -697,17 +740,23 @@ def run_rllib_evaluation(
         obs, info = env.reset(seed=seed + ep)
         done = False
         steps = 0
+        global_decision_ns: List[int] = []
+        local_decision_ns: List[int] = []
 
         while not done:
             # Global scheduling
+            t0 = time.perf_counter_ns()
             global_action = global_scheduler.schedule(obs['global'])
+            global_decision_ns.append(time.perf_counter_ns() - t0)
 
             # Local scheduling
             local_actions = {}
             for dc_id in range(num_dcs):
                 local_obs = obs['local'].get(dc_id, {})
                 action_mask = env.get_local_action_masks(dc_id)
+                t0 = time.perf_counter_ns()
                 local_actions[dc_id] = local_schedulers[dc_id].schedule(local_obs, action_mask)
+                local_decision_ns.append(time.perf_counter_ns() - t0)
 
             # 执行
             action = {'global': global_action, 'local': local_actions}
@@ -719,6 +768,8 @@ def run_rllib_evaluation(
         metrics = collect_metrics(info, num_dcs)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
+        metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
+        metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         all_results.append(metrics)
 
         if verbose:
