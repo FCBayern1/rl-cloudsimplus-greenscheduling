@@ -194,3 +194,6 @@ run_*.sh
 # Local docs
 *.docx
 *.pdf
+
+# Local comparison / evaluation results — generated per-run, not for source control
+drl-manager/compare_result/
