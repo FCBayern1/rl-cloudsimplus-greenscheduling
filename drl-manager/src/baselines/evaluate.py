@@ -33,6 +33,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# py4j logs full tracebacks at ERROR level whenever its connection retry
+# loop hits a (briefly) unreachable gateway — typical during teardown when
+# Algorithm.from_checkpoint's env_runner env tries to close after our eval
+# env has already killed the JVM. The retries are harmless, so silence them.
+logging.getLogger("py4j").setLevel(logging.CRITICAL)
+logging.getLogger("py4j.java_gateway").setLevel(logging.CRITICAL)
+logging.getLogger("py4j.clientserver").setLevel(logging.CRITICAL)
+
 
 def load_config(experiment_name: str) -> dict:
     """Load configuration for specified experiment from config.yml"""

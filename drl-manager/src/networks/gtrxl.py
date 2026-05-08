@@ -114,6 +114,17 @@ class GTrXL(nn.Module):
         self.embedding = nn.Linear(input_dim, d_model)
         self.pos_encoder = nn.Parameter(torch.zeros(1, max_seq_len, d_model))
 
+        # Forward-compat: legacy checkpoints may have been saved with a
+        # different `max_seq_len` than the current default (e.g. ckpts trained
+        # in late 2025 used max_seq_len=100, while current default is 128 and
+        # the RLlib `model.max_seq_len` plumbing can drag it down to 48).
+        # Auto-resize self.pos_encoder to whatever shape arrives in
+        # state_dict so load_state_dict succeeds. New rows (when ckpt is
+        # smaller) keep their zero-init; surplus rows (when ckpt is larger)
+        # are simply not used at inference because the forward path slices
+        # `pos_encoder[:, :T, :]`.
+        self._register_load_state_dict_pre_hook(self._adapt_pos_encoder_pre_load)
+
         self.layers = nn.ModuleList(
             [
                 GTrXLLayer(d_model, nhead, dim_feedforward, dropout)
@@ -122,6 +133,27 @@ class GTrXL(nn.Module):
         )
 
         self.final_norm = nn.LayerNorm(d_model)
+
+    def _adapt_pos_encoder_pre_load(self, state_dict, prefix, *args, **kwargs):
+        """Resize self.pos_encoder in-place to match the incoming checkpoint.
+
+        Runs as a pre-hook on load_state_dict; mutates `self.pos_encoder`
+        before PyTorch's strict shape check fires.
+        """
+        key = prefix + "pos_encoder"
+        if key not in state_dict:
+            return
+        ckpt_shape = tuple(state_dict[key].shape)
+        if ckpt_shape == tuple(self.pos_encoder.shape):
+            return
+        # Only re-shape if d_model matches; row count (max_seq_len) is what
+        # the legacy mismatch is about.
+        if ckpt_shape[0] != 1 or ckpt_shape[2] != self.pos_encoder.shape[2]:
+            return
+        self.pos_encoder = nn.Parameter(
+            torch.zeros(*ckpt_shape, dtype=self.pos_encoder.dtype,
+                        device=self.pos_encoder.device)
+        )
 
     def forward(
         self,

@@ -19,6 +19,61 @@ from typing import Dict, Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
+# --- packaging._structures unpickle shim --------------------------------------
+# Old RLlib checkpoints (pickled when this venv had `packaging<22`) reference
+# `packaging._structures.Infinity` / `NegativeInfinity`. The module was removed
+# in packaging>=22, so unpickling raises ModuleNotFoundError. We register a
+# stand-in module exposing the original singleton+type API. Classes are defined
+# at module scope so that pickle's qualified-name lookup finds them.
+class _ShimInfinityType:
+    def __repr__(self):  return "Infinity"
+    def __hash__(self):  return hash(repr(self))
+    def __lt__(self, _): return False
+    def __le__(self, _): return False
+    def __eq__(self, o): return isinstance(o, type(self))
+    def __ne__(self, o): return not isinstance(o, type(self))
+    def __gt__(self, _): return True
+    def __ge__(self, _): return True
+    def __neg__(self):   return _SHIM_NEGATIVE_INFINITY
+
+
+class _ShimNegativeInfinityType:
+    def __repr__(self):  return "-Infinity"
+    def __hash__(self):  return hash(repr(self))
+    def __lt__(self, _): return True
+    def __le__(self, _): return True
+    def __eq__(self, o): return isinstance(o, type(self))
+    def __ne__(self, o): return not isinstance(o, type(self))
+    def __gt__(self, _): return False
+    def __ge__(self, _): return False
+    def __neg__(self):   return _SHIM_INFINITY
+
+
+_SHIM_INFINITY = _ShimInfinityType()
+_SHIM_NEGATIVE_INFINITY = _ShimNegativeInfinityType()
+
+
+def _install_packaging_structures_shim() -> None:
+    if "packaging._structures" in sys.modules:
+        return
+    import types
+    # Re-bind classes' __module__ so pickle resolves them through the stub.
+    _ShimInfinityType.__module__ = "packaging._structures"
+    _ShimInfinityType.__qualname__ = "InfinityType"
+    _ShimNegativeInfinityType.__module__ = "packaging._structures"
+    _ShimNegativeInfinityType.__qualname__ = "NegativeInfinityType"
+    stub = types.ModuleType("packaging._structures")
+    stub.InfinityType = _ShimInfinityType
+    stub.NegativeInfinityType = _ShimNegativeInfinityType
+    stub.Infinity = _SHIM_INFINITY
+    stub.NegativeInfinity = _SHIM_NEGATIVE_INFINITY
+    sys.modules["packaging._structures"] = stub
+
+
+_install_packaging_structures_shim()
+# ------------------------------------------------------------------------------
+
+
 def register_rllib_components():
     """注册 RLlib 所需的自定义模型和环境"""
     import ray
@@ -70,19 +125,30 @@ def load_rllib_checkpoint(checkpoint_path: str, py4j_port_override: Optional[int
 
     # 加载 checkpoint
     print(f"Loading checkpoint from: {checkpoint_path}")
-    if py4j_port_override is not None:
-        # Override env registration to inject py4j_port into env_config during restore.
-        from ray import tune
-        from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-        from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import HierarchicalMultiDCParallelEnv
+    # Always override env registration so the env_runner env restored from
+    # the checkpoint connects to the right gateway:
+    #   * explicit port  -> use it
+    #   * None           -> strip py4j_port from cfg, triggering env auto-launch
+    # Without this the checkpoint's baked py4j_port (from training time, often
+    # 25333) wins and from_checkpoint() blows up if no gateway is on that port.
+    from ray import tune
+    from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+    from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import HierarchicalMultiDCParallelEnv
 
-        def env_creator(cfg):
-            if isinstance(cfg, dict):
-                cfg = dict(cfg)
+    def env_creator(cfg):
+        if isinstance(cfg, dict):
+            cfg = dict(cfg)
+            if py4j_port_override is not None:
                 cfg["py4j_port"] = int(py4j_port_override)
-            return ParallelPettingZooEnv(HierarchicalMultiDCParallelEnv(cfg))
+            else:
+                cfg["py4j_port"] = None  # let env pick a free port + spawn JVM
+            cfg.setdefault(
+                "gateway_log_dir",
+                str(Path(checkpoint_path).resolve().parent / "eval_gateways"),
+            )
+        return ParallelPettingZooEnv(HierarchicalMultiDCParallelEnv(cfg))
 
-        tune.register_env("multidc_env", env_creator)
+    tune.register_env("multidc_env", env_creator)
 
     algo = Algorithm.from_checkpoint(checkpoint_path)
     print("Checkpoint loaded successfully!")

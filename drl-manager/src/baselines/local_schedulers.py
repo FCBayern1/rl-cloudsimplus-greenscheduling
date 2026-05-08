@@ -15,6 +15,23 @@ def _valid_action_indices(action_mask: np.ndarray) -> np.ndarray:
     return idx if idx.size > 0 else np.array([0], dtype=np.int32)
 
 
+def _to_scalar(x, default: float = 0.0) -> float:
+    """Coerce an obs value to a Python float scalar.
+
+    Heuristic schedulers occasionally receive obs fields that arrive as numpy
+    arrays (e.g. shape (1,) from a Discrete sampler) instead of the bare ints
+    they were modelled as in the obs space. Plain `float(arr)` raises
+    `TypeError: only 0-dimensional arrays can be converted to Python scalars`
+    in that case. This helper accepts None / scalar / 0-d / N-d input safely.
+    """
+    if x is None:
+        return default
+    arr = np.asarray(x)
+    if arr.size == 0:
+        return default
+    return float(arr.flat[0])
+
+
 class RandomLocalScheduler(LocalScheduler):
     """Random Local Scheduler"""
 
@@ -144,7 +161,7 @@ class PackingAwareLocalScheduler(LocalScheduler):
 
         vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
         vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
-        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+        demand = _to_scalar(local_obs.get("next_cloudlet_pes"))
 
         best_action = 0
         best_cost = float("inf")
@@ -233,7 +250,7 @@ class GeneticAlgorithmLocalScheduler(LocalScheduler):
 
         vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
         vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
-        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+        demand = _to_scalar(local_obs.get("next_cloudlet_pes"))
 
         # init population from heuristics + random valid actions
         pop = np.empty(self.population_size, dtype=np.int32)
@@ -345,7 +362,7 @@ class ParticleSwarmLocalScheduler(LocalScheduler):
 
         vm_loads = np.array(local_obs.get("vm_loads", []), dtype=np.float32).ravel()
         vm_avail = np.array(local_obs.get("vm_available_pes", []), dtype=np.float32).ravel()
-        demand = float(local_obs.get("next_cloudlet_pes", 0) or 0.0)
+        demand = _to_scalar(local_obs.get("next_cloudlet_pes"))
 
         # map continuous -> discrete action by rounding then snapping to nearest valid_nonzero
         valid_actions = valid_nonzero.astype(np.int32)
@@ -680,6 +697,11 @@ class RLlibNewAPILocalScheduler(LocalScheduler):
         elif "action_dist_inputs" in output:
             # Apply action mask and argmax
             dist_inputs = output["action_dist_inputs"]
+            # Recurrent backbones (e.g. GTrXL) emit logits with a leading time
+            # dim: [B, T, A]; flat backbones emit [B, A]. Squeeze T so the
+            # mask broadcasting works for both.
+            if dist_inputs.dim() == 3 and dist_inputs.shape[1] == 1:
+                dist_inputs = dist_inputs.squeeze(1)
             # Mask invalid actions with large negative value
             mask_tensor = torch.from_numpy(full_mask).unsqueeze(0)
             masked_logits = dist_inputs.clone()

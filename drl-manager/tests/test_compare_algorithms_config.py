@@ -39,7 +39,7 @@ def test_each_algo_pins_an_experiment():
 
 
 @pytest.mark.parametrize("name,expected_shared_local,expected_new_api", [
-    ("PPO_Simple", False, True),
+    ("PPO_Simple", False, False),
     ("PPO_MLP",    True,  False),
     ("PPO_ResMLP", True,  True),
     ("PPO_gMLP",   True,  True),
@@ -71,7 +71,7 @@ def test_rllib_checkpoint_paths_exist():
 if __name__ == "__main__":
     test_algorithms_contains_eight_targets()
     test_each_algo_pins_an_experiment()
-    for n, sl, na in [("PPO_Simple", False, True), ("PPO_MLP", True, False),
+    for n, sl, na in [("PPO_Simple", False, False), ("PPO_MLP", True, False),
                       ("PPO_ResMLP", True, True), ("PPO_gMLP", True, True),
                       ("PPO_GTrXL", True, True)]:
         test_ppo_variant_flags(n, sl, na)

@@ -37,11 +37,11 @@ import pandas as pd
 #   training config.
 # - shared_local mirrors how each checkpoint was actually trained, verified by
 #   inspecting the checkpoint's policies/ subdirectory:
-#     PPO_Simple   -> per-DC local_policy_{0..9}        (shared_local=False)
-#     PPO_MLP      -> shared_local_policy (PPO_PS run)  (shared_local=True)
-#     PPO_ResMLP   -> shared_local_policy               (shared_local=True)
-#     PPO_gMLP     -> shared_local_policy               (shared_local=True)
-#     PPO_GTrXL    -> shared_local_policy               (shared_local=True)
+#     PPO_Simple   -> per-DC local_policy_{0..9}, OLD API     (shared_local=False, new_api=False)
+#     PPO_MLP      -> shared_local_policy (PPO_PS run), OLD API (shared_local=True,  new_api=False)
+#     PPO_ResMLP   -> shared_local_policy, NEW API (RLModule)  (shared_local=True,  new_api=True)
+#     PPO_gMLP     -> shared_local_policy, NEW API (RLModule)  (shared_local=True,  new_api=True)
+#     PPO_GTrXL    -> shared_local_policy, NEW API (RLModule)  (shared_local=True,  new_api=True)
 ALGORITHMS = {
     "Round-Robin": {
         "type": "heuristic",
@@ -64,7 +64,9 @@ ALGORITHMS = {
     "PPO_Simple": {
         "type": "rllib",
         "checkpoint": "../logs/experiment_multi_dc_simple/20251206_223544/multidc_training/PPO_multidc_env_e9ae5_00000_0_2025-12-06_22-35-48/checkpoint_000019",
-        "new_api": True,
+        # Old API (per `policies/local_policy_*` layout in checkpoint and
+        # `masked_action_model.DictObsModel` references at load time).
+        "new_api": False,
         "shared_local": False,
         "experiment": "experiment_multi_dc_simple",
     },
@@ -395,7 +397,9 @@ def main():
             print(f"    Carbon: {stats['avg_carbon_kg']:.4f} kg")
 
         except Exception as e:
+            import traceback
             print(f"    ERROR: {e}")
+            traceback.print_exc()
             all_results[algo_name] = None
 
     # Print comparison table

@@ -804,11 +804,25 @@ def load_rllib_algorithm(checkpoint_path: str, py4j_port_override: int | None = 
 
     def env_creator(cfg):
         # IMPORTANT: RLlib may create envs during Algorithm.from_checkpoint()
-        # (space inference / env runner init). Override port here to ensure evaluation
-        # connects to a separate Java gateway instance.
-        if py4j_port_override is not None and isinstance(cfg, dict):
+        # (space inference / env runner init). The cfg restored from the
+        # checkpoint typically has a baked-in py4j_port from training time
+        # (often 25333). Always override:
+        #   * explicit override -> use it
+        #   * None              -> strip the port so the env auto-launches
+        #                          its own gateway via _find_free_port +
+        #                          gradlew run subprocess
+        # Also ensure gateway_log_dir exists; the auto-launch path requires it
+        # but the checkpoint cfg may have been pickled without it.
+        if isinstance(cfg, dict):
             cfg = dict(cfg)
-            cfg["py4j_port"] = int(py4j_port_override)
+            if py4j_port_override is not None:
+                cfg["py4j_port"] = int(py4j_port_override)
+            else:
+                cfg["py4j_port"] = None
+            cfg.setdefault(
+                "gateway_log_dir",
+                str(Path(checkpoint_path).resolve().parent / "eval_gateways"),
+            )
         env = HierarchicalMultiDCParallelEnv(cfg)
         return ParallelPettingZooEnv(env)
 
@@ -882,9 +896,12 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         if "actions" in output:
             actions = output["actions"]
         elif "action_dist_inputs" in output:
-            # For MultiDiscrete, action_dist_inputs shape: (batch, sum of nvec)
-            # Need to sample or argmax for each sub-action
+            # For MultiDiscrete, action_dist_inputs shape: (batch, sum of nvec).
+            # Recurrent backbones (e.g. GTrXL) emit [B, T, sum-of-nvec]; squeeze
+            # the singleton T so downstream reshape works.
             dist_inputs = output["action_dist_inputs"]
+            if dist_inputs.dim() == 3 and dist_inputs.shape[1] == 1:
+                dist_inputs = dist_inputs.squeeze(1)
             actions = self._sample_multidiscrete(dist_inputs)
         else:
             raise ValueError(f"Unknown output format: {output.keys()}")
