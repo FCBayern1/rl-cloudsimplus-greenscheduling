@@ -41,6 +41,63 @@ logging.getLogger("py4j").setLevel(logging.CRITICAL)
 logging.getLogger("py4j.java_gateway").setLevel(logging.CRITICAL)
 logging.getLogger("py4j.clientserver").setLevel(logging.CRITICAL)
 
+# RLlib's pre-flight env validation logs ERROR when it inspects our env BEFORE
+# reset() has populated `env.agents`. The check fails but RLlib continues, and
+# our actual rollout uses a separately-constructed eval env, so this validation
+# noise is misleading. RLModule Catalog warnings are similarly by-design noise.
+#
+# Note: setLevel() doesn't survive — Ray re-configures these loggers when
+# ray.rllib imports finish. A logging Filter on the root handler is robust:
+# it drops records by name regardless of any later setLevel calls.
+class _DropByName(logging.Filter):
+    def __init__(self, prefixes):
+        super().__init__()
+        self._prefixes = tuple(prefixes)
+
+    def filter(self, record):  # True = keep, False = drop
+        return not record.name.startswith(self._prefixes)
+
+
+_NOISY_LOGGER_PREFIXES = (
+    "py4j",
+    "ray.rllib.env.multi_agent_env_runner",
+    "ray.rllib.utils.pre_checks.env",
+    "ray.rllib.core.rl_module.rl_module",
+)
+_drop_filter = _DropByName(_NOISY_LOGGER_PREFIXES)
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_drop_filter)
+
+# Ray emits a flood of RayDeprecationWarning / DeprecationWarning every run
+# (UnifiedLogger, JsonLogger, CSVLogger, TBXLogger, RLModule(config=...)).
+# These are internal API drift warnings, not actionable from our code.
+import warnings as _warnings
+try:
+    from ray._private.utils import RayDeprecationWarning as _RayDepWarn
+    _warnings.filterwarnings("ignore", category=_RayDepWarn)
+except Exception:
+    pass
+_warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"ray\..*")
+_warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"ray$")
+
+# Suppress the "Exception ignored in: <function LearnerGroup.__del__>" trace
+# that fires at interpreter shutdown. Root cause: LearnerGroup.__del__ tries
+# to talk to Ray's GCS, which is already torn down at that point, and the
+# resulting subprocess.Popen call raises "preexec_fn not supported at
+# interpreter shutdown". Results are already on disk by this point — the
+# noise is purely cosmetic.
+try:
+    from ray.rllib.core.learner.learner_group import LearnerGroup as _LG
+    _orig_lg_del = _LG.__del__
+    def _safe_lg_del(self):
+        try:
+            _orig_lg_del(self)
+        except Exception:
+            pass
+    _LG.__del__ = _safe_lg_del
+except Exception:
+    pass
+
 
 def load_config(experiment_name: str) -> dict:
     """Load configuration for specified experiment from config.yml"""
