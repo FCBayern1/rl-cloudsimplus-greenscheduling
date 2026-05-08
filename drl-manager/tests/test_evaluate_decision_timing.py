@@ -112,8 +112,96 @@ def test_run_evaluation_emits_timing_fields():
     assert r["local_decision_us_p99"]  >= r["local_decision_us_p50"]
 
 
+def test_force_full_episode_ignores_terminated():
+    """When force_full_episode=True, env returning terminated=True early must
+    NOT end the episode — only truncated should. This is the fairness
+    mechanism for cross-algorithm carbon comparison."""
+    num_dcs = 2
+    cap_steps = 5  # truncated fires at this step
+
+    env = MagicMock()
+    env.num_datacenters = num_dcs
+    env.global_routing_batch_size = 3
+    env.max_vms = 4
+    env.get_local_action_masks.return_value = np.ones(4, dtype=np.float32)
+    obs = {"global": {}, "local": {i: {} for i in range(num_dcs)}}
+    env.reset.return_value = (obs, {})
+
+    counter = {"n": 0}
+
+    def fake_step(action):
+        counter["n"] += 1
+        # Env reports terminated=True from step 2 onwards (workload drained)
+        terminated = counter["n"] >= 2
+        # Truncated only fires at the cap
+        truncated = counter["n"] >= cap_steps
+        return obs, {}, terminated, truncated, {}
+
+    env.step.side_effect = fake_step
+    env.close.return_value = None
+
+    class _Sched:
+        def __init__(self, *a, **k): pass
+        def reset(self): pass
+        def schedule(self, *a, **k): return 0
+
+    with patch("src.baselines.evaluate.HierarchicalMultiDCEnv", return_value=env), \
+         patch("src.baselines.evaluate.GLOBAL_SCHEDULERS", {"s": _Sched}), \
+         patch("src.baselines.evaluate.LOCAL_SCHEDULERS",  {"s": _Sched}), \
+         patch("src.baselines.evaluate.collect_metrics", return_value={"routed_rate": 1.0}):
+        results = run_evaluation(
+            global_scheduler_name="s", local_scheduler_name="s",
+            config={"env_id": "HierarchicalMultiDC-v0"},
+            num_episodes=1, verbose=False,
+            force_full_episode=True,
+        )
+
+    # Episode must run to truncation (5 steps), not terminate at step 2.
+    assert results[0]["episode_length"] == cap_steps
+
+
+def test_default_behavior_respects_terminated():
+    """Inverse case: with the flag off (default), terminated=True should
+    end the episode immediately."""
+    num_dcs = 2
+    env = MagicMock()
+    env.num_datacenters = num_dcs
+    env.global_routing_batch_size = 3
+    env.max_vms = 4
+    env.get_local_action_masks.return_value = np.ones(4, dtype=np.float32)
+    obs = {"global": {}, "local": {i: {} for i in range(num_dcs)}}
+    env.reset.return_value = (obs, {})
+
+    counter = {"n": 0}
+
+    def fake_step(action):
+        counter["n"] += 1
+        return obs, {}, counter["n"] >= 2, False, {}
+
+    env.step.side_effect = fake_step
+    env.close.return_value = None
+
+    class _Sched:
+        def __init__(self, *a, **k): pass
+        def reset(self): pass
+        def schedule(self, *a, **k): return 0
+
+    with patch("src.baselines.evaluate.HierarchicalMultiDCEnv", return_value=env), \
+         patch("src.baselines.evaluate.GLOBAL_SCHEDULERS", {"s": _Sched}), \
+         patch("src.baselines.evaluate.LOCAL_SCHEDULERS",  {"s": _Sched}), \
+         patch("src.baselines.evaluate.collect_metrics", return_value={"routed_rate": 1.0}):
+        results = run_evaluation(
+            global_scheduler_name="s", local_scheduler_name="s",
+            config={"env_id": "HierarchicalMultiDC-v0"},
+            num_episodes=1, verbose=False,
+        )
+    assert results[0]["episode_length"] == 2
+
+
 if __name__ == "__main__":
     test_summarize_empty_returns_zero_count()
     test_summarize_units_and_ordering()
     test_run_evaluation_emits_timing_fields()
+    test_force_full_episode_ignores_terminated()
+    test_default_behavior_respects_terminated()
     print("OK")

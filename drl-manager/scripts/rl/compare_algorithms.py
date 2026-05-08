@@ -115,7 +115,8 @@ def load_config(experiment_name: str) -> dict:
 
 
 def run_heuristic_evaluation(global_sched: str, local_sched: str, config: dict,
-                              num_episodes: int, seed: int) -> list:
+                              num_episodes: int, seed: int,
+                              force_full_episode: bool = False) -> list:
     """Run heuristic baseline evaluation."""
     from src.baselines.evaluate import run_evaluation
 
@@ -127,13 +128,15 @@ def run_heuristic_evaluation(global_sched: str, local_sched: str, config: dict,
         seed=seed,
         output_csv=None,
         verbose=False,
+        force_full_episode=force_full_episode,
     )
     return results
 
 
 def run_rllib_evaluation(checkpoint: str, config: dict, num_episodes: int,
                           seed: int, new_api: bool, shared_local: bool,
-                          py4j_port=None) -> list:
+                          py4j_port=None,
+                          force_full_episode: bool = False) -> list:
     """Run RLlib model evaluation."""
     from src.baselines.evaluate import run_rllib_evaluation as _run_rllib
 
@@ -147,6 +150,7 @@ def run_rllib_evaluation(checkpoint: str, config: dict, num_episodes: int,
         shared_local=shared_local,
         use_new_api=new_api,
         py4j_port=py4j_port,
+        force_full_episode=force_full_episode,
     )
     return results
 
@@ -312,6 +316,12 @@ def main():
                              "gateway on this port. Default: auto-launch a "
                              "fresh gateway per algorithm via env's "
                              "_find_free_port + gradlew run subprocess.")
+    parser.add_argument("--force-full-episode", action="store_true",
+                        help="Ignore env's natural-completion (terminated) "
+                             "signal and run every algorithm to "
+                             "max_episode_length. Required for fair carbon "
+                             "comparison across algorithms that drain the "
+                             "workload at different speeds.")
 
     args = parser.parse_args()
 
@@ -368,6 +378,7 @@ def main():
                     config=config,
                     num_episodes=args.episodes,
                     seed=args.seed,
+                    force_full_episode=args.force_full_episode,
                 )
             elif algo_config["type"] == "rllib":
                 results = run_rllib_evaluation(
@@ -378,6 +389,7 @@ def main():
                     new_api=algo_config.get("new_api", False),
                     shared_local=algo_config.get("shared_local", False),
                     py4j_port=args.py4j_port,
+                    force_full_episode=args.force_full_episode,
                 )
             else:
                 print(f"Unknown algorithm type: {algo_config['type']}")

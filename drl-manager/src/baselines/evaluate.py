@@ -345,7 +345,8 @@ def run_evaluation(
     global_model_path: Optional[str] = None,
     local_model_path: Optional[str] = None,
     output_csv: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    force_full_episode: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Run evaluation with specified Global + Local scheduler combination.
@@ -442,7 +443,11 @@ def run_evaluation(
             action = {'global': global_action, 'local': local_actions}
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
-            done = terminated or truncated
+            # When force_full_episode=True, ignore the env's natural-completion
+            # signal so every algorithm runs the same number of steps. Carbon /
+            # energy totals become directly comparable across algorithms that
+            # would otherwise drain the workload at different speeds.
+            done = truncated if force_full_episode else (terminated or truncated)
 
         # Collect metrics at end of episode
         metrics = collect_metrics(info, num_dcs)
@@ -685,6 +690,7 @@ def run_rllib_evaluation(
     shared_local: bool = False,
     use_new_api: bool = False,
     py4j_port: Optional[int] = None,
+    force_full_episode: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
@@ -827,7 +833,7 @@ def run_rllib_evaluation(
             action = {'global': global_action, 'local': local_actions}
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
-            done = terminated or truncated
+            done = truncated if force_full_episode else (terminated or truncated)
 
         # 收集指标
         metrics = collect_metrics(info, num_dcs)
