@@ -124,6 +124,13 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # M3: per-module CRDBlender (stateful EMA of σ² + adaptive τ) that
         # combines ΔQ and Δr into R^routing.
         self._crd_blenders: Dict[ModuleID, CRDBlender] = {}
+        # M2.4: warn-once flag for the dq/sigma2 alignment failure path.
+        # Layout mismatches between the padded q_ensemble and the
+        # sequence-packed `infos`-derived baseline_action are still under
+        # investigation; until M2.3 produces baseline_action in a layout
+        # that always aligns, we want exactly one diagnostic line per
+        # module instead of one per minibatch (PPO does ~150+ minibatches).
+        self._crd_dq_align_warned: Dict[ModuleID, bool] = {}
 
     def compute_loss_for_module(
         self,
@@ -505,16 +512,48 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         else:
             baseline_action = baseline_action.long()
 
+        # Pull loss_mask if present — needed when actions are sequence-packed
+        # to N_valid while q_ensemble is the padded (B, T, ...) form returned
+        # by the GTrXL forward pass. RLlib's connector pipeline gives us
+        # actions in unpadded form alongside `loss_mask` of shape (B, T).
+        loss_mask = batch.get(Columns.LOSS_MASK)
+
         try:
             delta_q, sigma2_tot = self._compute_dq_and_sigma2_values(
                 q_ensemble=q_ensemble,
                 actual_action=actual_action,
                 baseline_action=baseline_action,
+                loss_mask=loss_mask,
             )
         except Exception as e:
-            logger.warning(
-                f"[CRD] dq/sigma2 compute failed for {module_id!r}: {e}"
-            )
+            # Warn-once per module: PPO multi-epoch SGD calls compute_loss
+            # ~150+ times per iter; spamming this log every minibatch buries
+            # everything else. The first occurrence carries enough diagnostic
+            # detail to debug the root cause separately (M2.3 baseline_action
+            # layout mismatch, currently under investigation).
+            if not self._crd_dq_align_warned.get(module_id, False):
+                self._crd_dq_align_warned[module_id] = True
+                # Probe a representative info entry to help diagnose layout
+                # mismatch (we're still figuring out why baseline_action's
+                # length disagrees with both B*T and N_valid in some calls).
+                infos_probe = batch.get(Columns.INFOS)
+                infos_len = (
+                    len(infos_probe)
+                    if infos_probe is not None and hasattr(infos_probe, "__len__")
+                    else "?"
+                )
+                logger.warning(
+                    f"[CRD] dq/sigma2 alignment failed for {module_id!r}: {e}; "
+                    f"q_ensemble.shape={tuple(q_ensemble.shape)}, "
+                    f"actual_action.shape={tuple(actual_action.shape)}, "
+                    f"baseline_action.shape={tuple(baseline_action.shape)}, "
+                    f"loss_mask.shape="
+                    f"{None if loss_mask is None else tuple(loss_mask.shape)}, "
+                    f"len(infos)={infos_len}. "
+                    "ΔQ/σ² will be skipped for this module — M3 blending will "
+                    "fall back to Δr-only path. Suppressing further alignment "
+                    "warnings for this module."
+                )
             return
 
         # Detach: M5 will broadcast these against advantages — they should
@@ -525,42 +564,161 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
     @staticmethod
     def _gather_q_chosen(
-        q_ensemble: torch.Tensor, action: torch.Tensor
+        q_ensemble: torch.Tensor,
+        action: torch.Tensor,
+        loss_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Gather Q values across the ensemble for the given action.
+        Gather Q values across the K ensemble for the given action.
 
-        Layouts:
-          - Local discrete   q (B, T, K, A);          action (B, T)
-              → returns (B, T, K)
-          - Global MultiDisc q (B, T, K, bs, num_dc); action (B, T, bs)
-              → returns (B, T, K) — per-cloudlet mean over bs
+        q_ensemble is always the padded (B, T, ...) tensor returned from the
+        forward pass (shape 4 for local, shape 5 for global). The `action`
+        tensor's layout depends on RLlib's connector pipeline — it can be
+        any of:
 
-        Mirrors the gather pattern in `_compute_q_loss` so M1.2 and M2.4
-        agree on what "Q at action" means.
+          * Padded (B, T, ...) — already aligned with q_ensemble
+          * Flat (B*T, ...) — needs reshape to (B, T, ...)
+          * Sequence-packed (N_valid, ...) where N_valid < B*T — RLlib's
+            "unpadded" form; we mask q_ensemble down to valid positions
+            using `loss_mask`
+
+        Output is always (B, T, K) — for the masked-input path we scatter
+        valid positions back into a zero-filled (B, T, K) tensor so the
+        downstream M5 reshape against `advantages` (also (B, T)) is trivial.
         """
         if q_ensemble.dim() == 4:
-            # Local: (B, T, K, A)
-            B, T, K, A = q_ensemble.shape
-            act = action
-            if act.dim() == 1:
-                act = act.unsqueeze(-1)  # (B, 1) — assume T==1
-            idx = act.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, K, 1)
-            return q_ensemble.gather(-1, idx).squeeze(-1)  # (B, T, K)
-        elif q_ensemble.dim() == 5:
-            # Global: (B, T, K, batch_size, num_dc)
-            B, T, K, bs, nd = q_ensemble.shape
-            act = action
-            if act.dim() == 2:
-                act = act.unsqueeze(1)  # (B, 1, batch_size) — assume T==1
-            idx = act.unsqueeze(2).unsqueeze(-1).expand(-1, -1, K, -1, 1)
-            q_per_cloudlet = q_ensemble.gather(-1, idx).squeeze(-1)  # (B,T,K,bs)
-            return q_per_cloudlet.mean(dim=-1)  # (B, T, K)
-        else:
-            raise RuntimeError(
-                f"Unexpected q_ensemble dim {q_ensemble.dim()} (shape "
-                f"{tuple(q_ensemble.shape)}); expected 4 (local) or 5 (global)."
+            return CRDPPOTorchLearner._gather_q_chosen_local(
+                q_ensemble, action, loss_mask
             )
+        if q_ensemble.dim() == 5:
+            return CRDPPOTorchLearner._gather_q_chosen_global(
+                q_ensemble, action, loss_mask
+            )
+        raise RuntimeError(
+            f"Unexpected q_ensemble dim {q_ensemble.dim()} (shape "
+            f"{tuple(q_ensemble.shape)}); expected 4 (local) or 5 (global)."
+        )
+
+    @staticmethod
+    def _gather_q_chosen_local(
+        q_ensemble: torch.Tensor,
+        action: torch.Tensor,
+        loss_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """Local agent (Discrete action). q (B, T, K, A) → returns (B, T, K)."""
+        B, T, K, A = q_ensemble.shape
+        act = action.long()
+
+        # Case 1: already (B, T)
+        if act.dim() == 2 and act.shape[0] == B and act.shape[1] == T:
+            idx = act.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, K, 1)
+            return q_ensemble.gather(-1, idx).squeeze(-1)
+
+        # Case 2: flat (B*T,)
+        if act.dim() == 1 and act.numel() == B * T:
+            act_bt = act.reshape(B, T)
+            idx = act_bt.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, K, 1)
+            return q_ensemble.gather(-1, idx).squeeze(-1)
+
+        # Case 3: sequence-packed (N_valid,) — mask q to N_valid, gather, scatter back.
+        if act.dim() == 1 and loss_mask is not None:
+            return CRDPPOTorchLearner._gather_local_via_mask(
+                q_ensemble, act, loss_mask
+            )
+
+        raise ValueError(
+            f"local agent: cannot align action shape {tuple(action.shape)} with "
+            f"q_ensemble shape {tuple(q_ensemble.shape)} "
+            f"(loss_mask={'available' if loss_mask is not None else 'absent'})"
+        )
+
+    @staticmethod
+    def _gather_q_chosen_global(
+        q_ensemble: torch.Tensor,
+        action: torch.Tensor,
+        loss_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """Global agent (MultiDiscrete). q (B, T, K, bs, nd) → returns (B, T, K)."""
+        B, T, K, bs, nd = q_ensemble.shape
+        act = action.long()
+
+        # Case 1: already (B, T, bs)
+        if (
+            act.dim() == 3
+            and act.shape[0] == B
+            and act.shape[1] == T
+            and act.shape[2] == bs
+        ):
+            idx = act.unsqueeze(2).unsqueeze(-1).expand(-1, -1, K, -1, 1)
+            q_pc = q_ensemble.gather(-1, idx).squeeze(-1)  # (B, T, K, bs)
+            return q_pc.mean(dim=-1)  # (B, T, K)
+
+        # Case 2: flat (B*T, bs)
+        if act.dim() == 2 and act.shape[0] == B * T and act.shape[1] == bs:
+            act_btbs = act.reshape(B, T, bs)
+            idx = act_btbs.unsqueeze(2).unsqueeze(-1).expand(-1, -1, K, -1, 1)
+            q_pc = q_ensemble.gather(-1, idx).squeeze(-1)
+            return q_pc.mean(dim=-1)
+
+        # Case 3: sequence-packed (N_valid, bs) — mask q, gather, scatter back.
+        if act.dim() == 2 and act.shape[1] == bs and loss_mask is not None:
+            return CRDPPOTorchLearner._gather_global_via_mask(
+                q_ensemble, act, loss_mask
+            )
+
+        raise ValueError(
+            f"global agent: cannot align action shape {tuple(action.shape)} with "
+            f"q_ensemble shape {tuple(q_ensemble.shape)} "
+            f"(loss_mask={'available' if loss_mask is not None else 'absent'})"
+        )
+
+    @staticmethod
+    def _gather_local_via_mask(
+        q_ensemble: torch.Tensor,  # (B, T, K, A)
+        action: torch.Tensor,       # (N_valid,)
+        loss_mask: torch.Tensor,    # (B, T) or compatible
+    ) -> torch.Tensor:
+        B, T, K, A = q_ensemble.shape
+        flat_mask = loss_mask.reshape(-1).bool()
+        n_valid = int(flat_mask.sum().item())
+        if n_valid != action.shape[0]:
+            raise ValueError(
+                f"local mask path: loss_mask N_valid={n_valid} != action N={action.shape[0]}"
+            )
+        # Mask q_ensemble (B*T, K, A) → (N_valid, K, A) → gather → (N_valid, K)
+        q_flat = q_ensemble.reshape(B * T, K, A)
+        q_valid = q_flat[flat_mask]                               # (N_valid, K, A)
+        idx = action.view(-1, 1, 1).expand(-1, K, 1)
+        q_chosen_valid = q_valid.gather(-1, idx).squeeze(-1)     # (N_valid, K)
+        # Scatter back to (B, T, K), zero at masked positions.
+        out = torch.zeros(B * T, K, dtype=q_ensemble.dtype, device=q_ensemble.device)
+        out[flat_mask] = q_chosen_valid
+        return out.reshape(B, T, K)
+
+    @staticmethod
+    def _gather_global_via_mask(
+        q_ensemble: torch.Tensor,  # (B, T, K, bs, nd)
+        action: torch.Tensor,       # (N_valid, bs)
+        loss_mask: torch.Tensor,    # (B, T)
+    ) -> torch.Tensor:
+        B, T, K, bs, nd = q_ensemble.shape
+        flat_mask = loss_mask.reshape(-1).bool()
+        n_valid = int(flat_mask.sum().item())
+        if n_valid != action.shape[0]:
+            raise ValueError(
+                f"global mask path: loss_mask N_valid={n_valid} != action N={action.shape[0]}"
+            )
+        # Mask q_ensemble (B*T, K, bs, nd) → (N_valid, K, bs, nd)
+        q_flat = q_ensemble.reshape(B * T, K, bs, nd)
+        q_valid = q_flat[flat_mask]                                  # (N_valid, K, bs, nd)
+        # gather along last dim with action (N_valid, bs)
+        idx = action.unsqueeze(1).unsqueeze(-1).expand(-1, K, -1, 1)  # (N_valid, K, bs, 1)
+        q_pc = q_valid.gather(-1, idx).squeeze(-1)                    # (N_valid, K, bs)
+        q_per_step = q_pc.mean(dim=-1)                                # (N_valid, K)
+        # Scatter back to (B, T, K)
+        out = torch.zeros(B * T, K, dtype=q_ensemble.dtype, device=q_ensemble.device)
+        out[flat_mask] = q_per_step
+        return out.reshape(B, T, K)
 
     @staticmethod
     def _compute_dq_and_sigma2_values(
@@ -568,15 +726,19 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         q_ensemble: torch.Tensor,
         actual_action: torch.Tensor,
         baseline_action: torch.Tensor,
+        loss_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
             delta_q:    (B, T)   = μ(s, a) - μ(s, ã)
             sigma2_tot: (B, T)   = σ²(s, a) + σ²(s, ã), always ≥ 0
         Both averages/variances are taken over the K ensemble dimension.
+        Masked-out timesteps in the sequence-packed path are zero-filled in
+        both outputs, which is benign because M5 reweights advantages via
+        `adv * rho_routing` and advantages are also zero/masked at those slots.
         """
-        q_a = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, actual_action)
-        q_b = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, baseline_action)
+        q_a = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, actual_action, loss_mask)
+        q_b = CRDPPOTorchLearner._gather_q_chosen(q_ensemble, baseline_action, loss_mask)
         # mean / var over K dim (last after gather)
         mu_a = q_a.mean(dim=-1)
         mu_b = q_b.mean(dim=-1)

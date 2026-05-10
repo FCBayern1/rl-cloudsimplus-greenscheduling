@@ -45,6 +45,7 @@ class _StubLearner(CRDPPOTorchLearner):
         self._crd_baseline_schedulers = {}
         self._crd_baseline_signal_warned = {}
         self._crd_blenders = {}
+        self._crd_dq_align_warned = {}
         self.hook_calls = []  # observability for tests
         self._beta = beta
         self._gamma = gamma
@@ -1143,6 +1144,143 @@ def test_dr_magnitude_comparable_to_dq():
             f"Δr / ΔQ magnitude ratio {ratio:.3g} out of range — "
             f"M3 soft blending will be lopsided."
         )
+
+
+# ---------------------------------------------------------------------------
+# M2.4 layout robustness — RLlib new API stack gives sequence-packed
+# (N_valid, ...) actions while q_ensemble is the padded (B, T, ...) form.
+# These tests lock in the loss_mask-based gather path against future regressions.
+# ---------------------------------------------------------------------------
+
+
+def test_gather_q_chosen_local_BT_layout():
+    """Aligned (B, T) action layout — historical default, must keep working."""
+    B, T, K, A = 2, 3, 4, 5
+    q = torch.randn(B, T, K, A)
+    action = torch.randint(0, A, (B, T), dtype=torch.long)
+    out = CRDPPOTorchLearner._gather_q_chosen(q, action, loss_mask=None)
+    assert out.shape == (B, T, K)
+
+
+def test_gather_q_chosen_local_flat_BT_layout():
+    """Action shape (B*T,) — flat but full coverage."""
+    B, T, K, A = 2, 3, 4, 5
+    q = torch.randn(B, T, K, A)
+    action_bt = torch.randint(0, A, (B, T), dtype=torch.long)
+    action_flat = action_bt.reshape(-1)
+    out_flat = CRDPPOTorchLearner._gather_q_chosen(q, action_flat, loss_mask=None)
+    out_bt = CRDPPOTorchLearner._gather_q_chosen(q, action_bt, loss_mask=None)
+    assert torch.allclose(out_flat, out_bt)
+
+
+def test_gather_q_chosen_local_sequence_packed_layout():
+    """Action shape (N_valid,) with N_valid < B*T — needs loss_mask path.
+
+    This is the exact case that caused the smoke-test failure:
+      q_ensemble = (4, 128, 5, 20, 5)
+      action     = (417, ...)  ← N_valid, NOT B*T
+    """
+    B, T, K, A = 4, 6, 3, 5
+    q = torch.randn(B, T, K, A)
+    # Mark a non-uniform set of timesteps as valid (mimic seq_lens variability).
+    loss_mask = torch.tensor(
+        [[1, 1, 1, 0, 0, 0],   # seq_len 3
+         [1, 1, 1, 1, 1, 0],   # seq_len 5
+         [1, 1, 0, 0, 0, 0],   # seq_len 2
+         [1, 1, 1, 1, 0, 0]],  # seq_len 4
+        dtype=torch.float32,
+    )
+    n_valid = int(loss_mask.sum().item())  # 14
+    action = torch.randint(0, A, (n_valid,), dtype=torch.long)
+    out = CRDPPOTorchLearner._gather_q_chosen(q, action, loss_mask=loss_mask)
+    # Output is (B, T, K) — masked positions zero-filled.
+    assert out.shape == (B, T, K)
+    # Cells outside the mask must be exactly zero.
+    inv_mask = (loss_mask == 0)
+    assert (out[inv_mask] == 0).all(), "scatter-back left non-zero in invalid slots"
+    # Cells inside the mask must be non-zero (action picks a real Q value).
+    in_mask = (loss_mask == 1)
+    # Note: Q values themselves can occasionally be 0 from randn; just check
+    # that we *did* gather something (sum over K not all zeros across all valid cells).
+    valid_out = out[in_mask]                     # (n_valid, K)
+    assert valid_out.numel() == n_valid * K
+    assert valid_out.abs().sum() > 0
+
+
+def test_gather_q_chosen_global_sequence_packed_layout():
+    """The exact smoke-test scenario: q (B, T, K, bs, nd), action (N_valid, bs)."""
+    B, T, K, bs, nd = 4, 6, 3, 7, 5
+    q = torch.randn(B, T, K, bs, nd)
+    loss_mask = torch.tensor(
+        [[1, 1, 1, 0, 0, 0],
+         [1, 1, 1, 1, 1, 0],
+         [1, 1, 0, 0, 0, 0],
+         [1, 1, 1, 1, 0, 0]],
+        dtype=torch.float32,
+    )
+    n_valid = int(loss_mask.sum().item())  # 14
+    action = torch.randint(0, nd, (n_valid, bs), dtype=torch.long)
+    out = CRDPPOTorchLearner._gather_q_chosen(q, action, loss_mask=loss_mask)
+    assert out.shape == (B, T, K)
+    assert (out[loss_mask == 0] == 0).all()
+
+
+def test_gather_q_chosen_local_mismatched_n_valid_raises():
+    """If action N doesn't match loss_mask sum, raise (don't silently succeed)."""
+    B, T, K, A = 2, 4, 3, 5
+    q = torch.randn(B, T, K, A)
+    loss_mask = torch.tensor([[1, 1, 0, 0], [1, 0, 0, 0]], dtype=torch.float32)
+    # n_valid should be 3, but pass an action of length 5.
+    bad_action = torch.zeros(5, dtype=torch.long)
+    with pytest.raises(ValueError, match="loss_mask N_valid"):
+        CRDPPOTorchLearner._gather_q_chosen(q, bad_action, loss_mask=loss_mask)
+
+
+def test_gather_q_chosen_global_mismatched_n_valid_raises():
+    B, T, K, bs, nd = 2, 4, 3, 5, 4
+    q = torch.randn(B, T, K, bs, nd)
+    loss_mask = torch.tensor([[1, 1, 0, 0], [1, 0, 0, 0]], dtype=torch.float32)
+    bad_action = torch.zeros((5, bs), dtype=torch.long)
+    with pytest.raises(ValueError, match="loss_mask N_valid"):
+        CRDPPOTorchLearner._gather_q_chosen(q, bad_action, loss_mask=loss_mask)
+
+
+def test_compute_dq_and_sigma2_values_handles_sequence_packed():
+    """End-to-end: ΔQ + σ² compute through the masked path returns (B, T) shape."""
+    B, T, K, bs, nd = 3, 5, 4, 6, 4
+    q = torch.randn(B, T, K, bs, nd)
+    loss_mask = torch.tensor(
+        [[1, 1, 1, 0, 0],
+         [1, 1, 0, 0, 0],
+         [1, 1, 1, 1, 0]],
+        dtype=torch.float32,
+    )
+    n_valid = int(loss_mask.sum().item())  # 6
+    actual = torch.randint(0, nd, (n_valid, bs), dtype=torch.long)
+    baseline = torch.randint(0, nd, (n_valid, bs), dtype=torch.long)
+    delta_q, sigma2 = CRDPPOTorchLearner._compute_dq_and_sigma2_values(
+        q_ensemble=q,
+        actual_action=actual,
+        baseline_action=baseline,
+        loss_mask=loss_mask,
+    )
+    assert delta_q.shape == (B, T)
+    assert sigma2.shape == (B, T)
+    assert (sigma2 >= 0).all()
+    # Masked-out timesteps zero in both outputs (by construction).
+    inv = (loss_mask == 0)
+    assert (delta_q[inv] == 0).all()
+    assert (sigma2[inv] == 0).all()
+
+
+def test_gather_q_chosen_raises_when_no_loss_mask_and_unalignable():
+    """No loss_mask + unalignable shapes → ValueError (don't silently corrupt)."""
+    B, T, K, bs, nd = 4, 6, 3, 7, 5
+    q = torch.randn(B, T, K, bs, nd)
+    # action is (5, bs) — not aligned with B, B*T, or any standard layout
+    action = torch.zeros((5, bs), dtype=torch.long)
+    with pytest.raises(ValueError, match="cannot align action shape"):
+        CRDPPOTorchLearner._gather_q_chosen(q, action, loss_mask=None)
 
 
 if __name__ == "__main__":
