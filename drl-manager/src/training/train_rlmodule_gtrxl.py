@@ -37,7 +37,11 @@ from tqdm import tqdm
 # Add drl-manager root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv, HierarchicalMultiDCParallelEnvSimple
+from gym_cloudsimplus.envs import (
+    HierarchicalMultiDCParallelEnv,
+    HierarchicalMultiDCParallelEnvSimple,
+    HierarchicalMultiDCParallelEnvAblation,
+)
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.callbacks.lagrangian_callback import LagrangianCallback
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
@@ -145,9 +149,18 @@ def env_creator(config: Dict[str, Any]):
         del env_config["py4j_port"]
 
     env_id = env_config.get("env_id", "")
-    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+    use_ablation = "Ablation" in env_id or env_id == "HierarchicalMultiDCAblation-v0"
+    use_simple = (not use_ablation) and (
+        "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+    )
 
-    if use_simple:
+    if use_ablation:
+        logger.info(
+            "Creating ABLATION PettingZoo environment (forecast_mode=%s)",
+            env_config.get("forecast_mode", "full"),
+        )
+        env = HierarchicalMultiDCParallelEnvAblation(env_config)
+    elif use_simple:
         logger.info("Creating SIMPLIFIED PettingZoo environment")
         env = HierarchicalMultiDCParallelEnvSimple(env_config)
     else:
@@ -310,9 +323,14 @@ def create_rlmodule_config(
     sample_env_config["spaces_only"] = True
 
     env_id = sample_env_config.get("env_id", "")
-    use_simple = "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+    use_ablation = "Ablation" in env_id or env_id == "HierarchicalMultiDCAblation-v0"
+    use_simple = (not use_ablation) and (
+        "Simple" in env_id or env_id == "HierarchicalMultiDCSimple-v0"
+    )
 
-    if use_simple:
+    if use_ablation:
+        sample_env = HierarchicalMultiDCParallelEnvAblation(sample_env_config)
+    elif use_simple:
         sample_env = HierarchicalMultiDCParallelEnvSimple(sample_env_config)
     else:
         sample_env = HierarchicalMultiDCParallelEnv(sample_env_config)

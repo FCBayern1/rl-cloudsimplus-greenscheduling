@@ -968,6 +968,22 @@ if __name__ == "__main__":
     if args.override:
         config = _apply_overrides(config, args.override)
 
+    # Gateway lifecycle (mirrors compare_algorithms.py): explicit --py4j-port
+    # connects to that gateway; omitted -> strip the config's baked-in port so
+    # the env auto-launches its own gradlew subprocess on a free port. Without
+    # this the CLI tries config.yml's hardcoded 25333 and fails when no
+    # gateway is running there.
+    if args.py4j_port is not None:
+        config["py4j_port"] = int(args.py4j_port)
+    else:
+        config["py4j_port"] = None
+    # Auto-launch requires gateway_log_dir; default to a tmp path if config.yml
+    # doesn't specify one.
+    config.setdefault(
+        "gateway_log_dir",
+        str(Path("/tmp") / f"evaluate_gateways_{datetime.now():%Y%m%d_%H%M%S}"),
+    )
+
     if args.global_sched == 'rllib' or args.local_sched == 'rllib':
         # 使用 RLlib 模型评估
         if args.checkpoint is None:

@@ -1283,5 +1283,148 @@ def test_gather_q_chosen_raises_when_no_loss_mask_and_unalignable():
         CRDPPOTorchLearner._gather_q_chosen(q, action, loss_mask=None)
 
 
+# ---------------------------------------------------------------------------
+# M2.4 fix — obs-based baseline_action path
+#
+# These tests lock in the contract: when batch[OBS] contains
+# dc_green_ratio / dc_queue_sizes as padded (B, T, num_dc) tensors,
+# _compute_baseline_from_obs must produce a (B, T, bs) baseline tensor
+# that aligns directly with actual_action shape. This eliminates the
+# "len(infos) != B*T" mismatch the smoke test exposed.
+# ---------------------------------------------------------------------------
+
+
+class _FakeScheduler:
+    """Tiny deterministic scheduler returning a fixed pattern for testing."""
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        self.num_datacenters = num_datacenters
+        self.batch_size = batch_size
+
+    def schedule(self, obs):
+        # Deterministic: cycle DCs across the cloudlet batch, biased by
+        # the highest-green-ratio DC.
+        gr = obs["dc_green_ratio"]
+        # pick the DC with max green_ratio as the "preferred" target
+        best = max(range(len(gr)), key=lambda i: gr[i])
+        return [(best + j) % self.num_datacenters for j in range(self.batch_size)]
+
+
+def test_obs_based_baseline_produces_padded_BT_bs_shape():
+    """Most important contract: output is (B, T, bs) — matches actual_action."""
+    B, T, num_dc, bs = 4, 6, 5, 20
+    obs = {
+        "dc_green_ratio": torch.rand(B, T, num_dc),
+        "dc_queue_sizes": torch.randint(0, 10, (B, T, num_dc)).float(),
+    }
+    batch = {Columns.OBS: obs, Columns.ACTIONS: torch.zeros(B, T, bs, dtype=torch.long)}
+    sched = _FakeScheduler(num_datacenters=num_dc, batch_size=bs)
+    learner = _StubLearner()
+
+    out = learner._compute_baseline_from_obs(batch, sched)
+    assert out is not None
+    assert out.shape == (B, T, bs), f"expected (B,T,bs)=(4,6,20), got {tuple(out.shape)}"
+    assert out.dtype == torch.long
+    # Values must be valid DC indices.
+    assert (out >= 0).all() and (out < num_dc).all()
+
+
+def test_obs_based_baseline_returns_none_when_obs_is_not_dict():
+    """Flat tensor obs → can't extract by key → return None → caller falls back."""
+    batch = {Columns.OBS: torch.randn(4, 6, 100)}
+    sched = _FakeScheduler(num_datacenters=5, batch_size=20)
+    learner = _StubLearner()
+    assert learner._compute_baseline_from_obs(batch, sched) is None
+
+
+def test_obs_based_baseline_returns_none_when_keys_missing():
+    """Dict obs without dc_green_ratio/dc_queue_sizes → None → fallback path."""
+    obs = {"some_other_key": torch.randn(4, 6, 5)}
+    batch = {Columns.OBS: obs}
+    sched = _FakeScheduler(num_datacenters=5, batch_size=20)
+    learner = _StubLearner()
+    assert learner._compute_baseline_from_obs(batch, sched) is None
+
+
+def test_obs_based_baseline_handles_2d_flat_obs():
+    """If obs is (N, num_dc) flat, treat as (N, 1, num_dc) → output (N, 1, bs)."""
+    N, num_dc, bs = 12, 5, 20
+    obs = {
+        "dc_green_ratio": torch.rand(N, num_dc),
+        "dc_queue_sizes": torch.randint(0, 10, (N, num_dc)).float(),
+    }
+    batch = {Columns.OBS: obs}
+    sched = _FakeScheduler(num_datacenters=num_dc, batch_size=bs)
+    learner = _StubLearner()
+    out = learner._compute_baseline_from_obs(batch, sched)
+    assert out is not None
+    assert out.shape == (N, 1, bs)
+
+
+def test_obs_based_baseline_rejects_num_dc_mismatch():
+    """Scheduler expects num_dc=5 but obs has num_dc=3 → None (caller falls back)."""
+    obs = {
+        "dc_green_ratio": torch.rand(4, 6, 3),  # 3 DCs in obs
+        "dc_queue_sizes": torch.randint(0, 10, (4, 6, 3)).float(),
+    }
+    batch = {Columns.OBS: obs}
+    sched = _FakeScheduler(num_datacenters=5, batch_size=20)
+    learner = _StubLearner()
+    assert learner._compute_baseline_from_obs(batch, sched) is None
+
+
+def test_obs_based_baseline_output_aligned_with_actual_action_shape():
+    """End-to-end alignment: output shape must equal batch[ACTIONS].shape exactly."""
+    B, T, num_dc, bs = 3, 8, 5, 20
+    actual_action = torch.zeros(B, T, bs, dtype=torch.long)
+    obs = {
+        "dc_green_ratio": torch.rand(B, T, num_dc),
+        "dc_queue_sizes": torch.randint(0, 10, (B, T, num_dc)).float(),
+    }
+    batch = {Columns.OBS: obs, Columns.ACTIONS: actual_action}
+    sched = _FakeScheduler(num_datacenters=num_dc, batch_size=bs)
+    learner = _StubLearner()
+
+    out = learner._compute_baseline_from_obs(batch, sched)
+    assert out.shape == actual_action.shape, (
+        f"baseline shape {tuple(out.shape)} != actual_action shape "
+        f"{tuple(actual_action.shape)} — M2.4 gather will mismatch."
+    )
+
+
+def test_obs_based_path_preferred_over_infos_when_both_available():
+    """
+    Regression contract: when obs is usable, _compute_baseline_action takes
+    the obs-based path and ignores infos (which may be misaligned due to
+    bootstrap timesteps).
+    """
+    B, T, num_dc, bs = 2, 4, 5, 20
+    actual_action = torch.zeros(B, T, bs, dtype=torch.long)
+    # Misaligned infos: len(infos) = 9 ≠ B*T = 8 (mimics smoke-test bug).
+    misaligned_infos = [{} for _ in range(9)]
+    batch = {
+        Columns.OBS: {
+            "dc_green_ratio": torch.rand(B, T, num_dc),
+            "dc_queue_sizes": torch.randint(0, 10, (B, T, num_dc)).float(),
+        },
+        Columns.ACTIONS: actual_action,
+        Columns.INFOS: misaligned_infos,
+    }
+    sched = _FakeScheduler(num_datacenters=num_dc, batch_size=bs)
+
+    learner = _StubLearner()
+    # _StubLearner's default scheduler accessor returns None; override
+    # for this test so the M2.3 path actually runs.
+    learner._get_or_build_baseline_scheduler = lambda module_id: sched
+
+    learner._compute_baseline_action(module_id="m", batch=batch)
+    assert COL_CRD_BASELINE_ACTION in batch
+    out = batch[COL_CRD_BASELINE_ACTION]
+    # Critical: shape matches actual_action, NOT misaligned infos.
+    assert out.shape == (B, T, bs), (
+        f"got {tuple(out.shape)} — obs-based path should override infos"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

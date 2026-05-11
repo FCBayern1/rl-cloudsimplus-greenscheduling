@@ -1347,6 +1347,32 @@ class HierarchicalMultiDCEnv(gym.Env):
                 crd["dc_queue_sizes"] = [int(x) for x in queue_sizes]
             if green_ratio is not None:
                 crd["dc_green_ratio"] = [float(x) for x in green_ratio]
+            # CRD M2.2: forecast counterfactual needs Ŵ_t (predicted wind in W
+            # per DC). When `green_oracle_mode=timecap`, the provider already
+            # ran a TimeCAP forward this step and we can pull the horizon-0
+            # prediction out of its cache without any extra inference.
+            #
+            # Length alignment: the provider only forecasts for DCs that have
+            # turbine assignments (e.g., 3 of 5 in a heterogeneous setup with
+            # brown-only DCs). We pad to `num_datacenters` with 0.0 so the
+            # predicted_wind_w list matches actual_wind_w / p_total_w / factors
+            # — all of which are full per-DC arrays. Brown-only DCs have 0
+            # actual wind, so 0 predicted wind is the correct match.
+            if self.timecap_provider is not None:
+                try:
+                    pred_w_provider = self.timecap_provider.get_predicted_wind_w_per_dc(horizon=0)
+                    if pred_w_provider is not None:
+                        pred_w_full = [0.0] * self.num_datacenters
+                        provider_dc_ids = getattr(self.timecap_provider, "dc_ids", [])
+                        for src_idx, dc_id in enumerate(provider_dc_ids):
+                            if src_idx >= len(pred_w_provider):
+                                break
+                            env_idx = self.dc_id_to_index.get(int(dc_id))
+                            if env_idx is not None and 0 <= env_idx < self.num_datacenters:
+                                pred_w_full[env_idx] = float(pred_w_provider[src_idx])
+                        crd["predicted_wind_w"] = pred_w_full
+                except Exception as e:
+                    logger.debug(f"timecap predicted_wind_w accessor failed: {e}")
             return crd
         except Exception as e:
             logger.warning(f"_collect_crd_info failed: {e}")
@@ -1469,7 +1495,18 @@ class HierarchicalMultiDCEnv(gym.Env):
             finally:
                 self.gateway = None
                 self.java_env = None
-        
+
+        # Suppress py4j's own ERROR logs from now on.  Once we have explicitly
+        # closed the gateway client, any further Py4JNetworkError /
+        # ConnectionResetError raised by py4j's background callback-server
+        # thread or by Java-proxy finalizers (which fire when Python GC runs
+        # after the JVM is gone) is *expected*, not actionable, and only
+        # produces noise in evaluation/test output.  Lifting the level to
+        # CRITICAL silences these without hiding genuine problems that occur
+        # before close().
+        logging.getLogger("py4j.java_gateway").setLevel(logging.CRITICAL)
+        logging.getLogger("py4j.clientserver").setLevel(logging.CRITICAL)
+
         # Terminate the Java process if we launched it
         if self.java_process:
             try:

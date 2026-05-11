@@ -20,3 +20,11 @@ register(
     # Simplified multi-DC environment WITHOUT God's Eye future prediction features
     # Suitable for fair comparison and standard RL algorithms (PPO, A2C, DQN)
 )
+
+register(
+    id="HierarchicalMultiDCAblation-v0",
+    entry_point="gym_cloudsimplus.envs:HierarchicalMultiDCEnvAblation",
+    # Ablation env with config-knob ``forecast_mode``:
+    #   full | none | short_only | long_only | no_peak | raw
+    # See gym_cloudsimplus/envs/hierarchical_multidc_env_ablation.py
+)

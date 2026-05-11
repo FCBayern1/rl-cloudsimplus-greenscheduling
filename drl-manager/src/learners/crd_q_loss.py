@@ -325,15 +325,35 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         For the global routing module this calls
         `GreenQueueBalancedGlobalScheduler.schedule(obs)` per transition,
         feeding it the decision-time `dc_green_ratio` and `dc_queue_sizes`
-        signals stashed by the env into `info["crd"]` (M0 / M2.3 prep).
+        signals.
+
+        Layout strategy (M2.4 fix):
+          1. **OBS-based path (preferred)**: read `dc_green_ratio` /
+             `dc_queue_sizes` from `batch[Columns.OBS]` which RLlib lays out
+             as (B, T, num_dc) padded tensors — same shape as
+             `batch[Columns.ACTIONS]`. The resulting baseline_action is
+             (B, T, bs), aligning directly with actual_action for M2.4
+             gather. This is robust to RLlib's bootstrap-timestep
+             insertion in `Columns.INFOS`.
+          2. **INFOS-based fallback**: legacy path used when obs is not in
+             dict form or required keys are absent. Produces (N, bs) and
+             M2.4 routes to its loss-mask path (which may still mismatch
+             due to bootstrap timesteps; in that case ΔQ/σ² is skipped
+             with a warn-once).
 
         Local-agent modules currently fall through (M4 will wire BestFit).
-        Returns silently if no usable scheduler exists or info data is missing.
         """
         sched = self._get_or_build_baseline_scheduler(module_id)
         if sched is None:
             return
 
+        # ── Preferred path: build (B, T, bs) from padded obs ────────────
+        baseline_from_obs = self._compute_baseline_from_obs(batch, sched)
+        if baseline_from_obs is not None:
+            batch[COL_CRD_BASELINE_ACTION] = baseline_from_obs
+            return
+
+        # ── Fallback: legacy infos-based path ────────────────────────────
         infos = batch.get(Columns.INFOS)
         if infos is None:
             return
@@ -346,9 +366,6 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         if not actions_list:
             return
 
-        # Warn once if many transitions lack the queue-size signal — this
-        # signals the env didn't populate the new info["crd"] keys (probably
-        # an outdated env version mid-rollout).
         if n_missing_signals > 0 and not self._crd_baseline_signal_warned.get(
             module_id, False
         ):
@@ -361,18 +378,82 @@ class CRDPPOTorchLearner(PPOTorchLearner):
             )
 
         baseline_tensor = torch.tensor(actions_list, dtype=torch.long)
-        # Align shape with batch[ACTIONS] when possible — M2.4 will gather Q
-        # at this action so shape parity matters.
         ref = batch.get(Columns.ACTIONS)
         if isinstance(ref, torch.Tensor):
             try:
                 if ref.numel() == baseline_tensor.numel():
                     baseline_tensor = baseline_tensor.reshape(ref.shape).to(ref.device)
             except RuntimeError:
-                # Shape mismatch (e.g., RLlib reshapes ACTIONS unexpectedly);
-                # leave baseline_tensor as (N, batch_size) and let M2.4 cope.
                 pass
         batch[COL_CRD_BASELINE_ACTION] = baseline_tensor
+
+    def _compute_baseline_from_obs(
+        self, batch: Dict[str, Any], scheduler: Any
+    ) -> Optional[torch.Tensor]:
+        """
+        Build per-cell baseline action by iterating the padded obs grid
+        `(B, T, num_dc)`. Returns a `(B, T, bs)` tensor (long) aligned with
+        actual_action; returns None if obs is not in usable dict form or
+        required keys are missing.
+
+        Cost: B*T scheduler.schedule() calls per minibatch. For B=4 T=128
+        that's 512 calls — each is a few numpy ops, on the order of <1ms,
+        so per-minibatch cost is sub-second on CPU.
+        """
+        obs = batch.get(Columns.OBS)
+        if not isinstance(obs, dict):
+            return None
+        green_ratio = obs.get("dc_green_ratio")
+        queue_sizes = obs.get("dc_queue_sizes")
+        if not isinstance(green_ratio, torch.Tensor):
+            return None
+        if not isinstance(queue_sizes, torch.Tensor):
+            return None
+        if green_ratio.shape != queue_sizes.shape:
+            return None
+        # Accept padded (B, T, num_dc); also accept (N, num_dc) flat layouts
+        # by reshaping to (N, 1, num_dc) so the same iteration works.
+        if green_ratio.dim() == 3:
+            B, T, num_dc = green_ratio.shape
+        elif green_ratio.dim() == 2:
+            N, num_dc = green_ratio.shape
+            green_ratio = green_ratio.view(N, 1, num_dc)
+            queue_sizes = queue_sizes.view(N, 1, num_dc)
+            B, T = N, 1
+        else:
+            return None
+
+        if num_dc != scheduler.num_datacenters:
+            return None
+
+        bs = scheduler.batch_size
+        # Move to CPU and to numpy/list for the scheduler call (sched expects
+        # plain Python sequences). Keep grads disabled since baseline is
+        # purely a target signal, never a function of policy params.
+        green_np = green_ratio.detach().cpu().tolist()
+        queue_np = queue_sizes.detach().cpu().tolist()
+
+        out = [[ [0] * bs for _ in range(T) ] for _ in range(B)]
+        zero_action = [0] * bs
+        for b in range(B):
+            for t in range(T):
+                obs_dict = {
+                    "dc_green_ratio": green_np[b][t],
+                    "dc_queue_sizes": queue_np[b][t],
+                }
+                try:
+                    action = scheduler.schedule(obs_dict)
+                    out[b][t] = [int(a) for a in action]
+                except Exception:
+                    out[b][t] = list(zero_action)
+
+        tensor = torch.tensor(out, dtype=torch.long)
+        # Place on the same device as actual_action so M2.4 gather doesn't
+        # need to cross-device.
+        ref = batch.get(Columns.ACTIONS)
+        if isinstance(ref, torch.Tensor):
+            tensor = tensor.to(ref.device)
+        return tensor
 
     @staticmethod
     def _compute_baseline_action_values(

@@ -209,6 +209,12 @@ class TimeCAPGodEyeProvider:
             dc_id: _NEUTRAL_FEATURES.copy() for dc_id in self.dc_ids
         }
         self._last_forecast_step: Dict[int, int] = {dc_id: -10**9 for dc_id in self.dc_ids}
+        # CRD M2.2 plumbing: cache the last raw per-turbine forecast so that
+        # `_collect_crd_info` can extract a per-DC predicted_wind_w in W. We
+        # cache `per_t_pred` (kW arrays of shape (pred_len,)) rather than
+        # re-running the TimeCAP forward on demand. None until the first
+        # forward has fired.
+        self._last_per_t_pred: Optional[Dict[int, np.ndarray]] = None
         # Updates that have been pushed into the buffers but not yet inferenced
         self._dirty_steps: int = 0
 
@@ -233,6 +239,9 @@ class TimeCAPGodEyeProvider:
         for dc_id in self.dc_ids:
             self._last_features[dc_id] = _NEUTRAL_FEATURES.copy()
             self._last_forecast_step[dc_id] = -10**9
+        # Drop the cached raw forecast — a stale prediction across episodes
+        # would be a worse signal than `predicted_wind_w` simply being absent.
+        self._last_per_t_pred = None
         self._dirty_steps = 0
 
     def warmup(self, start_step: int = 0) -> None:
@@ -292,6 +301,12 @@ class TimeCAPGodEyeProvider:
             )
             self._last_forecast_step[dc_id] = simulation_step
 
+        # Stash the raw per-turbine forecast for the CRD framework's
+        # forecast counterfactual. M2.2 reads horizon-0 predictions from
+        # `info["crd"]["predicted_wind_w"]`; we expose those via
+        # :meth:`get_predicted_wind_w_per_dc` below.
+        self._last_per_t_pred = per_t_pred
+
         return self._features_snapshot()
 
     def get_features_array(self, simulation_step: int) -> np.ndarray:
@@ -302,6 +317,109 @@ class TimeCAPGodEyeProvider:
         """
         feats = self.get_features(simulation_step)
         return np.stack([feats[dc_id] for dc_id in self.dc_ids], axis=0)
+
+    def get_predicted_wind_w_per_dc(
+        self, horizon: int = 0
+    ) -> Optional[List[float]]:
+        """
+        Return per-DC predicted wind power (W) at the given forecast horizon.
+
+        Used by the CRD framework's forecast counterfactual (M2.2) so that
+        ``info["crd"]["predicted_wind_w"]`` carries Ŵ_t alongside the M0
+        snapshot fields. The list is ordered by ``self.dc_ids`` to match the
+        rest of the per-DC arrays the env writes.
+
+        Returns ``None`` when no forecast has been computed yet (e.g., before
+        the first :meth:`update`/:meth:`get_features` call after reset, during
+        warmup). Callers should treat None as "no prediction available" and
+        leave the field absent from info.
+
+        Args:
+            horizon: which step into ``predict_per_turbine`` output to read
+                from. ``0`` means "the next step after now", which matches
+                the CRD plan's notion of Ŵ_t — the forecast that fed the
+                agent's decision at this step.
+        """
+        if self._last_per_t_pred is None:
+            return None
+        out: List[float] = []
+        for dc_id in self.dc_ids:
+            total_kw = 0.0
+            for tid in self.dc_assignments.get(dc_id, []):
+                pred = self._last_per_t_pred.get(tid)
+                if pred is None or pred.size <= horizon:
+                    continue
+                total_kw += float(pred[horizon])
+            out.append(total_kw * 1000.0)  # kW → W (matches actual_wind_w units)
+        return out
+
+    def get_raw_forecast_per_dc(
+        self,
+        horizon: Optional[int] = None,
+        normalize: bool = True,
+    ) -> Optional[Dict[int, np.ndarray]]:
+        """
+        Return per-DC raw forecast trajectory over ``horizon`` future steps.
+
+        Used by the A1 "HiGreen-Raw" ablation env, which exposes raw multi-step
+        forecasts to the policy *instead of* the 4 compressed features
+        (μ^short, τ^short, μ^long, φ^peak). The whole point of that ablation is
+        to test whether semantic state compression is necessary — see paper §IV
+        and the Contribution 3 claim about "representational entanglement".
+
+        Aggregation rule (mirrors :meth:`_aggregate_dc` for the means):
+
+            raw_DC[h] = (Σ_t pred_t[h]) / (Σ_t maxPower_t)        if normalize
+            raw_DC[h] = (Σ_t pred_t[h]) * 1000                    if not normalize
+                                                                  (kW → W)
+
+        i.e. when ``normalize=True`` we max-power-weighted-average across the
+        DC's turbines (output ∈ [0, 1], same dimensional regime as the
+        compressed features); when ``normalize=False`` we sum to a total kW
+        signal and convert to Watts (matches :meth:`get_predicted_wind_w_per_dc`).
+
+        Args:
+            horizon: number of future steps to return per DC. Defaults to the
+                provider's ``pred_len`` (the full TimeCAP forecast horizon).
+                Clamped to ``pred_len`` if larger; values <1 raise ValueError.
+            normalize: see formula above.
+
+        Returns:
+            ``{dc_id: np.ndarray shape (horizon,)}`` or ``None`` if no forecast
+            has been computed yet (e.g., before the first :meth:`step_and_get`
+            call after :meth:`reset`).
+        """
+        if self._last_per_t_pred is None:
+            return None
+        if horizon is None:
+            horizon = self.pred_len
+        horizon = min(int(horizon), self.pred_len)
+        if horizon < 1:
+            raise ValueError(f"horizon must be >= 1, got {horizon}")
+
+        out: Dict[int, np.ndarray] = {}
+        for dc_id in self.dc_ids:
+            turbine_ids = self.dc_assignments.get(dc_id, [])
+            max_powers = [self.predictor.max_power_kw.get(t, 1.0) for t in turbine_ids]
+            total_mp = float(sum(max_powers))
+
+            agg_kw = np.zeros(horizon, dtype=np.float32)
+            for tid, mp in zip(turbine_ids, max_powers):
+                pred = self._last_per_t_pred.get(tid)
+                if pred is None or pred.size == 0 or mp <= 0.0:
+                    continue
+                h = min(horizon, int(pred.size))
+                agg_kw[:h] += pred[:h].astype(np.float32)
+
+            if normalize:
+                if total_mp <= 0.0:
+                    out[dc_id] = np.full(horizon, 0.5, dtype=np.float32)
+                else:
+                    out[dc_id] = np.clip(agg_kw / total_mp, 0.0, 1.0).astype(np.float32)
+            else:
+                out[dc_id] = (agg_kw * 1000.0).astype(np.float32)  # kW → W
+
+        return out
 
     # ------------------------------------------------------------------
     # Aggregation (mirrors Java)
