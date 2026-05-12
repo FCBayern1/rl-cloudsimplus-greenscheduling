@@ -915,8 +915,15 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         # Execute step in Java simulation
         try:
-            logger.info(f"[STEP {self.current_step + 1}] Calling Java with global_actions={global_actions_python}, local_actions={local_actions_python}")
-            logger.debug("Calling Java step with %d global actions", len(global_actions_python))
+            # 2026-05-12 demoted INFO → DEBUG.  This log fires every env step
+            # (40 001 times in a 5-iter smoke, ~600k in a 100-iter run); the
+            # f-string formats 20+ ints + a 10-entry dict each call, so even
+            # though INFO-level isn't *that* slow it adds up to ~5-10% wall-
+            # clock and bloats the driver log.  No diagnostic value once the
+            # plumbing is known to work — disabled by default; flip the env's
+            # logger to DEBUG when you actually need to see per-step actions.
+            logger.debug("[STEP %d] global_actions=%s local_actions=%s",
+                         self.current_step + 1, global_actions_python, local_actions_python)
             result = self.java_env.step(global_actions_python, local_actions_python)
             logger.debug("Java step returned successfully")
         except Exception as e:
