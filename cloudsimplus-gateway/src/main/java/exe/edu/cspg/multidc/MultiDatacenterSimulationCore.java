@@ -132,8 +132,19 @@ public class MultiDatacenterSimulationCore {
     public void resetSimulation() {
         LOGGER.info("Resetting multi-datacenter simulation environment...");
 
-        // Print cloudlet execution summary from previous episode (skip first reset)
-        if (!firstReset) {
+        // Print cloudlet execution summary from previous episode (skip first reset).
+        //
+        // BUG-FIX 2026-05-12: This dump was the root cause of the 76-iter
+        // training hang.  CloudletsTableBuilderWithDetails.build() writes the
+        // entire finished-cloudlet table (~60k rows per episode in 10-DC v2)
+        // straight to System.out, which Python captures into the gateway log.
+        // After 84 episodes the log was 939MB; the JVM eventually hung mid-
+        // dump (Python stdout-pipe back-pressure / disk-IO stall) and Python
+        // saw "Answer from Java side is empty" on its next step() call.
+        // Default OFF; turn on per-experiment with
+        //   print_cloudlet_summary_on_reset: true
+        // for one-off debugging.
+        if (!firstReset && settings.isPrintCloudletSummaryOnReset()) {
             printCloudletExecutionSummary();
         }
         firstReset = false;

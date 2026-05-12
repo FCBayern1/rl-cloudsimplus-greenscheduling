@@ -90,6 +90,15 @@ public class SimulationSettings {
     private final double carbonEmissionFactorKgPerKwh;
     private final boolean splitLargeCloudlets;
     private final int maxCloudletPes;
+    /**
+     * Whether to dump the full per-episode CloudletsTable to stdout at every
+     * resetSimulation() call.  This was on by default historically but is a
+     * known cause of pathological log growth (≈60k rows/episode × N episodes,
+     * 940MB+ over a 76-iter training run) and stdout-pipe back-pressure that
+     * can hang the JVM when the Python side falls behind reading.  Default
+     * OFF — turn on only for one-off debugging sessions.
+     */
+    private final boolean printCloudletSummaryOnReset;
 
     private final double simulationTimestep; // RL agent step interval
     private final double minTimeBetweenEvents; // CloudSim internal granularity
@@ -293,6 +302,11 @@ public class SimulationSettings {
         // Default maxCloudletPes to the largest VM's PE count if not specified
         int defaultMaxCloudletPes = this.smallVmPes * this.largeVmMultiplier;
         this.maxCloudletPes = getIntParam(params, "max_cloudlet_pes", defaultMaxCloudletPes);
+        // Default OFF — dumping ~60k cloudlet rows per episode to stdout cost
+        // a 76-iter run a 940MB gateway log and is the prime suspect for the
+        // 2026-05-12 JVM hang (stdout pipe back-pressure).  Set to true
+        // explicitly via config when you actually want the table.
+        this.printCloudletSummaryOnReset = getBoolParam(params, "print_cloudlet_summary_on_reset", false);
 
         // Simulation Control
         this.simulationTimestep = getDoubleParam(params, "simulation_timestep", 1.0); // e.g., 1 second RL step
@@ -425,6 +439,7 @@ public class SimulationSettings {
                 "workloadReaderMips=" + workloadReaderMips + ",\n" +
                 "splitLargeCloudlets=" + splitLargeCloudlets + ",\n" +
                 "maxCloudletPes=" + maxCloudletPes + ",\n" +
+                "printCloudletSummaryOnReset=" + printCloudletSummaryOnReset + ",\n" +
                 "simulationTimestep=" + simulationTimestep + ",\n" +
                 "minTimeBetweenEvents=" + minTimeBetweenEvents + ",\n" +
                 "vmStartupDelay=" + vmStartupDelay + ",\n" +
