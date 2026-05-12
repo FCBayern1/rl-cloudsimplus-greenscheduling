@@ -429,8 +429,22 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values, _, _ = self._forward_pass(batch)
-        return values
+        # 2026-05-12 OOM fix: GAE (rllib/connectors/learner/general_advantage_estimation.py:96)
+        # calls compute_values on the FULL post-rollout batch — for our 10-DC v2 setup that's
+        # 8000 env steps × 10 shared-local agents = 80 000 samples in a single forward.
+        # GTrXL.forward unrolls T timesteps in a Python loop; without no_grad the autograd
+        # graph from every intermediate tensor at every layer at every t is retained, which
+        # alone consumed 10+ GB of VRAM and was the root cause of "16GB 5080 OOMs on bumping
+        # d_model 96 → 128".  GAE only needs V(s) values, not gradients through them, so
+        # wrap the forward in inference_mode (slightly cheaper than no_grad) to skip graph
+        # construction entirely.  Same pattern applied to Global module below.
+        with torch.inference_mode():
+            _, values, _, _ = self._forward_pass(batch)
+        # inference_mode returns tensors that are read-only and don't have an `.grad_fn`.
+        # That's fine for GAE — the downstream consumer (advantage calc) just reads values.
+        # But to be safe against any future caller that expects a regular tensor, clone
+        # into a normal one (loses inference_mode attribute, keeps gradient-detached state).
+        return values.clone()
 
     @override(TorchRLModule)
     def get_exploration_action_dist_cls(self):
@@ -709,8 +723,12 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        _, values, _ = self._forward_pass(batch)
-        return values
+        # See OOM-fix note on the Local module's compute_values above —
+        # GAE forwards the full batch through GTrXL; without no_grad the
+        # autograd graph from the per-T Python loop blows up VRAM.
+        with torch.inference_mode():
+            _, values, _ = self._forward_pass(batch)
+        return values.clone()
 
     def _get_multi_categorical_cls(self, action_space):
         input_lens = list(action_space.nvec)
