@@ -507,6 +507,16 @@ public class MultiDatacenterSimulationCore {
         // 2026-05-12: for each successful routing we also compute (a) a per-action
         // "fit-score" reward and (b) a marginal carbon estimate, accumulated into
         // step-scoped fields that calculateGlobalReward() consumes.
+        //
+        // CRITICAL BUG-FIX 2026-05-12: previously this method called
+        // accumulatePerActionFitAndMarginal() inline.  getBatchForRouting()
+        // REMOVES cloudlets from globalWaitingQueue (line 173 removeFirst()),
+        // so if accumulate throws midway through the loop, the remaining
+        // cloudlets in cloudletsToRoute — already gone from the queue — are
+        // LEAKED (not routed, not requeued).  Smoke run 20260512_225043 lost
+        // ~10 cloudlets per step × 7200 steps = ~72k cloudlets → 0 completions
+        // for the whole episode.  Fix: do the accounting in a try/catch so a
+        // bad fit-score computation can never break routing.
         int routedCount = 0;
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
@@ -515,7 +525,16 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
-                accumulatePerActionFitAndMarginal(cloudlet, targetDcIndex);
+                try {
+                    accumulatePerActionFitAndMarginal(cloudlet, targetDcIndex);
+                } catch (Throwable t) {
+                    // Log once-per-step.  Routing already succeeded — the
+                    // cloudlet is safely in the local broker's queue.  Only
+                    // the per-action shaping/marginal accumulator for THIS
+                    // routing is lost; the next step will recover.
+                    LOGGER.error("accumulatePerActionFitAndMarginal failed for cloudlet={} dc={}: {}",
+                            cloudlet.getId(), targetDcIndex, t.getMessage(), t);
+                }
             } else {
                 // IMPORTANT: Do not lose cloudlets on routing failure.
                 // Re-queue to tail so training can recover, while still allowing you to
