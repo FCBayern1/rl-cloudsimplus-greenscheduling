@@ -39,7 +39,7 @@ from __future__ import annotations
 import csv
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -212,6 +212,21 @@ class LagrangianCallback(DefaultCallbacks):
         self._lambda_max: float = 20.0
         self._c_ep_tolerance: float = 0.0
 
+        # 2026-05-12 Fix 4: per-iter c_ep tracking.  RLlib's
+        # `env_runners/c_ep_mean` is a windowed mean over the last
+        # `metrics_num_episodes_for_smoothing` episodes (default 100), which
+        # is effectively a lifetime average for our training scale.  That
+        # makes λ ramp linearly even when recent episodes have improved —
+        # see 76-iter run 20260509_011407 (λ: 0.017 → 1.247 while completion
+        # had already plateaued).  We now also record c_ep values that came
+        # in during the *current* iter only, and feed THAT mean to the dual
+        # update.  Falls back to the legacy windowed mean if no episode
+        # finished in the iter.
+        self._iter_c_ep_values: List[float] = []
+        self._iter_completion_values: List[float] = []
+        self._iter_c_step_values: List[float] = []
+        self._iter_pending_values: List[float] = []
+
     # ---------- hyperparameter resolution ----------
     def _load_hyperparams(self, algorithm) -> None:
         env_cfg = None
@@ -287,6 +302,19 @@ class LagrangianCallback(DefaultCallbacks):
             except Exception as e:
                 logger.debug("[Lagrangian] metrics_logger.log_value failed: %s", e)
 
+        # 2026-05-12 Fix 4: also record this episode's values into the
+        # callback's own per-iter buffer.  These are consumed (and cleared)
+        # in on_train_result so the dual update sees ONLY episodes that
+        # finished in the current iter — not a windowed lifetime average.
+        # In the single-runner setup this code runs in the driver process;
+        # for multi-runner deployments these buffers would need to be
+        # bridged via metrics_logger too, but RLlib's reduce="mean" is
+        # window-averaged so the per-iter requirement still wins here.
+        self._iter_c_ep_values.append(c_ep)
+        self._iter_completion_values.append(compl)
+        self._iter_c_step_values.append(c_step_mean)
+        self._iter_pending_values.append(pending)
+
         # Old API fallback: episode.custom_metrics is read by RLlib's old metrics
         # path and surfaces under result["custom_metrics"][f"{key}_mean"].
         if hasattr(episode, "custom_metrics"):
@@ -318,11 +346,35 @@ class LagrangianCallback(DefaultCallbacks):
             or 0
         )
 
-        # Read aggregated values that env_runner pushed via metrics_logger.
-        c_ep_mean = _read_env_runner_metric(result, _KEY_C_EP)
-        c_step_mean = _read_env_runner_metric(result, _KEY_C_STEP)
-        compl_mean = _read_env_runner_metric(result, _KEY_COMPLETION)
-        pending_mean = _read_env_runner_metric(result, _KEY_PENDING)
+        # 2026-05-12 Fix 4: prefer the per-iter mean over the windowed
+        # `env_runners/c_ep_mean` (which is a 100-episode rolling average ≈
+        # lifetime mean at our training scale).  Without this, λ keeps
+        # ramping even after recent episodes have improved.  We still fall
+        # back to the windowed mean when no episode finished this iter.
+        if self._iter_c_ep_values:
+            c_ep_mean = sum(self._iter_c_ep_values) / len(self._iter_c_ep_values)
+            c_step_mean = (sum(self._iter_c_step_values) / len(self._iter_c_step_values)
+                           if self._iter_c_step_values else 0.0)
+            compl_mean = (sum(self._iter_completion_values) / len(self._iter_completion_values)
+                          if self._iter_completion_values else 0.0)
+            pending_mean = (sum(self._iter_pending_values) / len(self._iter_pending_values)
+                            if self._iter_pending_values else 0.0)
+            n_iter_episodes = len(self._iter_c_ep_values)
+            logger.info(
+                "[Lagrangian] per-iter (Fix 4): n=%d c_ep=%.4f c_step=%.4f compl=%.4f",
+                n_iter_episodes, c_ep_mean, c_step_mean, compl_mean,
+            )
+            # Clear buffers so next iter starts fresh.
+            self._iter_c_ep_values.clear()
+            self._iter_completion_values.clear()
+            self._iter_c_step_values.clear()
+            self._iter_pending_values.clear()
+        else:
+            # No episode finished in this iter — fall back to windowed mean.
+            c_ep_mean = _read_env_runner_metric(result, _KEY_C_EP)
+            c_step_mean = _read_env_runner_metric(result, _KEY_C_STEP)
+            compl_mean = _read_env_runner_metric(result, _KEY_COMPLETION)
+            pending_mean = _read_env_runner_metric(result, _KEY_PENDING)
 
         # Episode count this iteration — canonical RLlib metric.
         er = result.get("env_runners") or {}

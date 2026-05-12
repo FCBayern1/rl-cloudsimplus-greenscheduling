@@ -127,7 +127,7 @@ public class SimulationSettings {
     private final double carbonEmissionPenaltyCoef;  // Coefficient for carbon emission penalty (OLD, kept for reference)
 
     // Global Reward Coefficients (NEW normalized reward scheme)
-    // r_global = α·L - β·Ĉ - γ·R_w
+    // r_global = α·L - β·Ĉ - γ·R_w  + (new shaping terms below)
     private final double globalRewardAlpha;  // α: Local performance weight (default: 1.0)
     private final double globalRewardBeta;   // β: Carbon penalty weight (default: 0.5)
     private final double globalRewardGamma;  // γ: Green waste penalty weight (default: 0.3)
@@ -136,6 +136,40 @@ public class SimulationSettings {
     // - completion progress: encourages increasing MI-based completion rate over the episode
     private final double globalThroughputMiCoef;       // k_T: weight for log1p(MI_finished_this_step)
     private final double globalCompletionRateMiCoef;   // k_C: weight for Δcompletion_rate_mi per step
+
+    // ===========================================================================
+    // 2026-05-12 per-action attribution add-ons.  The aggregate `r_global` above
+    // shares one scalar across N simultaneous routing decisions, which is the
+    // root cause of the global-agent learning failure documented in the 76-iter
+    // training run (completion stuck below RR baseline of 88.6%).  These three
+    // new terms make the per-step global reward decomposable per slot:
+    //
+    //   r_step += λ_shape · mean_i ( w_g·green_ratio[dᵢ] − w_c·brown[dᵢ]
+    //                              − w_q·overflow_norm[dᵢ] − w_o·hard_overflow[dᵢ] )
+    //   r_step += − β_marg · marginal_carbon_step
+    //   r_step += k_compl_step · (finished_this_step − expected_baseline_per_step)
+    //
+    // PPO's per-slot policy factors then each get a useful gradient component
+    // even though A(s,a) is still shared. This is reward decomposition, not
+    // CRD — works without counterfactual machinery, see Q1/Q2/Q3 analysis.
+    // ===========================================================================
+
+    // Per-action fit-score shaping: per-slot weights applied at routing time.
+    private final double globalFitWeightGreen;     // w_g: weight on green_ratio[dᵢ]
+    private final double globalFitWeightBrown;     // w_c: weight on brown_carbon_factor[dᵢ]
+    private final double globalFitWeightQueue;     // w_q: weight on overflow-normalised queue
+    private final double globalFitWeightOverflow;  // w_o: weight on hard-overflow indicator
+    private final double globalFitLambda;          // λ_shape: scalar multiplier on the mean fit
+
+    // Marginal carbon penalty: only the carbon attributable to *this step's*
+    // routings, computed at routing time as Σᵢ (mi_i / 1e6) · brown_factor[dᵢ]
+    // · (1 − green_ratio[dᵢ]).  Complements (does NOT replace) β·Ĉ_step.
+    private final double globalRewardBetaMarginal;
+
+    // Completion shaping (per-step finish count vs episode-uniform baseline).
+    // Replaces the monotonic Δcompletion_rate_mi term, which was always ≥ 0 and
+    // therefore could not penalise bad routings.
+    private final double globalCompletionPerStepCoef;
 
     /**
      * Controls how the global carbon penalty signal is computed in multi-DC mode.
@@ -352,6 +386,17 @@ public class SimulationSettings {
                 "global_completion_rate_mi_coef",
                 getDoubleParam(params, "global_completion_rate_coef", 0.0)
         );
+
+        // Per-action shaping (2026-05-12 reward decomposition).  Defaults are
+        // zero so any pre-existing config keeps its old reward shape unchanged
+        // — the new terms only activate when the experiment opts in.
+        this.globalFitWeightGreen    = getDoubleParam(params, "global_fit_weight_green",    1.0);
+        this.globalFitWeightBrown    = getDoubleParam(params, "global_fit_weight_brown",    1.0);
+        this.globalFitWeightQueue    = getDoubleParam(params, "global_fit_weight_queue",    1.0);
+        this.globalFitWeightOverflow = getDoubleParam(params, "global_fit_weight_overflow", 2.0);
+        this.globalFitLambda         = getDoubleParam(params, "global_fit_lambda",          0.0);  // OFF by default
+        this.globalRewardBetaMarginal     = getDoubleParam(params, "global_reward_beta_marginal",     0.0);  // OFF by default
+        this.globalCompletionPerStepCoef  = getDoubleParam(params, "global_completion_per_step_coef", 0.0);  // OFF by default
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();
         this.carbonNormalizationFixedMax = getDoubleParam(params, "carbon_normalization_fixed_max", 0.0);
@@ -363,6 +408,11 @@ public class SimulationSettings {
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
         LOGGER.info("Global Reward Shaping: throughput_mi_coef={}, completion_rate_mi_coef={}",
                 this.globalThroughputMiCoef, this.globalCompletionRateMiCoef);
+        LOGGER.info("Global Per-Action Fit: λ_shape={}, w_g={}, w_c={}, w_q={}, w_o={}",
+                this.globalFitLambda, this.globalFitWeightGreen, this.globalFitWeightBrown,
+                this.globalFitWeightQueue, this.globalFitWeightOverflow);
+        LOGGER.info("Global Marginal Carbon β_marg={}, Completion-per-step k={}",
+                this.globalRewardBetaMarginal, this.globalCompletionPerStepCoef);
         LOGGER.info("Global Carbon Penalty Mode: {}, Normalization: {} (fixedMax={}, miFloor={})",
                 this.carbonPenaltyMode, this.carbonNormalizationMode,
                 this.carbonNormalizationFixedMax, this.carbonMiFloor);
