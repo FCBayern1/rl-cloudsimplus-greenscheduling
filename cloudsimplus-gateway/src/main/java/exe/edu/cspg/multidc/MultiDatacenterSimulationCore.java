@@ -2152,14 +2152,34 @@ public class MultiDatacenterSimulationCore {
     /**
      * Ensure all cloudlets complete before simulation ends.
      *
-     * This method adds an event listener that checks if there are unfinished
-     * cloudlets when there is only one future event left. If there are unfinished
-     * cloudlets, it sends an empty event to keep the simulation running.
+     * <p>Installs a listener that, after every event, watches for the case
+     * where the future-events queue is about to drain while there are still
+     * unfinished cloudlets to dispatch.  When that happens, schedule a single
+     * NONE event one timestep ahead so the simulation does not terminate
+     * prematurely.
+     *
+     * <p>BUG-FIX 2026-05-12: the original implementation called
+     * {@link #getNumberOfFutureEvents()}, which delegates to a
+     * {@code stream().count()} over the entire TreeMap of pending events —
+     * <strong>O(N) per call</strong>.  Because this listener fires once per
+     * event processed and the v2 workload generates a large pending-event
+     * queue (broker dispatch + VM lifecycle + cloudlet arrival), the per-step
+     * cost was O(K · N) and at K ≈ N this blew up into an O(N²) hang
+     * (see thread dump from run 20260512_215937: 35 min stuck inside
+     * {@code TreeMap.KeySpliterator.forEachRemaining} on the very first step).
+     *
+     * <p>Fix: use {@link org.cloudsimplus.core.Simulation#noFutureEvents()},
+     * which is O(1).  Semantic shift: the trigger fires when the queue is
+     * <em>already</em> empty rather than when it is about to drain to a single
+     * event.  In CloudSim Plus's main loop, listeners run BEFORE the
+     * "queue empty? then terminate" check, so adding a NONE event here is
+     * still picked up in the same iteration — no observable change in
+     * simulation behaviour, only a huge perf improvement.
      */
     private void ensureAllCloudletsCompleteBeforeSimulationEnds() {
         double interval = settings.getSimulationTimestep();
         simulation.addOnEventProcessingListener(info -> {
-            if (getNumberOfFutureEvents() == 1 && hasUnfinishedCloudlets()) {
+            if (simulation.noFutureEvents() && hasUnfinishedCloudlets()) {
                 LOGGER.trace("Cloudlets not finished. Sending empty event to keep simulation running.");
 
                 // Send event to first datacenter to keep simulation alive
