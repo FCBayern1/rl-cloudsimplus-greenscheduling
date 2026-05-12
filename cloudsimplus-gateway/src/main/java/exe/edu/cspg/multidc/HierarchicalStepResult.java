@@ -2,6 +2,7 @@ package exe.edu.cspg.multidc;
 import exe.edu.cspg.singledc.ObservationState;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import lombok.Getter;
@@ -109,6 +110,105 @@ public class HierarchicalStepResult {
             stringMap.put(entry.getKey(), String.valueOf(entry.getValue()));
         }
         return stringMap;
+    }
+
+    /**
+     * Return the entire step result as a single flat {@link Map} for Py4J
+     * transfer.  This is the fast-path replacement for ~200 individual
+     * {@code result.getXxx()} round-trips per step.
+     *
+     * <p>Each call to e.g. {@code globalObservation.getDcCurrentGreenPowerW()}
+     * from Python is one Py4J RPC (~1-2 ms overhead).  With 17 global getters
+     * + 10 DCs × ~15 local getters + reward/info accessors, a single step
+     * was costing 130+ ms of pure protocol overhead.  Packing everything
+     * into one {@code LinkedHashMap} and returning it in one call collapses
+     * that to a single RPC + bulk serialisation (~25-30 ms).
+     *
+     * <p>Key naming convention (consumed by Python's flat parser):
+     * <ul>
+     *   <li>{@code g.<field>}    — global obs fields (e.g. g.dc_queue_sizes)</li>
+     *   <li>{@code l.<dcId>.<field>} — per-DC local obs fields</li>
+     *   <li>{@code r.global}     — global scalar reward (double)</li>
+     *   <li>{@code r.local}      — Map&lt;Integer, Double&gt; of local rewards</li>
+     *   <li>{@code meta.terminated} / {@code meta.truncated}</li>
+     *   <li>{@code info}         — original info Map (kept nested)</li>
+     * </ul>
+     *
+     * <p>The legacy {@code getXxx()} methods are intentionally NOT removed so
+     * that older tests / scripts (and the reset path, which calls the
+     * underlying state objects directly) keep working unchanged.  This is a
+     * purely additive API.
+     *
+     * @return flat map of every datum the Python env needs from this step
+     */
+    public Map<String, Object> getStepAsFlatMap() {
+        // Pre-size: 20 global keys + 15 local keys × N DCs + 5 metadata.
+        int dcCount = localObservations != null ? localObservations.size() : 0;
+        Map<String, Object> out = new LinkedHashMap<>(25 + 15 * Math.max(1, dcCount));
+
+        // === Global observation fields ===
+        if (globalObservation != null) {
+            out.put("g.dc_current_green_power_w",  globalObservation.getDcCurrentGreenPowerW());
+            out.put("g.dc_current_power_w",        globalObservation.getDcCurrentPowerW());
+            out.put("g.dc_green_ratio",            globalObservation.getDcGreenRatio());
+            out.put("g.dc_cumulative_wasted_green_wh", globalObservation.getDcCumulativeWastedGreenWh());
+            out.put("g.dc_future_short_mean",      globalObservation.getDcFutureShortMean());
+            out.put("g.dc_future_short_trend",     globalObservation.getDcFutureShortTrend());
+            out.put("g.dc_future_long_mean",       globalObservation.getDcFutureLongMean());
+            out.put("g.dc_future_long_peak_timing", globalObservation.getDcFutureLongPeakTiming());
+            out.put("g.dc_queue_sizes",            globalObservation.getDcQueueSizes());
+            out.put("g.dc_utilizations",           globalObservation.getDcUtilizations());
+            out.put("g.dc_available_pes",          globalObservation.getDcAvailablePes());
+            out.put("g.dc_ram_utilizations",       globalObservation.getDcRamUtilizations());
+            out.put("g.upcoming_cloudlets_count",  globalObservation.getUpcomingCloudletsCount());
+            out.put("g.batch_cloudlet_pes",        globalObservation.getBatchCloudletPes());
+            out.put("g.batch_cloudlet_mi",         globalObservation.getBatchCloudletMi());
+            out.put("g.upcoming_cloudlets_pes_distribution",
+                    globalObservation.getUpcomingCloudletsPesDistribution());
+            out.put("g.load_imbalance",            globalObservation.getLoadImbalance());
+            out.put("g.recent_completed_cloudlets", globalObservation.getRecentCompletedCloudlets());
+            out.put("g.current_clock",             globalObservation.getCurrentClock());
+            out.put("g.num_datacenters",           globalObservation.getNumDatacenters());
+        }
+
+        // === Per-DC local observations ===
+        if (localObservations != null) {
+            for (Map.Entry<Integer, ObservationState> e : localObservations.entrySet()) {
+                int dcId = e.getKey();
+                ObservationState s = e.getValue();
+                if (s == null) continue;
+                String p = "l." + dcId + ".";
+                out.put(p + "host_loads",          s.getHostLoads());
+                out.put(p + "host_ram_usage_ratio", s.getHostRamUsageRatio());
+                out.put(p + "vm_loads",            s.getVmLoads());
+                out.put(p + "vm_types",            s.getVmTypes());
+                out.put(p + "vm_host_map",         s.getVmHostMap());
+                out.put(p + "vm_available_pes",    s.getVmAvailablePes());
+                out.put(p + "waiting_cloudlets",   s.getWaitingCloudlets());
+                out.put(p + "next_cloudlet_pes",   s.getNextCloudletPes());
+                out.put(p + "next_cloudlet_mi",    s.getNextCloudletMi());
+                out.put(p + "next_cloudlet_wait_time", s.getNextCloudletWaitTime());
+                out.put(p + "queue_pes_distribution", s.getQueuePesDistribution());
+                out.put(p + "completed_cloudlets_last_10_steps",
+                        s.getCompletedCloudletsLast10Steps());
+                out.put(p + "actual_vm_count",     s.getActualVmCount());
+                out.put(p + "actual_host_count",   s.getActualHostCount());
+                out.put(p + "infrastructure_observation", s.getInfrastructureObservation());
+            }
+        }
+
+        // === Rewards ===
+        out.put("r.global", globalReward);
+        out.put("r.local",  localRewards);  // Map<Integer, Double>
+
+        // === Termination flags ===
+        out.put("meta.terminated", terminated);
+        out.put("meta.truncated",  truncated);
+
+        // === Info dict (kept nested; Python merges with CRD overlay separately) ===
+        out.put("info", info);
+
+        return out;
     }
 
     @Override
