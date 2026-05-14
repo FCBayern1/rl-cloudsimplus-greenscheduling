@@ -75,28 +75,17 @@ public class MultiDatacenterSimulationCore {
     private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalised carbon ratio
 
     // === Episode-level reward breakdown tracking (for logging/analysis) ===
-    // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw + (new decomposable shaping)
+    // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw
     private double epGlobalTermLocalSum = 0.0;   // Σ (α·L)
     private double epGlobalTermCarbonSum = 0.0;  // Σ (-β·Ĉ)
     private double epGlobalTermWasteSum = 0.0;   // Σ (-γ·Rw)
     private double epGlobalTermThroughputSum = 0.0; // Σ (k_T · log1p(finished_mi_this_step))
-    private double epGlobalTermCompletionMiSum = 0.0; // Σ (k_C · Δcompletion_rate_mi)  [legacy term]
-    // 2026-05-12 per-action attribution add-ons (see SimulationSettings comment block):
-    private double epGlobalTermFitSum = 0.0;            // Σ ( λ_shape · mean fit )
-    private double epGlobalTermMarginalCarbonSum = 0.0; // Σ ( -β_marg · marginal_carbon_step )
-    private double epGlobalTermCompletionStepSum = 0.0; // Σ ( k · (finished_this_step − baseline) )
-
-    // Per-step accumulators populated by executeGlobalRouting() and consumed by
-    // calculateGlobalReward().  Reset at end of each calculateGlobalReward().
-    private double stepFitRewardSum = 0.0;       // raw Σᵢ fitᵢ  (before λ_shape, before mean)
-    private double stepMarginalCarbonKg = 0.0;   // raw Σᵢ marginalᵢ  (kg, before β_marg)
-    private int    stepRoutedCount = 0;          // number of slots that produced fit/marginal contributions
+    private double epGlobalTermCompletionMiSum = 0.0; // Σ (k_C · Δcompletion_rate_mi)
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
     private double episodeTotalWorkloadMi = 0.0;
     private double episodeFinishedMiCumulative = 0.0;
     private double prevCompletionRateMi = 0.0;
-    private int    episodeTotalCloudlets = 0;    // workload cardinality, used for per-step baseline
 
     // === Carbon penalty signal tracking (for debugging/analysis) ===
     // Track the *raw* carbon penalty signal that is normalized to produce Ĉ.
@@ -176,12 +165,6 @@ public class MultiDatacenterSimulationCore {
         epGlobalTermWasteSum = 0.0;
         epGlobalTermThroughputSum = 0.0;
         epGlobalTermCompletionMiSum = 0.0;
-        epGlobalTermFitSum = 0.0;
-        epGlobalTermMarginalCarbonSum = 0.0;
-        epGlobalTermCompletionStepSum = 0.0;
-        stepFitRewardSum = 0.0;
-        stepMarginalCarbonKg = 0.0;
-        stepRoutedCount = 0;
         epGlobalCarbonSignalSum = 0.0;
         epGlobalCarbonPenaltyNormSum = 0.0;
         lastGlobalCarbonSignal = 0.0;
@@ -203,12 +186,10 @@ public class MultiDatacenterSimulationCore {
 
         // Pre-compute total workload MI for this episode (used by completion_rate_mi shaping).
         episodeTotalWorkloadMi = 0.0;
-        episodeTotalCloudlets = 0;
         if (allCloudlets != null && !allCloudlets.isEmpty()) {
             for (Cloudlet c : allCloudlets) {
                 episodeTotalWorkloadMi += Math.max(0.0, (double) c.getLength());
             }
-            episodeTotalCloudlets = allCloudlets.size();
         }
         episodeFinishedMiCumulative = 0.0;
         prevCompletionRateMi = 0.0;
@@ -503,20 +484,7 @@ public class MultiDatacenterSimulationCore {
         // Validate action count (should match batch size, but double-check)
         int actionCount = Math.min(cloudletsToRoute.size(), globalActions.size());
 
-        // Route each cloudlet to its target datacenter.
-        // 2026-05-12: for each successful routing we also compute (a) a per-action
-        // "fit-score" reward and (b) a marginal carbon estimate, accumulated into
-        // step-scoped fields that calculateGlobalReward() consumes.
-        //
-        // CRITICAL BUG-FIX 2026-05-12: previously this method called
-        // accumulatePerActionFitAndMarginal() inline.  getBatchForRouting()
-        // REMOVES cloudlets from globalWaitingQueue (line 173 removeFirst()),
-        // so if accumulate throws midway through the loop, the remaining
-        // cloudlets in cloudletsToRoute — already gone from the queue — are
-        // LEAKED (not routed, not requeued).  Smoke run 20260512_225043 lost
-        // ~10 cloudlets per step × 7200 steps = ~72k cloudlets → 0 completions
-        // for the whole episode.  Fix: do the accounting in a try/catch so a
-        // bad fit-score computation can never break routing.
+        // Route each cloudlet to its target datacenter
         int routedCount = 0;
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
@@ -525,16 +493,6 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
-                try {
-                    accumulatePerActionFitAndMarginal(cloudlet, targetDcIndex);
-                } catch (Throwable t) {
-                    // Log once-per-step.  Routing already succeeded — the
-                    // cloudlet is safely in the local broker's queue.  Only
-                    // the per-action shaping/marginal accumulator for THIS
-                    // routing is lost; the next step will recover.
-                    LOGGER.error("accumulatePerActionFitAndMarginal failed for cloudlet={} dc={}: {}",
-                            cloudlet.getId(), targetDcIndex, t.getMessage(), t);
-                }
             } else {
                 // IMPORTANT: Do not lose cloudlets on routing failure.
                 // Re-queue to tail so training can recover, while still allowing you to
@@ -543,103 +501,9 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        LOGGER.debug("Routed {}/{} cloudlets to datacenters, {} remain in global queue",
+        LOGGER.debug("Routed {}/{} cloudlets to datacenters, {} remain in global queue", 
                 routedCount, cloudletsToRoute.size(), globalBroker.getGlobalWaitingCloudletsCount());
         return routedCount;
-    }
-
-    /**
-     * Compute and accumulate the per-action fit-score reward and marginal carbon
-     * for a single (cloudlet → DC) routing decision.  Called inside
-     * {@link #executeGlobalRouting} immediately after a successful routing.
-     *
-     * The fit-score is what makes the per-step global reward additively
-     * decomposable across the N routing slots even though PPO's advantage
-     * A(s,a) is shared.  Each slot's policy gets a useful gradient because
-     * changing that slot's action only changes that slot's fit contribution
-     * (see SimulationSettings comment block for the math).
-     *
-     * NOTE: This method intentionally does NOT scale by λ_shape or β_marg here;
-     * those weights are applied once in calculateGlobalReward() so smoke runs
-     * with everything zeroed out remain identical to pre-fix behaviour.
-     */
-    private void accumulatePerActionFitAndMarginal(Cloudlet cloudlet, int dcIndex) {
-        if (dcIndex < 0 || dcIndex >= datacenterInstances.size()) {
-            return;  // routeCloudletToDatacenter would already have rejected, but defensive
-        }
-        DatacenterInstance dc = datacenterInstances.get(dcIndex);
-        if (dc == null) {
-            return;
-        }
-
-        // === Per-DC features at routing time ===
-        // Green ratio: how much of the current power demand is being met by green
-        // generation right now.  Bounded to [0, 1].
-        double greenPowerW = dc.isGreenEnergyEnabled()
-                ? Math.max(0.0, dc.getCurrentGreenPowerW(currentClock))
-                : 0.0;
-        double currentPowerW = estimateDcCurrentPowerW(dc);  // see helper below
-        double greenRatio = currentPowerW > 1e-9
-                ? Math.min(1.0, greenPowerW / currentPowerW)
-                : (greenPowerW > 0 ? 1.0 : 0.0);
-
-        double brownFactor = dc.getConfig().getBrownCarbonFactor();
-        int availPes = Math.max(0, dc.getTotalAvailablePes());
-        int queueSize = Math.max(0, dc.getWaitingCloudletCount());
-
-        // Estimate DC capacity in PEs (sum across all hosts).  A persistent
-        // accurate denominator isn't critical — what matters is that the
-        // overflow normalisation is on the same scale across all DCs.
-        int dcCapacityPes = Math.max(1, dc.getHostCount() * settings.getSmallVmPes());
-
-        int cloudletPes = (int) Math.max(1L, cloudlet.getPesNumber());
-        long cloudletMi = Math.max(0L, cloudlet.getLength());
-
-        // === Fit score (per-slot, additively decomposable) ===
-        // The four terms each capture one routing concern; signs are chosen so
-        // that bigger = better (we ADD λ_shape · mean(fit) to the reward).
-        double wG = settings.getGlobalFitWeightGreen();
-        double wC = settings.getGlobalFitWeightBrown();
-        double wQ = settings.getGlobalFitWeightQueue();
-        double wO = settings.getGlobalFitWeightOverflow();
-
-        double overflowNorm = Math.max(0.0,
-                (double) (queueSize + cloudletPes - availPes) / (double) dcCapacityPes);
-        double hardOverflow = cloudletPes > availPes ? 1.0 : 0.0;
-
-        double fit = (wG * greenRatio)
-                   - (wC * brownFactor)
-                   - (wQ * overflowNorm)
-                   - (wO * hardOverflow);
-
-        stepFitRewardSum += fit;
-
-        // === Marginal carbon ===
-        // Expected brown carbon contribution if this cloudlet's MI runs at this
-        // DC under the current green/brown split.  Computed in kg.
-        // (cloudletMi / 1e6) is the kWh-equivalent at 1 GHz·s ≈ 1e6 MI per kWh,
-        // a coarse but stable proxy that mirrors how energy is integrated in
-        // EnergyMetricsDelta.
-        double marginalKg = ((double) cloudletMi / 1e6) * brownFactor * Math.max(0.0, 1.0 - greenRatio);
-        stepMarginalCarbonKg += marginalKg;
-
-        stepRoutedCount++;
-    }
-
-    /**
-     * Rough estimate of a DC's current power demand in Watts, used only to
-     * compute an instantaneous green_ratio at routing time.  Reads from the
-     * latest energy-delta snapshot (populated by updateAllDatacenterEnergyMetrics
-     * at the previous step's tail), falling back to 0 on the first step.
-     */
-    private double estimateDcCurrentPowerW(DatacenterInstance dc) {
-        EnergyMetricsDelta delta = dc.getLatestEnergyDelta();
-        if (delta == null) {
-            return 0.0;
-        }
-        // currentPowerW is the DC's instantaneous power draw recorded at the
-        // end of the most recent timestep (see DatacenterInstance.updateEnergyMetrics).
-        return Math.max(0.0, delta.getCurrentPowerW());
     }
 
     /**
@@ -1252,41 +1116,12 @@ public class MultiDatacenterSimulationCore {
         prevCompletionRateMi = completionRateMiNow;
         double completionMiTerm = completionRateMiCoef * deltaCompletionMi;
 
-        // === NEW 2026-05-12 Component 6: Per-action fit-score shaping ===
-        // Read accumulators populated by executeGlobalRouting() this step.
-        // Use the MEAN over routed slots so the magnitude is invariant to
-        // batch_size N — that way λ_shape can be calibrated once and reused.
-        double fitMean = stepRoutedCount > 0
-                ? stepFitRewardSum / stepRoutedCount
-                : 0.0;
-        double fitLambda = settings.getGlobalFitLambda();
-        double fitTerm = fitLambda * fitMean;
-
-        // === NEW Component 7: Marginal carbon (this step's routings only) ===
-        // Complements β·Ĉ_step (which still tracks total system carbon).
-        double betaMarginal = settings.getGlobalRewardBetaMarginal();
-        double marginalCarbonTerm = -betaMarginal * stepMarginalCarbonKg;
-
-        // === NEW Component 8: Completion shaping (per-step finish-count signal) ===
-        // Replaces the monotonic Δcompletion_rate_mi term as the source of
-        // "did this step do useful work?" signal.  Subtracting an episode-uniform
-        // baseline makes the term symmetric around 0: positive when this step
-        // out-paced the per-step average, negative when it lagged behind.
-        double completionPerStepCoef = settings.getGlobalCompletionPerStepCoef();
-        int finishedThisStep = countCloudletsFinishedThisStep();
-        double baselineFinishedPerStep = settings.getMaxEpisodeLength() > 0 && episodeTotalCloudlets > 0
-                ? (double) episodeTotalCloudlets / (double) settings.getMaxEpisodeLength()
-                : 0.0;
-        double completionStepTerm =
-                completionPerStepCoef * (finishedThisStep - baselineFinishedPerStep);
-
         // === Final Global Reward ===
         double reward = alpha * avgLocalReward
                       - beta * normalizedCarbon
                       - gamma * wasteRatio;
-        // Add shaping terms (default coefs are 0.0, so this is backward-compatible).
-        reward += throughputTerm + completionMiTerm
-                + fitTerm + marginalCarbonTerm + completionStepTerm;
+        // Add shaping terms (default coefs are 0.0, so this is backward-compatible)
+        reward += throughputTerm + completionMiTerm;
 
         // Track episode-level component contributions for analysis (cumulative sums over steps)
         epGlobalTermLocalSum += (alpha * avgLocalReward);
@@ -1294,16 +1129,6 @@ public class MultiDatacenterSimulationCore {
         epGlobalTermWasteSum += (-gamma * wasteRatio);
         epGlobalTermThroughputSum += throughputTerm;
         epGlobalTermCompletionMiSum += completionMiTerm;
-        epGlobalTermFitSum += fitTerm;
-        epGlobalTermMarginalCarbonSum += marginalCarbonTerm;
-        epGlobalTermCompletionStepSum += completionStepTerm;
-
-        // Reset per-step accumulators *after* using them so the next step
-        // starts from zero.  (calculateGlobalReward is called exactly once per
-        // step, immediately before clearPerStepTrackingLists.)
-        stepFitRewardSum = 0.0;
-        stepMarginalCarbonKg = 0.0;
-        stepRoutedCount = 0;
 
         LOGGER.debug("Global Reward: total={} (α·L={}, β·Ĉ={}, γ·Rw={})",
                 String.format("%.4f", reward),
@@ -1460,23 +1285,6 @@ public class MultiDatacenterSimulationCore {
             }
         }
         return totalMi;
-    }
-
-    /**
-     * Count of cloudlets that finished in the current timestep (across all DCs).
-     * Used by the per-step completion shaping term — distinct from
-     * {@link #getCompletedMiThisStep()}, which sums MI rather than count.
-     */
-    private int countCloudletsFinishedThisStep() {
-        int total = 0;
-        for (DatacenterInstance dc : datacenterInstances) {
-            LoadBalancingBroker localBroker = dc.getLocalBroker();
-            if (localBroker == null) continue;
-            List<Cloudlet> finished = localBroker.getCloudletsFinishedLastStep(currentClock);
-            if (finished == null) continue;
-            total += finished.size();
-        }
-        return total;
     }
 
     /**
@@ -2052,17 +1860,6 @@ public class MultiDatacenterSimulationCore {
         stats.put("global_reward_term_throughput_mean", currentStep > 0 ? epGlobalTermThroughputSum / currentStep : 0.0);
         stats.put("global_reward_term_completion_mi_mean", currentStep > 0 ? epGlobalTermCompletionMiSum / currentStep : 0.0);
 
-        // 2026-05-12 per-action attribution add-on terms.
-        stats.put("global_reward_term_fit_sum",              epGlobalTermFitSum);
-        stats.put("global_reward_term_marginal_carbon_sum",  epGlobalTermMarginalCarbonSum);
-        stats.put("global_reward_term_completion_step_sum",  epGlobalTermCompletionStepSum);
-        stats.put("global_reward_term_fit_mean",
-                  currentStep > 0 ? epGlobalTermFitSum / currentStep : 0.0);
-        stats.put("global_reward_term_marginal_carbon_mean",
-                  currentStep > 0 ? epGlobalTermMarginalCarbonSum / currentStep : 0.0);
-        stats.put("global_reward_term_completion_step_mean",
-                  currentStep > 0 ? epGlobalTermCompletionStepSum / currentStep : 0.0);
-
         return stats;
     }
 
@@ -2171,34 +1968,57 @@ public class MultiDatacenterSimulationCore {
     /**
      * Ensure all cloudlets complete before simulation ends.
      *
-     * <p>Installs a listener that, after every event, watches for the case
-     * where the future-events queue is about to drain while there are still
-     * unfinished cloudlets to dispatch.  When that happens, schedule a single
-     * NONE event one timestep ahead so the simulation does not terminate
-     * prematurely.
+     * <p>Installs a listener that fires after every event processed.  When
+     * the future-events queue is about to drain (only the current event left)
+     * AND there are still unfinished cloudlets to dispatch, the listener
+     * schedules a NONE event one timestep ahead so the simulation does not
+     * call {@link org.cloudsimplus.core.CloudSimPlus#finish()} prematurely.
      *
-     * <p>BUG-FIX 2026-05-12: the original implementation called
-     * {@link #getNumberOfFutureEvents()}, which delegates to a
-     * {@code stream().count()} over the entire TreeMap of pending events —
-     * <strong>O(N) per call</strong>.  Because this listener fires once per
-     * event processed and the v2 workload generates a large pending-event
-     * queue (broker dispatch + VM lifecycle + cloudlet arrival), the per-step
-     * cost was O(K · N) and at K ≈ N this blew up into an O(N²) hang
-     * (see thread dump from run 20260512_215937: 35 min stuck inside
-     * {@code TreeMap.KeySpliterator.forEachRemaining} on the very first step).
+     * <p>BUG-FIX 2026-05-13 (REWRITE of the 2026-05-12 fix):
      *
-     * <p>Fix: use {@link org.cloudsimplus.core.Simulation#noFutureEvents()},
-     * which is O(1).  Semantic shift: the trigger fires when the queue is
-     * <em>already</em> empty rather than when it is about to drain to a single
-     * event.  In CloudSim Plus's main loop, listeners run BEFORE the
-     * "queue empty? then terminate" check, so adding a NONE event here is
-     * still picked up in the same iteration — no observable change in
-     * simulation behaviour, only a huge perf improvement.
+     * <p>The original implementation used {@code getNumberOfFutureEvents() == 1}
+     * which is O(N) over a TreeMap on EVERY event — this caused 1st-step hang
+     * on v2 workload (see commit 10d6d87 message).  The 2026-05-12 attempted
+     * fix used {@code simulation.noFutureEvents()} (O(1) — checks queue
+     * emptiness), but this BROKE cloudlet completion (run
+     * {@code 20260512_225043}: 0 cloudlets finished over 7200 steps).
+     *
+     * <p>The reason: by inspecting the CloudSim Plus 8.5.5 bytecode for
+     * {@code processFutureEventsHappeningAtSameTimeOfTheFirstOne}:
+     * <pre>
+     *   0: processEvent(firstEvent)    ← fires THIS listener
+     *   5: future.remove(firstEvent)   ← only NOW is event removed from queue
+     * </pre>
+     * When the listener runs, the event being processed is STILL in the queue,
+     * so {@code noFutureEvents()} (which is {@code future.isEmpty()}) always
+     * returns {@code false} — the listener never fires.  Sim then calls
+     * {@code finish()} as soon as the last real event drains.
+     *
+     * <p>The original {@code == 1} semantic was correct: it means "the only
+     * event left is the one being processed right now" — i.e. the queue will
+     * be empty after the upcoming {@code future.remove()} call.
+     *
+     * <p>This rewrite keeps the {@code == 1} semantic but evaluates it in
+     * O(1) using {@code isThereAnyFutureEvt} with a short-circuiting counter
+     * predicate: it returns true on the second event matched, so the predicate
+     * runs at most twice regardless of queue size.
      */
     private void ensureAllCloudletsCompleteBeforeSimulationEnds() {
         double interval = settings.getSimulationTimestep();
         simulation.addOnEventProcessingListener(info -> {
-            if (simulation.noFutureEvents() && hasUnfinishedCloudlets()) {
+            // O(1) equivalent of `getNumberOfFutureEvents() == 1`: the
+            // predicate is invoked for each queued event until one returns
+            // true.  `++counter[0] > 1` returns true on the SECOND match
+            // (counter goes 1→2), so the stream short-circuits after seeing
+            // at most 2 events.  isThereAnyFutureEvt then returns:
+            //   - true  iff queue has ≥ 2 events  → don't schedule NONE
+            //   - false iff queue has ≤ 1 event   → about to drain
+            // (We can't have a literal queue size 0 here because the event
+            // being processed is still in the queue at this point in the
+            // CloudSim Plus event-processing chain.)
+            final int[] counter = {0};
+            boolean hasMoreThanOne = simulation.isThereAnyFutureEvt(e -> ++counter[0] > 1);
+            if (!hasMoreThanOne && hasUnfinishedCloudlets()) {
                 LOGGER.trace("Cloudlets not finished. Sending empty event to keep simulation running.");
 
                 // Send event to first datacenter to keep simulation alive
