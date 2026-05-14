@@ -170,8 +170,15 @@ class HierarchicalMultiDCEnv(gym.Env):
             )
         self.timecap_provider = None
         self._timecap_warmup_on_reset = False
-        if self.green_oracle_mode == "timecap" and not self._spaces_only:
-            self.timecap_provider = self._build_timecap_provider(config)
+        # Defer the TimeCAP provider construction (loads a 23.8M-param model
+        # plus wind/solar CSVs, ~1-2s, holds the GIL) to the first reset() call.
+        # Building eagerly inside __init__ blocks Ray's actor health-probe under
+        # the new API stack, so the EnvRunner actor gets marked unhealthy and
+        # silently drops every sample it later produces. See regression test
+        # test_timecap_lazy_build.py for the contract.
+        self._timecap_pending_build = (
+            self.green_oracle_mode == "timecap" and not self._spaces_only
+        )
 
         # 2026-05-12 Level A: flat-protocol opt-in.  When True, env.step() makes
         # a single Py4J call (`result.getStepAsFlatMap()`) and parses everything
@@ -183,8 +190,10 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         logger.info(f"HierarchicalMultiDCEnv initialised with {self.num_datacenters} datacenters")
         logger.info(f"  global_routing_batch_size: {self.global_routing_batch_size}")
-        logger.info(f"  green_oracle_mode: {self.green_oracle_mode} "
-                    f"(provider={'on' if self.timecap_provider is not None else 'off'})")
+        logger.info(
+            f"  green_oracle_mode: {self.green_oracle_mode} "
+            f"(provider={'pending (built on first reset)' if self._timecap_pending_build else 'off'})"
+        )
         logger.info(f"  use_flat_obs_protocol: {self.use_flat_obs_protocol}")
 
     def _build_timecap_provider(self, config: Dict[str, Any]):
@@ -342,6 +351,18 @@ class HierarchicalMultiDCEnv(gym.Env):
             "-q",
             f"--args=--port {port}",
         ]
+
+        # When running concurrent gateways across SLURM array tasks that share
+        # the repo on Lustre, the project-local <gateway>/.gradle cache lock
+        # (fileHashes.lock etc.) becomes a cross-node contention point and every
+        # task but one times out. Setting GRADLE_PROJECT_CACHE_DIR (typically to
+        # node-local $TMPDIR) redirects the project cache so each task gets its
+        # own isolated state.
+        project_cache_dir = os.environ.get("GRADLE_PROJECT_CACHE_DIR")
+        if project_cache_dir:
+            os.makedirs(project_cache_dir, exist_ok=True)
+            cmd.insert(1, "--project-cache-dir")
+            cmd.insert(2, project_cache_dir)
         
         logger.info(f"Launching Java Gateway on port {port}...")
         logger.debug(f"Command: {' '.join(cmd)}")
@@ -782,6 +803,12 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.current_step = 0
         self.episode_reward = 0.0
         self.done = False
+
+        # Lazy-build the TimeCAP provider on the first reset — keeps __init__
+        # cheap so Ray's EnvRunner actor registers before its first health probe.
+        if self._timecap_pending_build:
+            self.timecap_provider = self._build_timecap_provider(self.config)
+            self._timecap_pending_build = False
 
         # Reset TimeCAP rolling buffers BEFORE we parse the first observation
         # (because _convert_global_observation will push the first row).
