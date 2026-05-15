@@ -203,5 +203,7 @@ drl-manager/compare_result/
 # are tuned per-render and not meant to be canonical.
 drl-manager/scripts/plot_algo_compare.py
 drl-manager/scripts/plot_training_curve_demo.py
+drl-manager/scripts/plot_reward_curve_demo.py
 drl-manager/tests/test_plot_algo_compare.py
 drl-manager/tests/test_plot_training_curve_demo.py
+drl-manager/tests/test_plot_reward_curve_demo.py

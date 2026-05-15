@@ -143,21 +143,20 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
             max_seq_len=max_seq_len,
         )
 
-        # 2026-05-13 Level D perf: optionally JIT-compile the GTrXL backbone.
-        # The forward pass has a per-T Python loop (T ≈ 48 for our config) over
-        # ~15 small ops per layer → ~1.4k PyTorch op-dispatches per minibatch
-        # forward.  Each dispatch is ~50 µs of Python+kernel-launch overhead,
-        # which dominates total PPO update time for our tiny 0.47M-param model.
-        # torch.compile (PyTorch 2.x) fuses these small ops into a single
-        # graph + reduces Python overhead, typical 2-5× speedup for dispatch-
-        # bound models.  Defaults to ON; turn off via model_config["compile"]
-        # = False if compilation fails on a particular env / pytorch version.
-        compile_enabled = bool(model_config.get("compile", True))
-        if compile_enabled:
+        # 2026-05-13 Level D perf — REVERTED 2026-05-14 after smoke
+        # 20260514_181716 showed PPO update went 12 min → 35 min instead of
+        # speeding up.  Root cause: PPO's RLlib minibatch sampler produces
+        # several distinct shapes per epoch (full mb 2048, partial mbs of
+        # 128 and 1856 from the 80000/8000 sample buckets), and Inductor
+        # recompiles for every new shape despite dynamic=True — 18+ recompile
+        # events × ~90 sec each ≈ 25 min of pure compile cost.  Skipping
+        # torch.compile entirely is cleaner than fighting Inductor's
+        # recompile heuristics; Level B (sgd_minibatch_size 2048) gives us
+        # most of the win anyway by cutting Python dispatch count 4×.
+        # To re-enable for an experiment with fixed shapes, set
+        # model_config["compile"] = True.
+        if bool(model_config.get("compile", False)):
             try:
-                # mode='default' is the safe choice — it traces Python and
-                # applies operator fusion without requiring static-shape
-                # CUDAGraph capture (which can break with variable seq_lens).
                 self.gtrxl = torch.compile(self.gtrxl, mode="default", dynamic=True)
                 logger.info(f"[{self.__class__.__name__}] torch.compile(GTrXL) enabled")
             except Exception as e:
@@ -552,9 +551,9 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             max_seq_len=max_seq_len,
         )
 
-        # 2026-05-13 Level D perf — same torch.compile rationale as Local module above.
-        compile_enabled = bool(model_config.get("compile", True))
-        if compile_enabled:
+        # 2026-05-13 Level D perf — REVERTED, see Local module above for rationale.
+        # Default OFF.  Opt in by setting model_config["compile"] = True.
+        if bool(model_config.get("compile", False)):
             try:
                 self.gtrxl = torch.compile(self.gtrxl, mode="default", dynamic=True)
                 logger.info(f"[{self.__class__.__name__}] torch.compile(GTrXL) enabled")
