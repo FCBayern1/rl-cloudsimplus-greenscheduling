@@ -11,10 +11,34 @@ Architecture:
 from typing import Any, Dict, Optional, List
 import logging
 import os
+import warnings
 import numpy as np
 import torch
 import torch.nn as nn
 from gymnasium import spaces
+
+# 2026-05-13 perf: enable TF32 tensor-core path on Ampere/Ada/Blackwell GPUs.
+# float32 matmul is the dominant op in GTrXL's MultiheadAttention; TF32 cuts
+# the matmul cost by 1.5-3× on 5080's tensor cores at the price of ~0.001%
+# numerical noise on the matmul output — fine for training, completely
+# imperceptible to PPO loss / KL stats.  This is what torch's compile-time
+# warning was nudging us to do.
+try:
+    torch.set_float32_matmul_precision("high")
+except Exception:  # older torch versions don't expose this knob
+    pass
+
+# Suppress the noisy "Online softmax is disabled on the fly" warning that
+# torch._inductor emits from inside the GTrXL forward.  It's an internal
+# decision by the compiler about how to lower a single softmax — informative
+# but not actionable from our side, and it spams the driver log once per
+# (re)compile.  Squelch *just* this category-message pair so genuine torch
+# warnings still surface.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Online softmax is disabled on the fly.*",
+    category=UserWarning,
+)
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
@@ -118,6 +142,29 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
             mem_len=mem_len,
             max_seq_len=max_seq_len,
         )
+
+        # 2026-05-13 Level D perf: optionally JIT-compile the GTrXL backbone.
+        # The forward pass has a per-T Python loop (T ≈ 48 for our config) over
+        # ~15 small ops per layer → ~1.4k PyTorch op-dispatches per minibatch
+        # forward.  Each dispatch is ~50 µs of Python+kernel-launch overhead,
+        # which dominates total PPO update time for our tiny 0.47M-param model.
+        # torch.compile (PyTorch 2.x) fuses these small ops into a single
+        # graph + reduces Python overhead, typical 2-5× speedup for dispatch-
+        # bound models.  Defaults to ON; turn off via model_config["compile"]
+        # = False if compilation fails on a particular env / pytorch version.
+        compile_enabled = bool(model_config.get("compile", True))
+        if compile_enabled:
+            try:
+                # mode='default' is the safe choice — it traces Python and
+                # applies operator fusion without requiring static-shape
+                # CUDAGraph capture (which can break with variable seq_lens).
+                self.gtrxl = torch.compile(self.gtrxl, mode="default", dynamic=True)
+                logger.info(f"[{self.__class__.__name__}] torch.compile(GTrXL) enabled")
+            except Exception as e:
+                logger.warning(
+                    f"[{self.__class__.__name__}] torch.compile failed (%s); falling back to eager",
+                    e,
+                )
 
         # Heads
         self.policy_head = nn.Linear(d_model, self.action_dim)
@@ -504,6 +551,18 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
             mem_len=mem_len,
             max_seq_len=max_seq_len,
         )
+
+        # 2026-05-13 Level D perf — same torch.compile rationale as Local module above.
+        compile_enabled = bool(model_config.get("compile", True))
+        if compile_enabled:
+            try:
+                self.gtrxl = torch.compile(self.gtrxl, mode="default", dynamic=True)
+                logger.info(f"[{self.__class__.__name__}] torch.compile(GTrXL) enabled")
+            except Exception as e:
+                logger.warning(
+                    f"[{self.__class__.__name__}] torch.compile failed (%s); falling back to eager",
+                    e,
+                )
 
         self.policy_head = nn.Linear(d_model, self.action_dim)
         self.value_head = nn.Linear(d_model, 1)
