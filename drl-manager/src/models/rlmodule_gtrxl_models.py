@@ -8,6 +8,7 @@ Architecture:
 - Input (Dict/Flat) -> Embedding -> GTrXL (Gated Transformer) -> Heads
 """
 
+import math
 from typing import Any, Dict, Optional, List
 import logging
 import os
@@ -67,12 +68,18 @@ def _parse_gtrxl_state_in(
     d_model: int,
     device: torch.device,
     dtype: torch.dtype,
+    state_key: str = "gtrxl_mem",
 ) -> Optional[List[torch.Tensor]]:
-    """Build per-layer memory list from RLlib Columns.STATE_IN, or None to zero-init."""
+    """Build per-layer memory list from RLlib Columns.STATE_IN, or None to zero-init.
+
+    state_key: which sub-key in STATE_IN to read. Defaults to "gtrxl_mem" so
+    every pre-2026-05-19 caller keeps working unchanged. Route 2.5
+    dual-trunk modules pass "gtrxl_mem_actor" / "gtrxl_mem_critic".
+    """
     si = batch.get(Columns.STATE_IN)
     if not isinstance(si, dict) or si is None:
         return None
-    raw = si.get("gtrxl_mem")
+    raw = si.get(state_key)
     if raw is None:
         return None
     try:
@@ -93,8 +100,11 @@ def _parse_gtrxl_state_in(
         return None
 
 
-def _gtrxl_state_out(memories: List[torch.Tensor]) -> Dict[str, torch.Tensor]:
-    return {"gtrxl_mem": torch.stack(memories, dim=1)}
+def _gtrxl_state_out(
+    memories: List[torch.Tensor],
+    state_key: str = "gtrxl_mem",
+) -> Dict[str, torch.Tensor]:
+    return {state_key: torch.stack(memories, dim=1)}
 
 class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     """
@@ -812,4 +822,566 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         """
         Return attributes that are not needed for inference.
         """
+        return ["value_head", "_last_value"]
+
+
+class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
+    """
+    Score-based Global RLModule for hierarchical multi-DC scheduling.
+
+    Replaces 10 independent per-slot heads with a **structured pairwise score**
+    function:
+
+        logits[B, T, i, d] = <q_i, k_d> / sqrt(D)
+
+    where
+        q_i = cloudlet_emb[i] + ctx_to_cloudlet(context_feat)
+        k_d = dc_emb[d]       + ctx_to_dc(context_feat)
+
+    The per-cloudlet embedding and per-DC embedding share weights across
+    cloudlets/DCs respectively, so the score is permutation-equivariant in
+    both axes.  Combined with the softmax-per-cloudlet structure exposed via
+    MultiDiscrete, this collapses an effective 10^10 joint action space into
+    10 independent N_dc-way softmaxes — same API as the old module, but
+    massively reduced sample complexity (10^5-10^8x).
+
+    Why: old GTrXLGlobalRLModule had `policy_head = Linear(d, N_batch*N_dc)`,
+    so each (slot, DC) entry got an independent column.  The agent could
+    not generalize "DC 3 is overloaded" from one slot to another.  Score
+    function shares the DC features across all slots → reading the
+    green/load state of DC d helps every routing decision.
+    """
+
+    @override(TorchRLModule)
+    def setup(self):
+        model_config = self.model_config
+        obs_space = self.observation_space
+        action_space = self.action_space
+
+        # === Action space ===
+        if not isinstance(action_space, spaces.MultiDiscrete):
+            raise ValueError(
+                "GTrXLScoreBasedGlobalRLModule requires MultiDiscrete action "
+                f"space; got {type(action_space)}"
+            )
+        nvec = [int(x) for x in action_space.nvec]
+        self.num_dcs = nvec[0]
+        self.num_batch_slots = len(nvec)
+        if not all(n == self.num_dcs for n in nvec):
+            raise ValueError(
+                "Score-based module assumes all MultiDiscrete components are "
+                f"equal (uniform per-slot DC choice); got nvec={nvec}"
+            )
+        self.action_dim = int(sum(nvec))
+        self.action_dist_cls = self._get_multi_categorical_cls(action_space)
+
+        # === Categorize obs keys ===
+        inner = obs_space
+        if isinstance(obs_space, spaces.Dict) and "observation" in obs_space.spaces:
+            inner = obs_space.spaces["observation"]
+        if not isinstance(inner, spaces.Dict):
+            raise ValueError(
+                "Score-based module expects a Dict observation; got "
+                f"{type(inner)}"
+            )
+        self._categorize_keys(inner)
+
+        # === Config ===
+        d_model = int(model_config.get("d_model", 128))
+        nhead = int(model_config.get("nhead", 4))
+        num_layers = int(model_config.get("num_layers", 2))
+        dim_feedforward = int(model_config.get("dim_feedforward", 256))
+        dropout = float(model_config.get("dropout", 0.0))
+        mem_len = int(model_config.get("mem_len", 16))
+        max_seq_len = int(model_config.get("max_seq_len", 128))
+        max_seq_len = max(max_seq_len, mem_len + 32)
+        self.d_model = d_model
+
+        # === GTrXL on global context ===
+        self.gtrxl = GTrXL(
+            input_dim=max(1, self.context_dim),
+            d_model=d_model,
+            nhead=nhead,
+            num_layers=num_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            mem_len=mem_len,
+            max_seq_len=max_seq_len,
+        )
+
+        if bool(model_config.get("compile", False)):
+            try:
+                self.gtrxl = torch.compile(self.gtrxl, mode="default", dynamic=True)
+                logger.info(f"[{self.__class__.__name__}] torch.compile(GTrXL) enabled")
+            except Exception as e:
+                logger.warning(
+                    f"[{self.__class__.__name__}] torch.compile failed (%s); falling back to eager",
+                    e,
+                )
+
+        # === Input normalization (2026-05-17 first-smoke fix) ===
+        # First Stage 3 smoke (logs/.../20260517_012131): after iter 1 PPO update
+        # we got global_entropy=0.348 (down from ~22), global_mean_kl=inf,
+        # global_grad_norm=255.
+        # Two compounding causes:
+        #   (a) raw obs scale: batch_cloudlet_mi is up to 2e6 while pes is up to
+        #       100.  cloudlet_encoder (Linear(2, D)) outputs ~|mi|·||W|| which
+        #       totally dominates the embedding direction → all slots see the
+        #       same "this cloudlet is big" feature → all logits move together.
+        #   (b) 10 routing slots share dc_encoder + ctx_to_dc, so a PPO step
+        #       that pushes one DC's prob down receives ~10× the gradient on
+        #       the shared params → step too large → KL blows up.
+        # We address (a) here with input scale buffers built from obs_space.high
+        # (Box `high` of each feature); the inputs get divided by their high so
+        # everything lives in roughly [-1, 1] before hitting the encoders.
+        # Note: input normalization is just rescaling — no information loss
+        # (unlike LayerNorm, which would strip magnitude post-encoding).
+        # We address (b) via the config-level fix (smaller global lr + tighter
+        # clip_range) — see config.yml global_model block.
+        self._build_input_scale_buffers(inner)
+
+        # === Encoders ===
+        self.cloudlet_encoder = nn.Linear(max(1, self.cloudlet_feat_dim), d_model)
+        self.dc_encoder = nn.Linear(max(1, self.dc_feat_dim), d_model)
+        self.ctx_to_cloudlet = nn.Linear(d_model, d_model)
+        self.ctx_to_dc = nn.Linear(d_model, d_model)
+
+        # Smaller init on the per-axis encoders so that initial scores are
+        # close to uniform (||q||,||k|| ≈ 0.1 instead of ≈ 1.0) — gives PPO a
+        # gentle starting policy so the first update doesn't have a
+        # 0.9 → 0.0 prob jump anywhere.
+        small_init_gain = float(model_config.get("score_encoder_init_gain", 0.3))
+        with torch.no_grad():
+            self.cloudlet_encoder.weight.mul_(small_init_gain)
+            self.dc_encoder.weight.mul_(small_init_gain)
+
+        # score_temperature divides the cosine-style score, making initial
+        # logits flatter still (softmax closer to uniform).
+        self.score_temperature = float(model_config.get("score_temperature", 2.0))
+
+        # === Route 2.5 (2026-05-19): independent critic trunk ===
+        # 100-iter run 20260518_151653 ended with vf_explained_var ≈ 0 (oscillating
+        # -0.25..+0.18) and the agent FOUND a good policy at iter 40 (c/c=2.063)
+        # but couldn't STAY there — drifted back to c/c=2.10 by iter 100.
+        # Diagnosis: value loss back-prop through the SHARED encoders (cloudlet_*
+        # + dc_* + gtrxl) was injecting noise into the policy gradient, so the
+        # agent kept walking away from the iter-40 optimum.
+        # Fix: when `critic_separate_trunk=true`, build a parallel copy of the
+        # input-encoder + GTrXL trunk dedicated to the value path; the policy
+        # path is untouched.  This isolates the two gradient flows.
+        # When false (default), keep the original shared-trunk behavior — old
+        # checkpoints stay loadable and existing tests stay green.
+        self._critic_separate_trunk = bool(
+            model_config.get("critic_separate_trunk", False)
+        )
+        if self._critic_separate_trunk:
+            # Mirror the actor-side encoders + GTrXL — independent params.
+            self.critic_cloudlet_encoder = nn.Linear(
+                max(1, self.cloudlet_feat_dim), d_model
+            )
+            self.critic_dc_encoder = nn.Linear(
+                max(1, self.dc_feat_dim), d_model
+            )
+            self.critic_gtrxl = GTrXL(
+                input_dim=max(1, self.context_dim),
+                d_model=d_model,
+                nhead=nhead,
+                num_layers=num_layers,
+                dim_feedforward=dim_feedforward,
+                dropout=dropout,
+                mem_len=mem_len,
+                max_seq_len=max_seq_len,
+            )
+            # Optional compile, mirroring the actor branch.
+            if bool(model_config.get("compile", False)):
+                try:
+                    self.critic_gtrxl = torch.compile(
+                        self.critic_gtrxl, mode="default", dynamic=True
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[{self.__class__.__name__}] torch.compile(critic_gtrxl) "
+                        f"failed ({e}); using eager.",
+                    )
+            # Value head: LayerNorm + 2-layer MLP (MAPPO recipe — value loss
+            # converges much faster than the original `Linear(3D, 1)`).
+            self.value_head = nn.Sequential(
+                nn.LayerNorm(3 * d_model),
+                nn.Linear(3 * d_model, d_model),
+                nn.ReLU(),
+                nn.Linear(d_model, 1),
+            )
+        else:
+            # Original shared-trunk path — kept for backward compat.
+            self.value_head = nn.Linear(3 * d_model, 1)
+
+        self._last_value = None
+        self._debug_dumped = False
+
+        total_params = sum(p.numel() for p in self.parameters())
+        logger.info(
+            f"[{self.__class__.__name__}] N_dc={self.num_dcs} "
+            f"N_batch={self.num_batch_slots} d_model={d_model} "
+            f"dc_feat_dim={self.dc_feat_dim} cloudlet_feat_dim={self.cloudlet_feat_dim} "
+            f"context_dim={self.context_dim} total_params={total_params:,}"
+        )
+        logger.info(f"[{self.__class__.__name__}] dc_keys={self.dc_keys}")
+        logger.info(f"[{self.__class__.__name__}] cloudlet_keys={self.cloudlet_keys}")
+        logger.info(f"[{self.__class__.__name__}] context_keys={self.context_keys}")
+
+        # 2026-05-18 BC warm-start: optionally seed weights from a behavioral-
+        # cloning checkpoint produced by src.training.bc_warmstart.  The
+        # checkpoint is a plain torch.save(state_dict) — same architecture is
+        # required (we just check param-name compatibility via load_state_dict
+        # with strict=True so a mismatch surfaces loudly instead of silently
+        # zeroing-out half the weights).
+        bc_ckpt = model_config.get("bc_checkpoint_path") or None
+        if bc_ckpt:
+            try:
+                state = torch.load(bc_ckpt, map_location="cpu", weights_only=True)
+                self.load_state_dict(state, strict=True)
+                logger.info(
+                    f"[{self.__class__.__name__}] BC warm-start: loaded "
+                    f"weights from {bc_ckpt} ({len(state)} tensors)"
+                )
+            except Exception as e:
+                # Loud failure: a misconfigured BC checkpoint would let PPO
+                # quietly start from random init, exactly the failure mode
+                # warm-start was supposed to prevent.  Raise rather than fall
+                # back.
+                raise RuntimeError(
+                    f"BC warm-start: failed to load checkpoint from {bc_ckpt}: {e}"
+                ) from e
+
+    def _build_input_scale_buffers(self, obs_space: spaces.Dict) -> None:
+        """
+        Compute per-feature 1/high scale factors for per-DC and per-cloudlet
+        inputs.  We expose them as buffers (not Parameters) so they move with
+        the module to GPU but don't receive gradient.
+
+        Stored as (1, 1, 1, F) tensors so broadcasting against (B, T, N, F)
+        works on the last dim automatically.
+        """
+        def _key_scale(key: str) -> float:
+            sub = obs_space.spaces[key]
+            if not isinstance(sub, spaces.Box):
+                return 1.0
+            high = float(np.max(np.abs(sub.high)))
+            if not np.isfinite(high) or high < 1e-6:
+                return 1.0
+            return 1.0 / high
+
+        dc_scales = [_key_scale(k) for k in self.dc_keys] if self.dc_keys else [1.0]
+        cloudlet_scales = [_key_scale(k) for k in self.cloudlet_keys] if self.cloudlet_keys else [1.0]
+
+        # Shape (1, 1, 1, F) so broadcasting hits the F dim of (B, T, N, F).
+        self.register_buffer(
+            "_dc_scale",
+            torch.tensor(dc_scales, dtype=torch.float32).view(1, 1, 1, -1),
+        )
+        self.register_buffer(
+            "_cloudlet_scale",
+            torch.tensor(cloudlet_scales, dtype=torch.float32).view(1, 1, 1, -1),
+        )
+
+    def _categorize_keys(self, obs_space: spaces.Dict) -> None:
+        """
+        Auto-bucket obs keys into per-DC, per-cloudlet, or context using
+        prefix rules:
+            - "dc_*"             → per-DC      (expects shape (N_dc,))
+            - "batch_cloudlet_*" → per-cloudlet (expects shape (N_batch_slots,))
+            - everything else    → context (flattened)
+        Shape mismatches raise so we fail loudly instead of running with a
+        degenerate score function.
+        """
+        self.dc_keys: List[str] = []
+        self.cloudlet_keys: List[str] = []
+        self.context_keys: List[str] = []
+        self.dc_feat_dim = 0
+        self.cloudlet_feat_dim = 0
+        self.context_dim = 0
+
+        for key in sorted(obs_space.spaces.keys()):
+            sub = obs_space.spaces[key]
+            if not isinstance(sub, spaces.Box):
+                self.context_keys.append(key)
+                self.context_dim += 1
+                continue
+
+            shape = tuple(sub.shape)
+            if key.startswith("dc_"):
+                if shape != (self.num_dcs,):
+                    raise ValueError(
+                        f"Per-DC key {key!r} has shape {shape}, expected ({self.num_dcs},)"
+                    )
+                self.dc_keys.append(key)
+                self.dc_feat_dim += 1
+            elif key.startswith("batch_cloudlet"):
+                if shape != (self.num_batch_slots,):
+                    raise ValueError(
+                        f"Per-cloudlet key {key!r} has shape {shape}, expected "
+                        f"({self.num_batch_slots},)"
+                    )
+                self.cloudlet_keys.append(key)
+                self.cloudlet_feat_dim += 1
+            else:
+                self.context_keys.append(key)
+                self.context_dim += int(np.prod(shape))
+
+    @override(TorchRLModule)
+    def get_initial_state(self):
+        actor_mem = np.zeros(
+            (self.gtrxl.num_layers, self.gtrxl.mem_len, self.gtrxl.d_model),
+            dtype=np.float32,
+        )
+        if self._critic_separate_trunk:
+            critic_mem = np.zeros(
+                (
+                    self.critic_gtrxl.num_layers,
+                    self.critic_gtrxl.mem_len,
+                    self.critic_gtrxl.d_model,
+                ),
+                dtype=np.float32,
+            )
+            return {
+                "gtrxl_mem_actor": actor_mem,
+                "gtrxl_mem_critic": critic_mem,
+            }
+        return {"gtrxl_mem": actor_mem}
+
+    def _to_btD(self, t: torch.Tensor, trailing_len: int) -> torch.Tensor:
+        """Normalize a per-step tensor with trailing length `trailing_len` to (B, T, trailing_len)."""
+        t = t.float() if t.dtype != torch.float32 else t
+        if t.dim() == 2 and t.shape[-1] == trailing_len:
+            return t.unsqueeze(1)  # (B, D) → (B, 1, D)
+        if t.dim() == 3 and t.shape[-1] == trailing_len:
+            return t
+        raise RuntimeError(
+            f"Cannot normalize tensor of shape {tuple(t.shape)} to (B, T, {trailing_len})"
+        )
+
+    def _split_obs(self, obs_dict: Dict[str, torch.Tensor]):
+        """
+        Split obs dict into:
+          per_dc       : (B, T, N_dc, F_dc)
+          per_cloudlet : (B, T, N_batch_slots, F_c)
+          context      : (B, T, F_ctx)
+        """
+        # Per-DC: each key is (B, [T,] N_dc).  Stack along new last axis.
+        dc_tensors = [
+            self._to_btD(obs_dict[k], self.num_dcs) for k in self.dc_keys
+        ]
+        cloudlet_tensors = [
+            self._to_btD(obs_dict[k], self.num_batch_slots) for k in self.cloudlet_keys
+        ]
+        if dc_tensors:
+            per_dc = torch.stack(dc_tensors, dim=-1)  # (B, T, N_dc, F_dc)
+        else:
+            raise RuntimeError("No per-DC features found in obs")
+        if cloudlet_tensors:
+            per_cloudlet = torch.stack(cloudlet_tensors, dim=-1)
+        else:
+            raise RuntimeError("No per-cloudlet features found in obs")
+
+        # Context: concat — each key is (B, [T,] F_k)
+        ctx_pieces: List[torch.Tensor] = []
+        for k in self.context_keys:
+            v = obs_dict[k]
+            v = v.float() if v.dtype != torch.float32 else v
+            if v.dim() == 1:
+                v = v.unsqueeze(-1)  # (B,) → (B, 1)
+            if v.dim() == 2:
+                # (B, F) → (B, 1, F)
+                v = v.unsqueeze(1)
+            elif v.dim() == 3:
+                pass
+            else:
+                raise ValueError(f"Context key {k!r}: unexpected shape {tuple(v.shape)}")
+            v = v.reshape(v.shape[0], v.shape[1], -1)
+            ctx_pieces.append(v)
+        if not ctx_pieces:
+            ctx_pieces = [torch.zeros((per_dc.shape[0], per_dc.shape[1], 1), device=per_dc.device)]
+        context = torch.cat(ctx_pieces, dim=-1)  # (B, T, F_ctx)
+
+        # Align T across per_dc / per_cloudlet / context.
+        T_target = max(per_dc.shape[1], per_cloudlet.shape[1], context.shape[1])
+
+        def _align(t):
+            if t.shape[1] == T_target:
+                return t
+            if t.shape[1] == 1:
+                return t.expand(t.shape[0], T_target, *t.shape[2:]).contiguous()
+            raise RuntimeError(f"Mismatched T: have {t.shape[1]} vs target {T_target}")
+
+        return _align(per_dc), _align(per_cloudlet), _align(context)
+
+    def _forward_pass(self, batch: Dict[str, Any], state_in: Any = None):
+        obs = batch.get(Columns.OBS, batch.get("obs", {}))
+        if isinstance(obs, dict) and "observation" in obs:
+            obs = obs["observation"]
+        if not isinstance(obs, dict):
+            raise RuntimeError(
+                f"[{self.__class__.__name__}] expected dict obs, got {type(obs)}"
+            )
+
+        per_dc, per_cloudlet, context = self._split_obs(obs)
+
+        if not self._debug_dumped:
+            self._debug_dumped = True
+            logger.debug("=" * 70)
+            logger.debug(f"=== [{self.__class__.__name__}] DEBUG DUMP ===")
+            logger.debug(f"per_dc       : {tuple(per_dc.shape)}")
+            logger.debug(f"per_cloudlet : {tuple(per_cloudlet.shape)}")
+            logger.debug(f"context      : {tuple(context.shape)}")
+            logger.debug("=" * 70)
+
+        if _DEBUG_NAN_CHECKS:
+            for name, t in [("per_dc", per_dc), ("per_cloudlet", per_cloudlet), ("context", context)]:
+                if not torch.isfinite(t).all():
+                    raise ValueError(f"Non-finite values in {name}")
+
+        B = context.shape[0]
+
+        # === Actor branch (always present) ===
+        # State key: with dual-trunk we use "gtrxl_mem_actor" to keep actor and
+        # critic memories separate; with shared-trunk we keep the legacy
+        # "gtrxl_mem" so old checkpoints / get_initial_state contracts round-trip.
+        actor_state_key = "gtrxl_mem_actor" if self._critic_separate_trunk else "gtrxl_mem"
+        actor_memories_in = _parse_gtrxl_state_in(
+            batch,
+            B,
+            self.gtrxl.num_layers,
+            self.gtrxl.mem_len,
+            self.gtrxl.d_model,
+            context.device,
+            context.dtype,
+            state_key=actor_state_key,
+        )
+        ctx_features, actor_memories_out = self.gtrxl(
+            context, state=actor_memories_in
+        )
+
+        if _DEBUG_NAN_CHECKS and not torch.isfinite(ctx_features).all():
+            raise ValueError("Non-finite values in ctx_features")
+
+        # Input scale fix: divide by obs_space.high so raw values (e.g. mi=2e6,
+        # pes=100, green_power=5e6) all live in ~[-1, 1].  Preserves info
+        # (unlike LayerNorm) and keeps the encoders' first-layer outputs O(1).
+        per_dc = per_dc * self._dc_scale  # broadcast on last (feature) dim
+        per_cloudlet = per_cloudlet * self._cloudlet_scale
+
+        cloudlet_emb = self.cloudlet_encoder(per_cloudlet)  # (B, T, N_b, D)
+        dc_emb = self.dc_encoder(per_dc)                    # (B, T, N_d, D)
+
+        q = cloudlet_emb + self.ctx_to_cloudlet(ctx_features).unsqueeze(2)
+        k = dc_emb       + self.ctx_to_dc(ctx_features).unsqueeze(2)
+
+        scores = torch.einsum("btid,btjd->btij", q, k) / (
+            math.sqrt(self.d_model) * self.score_temperature
+        )
+        T = scores.shape[1]
+        logits = scores.reshape(B, T, self.action_dim)
+
+        # === Critic branch ===
+        if self._critic_separate_trunk:
+            # Independent encoders + GTrXL trunk → value gradient never reaches
+            # actor parameters.  Tested by test_critic_separate_trunk_actor_grad_isolated.
+            crit_cloudlet_emb = self.critic_cloudlet_encoder(per_cloudlet)
+            crit_dc_emb = self.critic_dc_encoder(per_dc)
+            crit_memories_in = _parse_gtrxl_state_in(
+                batch,
+                B,
+                self.critic_gtrxl.num_layers,
+                self.critic_gtrxl.mem_len,
+                self.critic_gtrxl.d_model,
+                context.device,
+                context.dtype,
+                state_key="gtrxl_mem_critic",
+            )
+            crit_ctx_features, crit_memories_out = self.critic_gtrxl(
+                context, state=crit_memories_in
+            )
+            crit_dc_pooled = crit_dc_emb.mean(dim=2)
+            crit_cloudlet_pooled = crit_cloudlet_emb.mean(dim=2)
+            value_input = torch.cat(
+                [crit_ctx_features, crit_dc_pooled, crit_cloudlet_pooled],
+                dim=-1,
+            )
+            values = self.value_head(value_input).squeeze(-1)  # (B, T)
+            state_out = {
+                **_gtrxl_state_out(actor_memories_out, state_key="gtrxl_mem_actor"),
+                **_gtrxl_state_out(crit_memories_out, state_key="gtrxl_mem_critic"),
+            }
+        else:
+            # Shared-trunk legacy path — value head reads the actor's encoders.
+            dc_pooled = dc_emb.mean(dim=2)
+            cloudlet_pooled = cloudlet_emb.mean(dim=2)
+            value_input = torch.cat([ctx_features, dc_pooled, cloudlet_pooled], dim=-1)
+            values = self.value_head(value_input).squeeze(-1)  # (B, T)
+            state_out = _gtrxl_state_out(actor_memories_out, state_key="gtrxl_mem")
+
+        return logits, values, state_out
+
+    @override(TorchRLModule)
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        logits, values, state_out = self._forward_pass(batch)
+        self._last_value = values
+        return {
+            Columns.ACTION_DIST_INPUTS: logits,
+            Columns.VF_PREDS: values,
+            Columns.STATE_OUT: state_out,
+        }
+
+    @override(TorchRLModule)
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        logits, _, state_out = self._forward_pass(batch)
+        logits = logits[:, -1, :]
+        return {
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.STATE_OUT: state_out,
+        }
+
+    @override(TorchRLModule)
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        logits, values, state_out = self._forward_pass(batch)
+        logits = logits[:, -1, :]
+        values = values[:, -1]
+        self._last_value = values
+        return {
+            Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
+            Columns.VF_PREDS: values.unsqueeze(1),
+            Columns.STATE_OUT: state_out,
+        }
+
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
+        with torch.inference_mode():
+            _, values, _ = self._forward_pass(batch)
+        return values.clone()
+
+    def _get_multi_categorical_cls(self, action_space):
+        input_lens = list(action_space.nvec)
+
+        class BoundMultiCategorical(TorchMultiCategorical):
+            @staticmethod
+            def from_logits(logits, **kwargs):
+                return TorchMultiCategorical.from_logits(
+                    logits, input_lens=input_lens, **kwargs
+                )
+
+        return BoundMultiCategorical
+
+    @override(TorchRLModule)
+    def get_exploration_action_dist_cls(self):
+        return self.action_dist_cls
+
+    @override(TorchRLModule)
+    def get_inference_action_dist_cls(self):
+        return self.action_dist_cls
+
+    @override(TorchRLModule)
+    def get_train_action_dist_cls(self):
+        return self.action_dist_cls
+
+    def get_non_inference_attributes(self):
         return ["value_head", "_last_value"]

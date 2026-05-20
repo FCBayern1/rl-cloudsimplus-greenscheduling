@@ -193,15 +193,34 @@ def _plot_energy(df: pd.DataFrame, out: Path) -> None:
 
 
 def _plot_global_reward_breakdown(df: pd.DataFrame, out: Path) -> None:
-    """Stacked contribution of each global-reward term (episode sums)."""
+    """Stacked contribution of each global-reward term (episode sums).
+
+    NOTE: In Stage 1 per-action-reward configs (v2 onwards) the 5 older terms
+    are explicitly disabled (alpha/beta/gamma=0), and the only signal comes
+    from `global_term_per_action_sum` — so we MUST include it here or the
+    plot looks empty.  Drop any term whose values are identically zero
+    across the whole run so the legend doesn't get cluttered with flat lines.
+    """
     cols = [
-        ("global_term_local_sum",        "α·L̄",          "tab:blue"),
-        ("global_term_carbon_sum",       "−β·Ĉ",          "tab:red"),
-        ("global_term_waste_sum",        "−γ·R_w",        "tab:olive"),
-        ("global_term_throughput_sum",   "+k_T·log1pΔMI", "tab:green"),
-        ("global_term_completion_mi_sum","+k_C·Δcompl",   "tab:purple"),
+        ("global_term_local_sum",         "α·L̄",            "tab:blue"),
+        ("global_term_carbon_sum",        "−β·Ĉ",            "tab:red"),
+        ("global_term_waste_sum",         "−γ·R_w",          "tab:olive"),
+        ("global_term_throughput_sum",    "+k_T·log1pΔMI",   "tab:green"),
+        ("global_term_completion_mi_sum", "+k_C·Δcompl",     "tab:purple"),
+        ("global_term_per_action_sum",    "Σ rᵢ (per-action diff)", "tab:orange"),
     ]
-    avail = [(c, lbl, col) for c, lbl, col in cols if _has(df, c)]
+    avail = []
+    for c, lbl, col in cols:
+        if not _has(df, c):
+            continue
+        # Drop columns that are identically zero — they're disabled in the
+        # current reward config and just clutter the legend.
+        try:
+            if float(df[c].abs().max()) <= 1e-12:
+                continue
+        except Exception:
+            pass
+        avail.append((c, lbl, col))
     if not avail:
         return
     fig, ax = plt.subplots(figsize=(11, 5))

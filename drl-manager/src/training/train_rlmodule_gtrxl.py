@@ -44,10 +44,15 @@ from gym_cloudsimplus.envs import (
 )
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.callbacks.lagrangian_callback import LagrangianCallback
+from src.training.wandb_integration import (
+    build_wandb_callbacks,
+    upload_run_artifacts,
+)
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from src.models.rlmodule_gtrxl_models import (
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
+    GTrXLScoreBasedGlobalRLModule,
 )
 # CTDE module is optional — the class was removed in the lag-modification
 # refactor and is only needed when ctde.enabled=true in the env config.
@@ -304,6 +309,16 @@ def _merged_gtrxl_model_settings(
         m["mem_len"] = g["mem_len"]
     if "max_seq_len" in g:
         m["max_seq_len"] = g["max_seq_len"]
+    if "use_score_based" in g:
+        m["use_score_based"] = bool(g["use_score_based"])
+    if "score_encoder_init_gain" in g:
+        m["score_encoder_init_gain"] = float(g["score_encoder_init_gain"])
+    if "score_temperature" in g:
+        m["score_temperature"] = float(g["score_temperature"])
+    if "bc_checkpoint_path" in g:
+        m["bc_checkpoint_path"] = str(g["bc_checkpoint_path"])
+    if "critic_separate_trunk" in g:
+        m["critic_separate_trunk"] = bool(g["critic_separate_trunk"])
     return m
 
 
@@ -367,6 +382,17 @@ def create_rlmodule_config(
         "dropout": gm.get("dropout", 0.0),
         "max_seq_len": int(gm.get("max_seq_len", 128)),
         "mem_len": int(gm.get("mem_len", 16)),
+        "use_score_based": bool(gm.get("use_score_based", False)),
+        "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
+        "score_temperature": float(gm.get("score_temperature", 2.0)),
+        # BC warm-start: empty string = disabled; absolute path = load before
+        # PPO starts.  Only the global module reads this key; locals ignore it.
+        "bc_checkpoint_path": str(gm.get("bc_checkpoint_path", "") or ""),
+        # Route 2.5 (2026-05-19): when true, the score-based global module
+        # builds an independent encoder + GTrXL trunk for the value path so
+        # value-loss gradients don't perturb actor weights.  See
+        # rlmodule_gtrxl_models.GTrXLScoreBasedGlobalRLModule.setup.
+        "critic_separate_trunk": bool(gm.get("critic_separate_trunk", False)),
     }
 
     logger.info(f"GTrXL Config: {gtrxl_config}")
@@ -402,7 +428,20 @@ def create_rlmodule_config(
     # ------------------------------------------------------------------
     crd_cfg = env_config.get("crd", {}) or {}
     crd_enabled = bool(crd_cfg.get("enabled", False)) if isinstance(crd_cfg, dict) else False
-    global_module_class = GTrXLGlobalRLModule
+
+    # Stage 3 (2026-05-17): score-based routing module.
+    # Set gtrxl.global_model.use_score_based: true to swap the 10-independent-head
+    # GTrXLGlobalRLModule for the pairwise-score GTrXLScoreBasedGlobalRLModule.
+    # Default OFF for backward compatibility with prior runs.
+    use_score_based_global = bool(gtrxl_config.get("use_score_based", False))
+    if use_score_based_global:
+        global_module_class = GTrXLScoreBasedGlobalRLModule
+        logger.info(
+            "[Stage 3] use_score_based=true → GTrXLScoreBasedGlobalRLModule "
+            "(pairwise cloudlet×DC scoring, permutation-equivariant)"
+        )
+    else:
+        global_module_class = GTrXLGlobalRLModule
     crd_learner_class: Optional[type] = None
     if crd_enabled:
         if ctde_enabled:
@@ -721,6 +760,19 @@ def train_rlmodule_gtrxl(
         max_report_frequency=5,
     )
 
+    # wandb logger callback (no-op when wandb.enabled=false or wandb missing)
+    experiment_name = env_config.get("experiment_name", "gtrxl_run")
+    _wandb_cfg = env_config.get("wandb") or {}
+    wandb_run_name = (
+        _wandb_cfg.get("run_name_override")
+        or f"{experiment_name}_{Path(output_dir).name}"
+    )
+    wandb_callbacks = build_wandb_callbacks(
+        env_config,
+        experiment_name=experiment_name,
+        run_name=wandb_run_name,
+    )
+
     # Tuner
     run_config = air.RunConfig(
         name="multidc_gtrxl_training",
@@ -729,6 +781,7 @@ def train_rlmodule_gtrxl(
         checkpoint_config=checkpoint_config,
         verbose=0,
         progress_reporter=progress_reporter,
+        callbacks=wandb_callbacks or None,
     )
 
     tuner = tune.Tuner(
@@ -770,6 +823,18 @@ def train_rlmodule_gtrxl(
             logger.info("Auto-plot generated %d figures under %s/plots/", len(generated), output_dir)
     except Exception:
         logger.warning("auto_plot failed", exc_info=True)
+
+    # Push monitor.csv / best_episode_details.csv / plots back to wandb as an
+    # artifact attached to the same run.  No-op when wandb is disabled.
+    try:
+        upload_run_artifacts(
+            env_config,
+            output_dir,
+            experiment_name=experiment_name,
+            run_name=wandb_run_name,
+        )
+    except Exception:
+        logger.warning("wandb artifact upload failed", exc_info=True)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:

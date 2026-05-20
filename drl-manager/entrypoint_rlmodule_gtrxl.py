@@ -97,6 +97,54 @@ def main():
         default=None,
         help="Random seed"
     )
+    parser.add_argument(
+        "--bc-checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Path to a BC warm-start checkpoint (produced by "
+            "src.training.bc_warmstart.run_bc_warmstart). The global RLModule "
+            "loads its state_dict from this file before PPO starts. "
+            "Overrides experiment_config.gtrxl.bc_checkpoint_path if set."
+        ),
+    )
+    # --- Weights & Biases overrides ---------------------------------------
+    parser.add_argument(
+        "--no-wandb",
+        action="store_true",
+        help="Disable wandb logging for this run (overrides config.yml::wandb.enabled).",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="Override config.yml::wandb.project.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=None,
+        help="Override config.yml::wandb.entity (your wandb team or username).",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="Override the wandb run name (default: timestamped output directory).",
+    )
+    parser.add_argument(
+        "--wandb-tags",
+        type=str,
+        default=None,
+        help="Comma-separated wandb tags, appended to config.yml::wandb.tags.",
+    )
+    parser.add_argument(
+        "--wandb-mode",
+        type=str,
+        default=None,
+        choices=["online", "offline", "disabled"],
+        help="wandb mode (default: from config; 'offline' caches locally for later sync).",
+    )
 
     args = parser.parse_args()
 
@@ -147,6 +195,35 @@ def main():
         training_config["total_timesteps"] = args.total_timesteps
     if args.num_gpus is not None:
         training_config["num_gpus"] = args.num_gpus
+    if args.bc_checkpoint:
+        # CLI flag goes into experiment_config.gtrxl, which is read by
+        # _merged_gtrxl_model_settings → model_config.bc_checkpoint_path →
+        # GTrXLScoreBasedGlobalRLModule.setup() does the load_state_dict.
+        bc_ckpt_abs = str(Path(args.bc_checkpoint).resolve())
+        if not Path(bc_ckpt_abs).exists():
+            logger.error(f"BC checkpoint not found: {bc_ckpt_abs}")
+            sys.exit(1)
+        env_config.setdefault("gtrxl", {})
+        env_config["gtrxl"]["bc_checkpoint_path"] = bc_ckpt_abs
+        logger.info(f"[BC warm-start] global module will load {bc_ckpt_abs}")
+
+    # --- wandb CLI overrides -------------------------------------------------
+    env_config.setdefault("wandb", {})
+    if args.no_wandb:
+        env_config["wandb"]["enabled"] = False
+    if args.wandb_project is not None:
+        env_config["wandb"]["project"] = args.wandb_project
+    if args.wandb_entity is not None:
+        env_config["wandb"]["entity"] = args.wandb_entity
+    if args.wandb_mode is not None:
+        env_config["wandb"]["mode"] = args.wandb_mode
+    if args.wandb_tags:
+        extra_tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
+        existing = list(env_config["wandb"].get("tags") or [])
+        env_config["wandb"]["tags"] = existing + extra_tags
+    # --wandb-run-name is forwarded later via training_config so train_rlmodule_gtrxl can read it
+    if args.wandb_run_name:
+        env_config["wandb"]["run_name_override"] = args.wandb_run_name
 
     # Setup output directory
     if args.output_dir is not None:

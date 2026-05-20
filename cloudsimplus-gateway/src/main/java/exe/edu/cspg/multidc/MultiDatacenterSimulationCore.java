@@ -75,12 +75,24 @@ public class MultiDatacenterSimulationCore {
     private static final double CARBON_RATIO_MAX = 3.0;  // Cap for normalised carbon ratio
 
     // === Episode-level reward breakdown tracking (for logging/analysis) ===
-    // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw
+    // Global reward terms per step: r_global = α·L - β·Ĉ - γ·Rw + per-action sum
     private double epGlobalTermLocalSum = 0.0;   // Σ (α·L)
     private double epGlobalTermCarbonSum = 0.0;  // Σ (-β·Ĉ)
     private double epGlobalTermWasteSum = 0.0;   // Σ (-γ·Rw)
     private double epGlobalTermThroughputSum = 0.0; // Σ (k_T · log1p(finished_mi_this_step))
     private double epGlobalTermCompletionMiSum = 0.0; // Σ (k_C · Δcompletion_rate_mi)
+
+    // 2026-05-16 per-action reward decomposition tracking
+    private double epGlobalTermPerActionSum = 0.0;        // Σ over steps of (Σᵢ rᵢ)
+    private double epGlobalMarginalCarbonKgSum = 0.0;     // Σ over actions of marginal_kg (proxy "kg")
+
+
+    // Per-step accumulators populated by accumulatePerActionReward() inside
+    // executeGlobalRouting().  Consumed once per step in calculateGlobalReward()
+    // (which then resets them).
+    private double stepPerActionRewardSum = 0.0;   // Σᵢ rᵢ for this step
+    private double stepMarginalCarbonKg = 0.0;     // Σᵢ marginal_kg for this step (logging only)
+    private int    stepRoutedCount = 0;            // number of successful routings this step
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
     private double episodeTotalWorkloadMi = 0.0;
@@ -165,6 +177,11 @@ public class MultiDatacenterSimulationCore {
         epGlobalTermWasteSum = 0.0;
         epGlobalTermThroughputSum = 0.0;
         epGlobalTermCompletionMiSum = 0.0;
+        epGlobalTermPerActionSum = 0.0;
+        epGlobalMarginalCarbonKgSum = 0.0;
+        stepPerActionRewardSum = 0.0;
+        stepMarginalCarbonKg = 0.0;
+        stepRoutedCount = 0;
         epGlobalCarbonSignalSum = 0.0;
         epGlobalCarbonPenaltyNormSum = 0.0;
         lastGlobalCarbonSignal = 0.0;
@@ -484,7 +501,13 @@ public class MultiDatacenterSimulationCore {
         // Validate action count (should match batch size, but double-check)
         int actionCount = Math.min(cloudletsToRoute.size(), globalActions.size());
 
-        // Route each cloudlet to its target datacenter
+        // Route each cloudlet to its target datacenter.
+        // 2026-05-16: each successful routing also accumulates a per-action
+        // reward (carbon cost + completion probability) into step-scoped
+        // fields that calculateGlobalReward() consumes once per step.
+        // try/catch around accounting so an exception in proxy formulas
+        // can never strand cloudlets (which were removed from the queue
+        // by getBatchForRouting and would leak if accounting throws).
         int routedCount = 0;
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
@@ -493,6 +516,12 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
+                try {
+                    accumulatePerActionReward(cloudlet, targetDcIndex);
+                } catch (Throwable t) {
+                    LOGGER.error("accumulatePerActionReward failed for cloudlet={} dc={}: {}",
+                            cloudlet.getId(), targetDcIndex, t.getMessage(), t);
+                }
             } else {
                 // IMPORTANT: Do not lose cloudlets on routing failure.
                 // Re-queue to tail so training can recover, while still allowing you to
@@ -501,9 +530,163 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        LOGGER.debug("Routed {}/{} cloudlets to datacenters, {} remain in global queue", 
+        LOGGER.debug("Routed {}/{} cloudlets to datacenters, {} remain in global queue",
                 routedCount, cloudletsToRoute.size(), globalBroker.getGlobalWaitingCloudletsCount());
         return routedCount;
+    }
+
+    /**
+     * Compute and accumulate the per-action reward contribution for one
+     * (cloudlet → DC) routing decision.  Called from executeGlobalRouting()
+     * immediately after a successful routing.
+     *
+     * <p>2026-05-16 Stage 1 — DIFFERENCE REWARD redesign.
+     *
+     * <p>For each cloudlet c_i, two DCs matter: the actual choice d_actual
+     * (what the policy picked) and d_baseline (what Round-Robin would have
+     * picked at this index).  The per-action reward measures the
+     * <em>improvement over RR</em> rather than absolute cost:
+     *
+     * <pre>
+     *   r_i = − w_carbon  · (marginal_kg(c, d_actual) − marginal_kg(c, d_baseline))
+     *         + w_compl · (prob_complete(c, d_actual) − prob_complete(c, d_baseline))
+     * </pre>
+     *
+     * <p>Why difference, not absolute (was the old design):
+     * <ul>
+     *   <li><b>Removes baseline noise.</b>  In the absolute formulation, a slot
+     *       that just happened to route to a typical DC got ≈ the same reward
+     *       no matter what.  All slots' rewards correlated with each other
+     *       (because everyone was getting "the typical cost").  PPO's per-slot
+     *       policy gradient drowned in this shared bias.</li>
+     *   <li><b>Per-slot signal isolation.</b>  Now r_i = 0 if slot i picked
+     *       the RR baseline; r_i ≠ 0 only when slot i actively deviated.
+     *       Other slots' actions don't affect slot i's reward.  Inter-slot
+     *       gradient noise drops dramatically.</li>
+     *   <li><b>Stable initial policy.</b>  Uniform-random policy picks the
+     *       RR baseline ~1/N of the time → average r_i ≈ 0.  PPO doesn't
+     *       wander; only meaningful deviations create gradient.</li>
+     * </ul>
+     *
+     * <p>Calibrated 2026-05-16 — typical |r_i| ≈ ±0.02 (smaller than absolute
+     * version's ±0.05 because the baseline-constant part cancels).  Still
+     * comparable to λ·c_step mid-training, so Lagrangian and shaping balance.
+     */
+    private void accumulatePerActionReward(Cloudlet cloudlet, int dcIndex) {
+        if (dcIndex < 0 || dcIndex >= datacenterInstances.size()) {
+            return;
+        }
+        int numDcs = datacenterInstances.size();
+        if (numDcs == 0) return;
+
+        // 2026-05-20 reward redesign — switched from "diff vs RR baseline" to
+        // ABSOLUTE per-action reward.
+        //
+        // Why we dropped the RR baseline:
+        //   r_i_diff = -w_c·(marg_a − marg_RR) + w_compl·(prob_a − prob_RR)
+        // ...looks like a counterfactual baseline, but RR isn't on the Pareto
+        // frontier — it's just round-robin and doesn't read the obs.  Once
+        // the policy is better than RR on either axis, the diff flips sign
+        // (positive when worse, negative when better) and PPO sees a noisy
+        // signal that goes negative right when the agent is improving.
+        // Empirical evidence: 100-iter run 20260519_185531 had per_action_sum
+        // go from +159 (iter 5) → −267 (iter 40, the BEST c/c point) → +133
+        // (iter 110, drift point) — i.e., signal points wrong way at the best
+        // policy.  See conversation log 2026-05-20.
+        //
+        // New formula (absolute, normalized to ~[0, 1] so weights are stable):
+        //   r_i = -w_c · (marg_actual / marg_normalizer) + w_compl · prob_actual
+        //
+        // Both terms are in ~[0, 1] range so w_c / w_compl ratio directly
+        // controls the carbon/completion trade-off at the per-action level.
+        // The Lagrangian outer loop (still active) provides the episode-level
+        // SLA pressure on top.
+        DcCostFeatures actual = computeDcCostFeatures(cloudlet, dcIndex);
+        if (actual == null) {
+            // Defensive — shouldn't happen since dcIndex was already validated
+            // by routeCloudletToDatacenter.
+            return;
+        }
+
+        double wCarbon       = settings.getPerActionCarbonWeight();
+        double wCompletion   = settings.getPerActionCompletionWeight();
+        double margNormalize = Math.max(1e-6, settings.getPerActionMargNormalizer());
+
+        double margNorm = actual.marginalKg / margNormalize;  // ~[0, 1] for typical cloudlets
+        double rAbsolute = -wCarbon * margNorm
+                         + wCompletion * actual.probComplete;
+
+        stepPerActionRewardSum += rAbsolute;
+        stepMarginalCarbonKg   += actual.marginalKg;
+        stepRoutedCount++;
+
+        LOGGER.trace(
+            "PerActionAbs dc={} marg={} margNorm={} prob={} r_i={}",
+            dcIndex, actual.marginalKg, margNorm, actual.probComplete, rAbsolute
+        );
+    }
+
+    /**
+     * Pure-function helper: compute the (marginal_kg, prob_complete) pair for
+     * routing a given cloudlet to a given DC index.  Used by
+     * {@link #accumulatePerActionReward(Cloudlet, int)} to evaluate both the
+     * actual and the baseline routing.  Returns null if dcIndex is invalid.
+     */
+    private DcCostFeatures computeDcCostFeatures(Cloudlet cloudlet, int dcIndex) {
+        if (dcIndex < 0 || dcIndex >= datacenterInstances.size()) {
+            return null;
+        }
+        DatacenterInstance dc = datacenterInstances.get(dcIndex);
+        if (dc == null) return null;
+
+        double greenPowerW = dc.isGreenEnergyEnabled()
+                ? Math.max(0.0, dc.getCurrentGreenPowerW(currentClock))
+                : 0.0;
+        double currentPowerW = estimateDcCurrentPowerW(dc);
+        double greenRatio = currentPowerW > 1e-9
+                ? Math.min(1.0, greenPowerW / currentPowerW)
+                : (greenPowerW > 0.0 ? 1.0 : 0.0);
+
+        double brownFactor = dc.getConfig().getBrownCarbonFactor();
+        double greenFactor = dc.getConfig().getGreenCarbonFactor();
+        int availPes  = Math.max(0, dc.getTotalAvailablePes());
+        int queueSize = Math.max(0, dc.getWaitingCloudletCount());
+        int dcCapacityPes = Math.max(1, dc.getHostCount() * settings.getSmallVmPes());
+
+        int  cloudletPes = (int)  Math.max(1L, cloudlet.getPesNumber());
+        long cloudletMi  = (long) Math.max(0L, cloudlet.getLength());
+
+        double miPerKg = Math.max(1e3, settings.getMiPerKgFactor());
+        double effFactor = greenRatio * greenFactor + (1.0 - greenRatio) * brownFactor;
+        double marginalKg = ((double) cloudletMi / miPerKg) * effFactor;
+
+        double overflowFrac = Math.max(0.0,
+                (double) (queueSize + cloudletPes - availPes) / (double) dcCapacityPes);
+        double k = settings.getPerActionOverflowSharpness();
+        double probComplete = Math.exp(-k * overflowFrac);
+
+        return new DcCostFeatures(marginalKg, probComplete);
+    }
+
+    /** Small pair-struct: (marginalKg, probComplete) for one (cloudlet, dc) candidate. */
+    private static final class DcCostFeatures {
+        final double marginalKg;
+        final double probComplete;
+        DcCostFeatures(double mk, double pc) { this.marginalKg = mk; this.probComplete = pc; }
+    }
+
+    /**
+     * Rough estimate of a DC's current power demand in Watts, used only to
+     * compute an instantaneous green_ratio at routing time.  Reads from the
+     * latest energy-delta snapshot (populated at the previous step's tail).
+     * Returns 0.0 before the first updateAllDatacenterEnergyMetrics call.
+     */
+    private double estimateDcCurrentPowerW(DatacenterInstance dc) {
+        EnergyMetricsDelta delta = dc.getLatestEnergyDelta();
+        if (delta == null) {
+            return 0.0;
+        }
+        return Math.max(0.0, delta.getCurrentPowerW());
     }
 
     /**
@@ -1116,12 +1299,20 @@ public class MultiDatacenterSimulationCore {
         prevCompletionRateMi = completionRateMiNow;
         double completionMiTerm = completionRateMiCoef * deltaCompletionMi;
 
+        // === NEW 2026-05-16 Component 6: Per-action reward sum ===
+        // Σᵢ rᵢ accumulated by accumulatePerActionReward() during executeGlobalRouting
+        // earlier in this same step.  Each rᵢ depends only on slot i's action, so
+        // the resulting per-step contribution is additively decomposable across the
+        // N routing slots — gives PPO a real attribution gradient even with shared
+        // advantage.  See accumulatePerActionReward javadoc for the math.
+        double perActionTerm = stepPerActionRewardSum;
+
         // === Final Global Reward ===
         double reward = alpha * avgLocalReward
                       - beta * normalizedCarbon
                       - gamma * wasteRatio;
         // Add shaping terms (default coefs are 0.0, so this is backward-compatible)
-        reward += throughputTerm + completionMiTerm;
+        reward += throughputTerm + completionMiTerm + perActionTerm;
 
         // Track episode-level component contributions for analysis (cumulative sums over steps)
         epGlobalTermLocalSum += (alpha * avgLocalReward);
@@ -1129,6 +1320,13 @@ public class MultiDatacenterSimulationCore {
         epGlobalTermWasteSum += (-gamma * wasteRatio);
         epGlobalTermThroughputSum += throughputTerm;
         epGlobalTermCompletionMiSum += completionMiTerm;
+        epGlobalTermPerActionSum += perActionTerm;
+        epGlobalMarginalCarbonKgSum += stepMarginalCarbonKg;
+
+        // Reset per-step accumulators (consumed for this step's reward).
+        stepPerActionRewardSum = 0.0;
+        stepMarginalCarbonKg = 0.0;
+        stepRoutedCount = 0;
 
         LOGGER.debug("Global Reward: total={} (α·L={}, β·Ĉ={}, γ·Rw={})",
                 String.format("%.4f", reward),
@@ -1859,6 +2057,13 @@ public class MultiDatacenterSimulationCore {
         stats.put("global_reward_term_waste_mean", currentStep > 0 ? epGlobalTermWasteSum / currentStep : 0.0);
         stats.put("global_reward_term_throughput_mean", currentStep > 0 ? epGlobalTermThroughputSum / currentStep : 0.0);
         stats.put("global_reward_term_completion_mi_mean", currentStep > 0 ? epGlobalTermCompletionMiSum / currentStep : 0.0);
+
+        // 2026-05-16 per-action reward decomposition stats
+        stats.put("global_reward_term_per_action_sum", epGlobalTermPerActionSum);
+        stats.put("global_reward_term_per_action_mean",
+                  currentStep > 0 ? epGlobalTermPerActionSum / currentStep : 0.0);
+        // Diagnostic: total "marginal kg" attributed (sum of unweighted marginal_kg values).
+        stats.put("global_per_action_marginal_carbon_proxy_sum", epGlobalMarginalCarbonKgSum);
 
         return stats;
     }

@@ -53,6 +53,7 @@ BEST_EPISODE_CSV_HEADERS = [
     'global_term_throughput_sum',
     'global_term_completion_mi_sum',
     'global_term_waste_sum',
+    'global_term_per_action_sum',
     # --- energy breakdown ---
     'green_waste_wh', 'green_used_wh', 'brown_used_wh',
     'total_energy_wh', 'green_ratio', 'waste_ratio',
@@ -488,6 +489,12 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         global_term_waste_sum = global_energy_stats.get('global_reward_term_waste_sum', 0.0)
         global_term_throughput_sum = global_energy_stats.get('global_reward_term_throughput_sum', 0.0)
         global_term_completion_mi_sum = global_energy_stats.get('global_reward_term_completion_mi_sum', 0.0)
+        # 2026-05-16 Stage 1 per-action diff reward (additive Σᵢ rᵢ).  When
+        # per_action_carbon_weight or per_action_completion_weight is > 0 in
+        # the experiment config, Java accumulates this term; the 5 sums above
+        # are typically all zeroed in that mode (alpha/beta/gamma=0), so
+        # without this fetch monitor.csv shows global_agent_reward=0.
+        global_term_per_action_sum = global_energy_stats.get('global_reward_term_per_action_sum', 0.0)
 
         # Episode metrics (use helper functions for API compatibility)
         episode_length = get_episode_length(episode)
@@ -632,6 +639,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             + global_term_waste_sum
             + global_term_throughput_sum
             + global_term_completion_mi_sum
+            + global_term_per_action_sum
         )
 
         num_dcs = max(len(per_dc_mean_completion_times), 10)
@@ -706,6 +714,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_term_waste_sum': global_term_waste_sum,
                 'global_term_throughput_sum': global_term_throughput_sum,
                 'global_term_completion_mi_sum': global_term_completion_mi_sum,
+                'global_term_per_action_sum': global_term_per_action_sum,
                 'global_agent_reward': global_agent_reward,
                 'local_agents_avg_reward': local_agents_avg_reward,
                 'local_agents_total_reward': local_agents_total_reward,
@@ -749,6 +758,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 global_term_throughput_sum,
                 global_term_completion_mi_sum,
                 global_term_waste_sum,
+                global_term_per_action_sum,
                 # --- energy breakdown ---
                 green_waste,
                 green_used,
@@ -997,6 +1007,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_term_throughput_sum',
                 'global_term_completion_mi_sum',
                 'global_term_waste_sum',
+                'global_term_per_action_sum',
                 # --- energy breakdown ---
                 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
                 'total_energy_wh', 'green_ratio', 'waste_ratio',
@@ -1108,6 +1119,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_term_throughput_sum',
                 'global_term_completion_mi_sum',
                 'global_term_waste_sum',
+                'global_term_per_action_sum',
                 # --- energy breakdown ---
                 'green_waste_wh', 'green_used_wh', 'brown_used_wh',
                 'total_energy_wh', 'green_ratio', 'waste_ratio',
@@ -1202,6 +1214,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     d.get('global_term_throughput_sum', 0.0),
                     d.get('global_term_completion_mi_sum', 0.0),
                     d.get('global_term_waste_sum', 0.0),
+                    d.get('global_term_per_action_sum', 0.0),
                     # --- energy breakdown ---
                     d['green_waste_wh'],
                     d['green_used_wh'],

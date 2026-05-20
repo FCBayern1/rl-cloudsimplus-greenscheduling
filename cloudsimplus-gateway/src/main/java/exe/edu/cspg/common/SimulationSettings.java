@@ -137,6 +137,43 @@ public class SimulationSettings {
     private final double globalThroughputMiCoef;       // k_T: weight for log1p(MI_finished_this_step)
     private final double globalCompletionRateMiCoef;   // k_C: weight for Δcompletion_rate_mi per step
 
+    // ===========================================================================
+    // 2026-05-16 per-action reward decomposition (NEW).
+    //
+    // Each routing decision (cloudlet c_i → DC d_i) gets its own immediate
+    // reward r_i = -w_carbon · marginal_kg(c_i, d_i) + w_compl · prob_complete(c_i, d_i),
+    // and the step-level global reward is Σ_i r_i.  Because r_i depends only on
+    // slot i's action, the per-step reward is additively decomposable across
+    // the N batch slots — PPO's policy gradient ∇ log π_i(a_i|s) naturally
+    // attributes credit to each slot's choice even though the advantage
+    // A(s, a) is shared.
+    //
+    // Calibrated against smoke 20260515_174514 (uniform policy):
+    //   Per typical cloudlet (mi=700K, brown=0.5, green=0.5):
+    //     marginal_kg = (700K / 3.5e6) · 0.25 = 0.05  (× w_carbon = 1.0)
+    //     prob_complete ≈ 0.9                          (× w_compl = 0.05)
+    //   Per-step (10 actions): −0.5 carbon + 0.45 completion ≈ −0.05
+    //   Lagrangian λ · c_step ≈ −0.1 at mid-training (comparable magnitude).
+    // ===========================================================================
+    /** Calibration constant: MI workload that produces 1 unit of marginal kg
+     *  at brown_factor=1.0, green_ratio=0.0. Default 3.5e6 — chosen so per-
+     *  action reward magnitude sits around ±0.05 (same scale as Lagrangian). */
+    private final double miPerKgFactor;
+    /** w_carbon: scales the carbon-cost term (−w_carbon · marginal_kg). */
+    private final double perActionCarbonWeight;
+    /** w_completion: scales the completion-probability bonus (+w_compl · prob). */
+    private final double perActionCompletionWeight;
+    /** Sigmoid sharpness for the overflow→completion-prob mapping.
+     *  prob = exp(−k · overflow_frac); k=3 gives ~0.55 at 20% overflow, ~0.05 at 100%. */
+    private final double perActionOverflowSharpness;
+    /** 2026-05-20: divisor that maps marginal_kg into a ~[0, 1] range so the
+     *  absolute per-action reward (post-RR-baseline-removal) has a stable
+     *  magnitude regardless of cloudlet MI distribution.  Default 0.05
+     *  corresponds to a "typical" 700K-MI cloudlet at brown=0.5, green=0.5
+     *  (marginalKg = 700e3 / 3.5e6 · 0.255 ≈ 0.051).
+     *  See MultiDatacenterSimulationCore.accumulatePerActionReward for use. */
+    private final double perActionMargNormalizer;
+
     /**
      * Controls how the global carbon penalty signal is computed in multi-DC mode.
      *
@@ -352,6 +389,17 @@ public class SimulationSettings {
                 "global_completion_rate_mi_coef",
                 getDoubleParam(params, "global_completion_rate_coef", 0.0)
         );
+
+        // 2026-05-16 per-action reward decomposition.  All default to OFF so
+        // legacy configs (α/β/γ) continue to behave identically.  Activate by
+        // setting per_action_carbon_weight and/or per_action_completion_weight
+        // non-zero in the experiment config.
+        this.miPerKgFactor              = getDoubleParam(params, "mi_per_kg_factor", 3.5e6);
+        this.perActionCarbonWeight      = getDoubleParam(params, "per_action_carbon_weight", 0.0);
+        this.perActionCompletionWeight  = getDoubleParam(params, "per_action_completion_weight", 0.0);
+        this.perActionOverflowSharpness = getDoubleParam(params, "per_action_overflow_sharpness", 3.0);
+        this.perActionMargNormalizer    = getDoubleParam(params, "per_action_marg_normalizer", 0.05);
+
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();
         this.carbonNormalizationFixedMax = getDoubleParam(params, "carbon_normalization_fixed_max", 0.0);
@@ -363,6 +411,9 @@ public class SimulationSettings {
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
         LOGGER.info("Global Reward Shaping: throughput_mi_coef={}, completion_rate_mi_coef={}",
                 this.globalThroughputMiCoef, this.globalCompletionRateMiCoef);
+        LOGGER.info("Per-Action Reward: w_carbon={}, w_completion={}, mi_per_kg_factor={}, overflow_sharpness={}, marg_normalizer={}",
+                this.perActionCarbonWeight, this.perActionCompletionWeight,
+                this.miPerKgFactor, this.perActionOverflowSharpness, this.perActionMargNormalizer);
         LOGGER.info("Global Carbon Penalty Mode: {}, Normalization: {} (fixedMax={}, miFloor={})",
                 this.carbonPenaltyMode, this.carbonNormalizationMode,
                 this.carbonNormalizationFixedMax, this.carbonMiFloor);
