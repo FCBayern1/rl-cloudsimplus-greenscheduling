@@ -67,6 +67,7 @@ except ImportError:
 from src.models.rlmodule_gtrxl_ensemble import (
     GTrXLEnsembleGlobalRLModule,
     GTrXLEnsembleMaskedActionRLModule,
+    GTrXLScoreBasedEnsembleGlobalRLModule,
 )
 from src.learners.crd_q_loss import CRDPPOTorchLearner
 
@@ -450,7 +451,16 @@ def create_rlmodule_config(
                 "The CTDE local module has its own critic head and the EU-CRD Q-head "
                 "ensemble path hasn't been ported onto it. Disable one of the two."
             )
-        global_module_class = GTrXLEnsembleGlobalRLModule
+        # Pick the right ensemble variant for the global module so EU-CRD
+        # keeps whatever backbone Stage 3's `use_score_based` selected.
+        # Without this, the score-based architecture's sample-efficiency
+        # gains would be silently lost on CRD-enabled runs.
+        if use_score_based_global:
+            global_module_class = GTrXLScoreBasedEnsembleGlobalRLModule
+            ensemble_global_name = GTrXLScoreBasedEnsembleGlobalRLModule.__name__
+        else:
+            global_module_class = GTrXLEnsembleGlobalRLModule
+            ensemble_global_name = GTrXLEnsembleGlobalRLModule.__name__
         local_module_class = GTrXLEnsembleMaskedActionRLModule
         # Inject the same crd block into both global + local model_config so
         # `_read_crd_*_config` on the RLModule and learner side both find it.
@@ -461,7 +471,7 @@ def create_rlmodule_config(
         crd_learner_class = CRDPPOTorchLearner
         logger.info(
             f"[EU-CRD] enabled — using "
-            f"{GTrXLEnsembleGlobalRLModule.__name__}/"
+            f"{ensemble_global_name}/"
             f"{GTrXLEnsembleMaskedActionRLModule.__name__} + "
             f"{CRDPPOTorchLearner.__name__}; "
             f"crd config keys: {sorted(crd_cfg.keys())}"

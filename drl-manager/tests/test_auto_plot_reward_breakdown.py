@@ -125,3 +125,89 @@ def test_all_zero_produces_no_file(tmp_path):
     out = tmp_path / "plot.png"
     _plot_global_reward_breakdown(df, out)
     assert not out.exists(), "should not emit a plot when every term is zero"
+
+
+# ---------------------------------------------------------------------------
+# 2026-05-23 regression: rewards.png had two bugs
+#   1. Looked for column "reward", actual column is "episode_reward".
+#   2. Plotted global + local on shared y-axis, so after 2026-05-20 reward
+#      redesign (global magnitudes 100× local) local looked flat at zero.
+# ---------------------------------------------------------------------------
+
+def test_plot_rewards_uses_correct_column_names(tmp_path):
+    """Plotter must reference `episode_reward`, NOT a phantom `reward` column."""
+    from src.evaluation.auto_plot import _plot_rewards
+    n = 30
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "episode": np.arange(1, n + 1),
+        "episode_reward":          rng.normal(-5000, 1000, n),
+        "global_agent_reward":     rng.normal(-3000, 800, n),
+        "local_agents_avg_reward": rng.normal(-200, 30, n),
+    })
+    out = tmp_path / "rewards.png"
+    plotted_labels = []
+    import matplotlib.pyplot as plt
+    real_subplots = plt.subplots
+
+    class SpyAxes:
+        def __init__(self, ax): self._a = ax
+        def plot(self, *a, **kw):
+            if "label" in kw:
+                plotted_labels.append(kw["label"])
+            return self._a.plot(*a, **kw)
+        def __getattr__(self, n):
+            return getattr(self._a, n)
+
+    def patched(*a, **kw):
+        fig, axes = real_subplots(*a, **kw)
+        if hasattr(axes, "__iter__"):
+            axes = [SpyAxes(ax) for ax in axes]
+        else:
+            axes = SpyAxes(axes)
+        return fig, axes
+
+    from unittest.mock import patch
+    with patch("matplotlib.pyplot.subplots", side_effect=patched):
+        _plot_rewards(df, out)
+
+    assert out.exists(), "rewards.png should be written"
+    # episode_reward MUST be plotted now (was the silently-dropped column).
+    assert any("episode_reward" in lbl for lbl in plotted_labels), (
+        f"episode_reward not plotted; got labels: {plotted_labels}"
+    )
+    # All three should appear since all are present in df.
+    assert any("global_agent" in lbl for lbl in plotted_labels)
+    assert any("local_avg" in lbl for lbl in plotted_labels)
+
+
+def test_plot_rewards_uses_separate_subplots_so_scales_dont_crush_each_other(tmp_path):
+    """
+    The fix uses one subplot per series so each gets its own y-range.
+    With global ~ -30k and local ~ -200, a shared axis hid the local line.
+    Verify the plotter creates `len(available_series)` axes.
+    """
+    from src.evaluation.auto_plot import _plot_rewards
+    n = 30
+    df = pd.DataFrame({
+        "episode": np.arange(1, n + 1),
+        "episode_reward":          [-5000] * n,
+        "global_agent_reward":     [-3000] * n,
+        "local_agents_avg_reward": [-200]  * n,
+    })
+    out = tmp_path / "rewards.png"
+
+    captured = {"nrows": None}
+    import matplotlib.pyplot as plt
+    real_subplots = plt.subplots
+    def patched(nrows=1, *a, **kw):
+        captured["nrows"] = nrows
+        return real_subplots(nrows, *a, **kw)
+    from unittest.mock import patch
+    with patch("matplotlib.pyplot.subplots", side_effect=patched):
+        _plot_rewards(df, out)
+
+    assert captured["nrows"] == 3, (
+        f"expected 3 subplots (one per series), got {captured['nrows']}; "
+        "shared-axis plotting is the bug we're guarding against"
+    )

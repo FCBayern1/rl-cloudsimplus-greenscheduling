@@ -52,6 +52,11 @@ public class SimulationSettingsRewardDecompositionTest {
                 "mi_per_kg_factor default 3.5e6 (calibrated 2026-05-16)");
         assertEquals(3.0,   s.getPerActionOverflowSharpness(), 1e-12,
                 "overflow_sharpness default k=3");
+        // 2026-05-20: marg_normalizer maps actual marg into [0, 1] for the
+        // absolute reward formula; default 0.05 = typical 700K-MI cloudlet at
+        // 50/50 green/brown ratio.
+        assertEquals(0.05, s.getPerActionMargNormalizer(), 1e-12,
+                "marg_normalizer default 0.05 (2026-05-20 absolute reward calibration)");
     }
 
     @Test
@@ -61,6 +66,7 @@ public class SimulationSettingsRewardDecompositionTest {
         p.put("per_action_completion_weight", 0.05);
         p.put("mi_per_kg_factor",             5.0e6);
         p.put("per_action_overflow_sharpness", 5.0);
+        p.put("per_action_marg_normalizer",   0.08);
 
         SimulationSettings s = new SimulationSettings(p);
 
@@ -68,6 +74,7 @@ public class SimulationSettingsRewardDecompositionTest {
         assertEquals(0.05,  s.getPerActionCompletionWeight(),   1e-12);
         assertEquals(5.0e6, s.getMiPerKgFactor(),               1.0);
         assertEquals(5.0,   s.getPerActionOverflowSharpness(),  1e-12);
+        assertEquals(0.08,  s.getPerActionMargNormalizer(),     1e-12);
     }
 
     @Test

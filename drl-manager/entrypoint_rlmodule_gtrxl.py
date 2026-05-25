@@ -108,6 +108,21 @@ def main():
             "Overrides experiment_config.gtrxl.bc_checkpoint_path if set."
         ),
     )
+    # --- Per-action reward overrides (for Pareto sweeps) -----------------
+    parser.add_argument(
+        "--per-action-carbon-weight",
+        type=float,
+        default=None,
+        help="Override experiment_config.per_action_carbon_weight. Used by "
+             "the Pareto sweep launcher to vary the carbon/completion trade-off.",
+    )
+    parser.add_argument(
+        "--per-action-completion-weight",
+        type=float,
+        default=None,
+        help="Override experiment_config.per_action_completion_weight. Used by "
+             "the Pareto sweep launcher to vary the carbon/completion trade-off.",
+    )
     # --- Weights & Biases overrides ---------------------------------------
     parser.add_argument(
         "--no-wandb",
@@ -137,6 +152,12 @@ def main():
         type=str,
         default=None,
         help="Comma-separated wandb tags, appended to config.yml::wandb.tags.",
+    )
+    parser.add_argument(
+        "--wandb-group",
+        type=str,
+        default=None,
+        help="Override config.yml::wandb.group. Useful for clustering sweep runs.",
     )
     parser.add_argument(
         "--wandb-mode",
@@ -207,6 +228,19 @@ def main():
         env_config["gtrxl"]["bc_checkpoint_path"] = bc_ckpt_abs
         logger.info(f"[BC warm-start] global module will load {bc_ckpt_abs}")
 
+    # --- Per-action reward CLI overrides (Pareto sweep) ----------------------
+    # These mutate env_config so the values get passed through to Java's
+    # SimulationSettings.getDoubleParam and end up in
+    # accumulatePerActionReward(). Keeping all other reward params (mi_per_kg,
+    # marg_normalizer, overflow_sharpness) at config defaults — only the two
+    # axis-weights are sweep-variable.
+    if args.per_action_carbon_weight is not None:
+        env_config["per_action_carbon_weight"] = float(args.per_action_carbon_weight)
+        logger.info(f"[Pareto sweep] per_action_carbon_weight = {env_config['per_action_carbon_weight']}")
+    if args.per_action_completion_weight is not None:
+        env_config["per_action_completion_weight"] = float(args.per_action_completion_weight)
+        logger.info(f"[Pareto sweep] per_action_completion_weight = {env_config['per_action_completion_weight']}")
+
     # --- wandb CLI overrides -------------------------------------------------
     env_config.setdefault("wandb", {})
     if args.no_wandb:
@@ -221,6 +255,8 @@ def main():
         extra_tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
         existing = list(env_config["wandb"].get("tags") or [])
         env_config["wandb"]["tags"] = existing + extra_tags
+    if args.wandb_group is not None:
+        env_config["wandb"]["group"] = args.wandb_group
     # --wandb-run-name is forwarded later via training_config so train_rlmodule_gtrxl can read it
     if args.wandb_run_name:
         env_config["wandb"]["run_name_override"] = args.wandb_run_name

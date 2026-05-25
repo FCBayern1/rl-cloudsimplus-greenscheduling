@@ -24,6 +24,7 @@ from ray.rllib.core.rl_module.torch import TorchRLModule
 from src.models.rlmodule_gtrxl_models import (
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
+    GTrXLScoreBasedGlobalRLModule,
 )
 
 
@@ -429,3 +430,156 @@ class GTrXLEnsembleGlobalRLModule(_GTrXLFeatureCapture, GTrXLGlobalRLModule):
 
     def get_non_inference_attributes(self):
         return super().get_non_inference_attributes() + ["q_heads"]
+
+
+class GTrXLScoreBasedEnsembleGlobalRLModule(
+    _GTrXLFeatureCapture, GTrXLScoreBasedGlobalRLModule
+):
+    """
+    Score-based global RLModule with the V+Q hybrid critic.
+
+    Variant of :class:`GTrXLEnsembleGlobalRLModule` that subclasses the
+    *score-based* (pairwise q_i · k_d) global routing module instead of the
+    legacy 10-independent-head version. Allows EU-CRD to be used together
+    with the score-based architecture introduced in Stage 3
+    (``use_score_based: true``), which delivers dramatic sample-efficiency
+    gains via permutation-equivariant routing.
+
+    Differences from :class:`GTrXLEnsembleGlobalRLModule`:
+      - Parent ``_forward_pass`` returns a 3-tuple ``(logits, values,
+        state_out)`` — no action_mask. Inherited automatically.
+      - Trunk feature capture still hooks ``self.gtrxl`` (the actor
+        trunk). When ``critic_separate_trunk=true``, there is also a
+        ``self.critic_gtrxl`` whose features we deliberately do NOT
+        capture; Q-heads see the same representation as the policy,
+        which keeps the credit signal consistent with what the actor
+        observed when it acted.
+
+    Output shape and Q-ensemble API are identical to
+    :class:`GTrXLEnsembleGlobalRLModule`, so the M1.2 loss term and M2.4
+    callback path consume this module without any additional branching.
+    """
+
+    @override(TorchRLModule)
+    def setup(self):
+        super().setup()
+        from gymnasium import spaces  # local import; avoid top-level cycle
+
+        if not isinstance(self.action_space, spaces.MultiDiscrete):
+            raise NotImplementedError(
+                f"{self.__class__.__name__} requires a MultiDiscrete action "
+                f"space; got {type(self.action_space).__name__}"
+            )
+        nvec = self.action_space.nvec
+        if nvec.size == 0 or not (nvec == nvec[0]).all():
+            raise NotImplementedError(
+                f"Q-head ensemble currently assumes uniform per-cloudlet "
+                f"num_dc; got nvec={nvec.tolist()}."
+            )
+        self.crd_batch_size: int = int(nvec.size)
+        self.crd_num_dc: int = int(nvec[0])
+
+        cfg = _read_crd_ensemble_config(self.model_config)
+        self.q_heads = EnsembleQHeads(
+            d_model=self.gtrxl.d_model,
+            action_dim=self.crd_batch_size * self.crd_num_dc,
+            K=cfg["K"],
+            prior_lambda=cfg["prior_lambda"],
+            hidden_dim=cfg["hidden_dim"],
+        )
+        self._install_feature_capture()
+        logger.info(
+            f"[{self.__class__.__name__}] Q-ensemble: K={cfg['K']}, "
+            f"hidden_dim={cfg['hidden_dim']}, prior_lambda={cfg['prior_lambda']}, "
+            f"batch_size={self.crd_batch_size}, num_dc={self.crd_num_dc}, "
+            f"d_model={self.gtrxl.d_model}; "
+            f"score-based backbone with critic_separate_trunk="
+            f"{getattr(self, '_critic_separate_trunk', False)}"
+        )
+
+    def _q_ensemble_from_features(
+        self, features: torch.Tensor, last_only: bool = False
+    ) -> torch.Tensor:
+        """Same layout as GTrXLEnsembleGlobalRLModule: (B, T, K, bs, num_dc)."""
+        if last_only:
+            q_flat = self.q_heads(features[:, -1, :])
+            return q_flat.view(
+                -1, self.q_heads.K, self.crd_batch_size, self.crd_num_dc
+            )
+        B, T, d = features.shape
+        q_flat = self.q_heads(features.reshape(B * T, d))
+        return q_flat.view(
+            B, T, self.q_heads.K, self.crd_batch_size, self.crd_num_dc
+        )
+
+    @override(TorchRLModule)
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        out = super()._forward_train(batch, **kwargs)
+        if self._captured_features is None:
+            raise RuntimeError(
+                "GTrXL feature capture missed during score-based "
+                "global-agent _forward_train."
+            )
+        out[COL_Q_ENSEMBLE] = self._q_ensemble_from_features(
+            self._captured_features, last_only=False
+        )
+        return out
+
+    def compute_q_ensemble(
+        self, batch: Dict[str, Any], action: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Identical contract to :meth:`GTrXLEnsembleGlobalRLModule.compute_q_ensemble`.
+
+        Args:
+            batch: RLlib-style batch (must contain Columns.OBS as a dict
+                   matching the score-based module's expected categories).
+            action: (B, batch_size) integer tensor.
+
+        Returns:
+            (mu: (B,), var: (B,)) — ensemble-mean / variance of per-cloudlet
+            -mean Q at the chosen action.
+        """
+        if action.dim() != 2:
+            raise ValueError(
+                f"global compute_q_ensemble expects (B, batch_size) action, "
+                f"got shape {tuple(action.shape)}"
+            )
+        if action.shape[-1] != self.crd_batch_size:
+            raise ValueError(
+                f"action last dim {action.shape[-1]} != batch_size "
+                f"{self.crd_batch_size}"
+            )
+
+        self._captured_features = None
+        with torch.no_grad():
+            # Parent's _forward_pass returns a 3-tuple; we only need it to
+            # populate self._captured_features via the trunk forward hook.
+            self._forward_pass(batch)
+        if self._captured_features is None:
+            raise RuntimeError(
+                "Feature capture failed during score-based compute_q_ensemble."
+            )
+
+        state_repr = self._captured_features[:, -1, :]  # (B, d_model)
+        q_full = self.q_heads(state_repr).view(
+            -1, self.q_heads.K, self.crd_batch_size, self.crd_num_dc
+        )  # (B, K, batch_size, num_dc)
+
+        idx = action.long().unsqueeze(1).unsqueeze(-1)
+        idx = idx.expand(-1, self.q_heads.K, -1, 1)
+        q_per_cloudlet = q_full.gather(-1, idx).squeeze(-1)  # (B, K, batch_size)
+
+        q_scalar = q_per_cloudlet.mean(dim=-1)  # (B, K)
+        mu = q_scalar.mean(dim=1)
+        var = q_scalar.var(dim=1, unbiased=False)
+        return mu, var
+
+    def get_non_inference_attributes(self):
+        base = []
+        if hasattr(super(), "get_non_inference_attributes"):
+            try:
+                base = super().get_non_inference_attributes() or []
+            except Exception:
+                base = []
+        return list(base) + ["q_heads"]

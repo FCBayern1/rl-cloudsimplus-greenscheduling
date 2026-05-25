@@ -46,6 +46,7 @@ class _StubLearner(CRDPPOTorchLearner):
         self._crd_baseline_signal_warned = {}
         self._crd_blenders = {}
         self._crd_dq_align_warned = {}
+        self._crd_baseline_obs_warned = False
         self.hook_calls = []  # observability for tests
         self._beta = beta
         self._gamma = gamma
@@ -743,6 +744,75 @@ def test_dr_written_via_compute_loss_end_to_end():
     assert out.item() < 0
 
 
+def test_dr_from_obs_aligns_to_BT_grid():
+    """
+    M2.5 fix: Δr must come out (B, T) aligned with ΔQ, derived from the
+    padded obs dc_queue_sizes grid — NOT from infos (which PPO may drop from
+    a minibatch, producing an empty Δr that breaks M3's blend).
+    """
+    B, T, num_dc, bs = 2, 3, 3, 4
+    learner = _DRStubLearner(num_dc=num_dc, batch_size=bs, alpha=1.0)
+    sched = learner._get_or_build_baseline_scheduler("g")
+    batch = {
+        Columns.OBS: {
+            "dc_green_ratio": torch.rand(B, T, num_dc),
+            "dc_queue_sizes": torch.randint(0, 50, (B, T, num_dc)).float(),
+        },
+        Columns.ACTIONS: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+        Columns.REWARDS: torch.zeros(B, T),
+        COL_CRD_BASELINE_ACTION: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+    }
+    out = learner._compute_dr_from_obs(batch, sched, alpha=1.0)
+    assert out is not None
+    assert out.shape == (B, T), f"Δr must be (B, T), got {tuple(out.shape)}"
+
+
+def test_dr_from_obs_robust_to_empty_infos():
+    """
+    The exact smoke-test bug: infos empty/absent, but obs present →
+    obs-based path still produces a full (B, T) Δr (not the (0,) that broke
+    M3 blend). The blend in M3 needs Δr shape == ΔQ shape.
+    """
+    B, T, num_dc, bs = 2, 3, 3, 4
+    learner = _DRStubLearner(num_dc=num_dc, batch_size=bs, alpha=1.0)
+    learner._get_or_build_baseline_scheduler = lambda module_id: _FakeScheduler(num_dc, bs)
+    batch = {
+        Columns.OBS: {
+            "dc_green_ratio": torch.rand(B, T, num_dc),
+            "dc_queue_sizes": torch.randint(0, 50, (B, T, num_dc)).float(),
+        },
+        Columns.ACTIONS: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+        Columns.REWARDS: torch.zeros(B, T),
+        COL_CRD_BASELINE_ACTION: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+        Columns.INFOS: [],  # ← empty, the smoke-test failure trigger
+    }
+    learner._compute_dr(module_id="g", batch=batch)
+    assert COL_CRD_DR in batch
+    out = batch[COL_CRD_DR]
+    assert out.shape == (B, T), (
+        f"Δr fell back to misaligned shape {tuple(out.shape)} despite obs being present"
+    )
+    assert out.numel() == B * T  # NOT (0,)
+
+
+def test_dr_from_obs_unwraps_observation_nesting():
+    """obs nested under 'observation' must still work for Δr."""
+    B, T, num_dc, bs = 2, 2, 3, 4
+    learner = _DRStubLearner(num_dc=num_dc, batch_size=bs, alpha=1.0)
+    sched = learner._get_or_build_baseline_scheduler("g")
+    batch = {
+        Columns.OBS: {"observation": {
+            "dc_green_ratio": torch.rand(B, T, num_dc),
+            "dc_queue_sizes": torch.randint(0, 50, (B, T, num_dc)).float(),
+        }},
+        Columns.ACTIONS: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+        Columns.REWARDS: torch.zeros(B, T),
+        COL_CRD_BASELINE_ACTION: torch.randint(0, num_dc, (B, T, bs), dtype=torch.long),
+    }
+    out = learner._compute_dr_from_obs(batch, sched, alpha=1.0)
+    assert out is not None and out.shape == (B, T)
+
+
 def test_dr_skipped_when_no_baseline_action():
     """Without M2.3's baseline action in batch, M2.5 stays silent."""
     learner = _DRStubLearner(num_dc=3, batch_size=4)
@@ -1327,6 +1397,30 @@ def test_obs_based_baseline_produces_padded_BT_bs_shape():
     assert out.dtype == torch.long
     # Values must be valid DC indices.
     assert (out >= 0).all() and (out < num_dc).all()
+
+
+def test_obs_based_baseline_unwraps_observation_nesting():
+    """
+    RLlib stores the real obs dict under obs["observation"] for action-masking
+    / Connector-wrapped modules. The obs-based path MUST unwrap this nesting,
+    otherwise dc_green_ratio/dc_queue_sizes are invisible and we silently fall
+    back to the misaligned infos path (the smoke-test bug at N_valid=416 vs 417).
+    """
+    B, T, num_dc, bs = 2, 4, 5, 20
+    inner_obs = {
+        "dc_green_ratio": torch.rand(B, T, num_dc),
+        "dc_queue_sizes": torch.randint(0, 10, (B, T, num_dc)).float(),
+    }
+    # Nested under "observation" — the layout the global RLModule actually sees.
+    batch = {
+        Columns.OBS: {"observation": inner_obs},
+        Columns.ACTIONS: torch.zeros(B, T, bs, dtype=torch.long),
+    }
+    sched = _FakeScheduler(num_datacenters=num_dc, batch_size=bs)
+    learner = _StubLearner()
+    out = learner._compute_baseline_from_obs(batch, sched)
+    assert out is not None, "must unwrap observation nesting and produce baseline"
+    assert out.shape == (B, T, bs)
 
 
 def test_obs_based_baseline_returns_none_when_obs_is_not_dict():

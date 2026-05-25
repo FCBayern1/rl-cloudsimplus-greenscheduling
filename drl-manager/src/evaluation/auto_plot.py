@@ -82,27 +82,45 @@ def _has(df: Optional[pd.DataFrame], col: str) -> bool:
 # individual plot blocks
 # ---------------------------------------------------------------------------
 def _plot_rewards(df: pd.DataFrame, out: Path) -> None:
-    """Episode rewards over time: total, global, local-avg."""
-    fig, ax = plt.subplots(1, 1, figsize=(11, 5))
-    plotted = 0
+    """Episode rewards over time: episode_reward (total), global, local-avg.
+
+    Bug fix 2026-05-23:
+      - The plotter was looking for column "reward", but monitor.csv exports
+        the column as "episode_reward".  Result: the total line was silently
+        dropped.
+      - After the 2026-05-20 reward redesign (absolute, not diff-vs-RR), global
+        rewards live in [-30k, +20k] while local rewards stay in [-900, 0].
+        Plotting both on a shared y-axis crushes the local line to a flat
+        zero-looking band.  Use separate subplots so each scales to its own
+        range.
+    """
+    cols = [
+        ("episode_reward",          "episode_reward (total)", "tab:blue"),
+        ("global_agent_reward",     "global_agent",            "tab:orange"),
+        ("local_agents_avg_reward", "local_avg",               "tab:green"),
+    ]
+    avail = [(c, l, k) for c, l, k in cols if _has(df, c)]
+    if not avail:
+        return
+    fig, axes = plt.subplots(len(avail), 1, figsize=(11, 3.5 * len(avail)), sharex=True)
+    if len(avail) == 1:
+        axes = [axes]
     x = df["episode"] if "episode" in df.columns else np.arange(len(df))
-    for col, label, color in [
-        ("reward",                      "episode_reward (total)", "tab:blue"),
-        ("global_agent_reward",         "global_agent",            "tab:orange"),
-        ("local_agents_avg_reward",     "local_avg",               "tab:green"),
-    ]:
-        if not _has(df, col):
-            continue
+    for ax, (col, label, color) in zip(axes, avail):
         ax.plot(x, df[col], alpha=0.25, color=color, linewidth=0.8)
         ax.plot(x, _rolling(df[col], 50), color=color, linewidth=2.0, label=label)
-        plotted += 1
-    if plotted == 0:
-        plt.close(fig); return
-    ax.set_title("Reward curves (raw + rolling mean, window=50)")
-    ax.set_xlabel("episode")
-    ax.set_ylabel("reward")
-    ax.legend(loc="best")
-    ax.axhline(0, color="grey", linewidth=0.5, linestyle="--")
+        ax.axhline(0, color="grey", linewidth=0.5, linestyle="--")
+        ax.set_ylabel(label)
+        ax.legend(loc="best")
+        # Pad y-axis 10% so the curve isn't crushed against the frame.
+        try:
+            lo, hi = float(df[col].min()), float(df[col].max())
+            pad = max(1.0, 0.1 * (hi - lo))
+            ax.set_ylim(lo - pad, hi + pad)
+        except Exception:
+            pass
+    axes[-1].set_xlabel("episode")
+    fig.suptitle("Reward curves (raw + rolling mean, window=50)", y=1.0)
     _savefig(fig, out)
 
 

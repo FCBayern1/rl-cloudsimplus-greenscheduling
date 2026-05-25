@@ -221,6 +221,17 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
     # Keep 'completion_rate' as alias for backward compatibility (same as routed_rate)
     metrics['completion_rate'] = metrics['routed_rate']
 
+    # 2026-05-25: MI-weighted completion rate — the SAME metric the RL trainer
+    # logs (monitor.csv::completion_rate_mi).  Needed so baseline vs RL c/c
+    # comparisons use a consistent completion denominator (cloudlet-count
+    # finished_rate is NOT comparable to the RL's MI-weighted completion).
+    metrics['completion_rate_mi'] = _safe_get(gs, 'completion_rate_mi', 0.0)
+    # Carbon per unit MI-completion — the headline "c/c" metric.
+    metrics['carbon_per_completion_mi'] = (
+        metrics['total_carbon_kg'] / metrics['completion_rate_mi']
+        if metrics['completion_rate_mi'] > 0 else 0.0
+    )
+
     # Per-DC metrics + global mean completion time
     total_finished = 0
     weighted_completion_sum = 0.0

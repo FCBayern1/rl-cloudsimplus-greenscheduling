@@ -131,6 +131,19 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # that always aligns, we want exactly one diagnostic line per
         # module instead of one per minibatch (PPO does ~150+ minibatches).
         self._crd_dq_align_warned: Dict[ModuleID, bool] = {}
+        # M2.4 fix: warn-once flag for "obs-based baseline path unavailable",
+        # which forces the fallback to the misaligned infos path. Helps
+        # diagnose why ΔQ/σ² is still being skipped.
+        self._crd_baseline_obs_warned: bool = False
+
+    def _warn_baseline_obs_unavailable_once(self, reason: str) -> None:
+        if not self._crd_baseline_obs_warned:
+            self._crd_baseline_obs_warned = True
+            logger.warning(
+                f"[CRD] obs-based baseline path unavailable ({reason}); "
+                "falling back to infos-based path which may misalign with "
+                "the padded (B,T) grid. ΔQ/σ² may be skipped as a result."
+            )
 
     def compute_loss_for_module(
         self,
@@ -401,13 +414,28 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         so per-minibatch cost is sub-second on CPU.
         """
         obs = batch.get(Columns.OBS)
+        # Unwrap RLlib's "observation" nesting (the Connector wrapper / action-
+        # masking RLModules store the real obs dict under obs["observation"]).
+        # GTrXL{Global,ScoreBased,...} RLModules all do this unwrap in their
+        # _extract_obs_and_mask / _forward_pass; we must mirror it here or the
+        # dc_* keys are invisible and we silently fall back to the misaligned
+        # infos path.
+        if isinstance(obs, dict) and isinstance(obs.get("observation"), dict):
+            obs = obs["observation"]
         if not isinstance(obs, dict):
+            self._warn_baseline_obs_unavailable_once("obs is not a dict")
             return None
         green_ratio = obs.get("dc_green_ratio")
         queue_sizes = obs.get("dc_queue_sizes")
         if not isinstance(green_ratio, torch.Tensor):
+            self._warn_baseline_obs_unavailable_once(
+                f"dc_green_ratio missing/non-tensor; obs keys={sorted(obs.keys())}"
+            )
             return None
         if not isinstance(queue_sizes, torch.Tensor):
+            self._warn_baseline_obs_unavailable_once(
+                f"dc_queue_sizes missing/non-tensor; obs keys={sorted(obs.keys())}"
+            )
             return None
         if green_ratio.shape != queue_sizes.shape:
             return None
@@ -855,42 +883,136 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         (non-routing module) or when the queue snapshot is missing.
         """
         baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
-        actual_action = batch.get(Columns.ACTIONS)
-        infos = batch.get(Columns.INFOS)
-        if baseline_action is None or actual_action is None or infos is None:
+        if baseline_action is None:
             return
 
-        # Use the same source of truth M2.3 used (not the cache dict directly,
-        # so test stubs that override the method without populating the cache
-        # still see the right scheduler).
         sched = self._get_or_build_baseline_scheduler(module_id)
         if sched is None:
             return  # No routing scheduler available (e.g., local agent) → skip.
-        num_dc = sched.num_datacenters
 
         cfg = self._read_module_dr_config(module_id)
         alpha = float(cfg.get("alpha", _DEFAULT_ALPHA_DR))
 
+        # ── Preferred path: obs-based, shape-aligned with ΔQ ──────────────
+        # Reads dc_queue_sizes from the padded (B, T, num_dc) obs grid — the
+        # same grid baseline_action lives on — so Δr comes out (B, T),
+        # guaranteed to align with ΔQ/σ² in M3's blend. This avoids the
+        # `infos`-derived path's failure when PPO drops infos from a
+        # minibatch (len(infos)=0 → empty Δr → blend shape mismatch).
+        dr_tensor = self._compute_dr_from_obs(batch, sched, alpha)
+        if dr_tensor is not None:
+            batch[COL_CRD_DR] = dr_tensor
+            return
+
+        # ── Fallback: legacy infos-based path ─────────────────────────────
+        actual_action = batch.get(Columns.ACTIONS)
+        infos = batch.get(Columns.INFOS)
+        if actual_action is None or infos is None:
+            return
         try:
             dr_list = self._compute_dr_values(
                 infos=infos,
                 actual_actions=actual_action,
                 baseline_actions=baseline_action,
-                num_dc=num_dc,
+                num_dc=sched.num_datacenters,
                 alpha=alpha,
             )
         except Exception as e:
             logger.warning(f"[CRD] Δr compute failed for {module_id!r}: {e}")
             return
-
+        if not dr_list:
+            return  # empty → don't write a (0,) tensor that breaks M3's blend
         dr_tensor = torch.tensor(dr_list, dtype=torch.float32)
-        # Align shape with batch[REWARDS] (B, T) when possible.
         ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
         if isinstance(ref, torch.Tensor) and ref.numel() == dr_tensor.numel():
-            dr_tensor = dr_tensor.reshape(ref.shape).to(
-                ref.device, dtype=ref.dtype
-            )
+            dr_tensor = dr_tensor.reshape(ref.shape).to(ref.device, dtype=ref.dtype)
         batch[COL_CRD_DR] = dr_tensor
+
+    def _compute_dr_from_obs(
+        self, batch: Dict[str, Any], scheduler: Any, alpha: float
+    ) -> Optional[torch.Tensor]:
+        """
+        Compute Δr per (b, t) cell from the padded obs grid, producing a
+        (B, T) tensor aligned with ΔQ/σ².
+
+        Δr_t = α · (std(baseline_q) − std(actual_q)), where each per-DC queue
+        is the obs `dc_queue_sizes` plus the per-DC cloudlet counts from the
+        respective routing. Returns None if obs / baseline_action layouts are
+        not usable (caller falls back to the infos path).
+        """
+        obs = batch.get(Columns.OBS)
+        if isinstance(obs, dict) and isinstance(obs.get("observation"), dict):
+            obs = obs["observation"]
+        if not isinstance(obs, dict):
+            return None
+        queue_sizes = obs.get("dc_queue_sizes")
+        if not isinstance(queue_sizes, torch.Tensor) or queue_sizes.dim() != 3:
+            return None
+        B, T, num_dc = queue_sizes.shape
+        if num_dc != scheduler.num_datacenters:
+            return None
+
+        baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
+        if (
+            not isinstance(baseline_action, torch.Tensor)
+            or baseline_action.dim() != 3
+            or baseline_action.shape[:2] != (B, T)
+        ):
+            return None
+        bs = baseline_action.shape[2]
+
+        # Align actual routing to (B, T, bs). It may arrive padded (B, T, bs)
+        # or sequence-packed (N, bs); in the packed case use loss_mask to
+        # scatter valid rows back into the padded grid (zeros elsewhere — those
+        # cells are masked out of the loss downstream anyway).
+        actual_bt = self._align_routing_to_bt(
+            batch.get(Columns.ACTIONS), B, T, bs, batch.get(Columns.LOSS_MASK)
+        )
+        if actual_bt is None:
+            return None
+
+        import numpy as np
+        q_np = queue_sizes.detach().cpu().numpy()          # (B, T, num_dc)
+        act_np = actual_bt.detach().cpu().numpy().astype(np.int64)
+        base_np = baseline_action.detach().cpu().numpy().astype(np.int64)
+
+        dr = np.zeros((B, T), dtype=np.float32)
+        for b in range(B):
+            for t in range(T):
+                base_q = q_np[b, t]
+                actual_inc = np.bincount(act_np[b, t], minlength=num_dc)[:num_dc]
+                baseline_inc = np.bincount(base_np[b, t], minlength=num_dc)[:num_dc]
+                actual_std = float((base_q + actual_inc).std())
+                baseline_std = float((base_q + baseline_inc).std())
+                dr[b, t] = alpha * (baseline_std - actual_std)
+
+        tensor = torch.tensor(dr, dtype=torch.float32)
+        ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
+        if isinstance(ref, torch.Tensor):
+            tensor = tensor.to(ref.device, dtype=ref.dtype)
+        return tensor
+
+    @staticmethod
+    def _align_routing_to_bt(
+        action: Any, B: int, T: int, bs: int, loss_mask: Optional[torch.Tensor]
+    ) -> Optional[torch.Tensor]:
+        """Coerce a routing-action tensor to padded (B, T, bs); None if impossible."""
+        if not isinstance(action, torch.Tensor):
+            return None
+        a = action.long()
+        if a.dim() == 3 and a.shape[0] == B and a.shape[1] == T and a.shape[2] == bs:
+            return a
+        if a.dim() == 2 and a.shape[0] == B * T and a.shape[1] == bs:
+            return a.reshape(B, T, bs)
+        # Sequence-packed (N_valid, bs): scatter via loss_mask.
+        if a.dim() == 2 and a.shape[1] == bs and isinstance(loss_mask, torch.Tensor):
+            flat_mask = loss_mask.reshape(-1).bool()
+            if int(flat_mask.sum().item()) != a.shape[0]:
+                return None
+            out = torch.zeros(B * T, bs, dtype=torch.long, device=a.device)
+            out[flat_mask] = a
+            return out.reshape(B, T, bs)
+        return None
 
     def _read_module_dr_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.delta_r` from the module's model_config; default to {}."""

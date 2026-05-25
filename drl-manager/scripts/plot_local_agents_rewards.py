@@ -18,7 +18,7 @@ Usage::
 
     python drl-manager/scripts/plot_local_agents_rewards.py \\
         --monitor logs/experiment_multi_dc_11_GTrXL/20251228_025812/monitor.csv \\
-        --out drl-manager/compare_result/local_agents_rewards.png
+        --out drl-manager/compare_result/figure_local_agents_rewards.png
 """
 
 from __future__ import annotations
@@ -40,11 +40,14 @@ logger = logging.getLogger("plot_local_agents_rewards")
 
 # IEEE TC style knobs. 10pt matches the journal body text exactly.
 FONT_SIZE: int       = 10
-FIG_WIDTH_IN: float  = 7.16   # double-column
-FIG_HEIGHT_IN: float = 2.7    # single wide panel
+FIG_WIDTH_IN: float  = 3.49   # single-column width (IEEE TC)
+FIG_HEIGHT_IN: float = 2.2    # flat aspect — the legend overlays the
+                              # bottom-right corner of the plot (where
+                              # converged lines leave empty space) so the
+                              # full canvas can be the data area.
 DEFAULT_DPI: int     = 300
 
-LINEWIDTH: float       = 1.8   # slight bump to balance the larger font
+LINEWIDTH: float       = 1.4
 SMOOTH_WINDOW_DEFAULT: int = 15
 
 
@@ -119,20 +122,30 @@ def render(
     # No in-chart title: IEEE caption already describes the figure
     # ("Fig. N. Individual local agent reward trajectories..."), so the
     # extra heading would just duplicate it and steal vertical space.
-    ax.set_xlabel("Episode")
-    ax.set_ylabel("Reward")
-    ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    # Explicit fontsize on every text element — belt-and-braces in case any
+    # rcParams entry gets overridden by a downstream call. Everything =
+    # 10pt body-text size.
+    ax.set_xlabel("Episode", fontsize=FONT_SIZE)
+    ax.set_ylabel("Reward",  fontsize=FONT_SIZE)
+    ax.tick_params(axis="both", labelsize=FONT_SIZE)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
     ax.grid(True, color="#CCCCCC", linewidth=0.5, alpha=0.6)
     ax.set_axisbelow(True)
+    # Legend overlays the bottom-right corner of the plot. By episode 100
+    # all ten local agents have plateaued in the upper half of the y-range
+    # (above ~-4000), so the lower-right quadrant is dead space — a free
+    # place to drop a 2-col × 5-row legend without occluding data. Font
+    # stays at the body-text size (10pt) to match Fig 4 / Fig 6.
     ax.legend(
         loc="lower right",
         ncol=2,
+        fontsize=FONT_SIZE,
         frameon=True, framealpha=0.9,
         edgecolor="#888888",
-        borderpad=0.4,
-        handlelength=1.6, handletextpad=0.5,
-        columnspacing=1.0, labelspacing=0.3,
+        borderpad=0.3,
+        handlelength=1.0, handletextpad=0.3,
+        columnspacing=0.7, labelspacing=0.25,
     )
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -142,7 +155,12 @@ def render(
 
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=dpi, facecolor="white")
+    # ``bbox_inches="tight"`` crops the PNG to whatever the artists actually
+    # occupy. ``pad_inches`` overrides the 0.1" default padding that
+    # otherwise leaves a visible strip of empty space below the x-axis
+    # label and above the top spine.
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     return out_png
 

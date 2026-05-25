@@ -47,6 +47,43 @@ TS_FMT = "%Y-%m-%d %H:%M:%S"
 PLOT_BASE = datetime(2000, 1, 1, 0, 0, 0)
 
 
+# IEEE Transactions on Computers style knobs — matches plot_algo_compare.py,
+# plot_carbon_metrics.py, plot_local_agents_rewards.py so this figure reads
+# as part of the same visual family in the paper.
+FONT_SIZE: int       = 10     # IEEE TC body text
+FIG_WIDTH_IN: float  = 3.49   # single-column width
+FIG_HEIGHT_IN: float = 1.7    # very flat aspect (~2:1)
+DEFAULT_DPI: int     = 300
+LINEWIDTH: float     = 1.4
+
+
+def _apply_ieee_style(plt) -> None:
+    plt.rcParams.update({
+        "font.family":      "serif",
+        "font.serif":       ["Times New Roman", "Nimbus Roman",
+                             "Liberation Serif", "DejaVu Serif", "serif"],
+        "mathtext.fontset": "stix",
+        "font.size":        FONT_SIZE,
+        "axes.titlesize":   FONT_SIZE,
+        "axes.labelsize":   FONT_SIZE,
+        "xtick.labelsize":  FONT_SIZE,
+        "ytick.labelsize":  FONT_SIZE,
+        "legend.fontsize":  FONT_SIZE,
+    })
+
+
+def _polish(ax) -> None:
+    """Shared IEEE-style polish: hide top/right spines, soften the rest,
+    light grid, ticks below data."""
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_linewidth(0.6)
+        ax.spines[side].set_color("#444444")
+    ax.grid(True, color="#CCCCCC", linewidth=0.5, alpha=0.6)
+    ax.set_axisbelow(True)
+
+
 @dataclass(frozen=True)
 class DatacenterGreenCfg:
     datacenter_id: int
@@ -378,8 +415,12 @@ def main() -> int:
 
     try:
         import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.dates as mdates  # type: ignore
+        from matplotlib.ticker import MaxNLocator  # type: ignore
     except Exception as e:
         raise RuntimeError("Missing dependency: matplotlib. Install it (e.g. `pip install matplotlib`).") from e
+
+    _apply_ieee_style(plt)
 
     # one figure per day/block (simpler to read)
     for i_day, day in enumerate(days_list):
@@ -390,7 +431,10 @@ def main() -> int:
             # synthetic 24h window
             day_start = PLOT_BASE
             day_end = PLOT_BASE + timedelta(days=1)
-        plt.figure(figsize=(12, 5))
+        fig, ax = plt.subplots(
+            figsize=(FIG_WIDTH_IN, FIG_HEIGHT_IN),
+            constrained_layout=True,
+        )
 
         any_data = False
         missing_dcs: List[str] = []
@@ -412,7 +456,7 @@ def main() -> int:
 
             xs = sorted(series.keys())
             ys = [series[t] for t in xs]
-            plt.plot(xs, ys, linewidth=1.6, label=f"DC{dc.datacenter_id} {dc.name}")
+            ax.plot(xs, ys, linewidth=LINEWIDTH, label=f"DC{dc.datacenter_id}")
 
         if not any_data:
             if day is not None:
@@ -430,18 +474,33 @@ def main() -> int:
                 file=sys.stderr,
             )
 
-        if day is not None:
-            title = args.title.strip() or f"{args.experiment}: green power (kW) on {day.isoformat()}"
-        else:
-            title = args.title.strip() or f"{args.experiment}: green power (kW) at offset_days={offset_days + i_day}"
-        plt.title(title)
-        plt.xlabel("time")
-        plt.ylabel("green generation power (kW)")
-        plt.grid(True, alpha=0.25)
-        plt.legend(loc="upper right")
-        # Force a 24h window for this day
-        plt.xlim(day_start, day_end)
-        plt.tight_layout()
+        # In-chart title is omitted by default: the IEEE caption already
+        # describes the figure, and removing it gives the data area more
+        # vertical room. Pass ``--title`` if you do want one.
+        if args.title.strip():
+            ax.set_title(args.title.strip(), fontsize=FONT_SIZE)
+        ax.set_xlabel("Time of Day", fontsize=FONT_SIZE)
+        ax.set_ylabel("Green Power (kW)", fontsize=FONT_SIZE)
+        ax.tick_params(axis="both", labelsize=FONT_SIZE)
+
+        # 24h x-axis: 6-hour ticks ("00:00", "06:00", "12:00", "18:00")
+        # keeps the labels short enough not to overlap at single-column width.
+        ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax.set_xlim(day_start, day_end)
+
+        ax.legend(
+            loc="best",
+            fontsize=FONT_SIZE,
+            frameon=True, framealpha=0.9,
+            edgecolor="#888888",
+            borderpad=0.3,
+            handlelength=1.0, handletextpad=0.3,
+            columnspacing=0.7, labelspacing=0.25,
+            ncol=2 if len(picked) > 4 else 1,
+        )
+        _polish(ax)
 
         if args.out:
             out_path = Path(args.out)
@@ -453,14 +512,15 @@ def main() -> int:
                 out_path = out_path.with_suffix(".png")
             try:
                 out_path.parent.mkdir(parents=True, exist_ok=True)
-                plt.savefig(out_path, dpi=160)
+                fig.savefig(out_path, dpi=DEFAULT_DPI, facecolor="white",
+                            bbox_inches="tight", pad_inches=0.02)
                 print(f"[OK] wrote {out_path}")
             except PermissionError as e:
                 raise PermissionError(
                     f"Cannot write output file: {out_path}. "
                     "Choose a writable directory, e.g. /tmp/..., or a path under the repo."
                 ) from e
-            plt.close()
+            plt.close(fig)
         else:
             plt.show()
 

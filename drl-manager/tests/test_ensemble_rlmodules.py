@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.models.rlmodule_gtrxl_ensemble import (
     GTrXLEnsembleMaskedActionRLModule,
     GTrXLEnsembleGlobalRLModule,
+    GTrXLScoreBasedEnsembleGlobalRLModule,
     COL_Q_ENSEMBLE,
 )
 
@@ -236,6 +237,137 @@ def test_global_v_head_unchanged_by_ensemble():
     out = mod._forward_train(_global_train_batch(B=B, T=T))
     v = out[Columns.VF_PREDS]
     assert v.shape == (B, T), f"V-head shape regressed: {tuple(v.shape)}"
+
+
+# ---------------------------------------------------------------------------
+# GTrXLScoreBasedEnsembleGlobalRLModule (M2.5 compatibility — Stage 3 score-
+# based backbone with EU-CRD Q-head ensemble bolted on).
+#
+# The score-based parent expects Dict obs with three categories:
+#   - "dc_*"             shape (num_dcs,)      per-DC features
+#   - "batch_cloudlet_*" shape (num_batch_slots,) per-cloudlet features
+#   - everything else                          context
+# ---------------------------------------------------------------------------
+
+
+def _build_score_based(num_dcs=4, num_batch_slots=3, context_dim=5):
+    """Build a minimal score-based ensemble RLModule for testing."""
+    obs_space = spaces.Dict({
+        # per-DC features (required: at least one)
+        "dc_green_ratio": spaces.Box(low=0, high=1, shape=(num_dcs,), dtype=np.float32),
+        "dc_queue_sizes": spaces.Box(low=0, high=100, shape=(num_dcs,), dtype=np.float32),
+        # per-cloudlet features (required: at least one)
+        "batch_cloudlet_size": spaces.Box(
+            low=0, high=1e6, shape=(num_batch_slots,), dtype=np.float32
+        ),
+        # context (everything else)
+        "global_context": spaces.Box(
+            low=-1, high=1, shape=(context_dim,), dtype=np.float32
+        ),
+    })
+    action_space = spaces.MultiDiscrete([num_dcs] * num_batch_slots)
+    spec = RLModuleSpec(
+        module_class=GTrXLScoreBasedEnsembleGlobalRLModule,
+        observation_space=obs_space,
+        action_space=action_space,
+        model_config=dict(TINY_MODEL_CFG),
+    )
+    return spec.build()
+
+
+def _score_based_train_batch(B=2, T=2, num_dcs=4, num_batch_slots=3, context_dim=5):
+    obs = {
+        "dc_green_ratio": torch.rand(B, T, num_dcs),
+        "dc_queue_sizes": torch.randint(0, 10, (B, T, num_dcs)).float(),
+        "batch_cloudlet_size": torch.rand(B, T, num_batch_slots) * 1000.0,
+        "global_context": torch.randn(B, T, context_dim),
+    }
+    return {Columns.OBS: obs}
+
+
+def test_score_based_setup_creates_q_heads():
+    """Q-head ensemble must attach to the score-based backbone with correct dims."""
+    num_dcs, num_batch_slots = 4, 3
+    mod = _build_score_based(num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    assert mod.q_heads.K == 5
+    assert mod.q_heads.action_dim == num_dcs * num_batch_slots
+    assert mod.crd_batch_size == num_batch_slots
+    assert mod.crd_num_dc == num_dcs
+    # Score-based backbone preserved (these are unique to GTrXLScoreBased...)
+    assert hasattr(mod, "cloudlet_encoder")
+    assert hasattr(mod, "dc_encoder")
+
+
+def test_score_based_forward_train_emits_q_ensemble():
+    B, T, num_dcs, num_batch_slots = 2, 2, 4, 3
+    mod = _build_score_based(num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    batch = _score_based_train_batch(B=B, T=T, num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    out = mod._forward_train(batch)
+    assert COL_Q_ENSEMBLE in out, "score-based ensemble must emit crd_q_ensemble"
+    q = out[COL_Q_ENSEMBLE]
+    # Same shape as vanilla GTrXLEnsembleGlobalRLModule
+    assert q.shape == (B, T, 5, num_batch_slots, num_dcs), (
+        f"crd_q_ensemble shape {tuple(q.shape)} doesn't match "
+        f"expected (B={B}, T={T}, K=5, bs={num_batch_slots}, nd={num_dcs})"
+    )
+    # Sanity: PPO outputs still there
+    assert Columns.ACTION_DIST_INPUTS in out
+    assert Columns.VF_PREDS in out
+
+
+def test_score_based_v_head_unchanged_by_ensemble():
+    """V-head must still produce (B, T) — PPO GAE depends on this."""
+    B, T = 2, 2
+    mod = _build_score_based()
+    out = mod._forward_train(_score_based_train_batch(B=B, T=T))
+    v = out[Columns.VF_PREDS]
+    assert v.shape == (B, T), f"V-head shape regressed: {tuple(v.shape)}"
+
+
+def test_score_based_compute_q_ensemble_shapes_and_var_nonneg():
+    B, num_dcs, num_batch_slots = 4, 4, 3
+    mod = _build_score_based(num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    batch = _score_based_train_batch(B=B, T=2, num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    action = torch.randint(0, num_dcs, (B, num_batch_slots), dtype=torch.long)
+    mu, var = mod.compute_q_ensemble(batch, action)
+    assert mu.shape == (B,) and var.shape == (B,)
+    assert (var >= 0).all()
+
+
+def test_score_based_compute_q_ensemble_deterministic():
+    mod = _build_score_based()
+    batch = _score_based_train_batch(B=2, T=2)
+    action = torch.tensor([[0, 1, 2], [3, 0, 1]], dtype=torch.long)
+    mu1, var1 = mod.compute_q_ensemble(batch, action)
+    mu2, var2 = mod.compute_q_ensemble(batch, action)
+    assert torch.allclose(mu1, mu2)
+    assert torch.allclose(var1, var2)
+
+
+def test_score_based_compute_q_ensemble_var_changes_with_action():
+    """OOD-action discriminability via ensemble σ² on the score-based trunk."""
+    num_dcs, num_batch_slots = 4, 3
+    mod = _build_score_based(num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    batch = _score_based_train_batch(B=1, T=2, num_dcs=num_dcs, num_batch_slots=num_batch_slots)
+    vars_seen = []
+    for a in range(num_dcs):
+        action = torch.full((1, num_batch_slots), a, dtype=torch.long)
+        _, v = mod.compute_q_ensemble(batch, action)
+        vars_seen.append(v.item())
+    spread = max(vars_seen) - min(vars_seen)
+    assert spread > 1e-6, f"σ² identical across actions: {vars_seen}"
+
+
+def test_score_based_compute_q_ensemble_rejects_wrong_action_shape():
+    num_batch_slots = 3
+    mod = _build_score_based(num_batch_slots=num_batch_slots)
+    batch = _score_based_train_batch(B=2, T=2)
+    # 1-D action (forgot per-cloudlet dim) → raises
+    with pytest.raises(ValueError, match=r"\(B, batch_size\)"):
+        mod.compute_q_ensemble(batch, torch.tensor([0, 1], dtype=torch.long))
+    # Wrong batch_size dim → raises
+    with pytest.raises(ValueError, match="batch_size"):
+        mod.compute_q_ensemble(batch, torch.zeros((2, num_batch_slots + 1), dtype=torch.long))
 
 
 if __name__ == "__main__":
