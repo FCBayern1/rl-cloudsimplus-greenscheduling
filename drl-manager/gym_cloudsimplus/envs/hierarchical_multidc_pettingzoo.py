@@ -103,6 +103,18 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         ctde_cfg = config.get("ctde", {})
         self.ctde_enabled = bool(ctde_cfg.get("enabled", False)) if isinstance(ctde_cfg, dict) else bool(ctde_cfg)
 
+        # EU-CRD: when enabled, attach a per-step "crd_aux" sibling to every
+        # agent's observation carrying the raw wind/power/carbon snapshot the
+        # learner needs to compute R_forecast on the padded (B, T) obs grid.
+        # This is the robust replacement for the infos-based forecast path
+        # (infos is unreliable under PPO minibatching). The policy networks
+        # only read obs["observation"]/obs["action_mask"], so the crd_aux
+        # sibling is carried to the learner but never fed to the policy
+        # (no oracle leakage, no input-dim change). Gated by crd.enabled, so
+        # non-CRD runs keep an unchanged observation space.
+        crd_cfg = config.get("crd", {}) if isinstance(config, dict) else {}
+        self.crd_enabled = bool(crd_cfg.get("enabled", False)) if isinstance(crd_cfg, dict) else False
+
         # Wrap the base hierarchical environment (no modifications to original)
         logger.info("Creating base HierarchicalMultiDCEnv...")
         base_env = HierarchicalMultiDCEnv(config=config)
@@ -210,14 +222,17 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # action_mask shape equals global_routing_batch_size:
         # - 1.0: real cloudlet exists for that slot
         # - 0.0: padding slot (no cloudlet)
-        obs_spaces["global_agent"] = spaces.Dict({
+        global_agent_space = {
             "observation": self.base_env.global_observation_space,
             "action_mask": spaces.Box(
                 low=0.0, high=1.0,
                 shape=(self.global_routing_batch_size,),
                 dtype=np.float32
             ),
-        })
+        }
+        if self.crd_enabled:
+            global_agent_space["crd_aux"] = self._crd_aux_space()
+        obs_spaces["global_agent"] = spaces.Dict(global_agent_space)
 
         # Local agents observation spaces
         # NOTE: We expose a UNIFIED padded observation space for all local agents
@@ -287,14 +302,17 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         unified_local_obs_space = spaces.Dict(local_obs_dict)
 
         for i in range(self.num_datacenters):
-            obs_spaces[f"local_agent_{i}"] = spaces.Dict({
+            local_agent_space = {
                 "observation": unified_local_obs_space,
                 "action_mask": spaces.Box(
                     low=0.0, high=1.0,
                     shape=(self.max_actions,),
                     dtype=np.float32
                 ),
-            })
+            }
+            if self.crd_enabled:
+                local_agent_space["crd_aux"] = self._crd_aux_space()
+            obs_spaces[f"local_agent_{i}"] = spaces.Dict(local_agent_space)
 
         return obs_spaces
 
@@ -396,8 +414,11 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # Reset base environment
         hierarchical_obs, hierarchical_info = self.base_env.reset(seed=seed, options=options)
 
-        # Convert hierarchical format to flat agent dict format
-        observations = self._hierarchical_to_flat_observations(hierarchical_obs)
+        # Convert hierarchical format to flat agent dict format (crd_aux pulled
+        # from the same info["crd"] snapshot the base env just collected).
+        observations = self._hierarchical_to_flat_observations(
+            hierarchical_obs, crd_info=hierarchical_info.get("crd")
+        )
 
         # Replicate info for all agents (or customize per agent if needed)
         infos = {agent: hierarchical_info.copy() for agent in self.agents}
@@ -457,8 +478,11 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             hierarchical_info
         ) = self.base_env.step(hierarchical_actions)
 
-        # Convert results to PettingZoo format
-        observations = self._hierarchical_to_flat_observations(hierarchical_obs)
+        # Convert results to PettingZoo format (crd_aux from this step's
+        # info["crd"] snapshot, delivered via obs for stable learner alignment).
+        observations = self._hierarchical_to_flat_observations(
+            hierarchical_obs, crd_info=hierarchical_info.get("crd")
+        )
         rewards = self._hierarchical_to_flat_rewards(hierarchical_rewards)
 
         # -------------------------------------------------------------------
@@ -526,9 +550,64 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
 
         return observations, rewards, terminations, truncations, infos
 
+    def _crd_aux_space(self) -> spaces.Dict:
+        """
+        EU-CRD auxiliary observation channel (a sibling of "observation").
+
+        Carries the raw per-DC wind/power/carbon snapshot the learner needs to
+        compute R_forecast on the padded (B, T) grid — the same quantities
+        `HierarchicalMultiDCEnv._collect_crd_info` puts in info["crd"], but
+        delivered through obs (which PPO minibatching keeps aligned) instead of
+        infos (which it does not). Never read by the policy networks.
+        """
+        n = self.num_datacenters
+        box = lambda shape: spaces.Box(low=-np.inf, high=np.inf, shape=shape, dtype=np.float32)
+        return spaces.Dict({
+            "crd_actual_green_w": box((n,)),
+            "crd_predicted_green_w": box((n,)),
+            "crd_total_power_w": box((n,)),
+            "crd_green_factor": box((n,)),
+            "crd_brown_factor": box((n,)),
+            "crd_timestep_hours": box((1,)),
+        })
+
+    def _build_crd_aux(self, crd_info: Optional[Dict[str, Any]]) -> Dict[str, np.ndarray]:
+        """
+        Pack a crd_info snapshot (from base_env._collect_crd_info, surfaced via
+        info["crd"]) into the fixed-shape crd_aux obs dict. Missing fields
+        default to zeros; a missing predicted_wind_w defaults to the actual
+        wind so R_forecast = 0 (the correct "no forecast signal" attribution).
+        """
+        n = self.num_datacenters
+        crd = crd_info if isinstance(crd_info, dict) else {}
+
+        def _vec(key, default=None):
+            v = crd.get(key)
+            if v is None:
+                return (np.zeros(n, dtype=np.float32) if default is None
+                        else np.asarray(default, dtype=np.float32))
+            arr = np.asarray(v, dtype=np.float32).reshape(-1)
+            if arr.shape[0] < n:
+                arr = np.concatenate([arr, np.zeros(n - arr.shape[0], dtype=np.float32)])
+            return arr[:n]
+
+        actual = _vec("actual_wind_w")
+        # predicted defaults to actual → carbon(actual)==carbon(pred) → R_f=0.
+        predicted = _vec("predicted_wind_w", default=actual)
+        dt = float(crd.get("timestep_hours", 0.0) or 0.0)
+        return {
+            "crd_actual_green_w": actual,
+            "crd_predicted_green_w": predicted,
+            "crd_total_power_w": _vec("p_total_w"),
+            "crd_green_factor": _vec("green_carbon_factor"),
+            "crd_brown_factor": _vec("brown_carbon_factor"),
+            "crd_timestep_hours": np.asarray([dt], dtype=np.float32),
+        }
+
     def _hierarchical_to_flat_observations(
         self,
-        hierarchical_obs: Dict[str, Any]
+        hierarchical_obs: Dict[str, Any],
+        crd_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Convert hierarchical observation format to flat agent dict with action masks.
@@ -551,6 +630,9 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             }
         """
         flat_obs = {}
+
+        # EU-CRD: one shared snapshot for all agents (system-level wind/carbon).
+        crd_aux = self._build_crd_aux(crd_info) if self.crd_enabled else None
 
         # Global agent observation with slot-level mask for MultiDiscrete routing.
         global_obs = hierarchical_obs["global"]
@@ -576,6 +658,8 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "observation": global_obs,
             "action_mask": global_action_mask,
         }
+        if crd_aux is not None:
+            flat_obs["global_agent"]["crd_aux"] = {k: v.copy() for k, v in crd_aux.items()}
 
         # CTDE: pre-compute flattened global state once for all local agents
         if self.ctde_enabled:
@@ -639,6 +723,8 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 "observation": unified_obs,
                 "action_mask": action_mask,
             }
+            if crd_aux is not None:
+                flat_obs[agent_name]["crd_aux"] = {k: v.copy() for k, v in crd_aux.items()}
 
         if self._validate_obs_shapes:
             for agent, obs in flat_obs.items():

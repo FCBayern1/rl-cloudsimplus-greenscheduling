@@ -33,6 +33,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 from src.baselines.global_schedulers import GreenQueueBalancedGlobalScheduler
+from src.baselines.local_schedulers import BestFitLocalScheduler
 from src.crd.blender import CRDBlender
 from src.crd.cf_math import forecast_cf_per_step
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
@@ -58,6 +59,10 @@ _DEFAULT_BASELINE_GREEN_WEIGHT = 0.6
 # `global_reward_alpha` (which may be 0 in carbon-only experiments) — Δr
 # only needs a meaningful non-zero magnitude for M3 soft-blending to work.
 _DEFAULT_ALPHA_DR = 1.0
+# Default α weight on the M4 local-scheduling Δr proxy (PE-waste difference
+# between the agent's VM choice and the BestFit baseline). Separate knob from
+# the routing Δr above so the two layers can be scaled independently.
+_DEFAULT_ALPHA_DR_LOCAL = 1.0
 # Default M5 responsibility-weight floor. Per-transition ρ ∈ [ρ_min, 1]
 # clamping prevents the policy gradient from vanishing on transitions
 # where the agent's controllable share is dwarfed by exogenous forecast
@@ -82,8 +87,10 @@ COL_CRD_DR = "crd_dr"
 COL_CRD_R_ROUTING = "crd_r_routing"
 COL_CRD_C_T = "crd_c_t"
 COL_CRD_TAU = "crd_tau"
-# M4 (future) will write R_scheduling for local agents. M5 reads this when
-# present so global ρ_routing properly competes with all three components.
+# M4 writes R_scheduling for local agents (soft-blended ΔQ_local/Δr_local).
+# M5 reads this: in a local module's batch it is the agent-controllable share
+# that reweights the local ADVANTAGES; in a global module's batch it is absent
+# (each module only carries its own layer's signal).
 COL_CRD_R_SCHEDULING = "crd_r_scheduling"
 # M5 writes per-transition responsibility weights. ρ_routing /
 # ρ_scheduling reach the policy gradient via the advantage rewrite;
@@ -114,10 +121,22 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # the log every minibatch when the prediction pathway isn't active
         # (e.g., timecap-as-godeye experiments without WindPredictionWrapper).
         self._crd_pred_missing_warned: Dict[ModuleID, bool] = {}
+        # warn-once flag for R_forecast failing to align to the (B, T) grid
+        # (neither B*T nor loss_mask valid-count) — would silently zero the
+        # forecast share, disabling forecast shielding.
+        self._crd_forecast_align_warned: Dict[ModuleID, bool] = {}
         # M2.3: per-module cache of the heuristic baseline scheduler used to
         # produce ã. None entries mark modules where baseline action does not
         # apply (e.g., local agents — those will be addressed in M4).
         self._crd_baseline_schedulers: Dict[ModuleID, Optional[Any]] = {}
+        # M4: per-module cache of the local BestFit baseline scheduler used to
+        # produce ã_local for Discrete (local-scheduling) modules. None marks
+        # modules where local baseline doesn't apply (e.g., the global router).
+        self._crd_local_baseline_schedulers: Dict[ModuleID, Optional[Any]] = {}
+        # M4: warn-once flag for the obs-based local baseline path being
+        # unavailable (missing action_mask / vm_available_pes), which forces
+        # ΔQ_local/σ²_local to be skipped for that module.
+        self._crd_local_baseline_warned: Dict[ModuleID, bool] = {}
         # M2.3: warn-once flag for missing decision-time signals
         # (dc_green_ratio / dc_queue_sizes) in info["crd"].
         self._crd_baseline_signal_warned: Dict[ModuleID, bool] = {}
@@ -135,6 +154,8 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         # which forces the fallback to the misaligned infos path. Helps
         # diagnose why ΔQ/σ² is still being skipped.
         self._crd_baseline_obs_warned: bool = False
+        # M7: warn-once flag for diagnostics-logging failure.
+        self._crd_diag_warned: bool = False
 
     def _warn_baseline_obs_unavailable_once(self, reason: str) -> None:
         if not self._crd_baseline_obs_warned:
@@ -222,27 +243,123 @@ class CRDPPOTorchLearner(PPOTorchLearner):
                 f"has_q_ensemble=True"
             )
 
-        # M2.2: forecast counterfactual.
+        # M2.2: forecast counterfactual. Shared by both layers — every agent's
+        # info["crd"] carries the same exogenous wind snapshot, so the forecast
+        # share shields local scheduling agents from forecast error too.
         self._compute_forecast_cf(module_id=module_id, batch=batch)
 
-        # M2.3: baseline (heuristic) action ã for the routing CF.
-        self._compute_baseline_action(module_id=module_id, batch=batch)
+        # Dispatch on action-space kind: the global router (MultiDiscrete) gets
+        # the routing CF; local schedulers (Discrete) get the scheduling CF. A
+        # module is exactly one of the two, so the shared columns
+        # (baseline_action / crd_dq / crd_sigma2 / crd_dr) never collide within
+        # a single batch.
+        global_sched = self._get_or_build_baseline_scheduler(module_id)
+        local_sched = (
+            None
+            if global_sched is not None
+            else self._get_or_build_local_baseline_scheduler(module_id)
+        )
 
-        # M2.4: ΔQ + σ²_tot via ensemble lookup (no extra trunk forward).
+        # ── Baseline action ã (layer-specific producer) ─────────────────────
+        if global_sched is not None:
+            # M2.3: heuristic GreenQueueBalanced routing baseline.
+            self._compute_baseline_action(module_id=module_id, batch=batch)
+        elif local_sched is not None:
+            # M4.2a: BestFit baseline VM choice from the obs grid.
+            self._compute_local_baseline_action(module_id=module_id, batch=batch)
+
+        # M2.4 / M4.2b: ΔQ + σ²_tot via ensemble lookup (no extra trunk
+        # forward). Layout-agnostic — gates internally on baseline_action being
+        # present, so it is safe to call unconditionally (tests may pre-seed
+        # baseline_action without a cached scheduler).
         self._compute_dq_and_sigma2(
             module_id=module_id, batch=batch, fwd_out=fwd_out
         )
 
-        # M2.5: reward-level Δr fallback (load-std proxy).
-        self._compute_dr(module_id=module_id, batch=batch)
-
-        # M3: blend ΔQ and Δr into R^routing using σ²-driven confidence gate.
-        self._compute_r_routing(module_id=module_id, batch=batch)
+        # ── Δr fallback + σ²-gated blend (layer-specific) ───────────────────
+        if global_sched is not None:
+            # M2.5 reward-level Δr (load-std proxy) → M3 blend into R^routing.
+            self._compute_dr(module_id=module_id, batch=batch)
+            self._compute_r_routing(module_id=module_id, batch=batch)
+        elif local_sched is not None:
+            # M4.2c reward-level Δr_local (PE-waste proxy) → M4.2d blend into
+            # R^scheduling (reuses the per-module CRDBlender).
+            self._compute_local_dr(module_id=module_id, batch=batch)
+            self._compute_r_scheduling(module_id=module_id, batch=batch)
 
         # M5: per-transition responsibility weights ρ_k + reweight advantages.
         # Must run BEFORE super().compute_loss_for_module so PPO's surrogate
         # loss reads the reweighted ADVANTAGES tensor.
         self._compute_responsibilities(module_id=module_id, batch=batch)
+
+        # M7: push CRD diagnostic scalars into the RLlib result dict. The
+        # WandbLoggerCallback auto-forwards everything in result to wandb, so
+        # no wandb-specific code is needed here — just log via self.metrics.
+        self._log_crd_diagnostics(module_id=module_id, batch=batch)
+
+    # ------------------------------------------------------------------ M7
+
+    def _log_crd_diagnostics(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        Surface CRD internal signals as logged scalars so they appear under
+        result["learners"][module_id]["crd/..."] and flow to wandb/TensorBoard.
+
+        Logged (per minibatch, aggregated by the MetricsLogger over the iter):
+          - crd/rho_forecast_mean    — exogenous (forecast) responsibility share
+          - crd/rho_routing_mean     — routing responsibility share
+          - crd/rho_scheduling_mean  — scheduling responsibility share
+          - crd/sigma2_tot_mean      — ensemble epistemic uncertainty (↓ as critic matures)
+          - crd/c_t_mean             — soft-blend confidence gate (↑ as σ² drops)
+          - crd/tau                  — adaptive temperature
+          - crd/r_forecast_abs_mean  — |R_forecast| magnitude (forecast-CF signal strength)
+          - crd/dq_mean / crd/dr_mean — value-level vs reward-level CF magnitudes
+
+        No-op if self.metrics isn't available (e.g., unit-test stubs that
+        bypass Learner.build()).
+        """
+        metrics = getattr(self, "metrics", None)
+        if metrics is None:
+            return
+
+        def _scalar_mean(key: str):
+            t = batch.get(key)
+            if isinstance(t, torch.Tensor) and t.numel() > 0:
+                return t.detach().float().mean().item()
+            return None
+
+        diag = {
+            "crd/rho_forecast_mean": _scalar_mean(COL_CRD_RHO_FORECAST),
+            "crd/rho_routing_mean": _scalar_mean(COL_CRD_RHO_ROUTING),
+            "crd/rho_scheduling_mean": _scalar_mean(COL_CRD_RHO_SCHEDULING),
+            "crd/sigma2_tot_mean": _scalar_mean(COL_CRD_SIGMA2),
+            "crd/c_t_mean": _scalar_mean(COL_CRD_C_T),
+            "crd/dq_mean": _scalar_mean(COL_CRD_DQ),
+            "crd/dr_mean": _scalar_mean(COL_CRD_DR),
+            "crd/r_routing_mean": _scalar_mean(COL_CRD_R_ROUTING),
+            "crd/r_scheduling_mean": _scalar_mean(COL_CRD_R_SCHEDULING),
+        }
+        # |R_forecast| magnitude (sign-agnostic — how strong the forecast-CF
+        # signal is, which is what the attribution-fidelity experiment tracks).
+        rf = batch.get(COL_CRD_FORECAST)
+        if isinstance(rf, torch.Tensor) and rf.numel() > 0:
+            diag["crd/r_forecast_abs_mean"] = rf.detach().float().abs().mean().item()
+        # τ is a 0-d tensor written by M3.
+        tau = batch.get(COL_CRD_TAU)
+        if isinstance(tau, torch.Tensor) and tau.numel() == 1:
+            diag["crd/tau"] = tau.detach().float().item()
+
+        diag = {k: v for k, v in diag.items() if v is not None}
+        if not diag:
+            return
+        try:
+            metrics.log_dict(diag, key=module_id, window=1)
+        except Exception as e:
+            # Diagnostics must never crash training.
+            if not self._crd_diag_warned:
+                self._crd_diag_warned = True
+                logger.warning(f"[CRD] diagnostics logging failed: {e}")
 
     def _read_module_crd_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.ensemble` from the module's model_config; default to {}."""
@@ -282,13 +399,26 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         ρ, which is the correct attribution since we have no forecast signal
         to compare against.
         """
-        infos = batch.get(Columns.INFOS)
-        if infos is None:
-            return  # nothing to compute against
-
         forecast_cfg = self._read_module_forecast_config(module_id)
         beta = float(forecast_cfg.get("beta", _DEFAULT_BETA_FORECAST))
         gamma = float(forecast_cfg.get("gamma", _DEFAULT_GAMMA_FORECAST))
+
+        # ── Preferred path: obs-based forecast (M-fix) ──────────────────────
+        # The env attaches a per-step `crd_aux` snapshot to the obs (a sibling
+        # of "observation", invisible to the policy). It rides the padded
+        # (B, T) obs grid, so it stays aligned with ADVANTAGES/ΔQ under PPO
+        # minibatching — unlike `infos`, whose length is unreliable
+        # (observed 95 vs 2048; 1953 vs 1952). When present this is the
+        # authoritative path and we skip infos entirely.
+        obs_based = self._compute_forecast_cf_from_obs(batch, beta=beta, gamma=gamma)
+        if obs_based is not None:
+            batch[COL_CRD_FORECAST] = obs_based
+            return
+
+        # ── Fallback: legacy infos-based path ───────────────────────────────
+        infos = batch.get(Columns.INFOS)
+        if infos is None:
+            return  # nothing to compute against
 
         r_forecast_list, n_missing_pred = self._compute_forecast_cf_values(
             infos=infos, beta=beta, gamma=gamma
@@ -313,18 +443,165 @@ class CRDPPOTorchLearner(PPOTorchLearner):
                 "into info['crd'] from your prediction pathway."
             )
 
-        # Reshape to match a sibling (B, T) tensor so that downstream
-        # consumers (M5 advantage rewrite) can broadcast cleanly.
+        # Align to the (B, T) grid the other CRD signals (ΔQ/Δr/R_routing)
+        # live on, so M5 actually folds |R_forecast| into the ρ denominator.
+        # Three cases, mirroring the ΔQ/Δr loss-mask handling:
+        #   1. len == B*T            → direct reshape (full padded grid).
+        #   2. len == loss_mask.sum() → infos is sequence-packed to N_valid
+        #      (RLlib's unpadded form under PPO minibatching); scatter the
+        #      values into a zero-filled (B, T) grid at the valid positions.
+        #   3. neither               → leave 1-D + warn once. Downstream M5
+        #      will zero it (can't broadcast), so the forecast share would be
+        #      silently dropped — surfacing the warning makes that visible.
         forecast_tensor = torch.tensor(r_forecast_list, dtype=torch.float32)
         ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
-        if (
+        loss_mask = batch.get(Columns.LOSS_MASK)
+        aligned = self._align_forecast_to_bt(
+            forecast_tensor, ref=ref, loss_mask=loss_mask
+        )
+        if aligned is not None:
+            forecast_tensor = aligned
+        elif (
             isinstance(ref, torch.Tensor)
-            and ref.numel() == forecast_tensor.numel()
+            and not self._crd_forecast_align_warned.get(module_id, False)
         ):
-            forecast_tensor = forecast_tensor.reshape(ref.shape).to(
-                ref.device, dtype=ref.dtype
+            self._crd_forecast_align_warned[module_id] = True
+            logger.warning(
+                f"[CRD] module {module_id!r}: R_forecast length "
+                f"{forecast_tensor.numel()} matches neither B*T="
+                f"{ref.numel()} nor loss_mask valid-count="
+                f"{None if not isinstance(loss_mask, torch.Tensor) else int(loss_mask.sum().item())}; "
+                "leaving 1-D — ρ_forecast will be 0 (forecast shielding "
+                "inactive) for this module until the layout is reconciled."
             )
         batch[COL_CRD_FORECAST] = forecast_tensor
+
+    def _compute_forecast_cf_from_obs(
+        self, batch: Dict[str, Any], *, beta: float, gamma: float
+    ) -> Optional[torch.Tensor]:
+        """
+        Compute R_forecast per (b, t) from the env's `crd_aux` obs channel,
+        producing a (B, T) tensor aligned with ADVANTAGES/ΔQ.
+
+        `crd_aux` is a sibling of obs["observation"] (see the PettingZoo
+        wrapper) carrying the raw per-DC wind/power/carbon snapshot:
+            crd_actual_green_w, crd_predicted_green_w, crd_total_power_w,
+            crd_green_factor, crd_brown_factor   — each (B, T, num_dc)
+            crd_timestep_hours                   — (B, T, 1)
+        Each cell is fed to `forecast_cf_per_step`, the same helper the infos
+        path uses, so values match what the infos path would have produced.
+
+        Returns None if crd_aux is absent/malformed (caller falls back to the
+        infos path). Missing predicted wind defaults to actual → R_forecast=0.
+        """
+        obs = batch.get(Columns.OBS)
+        if not isinstance(obs, dict):
+            return None
+        aux = obs.get("crd_aux")
+        # crd_aux may itself be nested if a connector wrapped the obs; unwrap
+        # one "observation" level defensively, though the wrapper places it at
+        # the top level alongside "observation".
+        if not isinstance(aux, dict) and isinstance(obs.get("observation"), dict):
+            aux = obs["observation"].get("crd_aux")
+        if not isinstance(aux, dict):
+            return None
+        req = (
+            "crd_actual_green_w", "crd_predicted_green_w", "crd_total_power_w",
+            "crd_green_factor", "crd_brown_factor", "crd_timestep_hours",
+        )
+        if not all(isinstance(aux.get(k), torch.Tensor) for k in req):
+            return None
+
+        def _grid(t: torch.Tensor) -> Optional[torch.Tensor]:
+            # Coerce (B, T, F) or flat (N, F) → (B, T, F).
+            if t.dim() == 3:
+                return t
+            if t.dim() == 2:
+                return t.unsqueeze(1)
+            return None
+
+        actual = _grid(aux["crd_actual_green_w"])
+        if actual is None:
+            return None
+        B, T, n = actual.shape
+        pred = _grid(aux["crd_predicted_green_w"])
+        total = _grid(aux["crd_total_power_w"])
+        gf = _grid(aux["crd_green_factor"])
+        bf = _grid(aux["crd_brown_factor"])
+        dt = _grid(aux["crd_timestep_hours"])
+        if any(x is None or x.shape[:2] != (B, T) for x in (pred, total, gf, bf, dt)):
+            return None
+
+        import numpy as np
+        a_np = actual.detach().cpu().numpy()
+        p_np = pred.detach().cpu().numpy()
+        tot_np = total.detach().cpu().numpy()
+        gf_np = gf.detach().cpu().numpy()
+        bf_np = bf.detach().cpu().numpy()
+        dt_np = dt.detach().cpu().numpy()
+
+        out = np.zeros((B, T), dtype=np.float32)
+        for b in range(B):
+            for t in range(T):
+                crd_info = {
+                    "actual_wind_w": a_np[b, t],
+                    "p_total_w": tot_np[b, t],
+                    "timestep_hours": float(dt_np[b, t].flat[0]),
+                    "green_carbon_factor": gf_np[b, t],
+                    "brown_carbon_factor": bf_np[b, t],
+                }
+                out[b, t] = forecast_cf_per_step(
+                    crd_info, p_np[b, t], beta=beta, gamma=gamma
+                )
+
+        tensor = torch.tensor(out, dtype=torch.float32)
+        ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
+        if isinstance(ref, torch.Tensor) and ref.shape == (B, T):
+            tensor = tensor.to(ref.device, dtype=ref.dtype)
+        elif isinstance(ref, torch.Tensor) and ref.numel() == B * T:
+            tensor = tensor.reshape(ref.shape).to(ref.device, dtype=ref.dtype)
+        return tensor
+
+    @staticmethod
+    def _align_forecast_to_bt(
+        forecast_tensor: torch.Tensor,
+        *,
+        ref: Any,
+        loss_mask: Optional[torch.Tensor],
+    ) -> Optional[torch.Tensor]:
+        """
+        Coerce a flat per-transition R_forecast vector to the (B, T) grid.
+
+        Returns the (B, T) tensor (on ref's device/dtype) or None if it cannot
+        be aligned (caller decides how to surface that).
+        """
+        n = forecast_tensor.numel()
+        # Case 1: already covers the full padded grid.
+        if isinstance(ref, torch.Tensor) and ref.numel() == n:
+            return forecast_tensor.reshape(ref.shape).to(ref.device, dtype=ref.dtype)
+        # Case 2: sequence-packed to ~N_valid — scatter via loss_mask.
+        #
+        # `infos` under PPO minibatching is sequence-packed in the same
+        # row-major valid order as the actions (the q-gather mask path relies
+        # on the same ordering and works). It often carries a few EXTRA
+        # trailing bootstrap-timestep entries, so len(infos) is N_valid or a
+        # little more (observed: N_valid+1). We tolerate up to one extra per
+        # sequence, trim from the front (= drop the trailing bootstrap rows),
+        # and scatter the first N_valid values into the (B, T) grid. A 1-cell
+        # misalignment over ~2000 transitions is negligible for the
+        # per-cell ρ ratio and the σ²/τ EMAs.
+        if isinstance(loss_mask, torch.Tensor):
+            flat_mask = loss_mask.reshape(-1).bool()
+            n_valid = int(flat_mask.sum().item())
+            num_seqs = int(loss_mask.shape[0]) if loss_mask.dim() >= 1 else 1
+            if n_valid <= n <= n_valid + max(1, num_seqs):
+                device = ref.device if isinstance(ref, torch.Tensor) else forecast_tensor.device
+                dtype = ref.dtype if isinstance(ref, torch.Tensor) else forecast_tensor.dtype
+                vals = forecast_tensor[:n_valid].to(device, dtype=dtype)
+                out = torch.zeros(flat_mask.numel(), dtype=dtype, device=device)
+                out[flat_mask] = vals
+                return out.reshape(loss_mask.shape)
+        return None
 
     # ------------------------------------------------------------------ M2.3
 
@@ -579,6 +856,286 @@ class CRDPPOTorchLearner(PPOTorchLearner):
             module = self.module[module_id].unwrapped()
             mcfg = getattr(module, "model_config", {}) or {}
             return (mcfg.get("crd", {}) or {}).get("baseline", {}) or {}
+        except Exception:
+            return {}
+
+    # ------------------------------------------------------------------ M4
+
+    def _get_or_build_local_baseline_scheduler(
+        self, module_id: ModuleID
+    ) -> Optional[Any]:
+        """
+        Lazily construct the BestFit local-scheduling baseline for a Discrete
+        (local-agent) module. Cached after first build. Returns None for
+        modules with a MultiDiscrete action space (the global router), which
+        are handled by `_get_or_build_baseline_scheduler` instead.
+        """
+        if module_id in self._crd_local_baseline_schedulers:
+            return self._crd_local_baseline_schedulers[module_id]
+        try:
+            module = self.module[module_id].unwrapped()
+            action_space = getattr(module, "action_space", None)
+            from gymnasium import spaces  # local import; avoid hard top-level dep
+
+            if not isinstance(action_space, spaces.Discrete):
+                # Global router (MultiDiscrete) — not a local-scheduling module.
+                self._crd_local_baseline_schedulers[module_id] = None
+                return None
+            # action_space.n = max_vms + 1 (index 0 = NoAssign, i = VM i-1).
+            num_vms = max(1, int(action_space.n) - 1)
+            sched = BestFitLocalScheduler(num_vms=num_vms)
+            self._crd_local_baseline_schedulers[module_id] = sched
+            logger.info(
+                f"[CRD] built BestFit local baseline for {module_id!r}: "
+                f"num_vms={num_vms} (action_dim={action_space.n})"
+            )
+            return sched
+        except Exception as e:
+            logger.warning(
+                f"[CRD] failed to build local baseline scheduler for "
+                f"{module_id!r}: {e}"
+            )
+            self._crd_local_baseline_schedulers[module_id] = None
+            return None
+
+    def _compute_local_baseline_action(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        M4.2a: compute the BestFit baseline VM choice ã_local per transition
+        and write `batch[COL_CRD_BASELINE_ACTION]` as a (B, T) long tensor,
+        aligned with the local agent's actual Discrete action.
+
+        Reads from the padded obs grid (the same layout the GTrXL local module
+        consumes): the inner observation's `vm_available_pes` /
+        `next_cloudlet_pes`, plus the sibling `action_mask`. Obs is robust to
+        PPO minibatching (unlike infos), so M2.4's ΔQ/σ² gather aligns directly.
+
+        Skips silently (no baseline written) if the obs grid or action_mask is
+        unavailable — in that case ΔQ_local/σ²_local and R^scheduling are not
+        produced, and M5 falls back to ρ_scheduling = floor for this module.
+        """
+        sched = self._get_or_build_local_baseline_scheduler(module_id)
+        if sched is None:
+            return
+
+        baseline = self._compute_local_baseline_from_obs(module_id, batch, sched)
+        if baseline is not None:
+            batch[COL_CRD_BASELINE_ACTION] = baseline
+
+    def _compute_local_baseline_from_obs(
+        self, module_id: ModuleID, batch: Dict[str, Any], scheduler: Any
+    ) -> Optional[torch.Tensor]:
+        """
+        Build the (B, T) BestFit baseline action by iterating the padded obs
+        grid. Returns None if the required obs fields are missing.
+
+        Cost: B*T scheduler.schedule() calls — each is an O(num_vms) numpy
+        scan, sub-millisecond, so per-minibatch cost is well under a second.
+        """
+        obs = batch.get(Columns.OBS)
+        if not isinstance(obs, dict):
+            self._warn_local_baseline_once(module_id, "obs is not a dict")
+            return None
+        # action_mask sits as a sibling of "observation" (see GTrXLMaskedAction
+        # RLModule._extract_obs_and_mask). The real obs fields are nested under
+        # "observation" when the connector wrapper is active.
+        action_mask = obs.get("action_mask")
+        inner = obs.get("observation", obs)
+        if not isinstance(inner, dict):
+            inner = obs
+        vm_avail = inner.get("vm_available_pes")
+        next_pes = inner.get("next_cloudlet_pes")
+        if not isinstance(action_mask, torch.Tensor):
+            self._warn_local_baseline_once(module_id, "action_mask missing")
+            return None
+        if not isinstance(vm_avail, torch.Tensor) or not isinstance(
+            next_pes, torch.Tensor
+        ):
+            self._warn_local_baseline_once(
+                module_id,
+                f"vm_available_pes/next_cloudlet_pes missing; "
+                f"inner keys={sorted(inner.keys()) if isinstance(inner, dict) else '?'}",
+            )
+            return None
+
+        # Coerce a leading (B, T, ...) or flat (N, ...) layout to (B, T, ...).
+        def _to_bt(t: torch.Tensor) -> Optional[torch.Tensor]:
+            if t.dim() >= 3:
+                return t
+            if t.dim() == 2:
+                return t.unsqueeze(1)  # (N, F) → (N, 1, F)
+            return None
+
+        am = _to_bt(action_mask)
+        va = _to_bt(vm_avail)
+        if am is None or va is None:
+            return None
+        B, T = am.shape[0], am.shape[1]
+        if va.shape[0] != B or va.shape[1] != T:
+            return None
+        # next_cloudlet_pes is (B, T, 1) (env stores a length-1 vector).
+        np_ = next_pes
+        if np_.dim() == 3:
+            np_grid = np_
+        elif np_.dim() == 2:
+            np_grid = np_.unsqueeze(1)
+        elif np_.dim() == 1:
+            np_grid = np_.view(B, T, 1) if np_.numel() == B * T else None
+        else:
+            np_grid = None
+        if np_grid is None:
+            return None
+
+        am_np = am.detach().cpu().numpy()
+        va_np = va.detach().cpu().tolist()
+        np_np = np_grid.detach().cpu().numpy()
+
+        out = [[0] * T for _ in range(B)]
+        for b in range(B):
+            for t in range(T):
+                local_obs = {
+                    "vm_available_pes": va_np[b][t],
+                    "next_cloudlet_pes": float(np_np[b, t].flat[0]),
+                }
+                try:
+                    out[b][t] = int(scheduler.schedule(local_obs, am_np[b, t]))
+                except Exception:
+                    out[b][t] = 0  # NoAssign fallback
+
+        tensor = torch.tensor(out, dtype=torch.long)
+        ref = batch.get(Columns.ACTIONS)
+        if isinstance(ref, torch.Tensor):
+            tensor = tensor.to(ref.device)
+        return tensor
+
+    def _warn_local_baseline_once(self, module_id: ModuleID, reason: str) -> None:
+        if not self._crd_local_baseline_warned.get(module_id, False):
+            self._crd_local_baseline_warned[module_id] = True
+            logger.warning(
+                f"[CRD] local baseline obs path unavailable for {module_id!r} "
+                f"({reason}); ΔQ_local/σ²_local skipped — ρ_scheduling falls "
+                "back to the floor for this module."
+            )
+
+    def _compute_local_dr(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        M4.2c: reward-level Δr_local fallback for the local scheduling layer.
+
+        Proxy: the PE-waste difference between the BestFit baseline VM choice
+        and the agent's actual choice. Like the routing Δr, we use a
+        "lower-is-better" cost (PE waste) and define
+            Δr_local = α · (waste(ã_baseline) − waste(a_actual)),
+        so Δr_local > 0 when the agent wastes fewer PEs than BestFit. Other
+        reward terms are assumed common between the two VM choices on the same
+        step and cancel in the difference.
+
+        Skips silently when the baseline action or obs grid is unavailable.
+        """
+        baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
+        if not isinstance(baseline_action, torch.Tensor):
+            return
+        cfg = self._read_module_local_dr_config(module_id)
+        alpha = float(cfg.get("alpha", _DEFAULT_ALPHA_DR_LOCAL))
+
+        obs = batch.get(Columns.OBS)
+        if not isinstance(obs, dict):
+            return
+        inner = obs.get("observation", obs)
+        if not isinstance(inner, dict):
+            inner = obs
+        vm_avail = inner.get("vm_available_pes")
+        next_pes = inner.get("next_cloudlet_pes")
+        if not isinstance(vm_avail, torch.Tensor) or not isinstance(
+            next_pes, torch.Tensor
+        ):
+            return
+
+        if vm_avail.dim() == 2:
+            vm_avail = vm_avail.unsqueeze(1)
+        if vm_avail.dim() != 3:
+            return
+        B, T, _V = vm_avail.shape
+        if baseline_action.dim() != 2 or baseline_action.shape[:2] != (B, T):
+            return
+
+        actual_bt = self._align_local_action_to_bt(
+            batch.get(Columns.ACTIONS), B, T, batch.get(Columns.LOSS_MASK)
+        )
+        if actual_bt is None:
+            return
+
+        if next_pes.dim() == 3:
+            next_grid = next_pes
+        elif next_pes.dim() == 2:
+            next_grid = next_pes.unsqueeze(1)
+        elif next_pes.dim() == 1 and next_pes.numel() == B * T:
+            next_grid = next_pes.view(B, T, 1)
+        else:
+            return
+
+        import numpy as np
+        va_np = vm_avail.detach().cpu().numpy().astype(np.float64)
+        np_np = next_grid.detach().cpu().numpy().astype(np.float64)
+        act_np = actual_bt.detach().cpu().numpy().astype(np.int64)
+        base_np = baseline_action.detach().cpu().numpy().astype(np.int64)
+
+        def _waste(vm_row, demand, a):
+            # a == 0 (NoAssign): the cloudlet is deferred → its full demand is
+            # the opportunity "waste" (a deterministic, comparable penalty).
+            if a <= 0:
+                return float(demand)
+            idx = a - 1
+            if idx >= vm_row.shape[0]:
+                return float(demand)
+            w = float(vm_row[idx]) - float(demand)
+            return w if w >= 0.0 else float(demand)
+
+        dr = np.zeros((B, T), dtype=np.float32)
+        for b in range(B):
+            for t in range(T):
+                demand = float(np_np[b, t].flat[0])
+                vm_row = va_np[b, t]
+                w_actual = _waste(vm_row, demand, int(act_np[b, t]))
+                w_base = _waste(vm_row, demand, int(base_np[b, t]))
+                dr[b, t] = alpha * (w_base - w_actual)
+
+        tensor = torch.tensor(dr, dtype=torch.float32)
+        ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
+        if isinstance(ref, torch.Tensor):
+            tensor = tensor.to(ref.device, dtype=ref.dtype)
+        batch[COL_CRD_DR] = tensor
+
+    @staticmethod
+    def _align_local_action_to_bt(
+        action: Any, B: int, T: int, loss_mask: Optional[torch.Tensor]
+    ) -> Optional[torch.Tensor]:
+        """Coerce a Discrete local action tensor to padded (B, T); None if impossible."""
+        if not isinstance(action, torch.Tensor):
+            return None
+        a = action.long()
+        if a.dim() == 2 and a.shape[0] == B and a.shape[1] == T:
+            return a
+        if a.dim() == 1 and a.numel() == B * T:
+            return a.reshape(B, T)
+        # Sequence-packed (N_valid,): scatter via loss_mask.
+        if a.dim() == 1 and isinstance(loss_mask, torch.Tensor):
+            flat_mask = loss_mask.reshape(-1).bool()
+            if int(flat_mask.sum().item()) != a.shape[0]:
+                return None
+            out = torch.zeros(B * T, dtype=torch.long, device=a.device)
+            out[flat_mask] = a
+            return out.reshape(B, T)
+        return None
+
+    def _read_module_local_dr_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.delta_r_local` from the module's model_config; default to {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("delta_r_local", {}) or {}
         except Exception:
             return {}
 
@@ -1030,7 +1587,7 @@ class CRDPPOTorchLearner(PPOTorchLearner):
     ) -> None:
         """
         Soft-blend ΔQ and Δr into the routing-responsibility signal R^routing
-        used by M5's advantage rewrite.
+        used by M5's advantage rewrite (global routing layer).
 
             c(t)         = exp(-σ²_tot(t) / τ(t))
             R^routing_t  = c(t) · ΔQ_t + (1 - c(t)) · Δr_t
@@ -1042,6 +1599,29 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         Skips silently if any of (ΔQ, Δr, σ²) is missing — those happen for
         non-routing modules where M2.4/M2.5 didn't produce outputs.
+        """
+        self._blend_dq_dr(module_id=module_id, batch=batch, out_col=COL_CRD_R_ROUTING)
+
+    def _compute_r_scheduling(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """
+        M4: soft-blend ΔQ_local and Δr_local into the scheduling-responsibility
+        signal R^scheduling for a local-agent module. Identical blending math
+        to :meth:`_compute_r_routing` — the only difference is the output column
+        and that the per-module CRDBlender carries its own EMA state (keyed by
+        the local module_id, so routing and scheduling never share a τ).
+        """
+        self._blend_dq_dr(
+            module_id=module_id, batch=batch, out_col=COL_CRD_R_SCHEDULING
+        )
+
+    def _blend_dq_dr(
+        self, *, module_id: ModuleID, batch: Dict[str, Any], out_col: str
+    ) -> None:
+        """
+        Shared σ²-gated blend of (ΔQ, Δr) → out_col, plus c(t)/τ diagnostics.
+        Used by both the routing (M3) and scheduling (M4) layers.
         """
         dq = batch.get(COL_CRD_DQ)
         dr = batch.get(COL_CRD_DR)
@@ -1055,18 +1635,18 @@ class CRDPPOTorchLearner(PPOTorchLearner):
 
         blender = self._get_or_build_blender(module_id)
         try:
-            r_routing, c_t, tau = blender.update_and_blend(
+            r_blend, c_t, tau = blender.update_and_blend(
                 dq=dq, dr=dr.to(dq.dtype).to(dq.device), sigma2=sigma2
             )
         except Exception as e:
-            logger.warning(f"[CRD] R^routing blend failed for {module_id!r}: {e}")
+            logger.warning(f"[CRD] {out_col} blend failed for {module_id!r}: {e}")
             return
 
-        # All three are detached: M5 will reweight advantages with R^routing
+        # All three are detached: M5 will reweight advantages with this signal
         # but the gradient signal for the policy must come from PPO's GAE
         # path, not from σ²/Q-head. (ΔQ/σ² were already detached upstream
         # in M2.4; defensive .detach() here guards against future changes.)
-        batch[COL_CRD_R_ROUTING] = r_routing.detach()
+        batch[out_col] = r_blend.detach()
         batch[COL_CRD_C_T] = c_t.detach()
         # τ is a scalar — store as a 0-d tensor for shape uniformity.
         batch[COL_CRD_TAU] = torch.tensor(tau, dtype=torch.float32, device=dq.device)
@@ -1113,51 +1693,78 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         Outputs (each shape (B, T)):
           batch[crd_rho_forecast]    — logging only, NEVER multiplied
           batch[crd_rho_routing]     — multiplier on global ADVANTAGES
-          batch[crd_rho_scheduling]  — multiplier on local ADVANTAGES (M4)
+          batch[crd_rho_scheduling]  — multiplier on local ADVANTAGES
 
-        Side effect:
-          batch[Postprocessing.ADVANTAGES] *= ρ_routing  (per-transition)
+        Side effect (per-transition):
+          global router  →  batch[Postprocessing.ADVANTAGES] *= ρ_routing
+          local agent    →  batch[Postprocessing.ADVANTAGES] *= ρ_scheduling
 
-        Skips if R_routing isn't in batch (M3 didn't run, e.g. non-routing
-        module without a Q-ensemble forward).
+        Each module carries only its own layer's signal: the global router's
+        batch has R_routing (no R_scheduling), the local agent's batch has
+        R_scheduling (no R_routing). The forecast share |R_forecast| is the
+        common exogenous term in both denominators — it shields both layers
+        from forecast error but is never itself applied to a gradient.
+
+        Skips if neither R_routing nor R_scheduling is in the batch (the CF
+        pipeline didn't run, e.g. a non-ensemble module).
 
         VALUE_TARGETS is intentionally untouched: the V-head should still
         learn the unbiased episode return so its bootstrapping for the
         Q-head TD target (M1.2) stays correct.
         """
         r_routing = batch.get(COL_CRD_R_ROUTING)
-        if not isinstance(r_routing, torch.Tensor):
+        r_scheduling = batch.get(COL_CRD_R_SCHEDULING)
+        # Decide which responsibility share reweights *this* module's
+        # advantage. A module is either the global router (R_routing) or a
+        # local scheduler (R_scheduling); if both are somehow present we
+        # prefer routing (preserves pre-M4 behaviour for the global module).
+        if isinstance(r_routing, torch.Tensor):
+            own_kind = "routing"
+            ref = r_routing
+        elif isinstance(r_scheduling, torch.Tensor):
+            own_kind = "scheduling"
+            ref = r_scheduling
+        else:
             return
 
         cfg = self._read_module_responsibility_config(module_id)
         rho_min = float(cfg.get("rho_min", _DEFAULT_RHO_MIN))
 
-        # Components — fall back to zeros when a milestone hasn't produced
-        # them (e.g., crd_r_scheduling lands in M4).
+        # Components — fall back to zeros when this module's layer doesn't
+        # produce a given term (the global router has no R_scheduling and
+        # vice-versa).
         r_f = batch.get(COL_CRD_FORECAST)
-        r_s = batch.get(COL_CRD_R_SCHEDULING)
-        zeros_like_r = torch.zeros_like(r_routing)
+        zeros_like_r = torch.zeros_like(ref)
         abs_f = (r_f.abs() if isinstance(r_f, torch.Tensor) else zeros_like_r).to(
-            r_routing.dtype
+            ref.dtype
         )
-        abs_r = r_routing.abs()
-        abs_s = (r_s.abs() if isinstance(r_s, torch.Tensor) else zeros_like_r).to(
-            r_routing.dtype
-        )
+        abs_r = (
+            r_routing.abs() if isinstance(r_routing, torch.Tensor) else zeros_like_r
+        ).to(ref.dtype)
+        abs_s = (
+            r_scheduling.abs()
+            if isinstance(r_scheduling, torch.Tensor)
+            else zeros_like_r
+        ).to(ref.dtype)
 
         # Align shapes — forecast may have come in shaped (B, T) but also may
-        # have been reshaped to match REWARDS in M2.2; coerce to r_routing's
-        # shape if possible.
-        if abs_f.shape != abs_r.shape:
+        # have been reshaped to match REWARDS in M2.2; coerce to the owning
+        # signal's shape if possible.
+        if abs_f.shape != ref.shape:
             try:
-                abs_f = abs_f.reshape(abs_r.shape)
+                abs_f = abs_f.reshape(ref.shape)
             except RuntimeError:
                 abs_f = zeros_like_r
-        if abs_s.shape != abs_r.shape:
+        if abs_s.shape != ref.shape:
             try:
-                abs_s = abs_s.reshape(abs_r.shape)
+                abs_s = abs_s.reshape(ref.shape)
             except RuntimeError:
                 abs_s = zeros_like_r
+        if abs_r.shape != ref.shape:
+            try:
+                abs_r = abs_r.reshape(ref.shape)
+            except RuntimeError:
+                abs_r = zeros_like_r
 
         eps = 1e-8
         total = abs_f + abs_r + abs_s + eps
@@ -1180,13 +1787,16 @@ class CRDPPOTorchLearner(PPOTorchLearner):
         if not isinstance(adv, torch.Tensor):
             return  # No GAE output in this batch (probably a unit-test minibatch).
 
-        rho_view = rho_r.to(adv.dtype).to(adv.device)
+        # Reweight by the share this module actually controls: ρ_routing for
+        # the global router, ρ_scheduling for a local scheduler.
+        rho_own = rho_r if own_kind == "routing" else rho_s
+        rho_view = rho_own.to(adv.dtype).to(adv.device)
         if adv.shape != rho_view.shape:
             try:
                 rho_view = rho_view.reshape(adv.shape)
             except RuntimeError:
                 logger.warning(
-                    f"[CRD] rho_routing shape {tuple(rho_view.shape)} != "
+                    f"[CRD] rho_{own_kind} shape {tuple(rho_view.shape)} != "
                     f"advantages shape {tuple(adv.shape)}; skipping reweight "
                     f"for module {module_id!r}."
                 )

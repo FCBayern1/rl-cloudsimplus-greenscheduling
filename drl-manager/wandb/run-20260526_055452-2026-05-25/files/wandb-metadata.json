@@ -1,0 +1,58 @@
+{
+  "os": "Linux-6.17.0-29-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.12.3",
+  "startedAt": "2026-05-26T04:54:52.619374Z",
+  "args": [
+    "--experiment",
+    "experiment_multi_5dc_carbon_v2",
+    "--total-timesteps",
+    "800000",
+    "--seed",
+    "42",
+    "--per-action-carbon-weight",
+    "2.0",
+    "--per-action-completion-weight",
+    "0.5",
+    "--wandb-run-name",
+    "5dc-pareto-A-wc2.0-wcompl0.5",
+    "--wandb-tags",
+    "5dc-pareto,sweep-A,w_c-2.0,w_compl-0.5,reward-redesign",
+    "--wandb-group",
+    "5dc-pareto-2026-05-23"
+  ],
+  "program": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/entrypoint_rlmodule_gtrxl.py",
+  "codePath": "drl-manager/entrypoint_rlmodule_gtrxl.py",
+  "codePathLocal": "entrypoint_rlmodule_gtrxl.py",
+  "git": {
+    "remote": "git@github.com:FCBayern1/rl-cloudsimplus-greenscheduling.git",
+    "commit": "ee43c00109e247112c807036af227c7c4e607860"
+  },
+  "email": "qwe292387082@gmail.com",
+  "root": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager",
+  "host": "joshua-B850M-AORUS-ELITE",
+  "executable": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/.venv/bin/python",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "gpu": "NVIDIA GeForce RTX 5080",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "97829425152",
+      "used": "40621088768"
+    }
+  },
+  "memory": {
+    "total": "64900100096"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 5080",
+      "memoryTotal": "17094934528",
+      "cudaCores": 10752,
+      "architecture": "Blackwell",
+      "uuid": "GPU-e7559356-56be-3ebb-e280-677e90c8ed56"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "xg21z5yuqh41ux45f2q89jtt1z3c3ocu"
+}

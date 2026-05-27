@@ -586,6 +586,12 @@ def create_rlmodule_config(
         "ent_coef": "entropy_coeff",
         "vf_coef": "vf_loss_coeff",
         "max_grad_norm": "grad_clip",
+        # 2026-05-27: vf_clip_param controls how far the value prediction may
+        # move per update.  RLlib default is 10.0, but the absolute per-action
+        # reward gives discounted returns ~-1300, so a clip of 10 pins vf_loss
+        # at the clip ceiling and keeps vf_explained_var ≈ 0.  Expose it per
+        # global policy so the critic can track the real return scale.
+        "vf_clip_param": "vf_clip_param",
     }
     for cfg_key, ppo_key in _override_keys.items():
         if cfg_key in global_model_config:
@@ -638,6 +644,7 @@ def create_rlmodule_config(
                 "entropy_coeff": local_model_config.get("ent_coef", 0.01),
                 "vf_loss_coeff": local_model_config.get("vf_coef", 0.5),
                 "grad_clip": local_model_config.get("max_grad_norm", 0.5),
+                "vf_clip_param": local_model_config.get("vf_clip_param", 10.0),
                 # EU-CRD: only override learner_class when CRD is enabled.
                 # Passing the default sentinel (NotProvided) when disabled
                 # keeps RLlib's vanilla PPOTorchLearner.

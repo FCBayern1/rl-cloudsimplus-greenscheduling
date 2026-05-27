@@ -1,0 +1,75 @@
+_wandb:
+    value:
+        cli_version: 0.23.0
+        e:
+            xg21z5yuqh41ux45f2q89jtt1z3c3ocu:
+                args:
+                    - --experiment
+                    - experiment_multi_5dc_carbon_v2
+                    - --total-timesteps
+                    - "800000"
+                    - --seed
+                    - "42"
+                    - --per-action-carbon-weight
+                    - "2.0"
+                    - --per-action-completion-weight
+                    - "0.5"
+                    - --wandb-run-name
+                    - 5dc-pareto-A-wc2.0-wcompl0.5
+                    - --wandb-tags
+                    - 5dc-pareto,sweep-A,w_c-2.0,w_compl-0.5,reward-redesign
+                    - --wandb-group
+                    - 5dc-pareto-2026-05-23
+                codePath: drl-manager/entrypoint_rlmodule_gtrxl.py
+                codePathLocal: entrypoint_rlmodule_gtrxl.py
+                cpu_count: 8
+                cpu_count_logical: 8
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "97829425152"
+                        used: "40621088768"
+                email: qwe292387082@gmail.com
+                executable: /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/.venv/bin/python
+                git:
+                    commit: ee43c00109e247112c807036af227c7c4e607860
+                    remote: git@github.com:FCBayern1/rl-cloudsimplus-greenscheduling.git
+                gpu: NVIDIA GeForce RTX 5080
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 10752
+                      memoryTotal: "17094934528"
+                      name: NVIDIA GeForce RTX 5080
+                      uuid: GPU-e7559356-56be-3ebb-e280-677e90c8ed56
+                host: joshua-B850M-AORUS-ELITE
+                memory:
+                    total: "64900100096"
+                os: Linux-6.17.0-29-generic-x86_64-with-glibc2.39
+                program: /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/entrypoint_rlmodule_gtrxl.py
+                python: CPython 3.12.3
+                root: /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager
+                startedAt: "2026-05-26T04:54:52.619374Z"
+                writerId: xg21z5yuqh41ux45f2q89jtt1z3c3ocu
+        m: []
+        python_version: 3.12.3
+        t:
+            "1":
+                - 1
+                - 30
+                - 105
+            "2":
+                - 1
+                - 30
+                - 105
+            "3":
+                - 2
+                - 5
+                - 13
+                - 14
+                - 15
+                - 62
+            "4": 3.12.3
+            "5": 0.23.0
+            "12": 0.23.0
+            "13": linux-x86_64

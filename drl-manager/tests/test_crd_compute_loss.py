@@ -42,11 +42,15 @@ class _StubLearner(CRDPPOTorchLearner):
         self._crd_call_counts = {}
         self._crd_hook_logged = {}
         self._crd_pred_missing_warned = {}
+        self._crd_forecast_align_warned = {}
         self._crd_baseline_schedulers = {}
+        self._crd_local_baseline_schedulers = {}
+        self._crd_local_baseline_warned = {}
         self._crd_baseline_signal_warned = {}
         self._crd_blenders = {}
         self._crd_dq_align_warned = {}
         self._crd_baseline_obs_warned = False
+        self._crd_diag_warned = False
         self.hook_calls = []  # observability for tests
         self._beta = beta
         self._gamma = gamma
@@ -66,6 +70,11 @@ class _StubLearner(CRDPPOTorchLearner):
         # Tests don't go through `self.module[module_id].unwrapped()`; treat
         # M2.3 baseline action as opt-in. The dedicated M2.3 tests below
         # override this stub when they need a real scheduler.
+        return None
+
+    def _get_or_build_local_baseline_scheduler(self, module_id):
+        # Mirror the global override: M4 local baseline is opt-in for tests.
+        # The dedicated M4 tests below override this with a real BestFit.
         return None
 
     def _compute_crd_terms(self, *, module_id, batch, fwd_out):
@@ -1518,6 +1527,472 @@ def test_obs_based_path_preferred_over_infos_when_both_available():
     assert out.shape == (B, T, bs), (
         f"got {tuple(out.shape)} — obs-based path should override infos"
     )
+
+
+# ---------------------------------------------------------------------------
+# M7 — CRD diagnostics logging (wandb/TensorBoard via RLlib result dict).
+# ---------------------------------------------------------------------------
+
+
+class _RecordingMetrics:
+    """Minimal MetricsLogger stand-in capturing log_dict calls."""
+    def __init__(self):
+        self.logged = {}
+    def log_dict(self, d, key=None, window=1):
+        self.logged.setdefault(key, {}).update(d)
+
+
+def test_diagnostics_logged_when_metrics_available():
+    """M7: CRD scalars must be pushed via self.metrics.log_dict for wandb."""
+    learner = _StubLearner()
+    learner.metrics = _RecordingMetrics()
+    B, T = 2, 3
+    batch = {
+        COL_CRD_RHO_FORECAST: torch.rand(B, T),
+        COL_CRD_RHO_ROUTING: torch.rand(B, T),
+        COL_CRD_RHO_SCHEDULING: torch.rand(B, T),
+        COL_CRD_SIGMA2: torch.rand(B, T),
+        COL_CRD_C_T: torch.rand(B, T),
+        COL_CRD_DQ: torch.randn(B, T),
+        COL_CRD_DR: torch.randn(B, T),
+        COL_CRD_R_ROUTING: torch.randn(B, T),
+        COL_CRD_FORECAST: torch.randn(B, T),
+        COL_CRD_TAU: torch.tensor(1.05),
+    }
+    learner._log_crd_diagnostics(module_id="global_policy", batch=batch)
+    logged = learner.metrics.logged.get("global_policy", {})
+    # All key diagnostics present
+    for key in [
+        "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/rho_scheduling_mean",
+        "crd/sigma2_tot_mean", "crd/c_t_mean", "crd/dq_mean", "crd/dr_mean",
+        "crd/r_routing_mean", "crd/r_forecast_abs_mean", "crd/tau",
+    ]:
+        assert key in logged, f"missing diagnostic {key}; got {sorted(logged)}"
+    # r_forecast_abs_mean must be non-negative (it's |R_forecast|)
+    assert logged["crd/r_forecast_abs_mean"] >= 0
+    assert logged["crd/tau"] == pytest.approx(1.05)
+
+
+def test_diagnostics_noop_when_no_metrics():
+    """No self.metrics (test stub / pre-build) → silent no-op, no crash."""
+    learner = _StubLearner()  # no .metrics attribute
+    learner._log_crd_diagnostics(
+        module_id="m", batch={COL_CRD_RHO_ROUTING: torch.rand(2, 3)}
+    )  # must not raise
+
+
+def test_diagnostics_skips_missing_columns():
+    """Only logs columns that are present (e.g. scheduling absent pre-M4)."""
+    learner = _StubLearner()
+    learner.metrics = _RecordingMetrics()
+    # Only routing present (forecast/scheduling absent)
+    batch = {COL_CRD_RHO_ROUTING: torch.rand(2, 3)}
+    learner._log_crd_diagnostics(module_id="m", batch=batch)
+    logged = learner.metrics.logged.get("m", {})
+    assert "crd/rho_routing_mean" in logged
+    assert "crd/rho_forecast_mean" not in logged  # was absent → not logged
+
+
+# ===========================================================================
+# M4 — Local Scheduling Counterfactual
+# ===========================================================================
+
+from src.baselines.local_schedulers import BestFitLocalScheduler
+
+
+class _LocalBaselineStubLearner(_StubLearner):
+    """
+    Stub for the local-scheduling layer: no global router scheduler, a real
+    BestFit local baseline. Exercises the M4 path without a live RLModule.
+    """
+
+    def __init__(self, num_vms=3, alpha_local=1.0, **kw):
+        super().__init__(**kw)
+        self._fixed_local = BestFitLocalScheduler(num_vms=num_vms)
+        self._alpha_local = alpha_local
+
+    def _get_or_build_baseline_scheduler(self, module_id):
+        return None  # not the global router
+
+    def _get_or_build_local_baseline_scheduler(self, module_id):
+        return self._fixed_local
+
+    def _read_module_local_dr_config(self, module_id):
+        return {"alpha": self._alpha_local}
+
+
+def _make_local_obs(vm_available, next_pes, mask, B=1, T=1):
+    """Build a padded (B, T, ...) local obs dict matching the env layout."""
+    V = len(vm_available)
+    A = len(mask)
+    return {
+        "observation": {
+            "vm_available_pes": torch.tensor(
+                [[vm_available] * T for _ in range(B)], dtype=torch.float32
+            ),  # (B, T, V)
+            "next_cloudlet_pes": torch.tensor(
+                [[[next_pes]] * T for _ in range(B)], dtype=torch.float32
+            ),  # (B, T, 1)
+        },
+        "action_mask": torch.tensor(
+            [[mask] * T for _ in range(B)], dtype=torch.float32
+        ),  # (B, T, A)
+    }
+
+
+def test_local_baseline_builds_for_discrete_only():
+    """BestFit baseline only for Discrete (local) modules; None for the rest."""
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    assert learner._get_or_build_local_baseline_scheduler("local") is not None
+    # Plain stub: real builder path returns None without a live module.
+    plain = _StubLearner()
+    assert plain._get_or_build_local_baseline_scheduler("x") is None
+
+
+def test_local_baseline_action_matches_bestfit_choice():
+    """ã_local = the min-non-negative-PE-waste VM, written as (B, T)."""
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    # vm_avail=[5,2,8], demand=3, all valid:
+    #   VM1 waste=2 (min), VM2 waste=-1 (infeasible), VM3 waste=5 → pick VM action 1
+    batch = {
+        Columns.OBS: _make_local_obs([5, 2, 8], 3, [1, 1, 1, 1]),
+        Columns.ACTIONS: torch.tensor([[3]], dtype=torch.long),
+    }
+    learner._compute_local_baseline_action(module_id="local", batch=batch)
+    assert COL_CRD_BASELINE_ACTION in batch
+    out = batch[COL_CRD_BASELINE_ACTION]
+    assert out.shape == (1, 1)
+    assert out[0, 0].item() == 1
+
+
+def test_local_baseline_respects_action_mask():
+    """A masked-out best VM must not be chosen."""
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    # VM1 (idx0) would be best by waste, but mask it out → BestFit picks VM3.
+    batch = {
+        Columns.OBS: _make_local_obs([5, 100, 8], 3, [1, 0, 0, 1]),
+        Columns.ACTIONS: torch.tensor([[1]], dtype=torch.long),
+    }
+    learner._compute_local_baseline_action(module_id="local", batch=batch)
+    out = batch[COL_CRD_BASELINE_ACTION]
+    # Only action 3 feasible (VM3 avail=8, waste=5); action 1 masked off.
+    assert out[0, 0].item() == 3
+
+
+def test_local_baseline_skipped_and_warns_when_mask_missing(caplog):
+    """No action_mask in obs → skip baseline, warn once."""
+    import logging
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    batch = {
+        Columns.OBS: {"observation": {
+            "vm_available_pes": torch.zeros(1, 1, 3),
+            "next_cloudlet_pes": torch.zeros(1, 1, 1),
+        }},  # no action_mask sibling
+        Columns.ACTIONS: torch.tensor([[0]], dtype=torch.long),
+    }
+    with caplog.at_level(logging.WARNING, logger="src.learners.crd_q_loss"):
+        learner._compute_local_baseline_action(module_id="local", batch=batch)
+        learner._compute_local_baseline_action(module_id="local", batch=batch)
+    assert COL_CRD_BASELINE_ACTION not in batch
+    warns = [r for r in caplog.records if "local baseline obs path" in r.message]
+    assert len(warns) == 1  # warn-once per module
+
+
+def test_local_dr_sign_negative_when_agent_wastes_more():
+    """Δr_local = α·(waste_baseline − waste_actual) < 0 when agent picks worse VM."""
+    learner = _LocalBaselineStubLearner(num_vms=3, alpha_local=1.0)
+    # vm_avail=[5,2,8], demand=3. BestFit→VM1 (waste 2). Agent picks VM3 (waste 5).
+    batch = {
+        Columns.OBS: _make_local_obs([5, 2, 8], 3, [1, 1, 1, 1]),
+        Columns.ACTIONS: torch.tensor([[3]], dtype=torch.long),
+        Columns.REWARDS: torch.zeros(1, 1),
+        COL_CRD_BASELINE_ACTION: torch.tensor([[1]], dtype=torch.long),
+    }
+    learner._compute_local_dr(module_id="local", batch=batch)
+    assert COL_CRD_DR in batch
+    # waste(baseline VM1)=2, waste(actual VM3)=5 → Δr = 2 - 5 = -3
+    assert batch[COL_CRD_DR][0, 0].item() == pytest.approx(-3.0)
+
+
+def test_local_dr_zero_when_agent_matches_baseline():
+    """Agent picking the BestFit VM → Δr_local = 0."""
+    learner = _LocalBaselineStubLearner(num_vms=3, alpha_local=1.0)
+    batch = {
+        Columns.OBS: _make_local_obs([5, 2, 8], 3, [1, 1, 1, 1]),
+        Columns.ACTIONS: torch.tensor([[1]], dtype=torch.long),  # == baseline
+        Columns.REWARDS: torch.zeros(1, 1),
+        COL_CRD_BASELINE_ACTION: torch.tensor([[1]], dtype=torch.long),
+    }
+    learner._compute_local_dr(module_id="local", batch=batch)
+    assert batch[COL_CRD_DR][0, 0].item() == pytest.approx(0.0)
+
+
+def test_local_cf_full_pipeline_writes_r_scheduling():
+    """End-to-end local layer: ΔQ_local, Δr_local, R^scheduling all in batch."""
+    B, T, K, A = 1, 1, 5, 4
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    fwd = {COL_Q_ENSEMBLE: torch.randn(B, T, K, A)}
+    batch = {
+        Columns.INFOS: [_make_crd_info(pred=[1, 1, 1])],
+        Columns.OBS: _make_local_obs([5, 2, 8], 3, [1, 1, 1, 1]),
+        Columns.ACTIONS: torch.tensor([[2]], dtype=torch.long),
+        Columns.REWARDS: torch.zeros(B, T),
+    }
+    learner.compute_loss_for_module(
+        module_id="shared_local_policy", config=None, batch=batch, fwd_out=fwd
+    )
+    for k in (COL_CRD_BASELINE_ACTION, COL_CRD_DQ, COL_CRD_SIGMA2,
+              COL_CRD_DR, COL_CRD_R_SCHEDULING, COL_CRD_C_T, COL_CRD_TAU):
+        assert k in batch, f"missing {k}"
+    # The global routing column must NOT appear in a local module's batch.
+    assert COL_CRD_R_ROUTING not in batch
+    assert batch[COL_CRD_R_SCHEDULING].shape == batch[COL_CRD_DQ].shape
+
+
+def test_responsibilities_reweights_local_by_rho_scheduling():
+    """Local module: ADVANTAGES *= ρ_scheduling (not ρ_routing)."""
+    learner = _LocalBaselineStubLearner(num_vms=3)
+    adv_before = torch.tensor([[2.0, 2.0]])
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[0.0, 0.0]]),  # no exogenous share
+        COL_CRD_R_SCHEDULING: torch.tensor([[1.0, 1.0]]),  # all weight on scheduling
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="local", batch=batch)
+    # ρ_scheduling ≈ 1 (R_scheduling dominates, no forecast) → adv ~unchanged
+    assert torch.allclose(batch[Postprocessing.ADVANTAGES], adv_before, atol=1e-4)
+    assert COL_CRD_RHO_SCHEDULING in batch
+    # ρ_routing should be the floor (no R_routing in a local batch).
+    assert batch[COL_CRD_RHO_ROUTING].mean().item() == pytest.approx(0.05, abs=1e-6)
+
+
+def test_forecast_shields_local_agent():
+    """Large |R_forecast| dilutes ρ_scheduling → local ADVANTAGES shrink."""
+    class _NoFloor(_LocalBaselineStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.0}
+    learner = _NoFloor(num_vms=3)
+    adv_before = torch.tensor([[10.0]])
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[9.0]]),    # forecast dominates
+        COL_CRD_R_SCHEDULING: torch.tensor([[1.0]]),
+        Postprocessing.ADVANTAGES: adv_before.clone(),
+    }
+    learner._compute_responsibilities(module_id="local", batch=batch)
+    # ρ_scheduling = 1/(9+1) = 0.1 → adv 10 → ~1.0 (agent shielded from forecast error)
+    assert batch[Postprocessing.ADVANTAGES][0, 0].item() == pytest.approx(1.0, abs=1e-3)
+    rho_s = batch[COL_CRD_RHO_SCHEDULING][0, 0].item()
+    assert rho_s == pytest.approx(0.1, rel=1e-3)
+
+
+def test_align_local_action_to_bt_layouts():
+    """(B,T), flat (B*T,), and sequence-packed (N_valid,) all coerce to (B,T)."""
+    fn = CRDPPOTorchLearner._align_local_action_to_bt
+    B, T = 2, 3
+    # already (B, T)
+    a = torch.arange(B * T).reshape(B, T)
+    assert torch.equal(fn(a, B, T, None), a)
+    # flat (B*T,)
+    flat = torch.arange(B * T)
+    assert torch.equal(fn(flat, B, T, None), flat.reshape(B, T))
+    # packed (N_valid,) with loss_mask
+    mask = torch.tensor([[1, 1, 0], [1, 0, 0]], dtype=torch.float32)  # 3 valid
+    packed = torch.tensor([7, 8, 9], dtype=torch.long)
+    out = fn(packed, B, T, mask)
+    assert out.shape == (B, T)
+    # valid slots filled in order, masked slots zero
+    assert out[0, 0].item() == 7 and out[0, 1].item() == 8 and out[1, 0].item() == 9
+    assert out[0, 2].item() == 0 and out[1, 1].item() == 0
+
+
+# ===========================================================================
+# Forecast (B,T)-alignment fix — R_forecast must enter the ρ denominator
+# (regression: infos packed to N_valid != B*T was leaving it 1-D → zeroed)
+# ===========================================================================
+
+
+def test_align_forecast_to_bt_cases():
+    fn = CRDPPOTorchLearner._align_forecast_to_bt
+    B, T = 2, 3
+    ref = torch.zeros(B, T)
+    # Case 1: already the full padded grid → direct reshape.
+    full = torch.arange(6, dtype=torch.float32)
+    out = fn(full, ref=ref, loss_mask=None)
+    assert out.shape == (B, T) and torch.equal(out.reshape(-1), full)
+    # Case 2: packed to N_valid → scatter via loss_mask.
+    mask = torch.tensor([[1, 1, 0], [1, 0, 0]], dtype=torch.float32)  # 3 valid
+    packed = torch.tensor([5.0, 6.0, 7.0])
+    out = fn(packed, ref=ref, loss_mask=mask)
+    assert out.shape == (B, T)
+    assert out[0, 0] == 5.0 and out[0, 1] == 6.0 and out[1, 0] == 7.0
+    assert out[0, 2] == 0.0 and out[1, 1] == 0.0 and out[1, 2] == 0.0
+    # Case 2b: off-by-one bootstrap (len == N_valid + 1) → trim trailing, scatter.
+    packed_boot = torch.tensor([5.0, 6.0, 7.0, 99.0])  # 4 = 3 valid + 1 bootstrap
+    out = fn(packed_boot, ref=ref, loss_mask=mask)
+    assert out is not None and out.shape == (B, T)
+    assert out[0, 0] == 5.0 and out[0, 1] == 6.0 and out[1, 0] == 7.0  # bootstrap 99 dropped
+    # Case 3: way off (more than +num_seqs) → None (caller warns).
+    assert fn(torch.zeros(10), ref=ref, loss_mask=mask) is None
+
+
+def test_forecast_cf_scatters_when_infos_packed():
+    """The bug: infos length == loss_mask valid-count != B*T. R_forecast must
+    land on the (B, T) grid, not stay 1-D (which M5 would silently zero)."""
+    B, T = 2, 3
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    infos = [_make_crd_info(pred=[0.0, 0.0, 0.0]) for _ in range(3)]  # biased → R_f≠0
+    batch = {
+        Columns.INFOS: infos,
+        Columns.REWARDS: torch.zeros(B, T),
+        Columns.LOSS_MASK: torch.tensor([[1, 1, 0], [1, 0, 0]], dtype=torch.float32),
+    }
+    learner._compute_forecast_cf(module_id="g", batch=batch)
+    rf = batch[COL_CRD_FORECAST]
+    assert rf.shape == (B, T), f"forecast not aligned to grid: {tuple(rf.shape)}"
+    assert rf[0, 0] != 0 and rf[0, 1] != 0 and rf[1, 0] != 0    # valid slots filled
+    assert rf[0, 2] == 0 and rf[1, 1] == 0 and rf[1, 2] == 0    # padded slots zero
+
+
+def test_forecast_cf_warns_when_unalignable(caplog):
+    """Length far from both B*T and loss_mask valid-count (beyond bootstrap
+    tolerance) → warn once."""
+    import logging
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    batch = {
+        Columns.INFOS: [_make_crd_info(pred=[0.0, 0.0, 0.0]) for _ in range(5)],
+        Columns.REWARDS: torch.zeros(2, 3),  # B*T=6 != 5
+        # 2 valid, 2 seqs → tolerance is [2, 4]; len 5 is outside → warn.
+        Columns.LOSS_MASK: torch.tensor([[1, 0, 0], [1, 0, 0]], dtype=torch.float32),
+    }
+    with caplog.at_level(logging.WARNING, logger="src.learners.crd_q_loss"):
+        learner._compute_forecast_cf(module_id="g", batch=batch)
+        learner._compute_forecast_cf(module_id="g", batch=batch)
+    warns = [r for r in caplog.records if "matches neither" in r.message]
+    assert len(warns) == 1  # warn-once per module
+
+
+def test_forecast_enters_rho_denominator():
+    """Downstream effect: with R_forecast (B,T)-aligned, ρ_forecast > 0 and the
+    advantage is shielded (this is the mechanism that was inert in the smoke)."""
+    class _Stub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.0}
+    learner = _Stub(num_dc=3, batch_size=4)
+    batch = {
+        COL_CRD_FORECAST: torch.tensor([[1.0, 1.0]]),   # |R_f| = 1
+        COL_CRD_R_ROUTING: torch.tensor([[1.0, 1.0]]),  # |R_r| = 1
+        Postprocessing.ADVANTAGES: torch.tensor([[4.0, 4.0]]),
+    }
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    assert batch[COL_CRD_RHO_FORECAST][0, 0].item() == pytest.approx(0.5, abs=1e-3)
+    assert batch[COL_CRD_RHO_ROUTING][0, 0].item() == pytest.approx(0.5, abs=1e-3)
+    # advantage shielded: 4 × 0.5 = 2 (was 4 when forecast was zeroed → ρ_routing≈1)
+    assert batch[Postprocessing.ADVANTAGES][0, 0].item() == pytest.approx(2.0, abs=1e-3)
+
+
+# ===========================================================================
+# obs-based forecast (crd_aux channel) — the robust replacement for the
+# infos path. R_forecast computed from the padded (B,T) obs grid.
+# ===========================================================================
+
+
+def _make_crd_aux(B, T, actual, predicted, total, gf, bf, dt=1.0):
+    """Build a crd_aux obs dict of (B,T,num_dc) tensors from per-DC vectors."""
+    def tile(vec):
+        base = torch.tensor(vec, dtype=torch.float32)
+        return base.view(1, 1, -1).expand(B, T, -1).contiguous()
+    return {
+        "crd_actual_green_w": tile(actual),
+        "crd_predicted_green_w": tile(predicted),
+        "crd_total_power_w": tile(total),
+        "crd_green_factor": tile(gf),
+        "crd_brown_factor": tile(bf),
+        "crd_timestep_hours": torch.full((B, T, 1), float(dt)),
+    }
+
+
+def test_forecast_from_obs_nonzero_when_pred_differs():
+    """Predicted wind (0) underestimates actual (1000W) → R_forecast != 0,
+    shape (B,T), matching the analytical carbon delta."""
+    B, T = 1, 2
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    aux = _make_crd_aux(
+        B, T,
+        actual=[1000.0, 1000.0], predicted=[0.0, 0.0],
+        total=[2000.0, 2000.0], gf=[0.0, 0.0], bf=[0.5, 0.5], dt=1.0,
+    )
+    batch = {Columns.OBS: {"crd_aux": aux}, Columns.REWARDS: torch.zeros(B, T)}
+    out = learner._compute_forecast_cf_from_obs(batch, beta=1.0, gamma=1.0)
+    assert out is not None and out.shape == (B, T)
+    # carbon_actual = 1.0 kg (uses 1kWh green, 1kWh brown ×0.5 per DC ×2 DC),
+    # carbon_pred = 2.0 kg (no green → 2kWh brown ×0.5 ×2). β·(1-2)+γ·0 = -1.0
+    assert out[0, 0].item() == pytest.approx(-1.0, abs=1e-4)
+
+
+def test_forecast_from_obs_zero_when_pred_matches():
+    B, T = 2, 2
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    aux = _make_crd_aux(
+        B, T,
+        actual=[1000.0, 500.0], predicted=[1000.0, 500.0],  # perfect forecast
+        total=[2000.0, 2000.0], gf=[0.0, 0.0], bf=[0.5, 0.5], dt=1.0,
+    )
+    batch = {Columns.OBS: {"crd_aux": aux}, Columns.REWARDS: torch.zeros(B, T)}
+    out = learner._compute_forecast_cf_from_obs(batch, beta=1.0, gamma=1.0)
+    assert out is not None and out.shape == (B, T)
+    assert torch.allclose(out, torch.zeros(B, T), atol=1e-5)
+
+
+def test_forecast_from_obs_returns_none_without_crd_aux():
+    learner = _StubLearner()
+    batch = {Columns.OBS: {"observation": {"x": torch.zeros(1, 1, 3)}}}
+    assert learner._compute_forecast_cf_from_obs(batch, beta=0.5, gamma=0.3) is None
+
+
+def test_forecast_cf_prefers_obs_over_infos():
+    """When crd_aux is present, _compute_forecast_cf uses it and ignores infos
+    (the infos path is the fragile fallback)."""
+    B, T = 1, 2
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    aux = _make_crd_aux(
+        B, T,
+        actual=[1000.0, 1000.0], predicted=[0.0, 0.0],
+        total=[2000.0, 2000.0], gf=[0.0, 0.0], bf=[0.5, 0.5], dt=1.0,
+    )
+    batch = {
+        Columns.OBS: {"crd_aux": aux},
+        Columns.REWARDS: torch.zeros(B, T),
+        Columns.INFOS: [_make_crd_info(pred=[0.0, 0.0, 0.0])],  # would be fragile
+    }
+    learner._compute_forecast_cf(module_id="g", batch=batch)
+    rf = batch[COL_CRD_FORECAST]
+    assert rf.shape == (B, T)
+    assert rf[0, 0].item() == pytest.approx(-1.0, abs=1e-4)  # the obs-based value
+
+
+def test_forecast_from_obs_feeds_rho_forecast_nonzero():
+    """End-to-end: obs-based R_forecast → ρ_forecast > 0 (mechanism live)."""
+    class _Stub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.0}
+        def _read_module_forecast_config(self, module_id):
+            return {"beta": 1.0, "gamma": 1.0}
+    B, T = 1, 1
+    learner = _Stub(num_dc=3, batch_size=4)
+    aux = _make_crd_aux(
+        B, T,
+        actual=[1000.0, 1000.0], predicted=[0.0, 0.0],
+        total=[2000.0, 2000.0], gf=[0.0, 0.0], bf=[0.5, 0.5], dt=1.0,
+    )
+    batch = {Columns.OBS: {"crd_aux": aux}, Columns.REWARDS: torch.zeros(B, T)}
+    learner._compute_forecast_cf(module_id="g", batch=batch)
+    # |R_forecast| = 1.0; pair with an equal-magnitude routing signal.
+    batch[COL_CRD_R_ROUTING] = torch.ones(B, T)
+    batch[Postprocessing.ADVANTAGES] = torch.full((B, T), 4.0)
+    learner._compute_responsibilities(module_id="g", batch=batch)
+    rho_f = batch[COL_CRD_RHO_FORECAST][0, 0].item()
+    assert rho_f == pytest.approx(0.5, abs=1e-3)   # 1/(1+1), NOT 0
+    assert batch[Postprocessing.ADVANTAGES][0, 0].item() == pytest.approx(2.0, abs=1e-3)
 
 
 if __name__ == "__main__":
