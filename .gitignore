@@ -207,3 +207,7 @@ drl-manager/scripts/plot_reward_curve_demo.py
 drl-manager/tests/test_plot_algo_compare.py
 drl-manager/tests/test_plot_training_curve_demo.py
 drl-manager/tests/test_plot_reward_curve_demo.py
+
+# wandb run artifacts (local, auto-generated)
+drl-manager/wandb/
+wandb/
