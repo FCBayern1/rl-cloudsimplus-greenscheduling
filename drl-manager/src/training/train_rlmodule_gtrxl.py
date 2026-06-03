@@ -760,15 +760,28 @@ def train_rlmodule_gtrxl(
     }
     logger.info(f"Stop criteria: num_env_steps_sampled_lifetime >= {total_timesteps}")
 
-    # Checkpointing — keep best 3 by lowest carbon emission
+    # Checkpointing — keep best N by a configurable score.
+    # 2026-05-31: constrained checkpoint selection.  Carbon is the objective,
+    # SLA is a constraint.  The logger computes `checkpoint_score = carbon +
+    # 1000·max(0, sla_target − completion)`, so ranking by MIN picks the
+    # lowest-carbon policy among those satisfying the SLA (violating policies
+    # get a huge penalty and are never chosen).  This avoids both the legacy
+    # carbon-min trap (degenerate low-work policy) and the completion-max trap
+    # (over-prioritising the constraint).  Overridable via
+    # training.checkpoint_score_attribute / _order.
     checkpoint_freq = training_config.get("checkpoint_freq_timesteps", 10000)
+    ckpt_score_attr = training_config.get(
+        "checkpoint_score_attribute", "env_runners/checkpoint_score")
+    ckpt_score_order = training_config.get("checkpoint_score_order", "min")
     checkpoint_config = air.CheckpointConfig(
         checkpoint_frequency=max(1, checkpoint_freq // training_config.get("train_batch_size", 5000)),
         checkpoint_at_end=True,
         num_to_keep=3,
-        checkpoint_score_attribute="env_runners/total_carbon_kg",
-        checkpoint_score_order="min",
+        checkpoint_score_attribute=ckpt_score_attr,
+        checkpoint_score_order=ckpt_score_order,
     )
+    logger.info(
+        "Checkpoint scoring: keep best 3 by %s (%s)", ckpt_score_attr, ckpt_score_order)
 
     # Reporter
     progress_reporter = TqdmProgressReporter(

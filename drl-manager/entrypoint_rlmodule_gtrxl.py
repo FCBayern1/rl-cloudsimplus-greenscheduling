@@ -123,6 +123,16 @@ def main():
         help="Override experiment_config.per_action_completion_weight. Used by "
              "the Pareto sweep launcher to vary the carbon/completion trade-off.",
     )
+    parser.add_argument(
+        "--sla-target",
+        type=float,
+        default=None,
+        help="Override experiment_config.sla_target (the Lagrangian completion "
+             "constraint). This is the REAL Pareto knob: higher target forces "
+             "the agent to complete more (at higher carbon), lower lets it "
+             "minimise carbon (at lower completion). Sweep this to trace the "
+             "carbon/completion Pareto front.",
+    )
     # --- Weights & Biases overrides ---------------------------------------
     parser.add_argument(
         "--no-wandb",
@@ -240,6 +250,12 @@ def main():
     if args.per_action_completion_weight is not None:
         env_config["per_action_completion_weight"] = float(args.per_action_completion_weight)
         logger.info(f"[Pareto sweep] per_action_completion_weight = {env_config['per_action_completion_weight']}")
+    if args.sla_target is not None:
+        # sla_target is read by both the Java sim (info-dict c_ep computation)
+        # and the Python LagrangianCallback (checkpoint score + dual update),
+        # so set it at the top level of env_config where both pick it up.
+        env_config["sla_target"] = float(args.sla_target)
+        logger.info(f"[Pareto sweep] sla_target = {env_config['sla_target']}")
 
     # --- wandb CLI overrides -------------------------------------------------
     env_config.setdefault("wandb", {})

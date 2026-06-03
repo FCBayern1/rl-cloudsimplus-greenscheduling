@@ -820,7 +820,24 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Add custom metrics to episode (will be aggregated by RLlib)
         # Support both old API (episode.custom_metrics) and new API (metrics_logger)
+        # 2026-05-31: constrained-checkpoint score.  The TRUE objective is
+        # minimise carbon; SLA (completion) is a CONSTRAINT, not an objective.
+        # So checkpoint selection should pick the lowest-carbon policy AMONG
+        # those that satisfy the SLA — not the highest-completion one (which
+        # over-prioritises the constraint) nor the lowest-carbon one (which
+        # would pick a degenerate "do little work" policy that violates SLA).
+        # We encode this as a single scalar RLlib can rank by (min):
+        #     score = carbon + PENALTY · max(0, sla_target − completion)
+        # When SLA is met the score IS the carbon (so we pick min carbon);
+        # when violated, the large penalty pushes the score up so it won't be
+        # chosen.  PENALTY=1000 ≫ carbon scale (~0.6) so any violation
+        # dominates.  sla_target read from the Java stats (falls back to 0.0).
+        _sla_floor = float(global_energy_stats.get("sla_target", 0.0) or 0.0)
+        _sla_violation = max(0.0, _sla_floor - completion_rate_mi)
+        checkpoint_score = total_carbon_kg + 1000.0 * _sla_violation
+
         custom_metrics_dict = {
+            "checkpoint_score": checkpoint_score,
             "green_waste_wh": green_waste,
             "green_used_wh": green_used,
             "brown_used_wh": brown_used,

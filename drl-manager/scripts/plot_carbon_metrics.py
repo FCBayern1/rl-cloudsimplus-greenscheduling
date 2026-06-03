@@ -41,8 +41,8 @@ logger = logging.getLogger("plot_carbon_metrics")
 
 # IEEE TC style knobs. 10pt matches the journal body text exactly.
 FONT_SIZE: int       = 10
-FIG_WIDTH_IN: float  = 3.49   # single-column width (IEEE TC)
-FIG_HEIGHT_IN: float = 4.0    # total height; two panels stacked vertically
+FIG_WIDTH_IN: float  = 7.16   # double-column width — horizontal 1×2 layout
+FIG_HEIGHT_IN: float = 2.5    # single row of two panels side-by-side
 DEFAULT_DPI: int     = 300
 
 # Line weights match plot_reward_curve_demo.py / plot_training_curve_demo.py
@@ -113,11 +113,10 @@ def render(
         "legend.fontsize":  FONT_SIZE,
     })
 
-    # 2×1 vertical stack: side-by-side panels would be too narrow inside a
-    # single-column IEEE TC figure. ``axes[0]`` is now the *top* panel
-    # (Carbon), ``axes[1]`` the *bottom* one (CI).
+    # 1×2 horizontal layout at double-column width. ``axes[0]`` is the
+    # *left* panel (Carbon), ``axes[1]`` the *right* one (CI).
     fig, axes = plt.subplots(
-        2, 1,
+        1, 2,
         figsize=(FIG_WIDTH_IN, FIG_HEIGHT_IN),
         constrained_layout=True,
     )

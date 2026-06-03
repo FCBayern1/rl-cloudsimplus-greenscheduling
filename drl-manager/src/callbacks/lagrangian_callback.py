@@ -227,6 +227,20 @@ class LagrangianCallback(DefaultCallbacks):
         self._iter_c_step_values: List[float] = []
         self._iter_pending_values: List[float] = []
 
+        # 2026-05-30 anti-windup: when the SLA target is infeasible the
+        # violation c_ep never reaches the deadband, so the pure-integral dual
+        # update accumulates λ without bound (observed λ: 0.06 → 6.0 over 100
+        # iters across the whole 5-DC sweep, which then injects huge advantage
+        # variance and DRAGS completion back down ~9pp from its peak).
+        # We track the best (lowest) c_ep seen and a stall counter: if c_ep
+        # fails to improve for `_windup_patience` consecutive iters, we treat
+        # the constraint as locally infeasible and stop accumulating λ (decay
+        # instead), preventing runaway.
+        self._best_c_ep: float = float("inf")
+        self._windup_stall: int = 0
+        self._windup_patience: int = 5
+        self._windup_min_delta: float = 0.002
+
     # ---------- hyperparameter resolution ----------
     def _load_hyperparams(self, algorithm) -> None:
         env_cfg = None
@@ -383,11 +397,27 @@ class LagrangianCallback(DefaultCallbacks):
         lam_prev = float(self._lambda)
         if ep_count > 0:
             violation = c_ep_mean - self._c_ep_tolerance
-            lam_new = lam_prev + self._lambda_lr * violation
+
+            # Anti-windup: track whether the constraint is still improving.
+            if c_ep_mean < self._best_c_ep - self._windup_min_delta:
+                self._best_c_ep = c_ep_mean
+                self._windup_stall = 0
+            else:
+                self._windup_stall += 1
+            infeasible_stall = self._windup_stall >= self._windup_patience
+
             if violation <= 0.0:
-                # Decay λ when constraint comfortably satisfied so the policy
-                # can relax once SLA is met — keeps λ from latching high.
+                # Constraint comfortably satisfied → relax λ so the policy can
+                # breathe; keeps λ from latching high.
                 lam_new = max(0.0, lam_prev * 0.95)
+            elif infeasible_stall:
+                # Constraint violated but c_ep has stalled for `patience` iters
+                # → target is (locally) infeasible.  Stop accumulating; decay
+                # slowly so λ settles at a bounded value instead of diverging.
+                lam_new = max(0.0, lam_prev * 0.98)
+            else:
+                # Normal dual ascent while the constraint is still improving.
+                lam_new = lam_prev + self._lambda_lr * violation
             lam_new = float(max(0.0, min(lam_new, self._lambda_max)))
         else:
             lam_new = lam_prev
