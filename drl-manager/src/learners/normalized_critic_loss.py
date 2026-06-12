@@ -188,7 +188,8 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
             norm_cfg = self._read_module_norm_config(module_id)
             targets = batch[Postprocessing.VALUE_TARGETS]
             vf_err2 = torch.pow(value_fn_out - targets, 2.0)
-            if norm_cfg.get("enabled", False):
+            norm_enabled = bool(norm_cfg.get("enabled", False))
+            if norm_enabled:
                 decay = float(norm_cfg.get("ema_decay", _DEFAULT_EMA_DECAY))
                 var_eps = float(norm_cfg.get("var_eps", _DEFAULT_VAR_EPS))
                 var_ema = self._update_target_var_ema(
@@ -196,7 +197,7 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
                 )
                 denom = max(var_ema, var_eps)
             else:
-                var_ema = 0.0
+                var_ema = None
                 denom = 1.0
             vf_loss = vf_err2 / denom
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
@@ -207,8 +208,8 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)
             value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
-            mean_vf_raw_mse = z
-            var_ema = 0.0
+            mean_vf_raw_mse = None
+            var_ema = None
 
         total_loss = possibly_masked_mean(
             -surrogate_loss
@@ -222,6 +223,14 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
+        # Only emit the normalization diagnostics when the gate is on — a
+        # var_ema of 0.0 on a gate-off module would be indistinguishable
+        # from a genuinely collapsed target variance.
+        extra_vf_metrics = {}
+        if var_ema is not None:
+            extra_vf_metrics[LEARNER_RESULTS_VF_TARGET_VAR_EMA_KEY] = var_ema
+            extra_vf_metrics[LEARNER_RESULTS_VF_LOSS_RAW_MSE_KEY] = mean_vf_raw_mse
+
         self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
@@ -232,8 +241,7 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-                LEARNER_RESULTS_VF_TARGET_VAR_EMA_KEY: var_ema,
-                LEARNER_RESULTS_VF_LOSS_RAW_MSE_KEY: mean_vf_raw_mse,
+                **extra_vf_metrics,
             },
             key=module_id,
             window=1,

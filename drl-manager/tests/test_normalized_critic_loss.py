@@ -334,6 +334,9 @@ def test_default_off_matches_base_ppo_exactly():
     )
     assert t_off.item() == pytest.approx(t_base.item(), rel=1e-6)
     assert off._vf_target_var_ema == {}   # EMA untouched when gated off
+    # Gate-off must not emit the normalization diagnostics — a 0.0 there
+    # would read as "target variance collapsed" on dashboards.
+    assert "vf_target_var_ema" not in off.metrics.logged["m0"]
 
 
 def test_metrics_expose_var_ema_and_raw_mse():

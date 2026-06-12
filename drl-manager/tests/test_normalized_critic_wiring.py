@@ -56,7 +56,9 @@ def test_v2_experiment_has_p1_settings(exp_config):
     # under-trains (vf_loss flat at ~2.7σ², constant-predictor signature).
     assert exp_config["global_model"]["vf_coef"] == 10.0
     assert exp_config["global_model"]["vf_clip_param"] == 10.0  # σ² units now
-    assert exp_config["lagrangian"]["enabled"] is False        # P2 debug freeze
+    # NOTE: deliberately NOT asserting lagrangian.enabled — it's an
+    # experiment-phase knob (P2 froze it for the critic smoke, Stage 1
+    # re-enabled it), not part of the P1 wiring contract.
 
 
 def test_learner_class_swapped(ppo_config):
