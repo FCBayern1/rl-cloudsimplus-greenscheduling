@@ -105,6 +105,7 @@ class TimeCAPGodEyeProvider:
         csv_start_offset: int = 0,
         dc_tz_offsets: Optional[Dict[int, int]] = None,
         simulation_warmup_rows: int = 0,
+        forecast_shift: Optional[Dict] = None,
     ):
         """
         Parameters
@@ -146,6 +147,21 @@ class TimeCAPGodEyeProvider:
             the Java side's ``simulation_warmup_rows`` config. Recommended 96
             (= seq_len) so the buffer at sim_step=0 is filled with real CSV
             rows rather than zero-padded — eliminates the cold-start period.
+        forecast_shift:
+            Optional synthetic forecast-error injection for the EU-CRD
+            conservative-collapse experiment. Applied to the raw per-turbine
+            forecast right after the TimeCAP forward, BEFORE both the
+            DC-feature aggregation (what the agent sees) and the CRD
+            predicted_wind_w accessor — so the agent is misled by exactly the
+            forecast that R_forecast measures. Schema::
+
+                {enabled: bool, mode: "scale"|"bias_kw",
+                 factor: float,           # scale mode: pred *= factor
+                 bias_kw: float,          # bias mode:  pred += bias_kw
+                 start_step: int,         # in-episode window [start, end]
+                 end_step: int}           # -1 = until episode end
+
+            The realized wind is untouched: this is pure forecast error.
         """
         if not dc_assignments:
             raise ValueError("dc_assignments must be non-empty.")
@@ -218,16 +234,71 @@ class TimeCAPGodEyeProvider:
         # Updates that have been pushed into the buffers but not yet inferenced
         self._dirty_steps: int = 0
 
+        # Synthetic forecast-error injection (conservative-collapse experiment).
+        self._shift_cfg = self._resolve_shift_cfg(forecast_shift)
+
         logger.info(
             "TimeCAPGodEyeProvider ready: dcs=%s, turbines=%s, "
-            "forecast_every=%d, device=%s, warmup_rows=%d, dc_tz_offsets=%s",
+            "forecast_every=%d, device=%s, warmup_rows=%d, dc_tz_offsets=%s, "
+            "forecast_shift=%s",
             self.dc_ids,
             sorted(self.predictor.turbine_ids),
             self.forecast_every,
             device,
             self.simulation_warmup_rows,
             self.dc_tz_offsets if self.dc_tz_offsets else "(scalar fallback)",
+            self._shift_cfg if self._shift_cfg else "off",
         )
+
+    @staticmethod
+    def _resolve_shift_cfg(raw: Optional[Dict]) -> Optional[Dict]:
+        """Parse/validate the forecast_shift config; None when disabled."""
+        if not isinstance(raw, dict) or not raw.get("enabled", False):
+            return None
+        mode = str(raw.get("mode", "scale")).lower()
+        if mode not in ("scale", "bias_kw"):
+            raise ValueError(
+                f"forecast_shift.mode must be 'scale' or 'bias_kw', got {mode!r}"
+            )
+        return {
+            "mode": mode,
+            "factor": float(raw.get("factor", 1.0)),
+            "bias_kw": float(raw.get("bias_kw", 0.0)),
+            "start_step": int(raw.get("start_step", 0)),
+            "end_step": int(raw.get("end_step", -1)),
+        }
+
+    @staticmethod
+    def _apply_forecast_shift(
+        per_t_pred: Dict[int, np.ndarray],
+        simulation_step: int,
+        cfg: Optional[Dict],
+    ) -> Dict[int, np.ndarray]:
+        """
+        Apply the synthetic shift to a raw per-turbine forecast dict.
+
+        Pure function (returns new arrays; input not mutated). Outside the
+        in-episode [start_step, end_step] window — or with cfg=None — the
+        input is returned unchanged. Shifted forecasts are clipped at >= 0
+        (a negative wind forecast is physically meaningless and would leak
+        the injection's magnitude into the waste-ratio formula's max(0,·)).
+        """
+        if cfg is None or per_t_pred is None:
+            return per_t_pred
+        start, end = cfg["start_step"], cfg["end_step"]
+        if simulation_step < start or (end >= 0 and simulation_step > end):
+            return per_t_pred
+        out: Dict[int, np.ndarray] = {}
+        for tid, pred in per_t_pred.items():
+            if pred is None:
+                out[tid] = pred
+                continue
+            if cfg["mode"] == "scale":
+                shifted = pred * cfg["factor"]
+            else:  # bias_kw
+                shifted = pred + cfg["bias_kw"]
+            out[tid] = np.clip(shifted, 0.0, None).astype(pred.dtype, copy=False)
+        return out
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -294,6 +365,14 @@ class TimeCAPGodEyeProvider:
                 simulation_step,
             )
             return self._features_snapshot()
+
+        # Synthetic forecast-error injection (conservative-collapse experiment).
+        # Applied BEFORE aggregation and BEFORE stashing, so every consumer —
+        # the agent's dc_future_* features, CRD's predicted_wind_w, and the A1
+        # raw-forecast ablation — sees the same shifted forecast.
+        per_t_pred = self._apply_forecast_shift(
+            per_t_pred, simulation_step, self._shift_cfg
+        )
 
         for dc_id in stale_dcs:
             self._last_features[dc_id] = self._aggregate_dc(

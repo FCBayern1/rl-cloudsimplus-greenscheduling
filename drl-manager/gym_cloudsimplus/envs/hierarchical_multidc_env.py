@@ -290,6 +290,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             csv_start_offset      = int(tc_cfg.get("csv_start_offset", 0)),
             dc_tz_offsets         = dc_tz_offsets,
             simulation_warmup_rows= sim_warmup_rows,
+            forecast_shift        = tc_cfg.get("forecast_shift"),
         )
         self._timecap_warmup_on_reset = bool(tc_cfg.get("warmup_on_reset", False))
         logger.info(

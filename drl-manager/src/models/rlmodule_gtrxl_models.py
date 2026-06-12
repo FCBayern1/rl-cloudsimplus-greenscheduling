@@ -449,6 +449,14 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
         return {
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
+            # 2026-06-12 dead-critic fix: hand the GRAD-CARRYING values to the
+            # learner. PPOTorchLearner builds the vf loss from
+            # compute_values(batch, embeddings=fwd_out.get(EMBEDDINGS)); our
+            # compute_values returns these directly, instead of re-running the
+            # trunk under inference_mode (which silently zeroed the critic
+            # gradient from 2026-05-12 onward). Zero extra memory — this
+            # tensor's graph already exists for the policy loss.
+            Columns.EMBEDDINGS: values,
             Columns.STATE_OUT: state_out,
         }
 
@@ -485,15 +493,25 @@ class GTrXLMaskedActionRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAP
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
-        # 2026-05-12 OOM fix: GAE (rllib/connectors/learner/general_advantage_estimation.py:96)
-        # calls compute_values on the FULL post-rollout batch — for our 10-DC v2 setup that's
-        # 8000 env steps × 10 shared-local agents = 80 000 samples in a single forward.
-        # GTrXL.forward unrolls T timesteps in a Python loop; without no_grad the autograd
-        # graph from every intermediate tensor at every layer at every t is retained, which
-        # alone consumed 10+ GB of VRAM and was the root cause of "16GB 5080 OOMs on bumping
-        # d_model 96 → 128".  GAE only needs V(s) values, not gradients through them, so
-        # wrap the forward in inference_mode (slightly cheaper than no_grad) to skip graph
-        # construction entirely.  Same pattern applied to Global module below.
+        # 2026-06-12 dead-critic fix: `embeddings` is the grad-carrying value
+        # tensor `_forward_train` emitted under Columns.EMBEDDINGS. The PPO
+        # learner passes it back here when building the vf loss — return it
+        # as-is so the critic actually receives gradient. (From 2026-05-12 to
+        # 2026-06-12 this method unconditionally re-ran the trunk under
+        # inference_mode, so the vf loss was a CONSTANT w.r.t. parameters and
+        # both critics trained on exactly zero gradient.)
+        if embeddings is not None:
+            return embeddings
+        # 2026-05-12 OOM fix (GAE path — keep): GAE
+        # (rllib/connectors/learner/general_advantage_estimation.py:96) calls
+        # compute_values WITHOUT embeddings on the FULL post-rollout batch —
+        # for our 10-DC v2 setup that's 8000 env steps × 10 shared-local
+        # agents = 80 000 samples in a single forward. GTrXL.forward unrolls
+        # T timesteps in a Python loop; without no_grad the autograd graph
+        # from every intermediate tensor at every layer at every t is
+        # retained, which alone consumed 10+ GB of VRAM ("16GB 5080 OOMs on
+        # bumping d_model 96 → 128"). GAE only needs V(s) values, not
+        # gradients, so the no-embeddings path skips graph construction.
         with torch.inference_mode():
             _, values, _, _ = self._forward_pass(batch)
         # inference_mode returns tensors that are read-only and don't have an `.grad_fn`.
@@ -765,6 +783,8 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         return {
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
+            # 2026-06-12 dead-critic fix — see GTrXLMaskedActionRLModule.
+            Columns.EMBEDDINGS: values,
             Columns.STATE_OUT: state_out,
         }
 
@@ -791,6 +811,10 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
+        # 2026-06-12 dead-critic fix — grad-carrying values from
+        # _forward_train (learner loss path); see the Local module above.
+        if embeddings is not None:
+            return embeddings
         # See OOM-fix note on the Local module's compute_values above —
         # GAE forwards the full batch through GTrXL; without no_grad the
         # autograd graph from the per-T Python loop blows up VRAM.
@@ -1329,6 +1353,10 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         return {
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
+            # 2026-06-12 dead-critic fix — see GTrXLMaskedActionRLModule.
+            # With critic_separate_trunk these values flow from the CRITIC
+            # encoders/trunk only, so the vf gradient keeps actor isolation.
+            Columns.EMBEDDINGS: values,
             Columns.STATE_OUT: state_out,
         }
 
@@ -1355,6 +1383,12 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None) -> TensorType:
+        # 2026-06-12 dead-critic fix — grad-carrying values from
+        # _forward_train (learner loss path); see GTrXLMaskedActionRLModule.
+        if embeddings is not None:
+            return embeddings
+        # No-embeddings path (GAE full-batch bootstrap) — keep the
+        # 2026-05-12 inference_mode OOM protection.
         with torch.inference_mode():
             _, values, _ = self._forward_pass(batch)
         return values.clone()

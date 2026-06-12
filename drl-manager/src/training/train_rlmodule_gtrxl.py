@@ -70,6 +70,11 @@ from src.models.rlmodule_gtrxl_ensemble import (
     GTrXLScoreBasedEnsembleGlobalRLModule,
 )
 from src.learners.crd_q_loss import CRDPPOTorchLearner
+# P1 critic fix (2026-06-11): vf loss normalized by EMA-Var(VALUE_TARGETS).
+# Activated by `normalized_critic.enabled=true` in the env config; otherwise
+# the run keeps RLlib's vanilla PPOTorchLearner (or CRDPPOTorchLearner with
+# the normalization gate off) and is bit-identical to pre-P1 behavior.
+from src.learners.normalized_critic_loss import NormalizedCriticPPOTorchLearner
 
 # Setup logging
 logging.basicConfig(
@@ -477,6 +482,41 @@ def create_rlmodule_config(
             f"crd config keys: {sorted(crd_cfg.keys())}"
         )
 
+    # ------------------------------------------------------------------
+    # P1 critic fix (2026-06-11): normalized critic vf loss.
+    # `normalized_critic.enabled=true` in the env config injects the gate
+    # into the chosen modules' model_config (the learner reads it per
+    # module) and swaps in NormalizedCriticPPOTorchLearner. Global module
+    # by default; the local critic is healthy (explained_var 0.5-0.75) and
+    # serves as the reference signal during the P1 smoke, so it is only
+    # normalized when `normalized_critic.local: true` is set explicitly.
+    # CRD runs need no learner swap — CRDPPOTorchLearner inherits the
+    # normalized base and honors the same per-module gate.
+    # ------------------------------------------------------------------
+    norm_critic_cfg = env_config.get("normalized_critic", {}) or {}
+    norm_critic_enabled = (
+        bool(norm_critic_cfg.get("enabled", False))
+        if isinstance(norm_critic_cfg, dict)
+        else False
+    )
+    if norm_critic_enabled:
+        norm_knobs = {"enabled": True}
+        for knob in ("ema_decay", "var_eps"):
+            if knob in norm_critic_cfg:
+                norm_knobs[knob] = norm_critic_cfg[knob]
+        if bool(norm_critic_cfg.get("global", True)):
+            gtrxl_config = dict(gtrxl_config)
+            gtrxl_config["normalized_critic"] = norm_knobs
+        if bool(norm_critic_cfg.get("local", False)):
+            local_model_cfg = dict(local_model_cfg)
+            local_model_cfg["normalized_critic"] = norm_knobs
+        logger.info(
+            "[P1 normalized critic] enabled — knobs=%s, global=%s, local=%s",
+            norm_knobs,
+            bool(norm_critic_cfg.get("global", True)),
+            bool(norm_critic_cfg.get("local", False)),
+        )
+
     if use_parameter_sharing:
         sample_local_agent = "local_agent_0"
         unified_local_obs_space = sample_env.observation_space(sample_local_agent)
@@ -645,11 +685,13 @@ def create_rlmodule_config(
                 "vf_loss_coeff": local_model_config.get("vf_coef", 0.5),
                 "grad_clip": local_model_config.get("max_grad_norm", 0.5),
                 "vf_clip_param": local_model_config.get("vf_clip_param", 10.0),
-                # EU-CRD: only override learner_class when CRD is enabled.
-                # Passing the default sentinel (NotProvided) when disabled
-                # keeps RLlib's vanilla PPOTorchLearner.
+                # Learner-class precedence: CRD (already inherits the
+                # normalized critic) > P1 normalized critic > RLlib default.
+                # Passing no key keeps RLlib's vanilla PPOTorchLearner.
                 **({"learner_class": crd_learner_class}
-                   if crd_learner_class is not None else {}),
+                   if crd_learner_class is not None
+                   else {"learner_class": NormalizedCriticPPOTorchLearner}
+                   if norm_critic_enabled else {}),
             }
         )
         .resources(num_gpus=num_gpus)

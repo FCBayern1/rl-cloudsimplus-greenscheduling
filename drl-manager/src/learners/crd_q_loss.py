@@ -3,8 +3,11 @@ M1.2: PPO learner extension that trains the Q-head ensemble via off-policy
 TD bootstrap, with per-sample bootstrap masking (Osband et al., 2016).
 
 Design:
-- Subclasses RLlib's `PPOTorchLearner`. The base PPO loss (policy + V-head
-  + entropy + KL) is unchanged. We only ADD an extra term:
+- Subclasses `NormalizedCriticPPOTorchLearner` (a PPOTorchLearner whose vf
+  term can be variance-normalized per module via the `normalized_critic`
+  model_config gate; identical to vanilla PPO when the gate is off). The
+  base PPO loss (policy + V-head + entropy + KL) is otherwise unchanged.
+  We only ADD an extra term:
       total_loss = base_ppo_loss + q_loss_coef * q_loss
 - The Q-head TD target is `batch[Postprocessing.VALUE_TARGETS]`, which is
   RLlib's GAE n-step return (≈ Q(s_t, a_t) for the actually-taken action).
@@ -27,7 +30,6 @@ from typing import Any, Dict, Optional
 import torch
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.typing import ModuleID, TensorType
@@ -36,6 +38,7 @@ from src.baselines.global_schedulers import GreenQueueBalancedGlobalScheduler
 from src.baselines.local_schedulers import BestFitLocalScheduler
 from src.crd.blender import CRDBlender
 from src.crd.cf_math import forecast_cf_per_step
+from src.learners.normalized_critic_loss import NormalizedCriticPPOTorchLearner
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
 
 
@@ -101,13 +104,19 @@ COL_CRD_RHO_ROUTING = "crd_rho_routing"
 COL_CRD_RHO_SCHEDULING = "crd_rho_scheduling"
 
 
-class CRDPPOTorchLearner(PPOTorchLearner):
+class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
     """
     PPO learner with EU-CRD Q-head TD loss bolted on.
 
     Reads the per-module Q-loss config from `module.model_config["crd"]
     ["ensemble"]`; falls back to defaults if absent. Modules that don't
     expose `crd_q_ensemble` get only the base PPO loss.
+
+    P1 critic fix (2026-06-11): the base class is now
+    NormalizedCriticPPOTorchLearner, so CRD runs can normalize the vf loss
+    via the same per-module `normalized_critic` model_config gate. The gate
+    defaults to OFF — configs without the block keep pre-P1 behavior
+    bit-for-bit.
     """
 
     def build(self) -> None:
