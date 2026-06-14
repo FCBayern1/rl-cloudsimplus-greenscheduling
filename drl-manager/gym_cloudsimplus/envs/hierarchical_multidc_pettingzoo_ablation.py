@@ -59,6 +59,14 @@ class HierarchicalMultiDCParallelEnvAblation(HierarchicalMultiDCParallelEnv):
             bool(ctde_cfg.get("enabled", False)) if isinstance(ctde_cfg, dict) else bool(ctde_cfg)
         )
 
+        # EU-CRD flag — mirrors the parent. `_create_observation_spaces` reads
+        # `self.crd_enabled` to decide whether to add the `crd_aux` sibling
+        # key; without setting it here the ablation wrapper raises
+        # AttributeError before the obs spaces are built. Gated by crd.enabled
+        # (False for the carbon v2 ablation runs), so non-CRD runs unaffected.
+        crd_cfg = config.get("crd", {}) if isinstance(config, dict) else {}
+        self.crd_enabled = bool(crd_cfg.get("enabled", False)) if isinstance(crd_cfg, dict) else False
+
         forecast_mode = str(config.get("forecast_mode", "full")).lower()
         logger.info(
             "Creating base HierarchicalMultiDCEnvAblation (forecast_mode=%s)...",
