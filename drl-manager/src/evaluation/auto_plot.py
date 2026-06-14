@@ -54,6 +54,46 @@ def _load_csv(path: Path) -> Optional[pd.DataFrame]:
     return df
 
 
+def _read_sla_target(*search_dirs: Path) -> Optional[float]:
+    """Read the run's ``sla_target`` from experiment_config.yml.
+
+    The completion / Lagrangian SLA reference line must reflect the target the
+    Lagrangian actually optimized against (e.g. 0.62), not a hardcoded literal
+    — otherwise a healthy run looks like it's failing a stricter SLA it was
+    never held to. Returns None if no config / key is found, in which case the
+    reference line is omitted rather than drawn at a wrong value.
+    """
+    def _find_key(obj):
+        # The dumped experiment_config.yml nests env params under `env_config`;
+        # the raw config.yml has sla_target at the experiment-block top level.
+        # Search both shapes: top-level, then `env_config`, then recursively.
+        if isinstance(obj, dict):
+            if obj.get("sla_target") is not None:
+                return obj["sla_target"]
+            for v in obj.values():
+                hit = _find_key(v)
+                if hit is not None:
+                    return hit
+        return None
+
+    for d in search_dirs:
+        if d is None:
+            continue
+        cfg_path = d / "experiment_config.yml"
+        if not cfg_path.exists():
+            continue
+        try:
+            import yaml
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            val = _find_key(cfg)
+            if val is not None:
+                return float(val)
+        except Exception as e:
+            logger.warning("auto_plot: could not read sla_target from %s — %s", cfg_path, e)
+    return None
+
+
 def _find_monitor_csv(log_dir: Path) -> Optional[Path]:
     """Prefer monitor.csv; fall back to the first monitor_worker*.csv."""
     cand = log_dir / "monitor.csv"
@@ -148,7 +188,7 @@ def _plot_carbon(df: pd.DataFrame, out: Path) -> None:
     _savefig(fig, out)
 
 
-def _plot_completion(df: pd.DataFrame, out: Path) -> None:
+def _plot_completion(df: pd.DataFrame, out: Path, sla_target: Optional[float] = None) -> None:
     """Completion/QoS curves."""
     candidates = [
         ("completion_rate_mi",                "completion_rate_mi"),
@@ -163,7 +203,9 @@ def _plot_completion(df: pd.DataFrame, out: Path) -> None:
     for col, label in available:
         ax.plot(x, df[col], alpha=0.25, linewidth=0.8)
         ax.plot(x, _rolling(df[col], 50), linewidth=2.0, label=label)
-    ax.axhline(0.85, color="grey", linestyle="--", linewidth=1.0, label="SLA target 0.85")
+    if sla_target is not None:
+        ax.axhline(sla_target, color="grey", linestyle="--", linewidth=1.0,
+                   label=f"SLA target {sla_target:g}")
     ax.set_title("Task completion / QoS")
     ax.set_xlabel("episode")
     ax.set_ylabel("completion rate")
@@ -280,7 +322,7 @@ def _plot_training_losses(df: pd.DataFrame, out: Path) -> None:
     _savefig(fig, out)
 
 
-def _plot_lagrangian(df: pd.DataFrame, out: Path) -> None:
+def _plot_lagrangian(df: pd.DataFrame, out: Path, sla_target: Optional[float] = None) -> None:
     """λ, c_ep, c_step, completion on one figure (twin axes where useful)."""
     if df is None:
         return
@@ -307,7 +349,9 @@ def _plot_lagrangian(df: pd.DataFrame, out: Path) -> None:
     ax = axes[2]
     if _has(df, "completion_rate_mi"):
         ax.plot(x, df["completion_rate_mi"], color="tab:blue", linewidth=2.0, label="completion_rate_mi")
-        ax.axhline(0.85, color="grey", linestyle="--", linewidth=1.0, label="SLA target 0.85")
+        if sla_target is not None:
+            ax.axhline(sla_target, color="grey", linestyle="--", linewidth=1.0,
+                       label=f"SLA target {sla_target:g}")
     if _has(df, "pending_ratio_mean"):
         ax.plot(x, df["pending_ratio_mean"], color="tab:cyan", linewidth=1.5, label="pending_ratio")
     ax.set_ylabel("rate")
@@ -351,13 +395,17 @@ def plot_training_results(log_dir: str) -> List[str]:
     training_df = _load_csv(training_csv)
     lagrangian_df = _load_csv(lagrangian_csv)
 
+    # The SLA reference line must match the target the Lagrangian used; read it
+    # from the run config (monitor_root first, then the top-level log dir).
+    sla_target = _read_sla_target(monitor_root, log_path)
+
     written: List[str] = []
 
     if monitor_df is not None:
         for name, fn in [
             ("rewards.png",                  lambda: _plot_rewards(monitor_df,                 out_dir / "rewards.png")),
             ("carbon.png",                   lambda: _plot_carbon(monitor_df,                  out_dir / "carbon.png")),
-            ("completion.png",               lambda: _plot_completion(monitor_df,              out_dir / "completion.png")),
+            ("completion.png",               lambda: _plot_completion(monitor_df,              out_dir / "completion.png", sla_target)),
             ("energy.png",                   lambda: _plot_energy(monitor_df,                  out_dir / "energy.png")),
             ("global_reward_breakdown.png",  lambda: _plot_global_reward_breakdown(monitor_df, out_dir / "global_reward_breakdown.png")),
         ]:
@@ -382,7 +430,7 @@ def plot_training_results(log_dir: str) -> List[str]:
 
     if lagrangian_df is not None:
         try:
-            _plot_lagrangian(lagrangian_df, out_dir / "lagrangian.png")
+            _plot_lagrangian(lagrangian_df, out_dir / "lagrangian.png", sla_target)
             p = out_dir / "lagrangian.png"
             if p.exists():
                 written.append(str(p))
