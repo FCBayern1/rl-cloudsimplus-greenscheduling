@@ -211,7 +211,17 @@ class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
         if (n % train_every) != 0:
             return base_loss
 
-        q_loss = self._compute_q_loss(q_ensemble, batch, bootstrap_p)
+        # Normalize the Q-loss by the SAME running target-variance the critic
+        # uses (set by NormalizedCriticPPOTorchLearner during the super() call
+        # above). The Q-head's TD target IS Postprocessing.VALUE_TARGETS, so
+        # without this the raw Q-loss carries the full return scale (residuals²
+        # ~thousands) and, now that the base vf loss is O(1) in σ² units, would
+        # swamp the total loss. `_vf_target_var_ema[module_id]` is populated
+        # only when `normalized_critic.enabled` for this module; absent → 1.0
+        # → raw Q-loss (bit-identical to pre-normalization behavior).
+        var_ema = self._vf_target_var_ema.get(module_id)
+        target_var = max(float(var_ema), 1e-8) if var_ema is not None else 1.0
+        q_loss = self._compute_q_loss(q_ensemble, batch, bootstrap_p, target_var=target_var)
         return base_loss + coef * q_loss
 
     # ------------------------------------------------------------------ helpers
@@ -1936,6 +1946,7 @@ class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
         q_ensemble: torch.Tensor,
         batch: Dict[str, Any],
         bootstrap_p: float,
+        target_var: float = 1.0,
     ) -> torch.Tensor:
         """
         TD-style MSE loss with per-sample bootstrap masking.
@@ -1944,6 +1955,10 @@ class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
             q_ensemble: from `_forward_train`; shape is one of
                 - local agent (Discrete):       (B, T, K, A)
                 - global agent (MultiDiscrete): (B, T, K, batch_size, num_dc)
+            target_var: running variance of VALUE_TARGETS used to normalize the
+                squared TD error into σ² units (mirrors the critic vf-loss
+                normalization; the Q-target IS VALUE_TARGETS). Default 1.0 =
+                raw MSE (un-normalized, pre-2026-06-16 behavior).
             batch: must contain `Columns.ACTIONS` and `Postprocessing.VALUE_TARGETS`.
             bootstrap_p: Bernoulli probability for each (sample, head) inclusion.
 
@@ -1999,7 +2014,9 @@ class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
             mask[any_per_sample < 1.0, 0] = 1.0
         mask = mask.unsqueeze(1)  # (B, 1, K) → broadcast over T
 
-        sq_err = (q_chosen - target).pow(2)               # (B, T, K)
+        # Normalize the squared TD error by the target variance (σ² units),
+        # mirroring NormalizedCriticPPOTorchLearner's vf-loss normalization.
+        sq_err = (q_chosen - target).pow(2) / target_var  # (B, T, K)
         masked = sq_err * mask                             # (B, T, K)
         denom = mask.sum() * sq_err.shape[1]               # active heads × T
         return masked.sum() / (denom + 1e-8)

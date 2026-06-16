@@ -219,5 +219,70 @@ def test_target_value_targets_detached_in_practice():
     assert target.grad is None or target.grad.abs().sum() == 0
 
 
+# ---------------------------------------------------------------------------
+# target_var normalization (2026-06-16): the Q-loss must be divisible by the
+# same running target-variance the critic uses, so it stays O(1) once the base
+# vf loss is normalized. Default target_var=1.0 is the old raw-MSE behavior.
+# ---------------------------------------------------------------------------
+
+def _simple_batch(B, T, A):
+    actions = torch.randint(0, A, (B, T), dtype=torch.long)
+    target = torch.randn(B, T)
+    return {Columns.ACTIONS: actions, Postprocessing.VALUE_TARGETS: target}
+
+
+def test_target_var_default_is_raw_mse():
+    """No target_var arg → identical to passing 1.0 (backward compat)."""
+    torch.manual_seed(0)
+    q = torch.randn(3, 2, 4, 5)
+    batch = _simple_batch(3, 2, 5)
+    torch.manual_seed(7)
+    a = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0)
+    torch.manual_seed(7)
+    b = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=1.0)
+    assert a.item() == pytest.approx(b.item())
+
+
+def test_target_var_scales_loss_inversely():
+    """Loss must scale as 1/target_var (it divides the squared error)."""
+    q = torch.randn(4, 3, 5, 6)
+    batch = _simple_batch(4, 3, 6)
+    torch.manual_seed(11)
+    raw = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=1.0)
+    torch.manual_seed(11)
+    scaled = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=100.0)
+    assert scaled.item() == pytest.approx(raw.item() / 100.0, rel=1e-5)
+
+
+def test_target_var_brings_large_scale_loss_to_O1():
+    """The motivating case: big return scale → raw Q-loss huge, normalized O(1)."""
+    B, T, K, A = 4, 2, 5, 3
+    actions = torch.randint(0, A, (B, T), dtype=torch.long)
+    target = torch.randn(B, T) * 100.0           # large-scale returns
+    q = torch.randn(B, T, K, A) * 100.0
+    batch = {Columns.ACTIONS: actions, Postprocessing.VALUE_TARGETS: target}
+    var = float(target.var(unbiased=False).item())
+    torch.manual_seed(3)
+    raw = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=1.0)
+    torch.manual_seed(3)
+    norm = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=var)
+    assert raw.item() > 100.0                    # raw is on the order of thousands
+    assert norm.item() == pytest.approx(raw.item() / var, rel=1e-5)
+
+
+def test_target_var_perfect_prediction_still_zero():
+    """Normalization must not break the zero-at-perfect-prediction property."""
+    B, T, K, A = 3, 2, 4, 5
+    target = torch.randn(B, T)
+    actions = torch.randint(0, A, (B, T), dtype=torch.long)
+    q = torch.zeros(B, T, K, A)
+    for b in range(B):
+        for t in range(T):
+            q[b, t, :, actions[b, t]] = target[b, t]
+    batch = {Columns.ACTIONS: actions, Postprocessing.VALUE_TARGETS: target}
+    loss = CRDPPOTorchLearner._compute_q_loss(q, batch, bootstrap_p=1.0, target_var=50.0)
+    assert loss.item() == pytest.approx(0.0, abs=1e-6)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
