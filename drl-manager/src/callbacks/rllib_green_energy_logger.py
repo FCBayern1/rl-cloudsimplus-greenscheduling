@@ -957,7 +957,11 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Multi-agent 情况：train_batch 可能是 MultiAgentBatch
         if isinstance(train_batch, SampleBatch):
-            _check_and_log_seq_lens(train_batch, label=f"policy={policy.id}")
+            # RLlib 的 Policy 对象并不带 `.id` 属性；当 do_minibatch_sgd 按 policy
+            # 逐个调用 learn_on_batch 时这里会拿到单个 SampleBatch。用安全取值避免
+            # AttributeError 打断训练（这一行在 _check_and_log_seq_lens 的 try 之外）。
+            policy_label = getattr(policy, "id", None) or type(policy).__name__
+            _check_and_log_seq_lens(train_batch, label=f"policy={policy_label}")
         elif hasattr(train_batch, "policy_batches"):
             for pid, sub_batch in train_batch.policy_batches.items():
                 _check_and_log_seq_lens(sub_batch, label=f"policy={pid}")

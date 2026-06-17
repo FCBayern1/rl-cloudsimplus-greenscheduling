@@ -196,6 +196,41 @@ class HierarchicalMultiDCEnv(gym.Env):
         )
         logger.info(f"  use_flat_obs_protocol: {self.use_flat_obs_protocol}")
 
+    @staticmethod
+    def _resolve_timecap_checkpoint(ckpt, *, search_dirs=None):
+        """Resolve a ``timecap.checkpoint`` config value to an existing absolute file.
+
+        Relative checkpoint paths in config are written relative to the
+        drl-manager package dir (where ``timecap_prediction/`` lives), i.e. the
+        documented run cwd. Resolving them here — instead of relying on the
+        process cwd inside ``TimeCAP_GreenPredictor`` — keeps loading working
+        inside Ray worker actors, whose cwd is the Ray session dir rather than
+        drl-manager. Absolute paths are used as-is.
+
+        ``search_dirs`` is injectable for testing; by default it tries the
+        drl-manager dir, then the repo root, then the process cwd.
+        """
+        from pathlib import Path as _Path
+        ckpt_path = _Path(ckpt)
+        if ckpt_path.is_absolute():
+            if not ckpt_path.is_file():
+                raise FileNotFoundError(f"timecap.checkpoint not found: {ckpt_path}")
+            return ckpt_path
+
+        if search_dirs is None:
+            here = _Path(__file__).resolve()
+            search_dirs = [here.parents[2], here.parents[3], _Path.cwd()]
+
+        candidates = [_Path(d) / ckpt_path for d in search_dirs]
+        for cand in candidates:
+            if cand.is_file():
+                return cand
+        raise FileNotFoundError(
+            f"timecap.checkpoint not found. Relative path {str(ckpt)!r} did not "
+            "resolve against any known base. Tried: "
+            + ", ".join(str(c) for c in candidates)
+        )
+
     def _build_timecap_provider(self, config: Dict[str, Any]):
         """
         Construct a TimeCAPGodEyeProvider from this env's dc_configs and the
@@ -228,6 +263,9 @@ class HierarchicalMultiDCEnv(gym.Env):
             raise ValueError(
                 "green_oracle_mode='timecap' requires config['timecap']['checkpoint'] to be set."
             )
+        # Resolve to an absolute, existing path so it loads inside Ray worker
+        # actors (whose cwd is the Ray session dir, not drl-manager).
+        ckpt = self._resolve_timecap_checkpoint(ckpt)
 
         # Resolve csv_dir relative to repo root if a relative path was given
         csv_dir = _Path(tc_cfg.get(
