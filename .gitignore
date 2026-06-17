@@ -211,3 +211,9 @@ drl-manager/tests/test_plot_reward_curve_demo.py
 # wandb run artifacts (local, auto-generated)
 drl-manager/wandb/
 wandb/
+
+# Large local datasets (Alibaba raw traces — 890M, never commit)
+data/
+
+# config.yml safety backups (auto-generated)
+config.yml.bak*
