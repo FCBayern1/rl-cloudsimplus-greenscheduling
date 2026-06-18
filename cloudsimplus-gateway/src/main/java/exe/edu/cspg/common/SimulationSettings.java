@@ -64,6 +64,13 @@ public class SimulationSettings {
     private final int maxVms;
 
     private final String workloadMode; // "SWF" or "CSV"
+    // Local scheduling mode (2026-06-18, new dispatch-rate local agent):
+    //   "vm_placement" = legacy (local action = pick 1 VM, 1 cloudlet/DC/step)
+    //   "dispatch_rate"= new (local action = how many to release this step; sim
+    //                    best-fit places them). Unthrottles throughput AND makes
+    //                    the action the green-relevant temporal lever.
+    //                    See docs/Deferrable_Jobs_Lever.md.
+    private final String localDispatchMode;
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
@@ -323,6 +330,7 @@ public class SimulationSettings {
 
         // Workload Configuration
         this.workloadMode = getStringParam(params, "workload_mode", "SWF");
+        this.localDispatchMode = getStringParam(params, "local_dispatch_mode", "vm_placement").trim();
         this.cloudletTraceFile = getStringParam(params, "cloudlet_trace_file",
                 "traces/LLNL-Atlas-2006-2.1-cln-test.swf");
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",

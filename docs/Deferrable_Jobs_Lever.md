@@ -146,3 +146,62 @@ option (action 0 → targetVmId -1) that HOLDS a cloudlet in the DC's local queu
 - **A (global defer):** only if B's same-DC limit proves fatal. Phases 1(#7-9)/2-4.
 
 CloudletDescriptor deadline field (done, #6) is used by BOTH B and A — not wasted.
+
+## 7. STOP — B-oracle finding (2026-06-18): waste is a calibration artifact, not a lever problem
+
+B-oracle (oracle_hold_until_green.py, 5-DC godeye): 7165 hold decisions →
+green_used/green_waste EXACTLY unchanged (982/17941 Wh), completion 0.18→0.16.
+Total green ~18923 Wh, only 5.2% used. **Green supply ≫ demand → no temporal lever
+(B or A) can move waste; time-shifting tiny demand can't absorb a ~20× green surplus.**
+The carbon drop (0.436→0.410) is a DID-LESS-WORK artifact (lower completion → less
+brown), NOT green capture (green_used identical); carbon/completion is actually worse.
+
+This re-interprets the whole project: waste_ratio pinned ~0.94 across ALL runs is
+STRUCTURAL (green over-supply), not a policy/forecast failure. godeye≈none meant
+"no policy can move waste under this calibration," not just "lever missing."
+
+**NEW critical-path step (lever plan PAUSED): re-calibrate green/load balance so
+load ≈ green supply.** Levers: compressed_power_divisor (now 150; larger = less
+wind), more/heavier cloudlets (raise load), or lower host idle-power fraction
+(make power load-sensitive). Use the oracle as the fast (~½ day) test loop:
+recalibrate → rerun oracle → does hold-until-green move waste? Only then resume B/A.
+CloudletDescriptor deadline field (#6) and the oracle stay valid.
+
+## 8. RESOLUTION (2026-06-18): new dispatch-rate local agent (unifies throughput fix + temporal lever)
+
+Root cause found (user insight): local dispatches only 1 cloudlet/DC/step
+(assignCloudletToVm = queue.poll() once per DC) → throughput-starved → DCs
+under-loaded (13% util) → green wasted, completion ~0.18. A temporal lever is
+MEANINGLESS while throttled: the lever's value is "burst-process during green",
+but a flat 1/DC/step cap removes the ability to burst.
+
+**Key realization: "how many to dispatch this step" IS the temporal lever.**
+- dispatch low = hold/defer (brown periods)
+- dispatch high (burst) = release (green periods)
+So fixing throughput and adding the lever are the SAME change.
+
+**Also: per-VM placement is green-IRRELEVANT** (all VMs in a DC share the DC's
+green; with always-on hosts, total DC power is invariant to which VM runs a
+cloudlet). So placement → heuristic (best-fit), RL → green-relevant decisions
+only (DC routing + dispatch timing). Cleaner architecture; reuses BestFit.
+
+### New local agent (incremental, OLD path untouched, config-gated)
+`local_dispatch_mode: "vm_placement"(old default) | "dispatch_rate"(new)`
+- **action**: Discrete(N+1) = how many cloudlets to release this step (0=hold all,
+  N=burst-drain). N configurable.
+- **placement**: sim-internal best-fit over the N dispatched cloudlets (not RL).
+- **obs**: + this DC's green_ratio + forecast (dc_future_*) + queue len + VM
+  aggregate free capacity → the lever can learn "hold when no green + green
+  coming; burst when green".
+
+### Incremental tasks (each testable; old path bit-identical when flag off)
+- NL-1 (#13) Java: gated dispatch-rate path (release N via best-fit). Java test.
+- NL-2 (#14) env: Discrete(N+1) action + green/forecast in local obs (gated).
+- NL-3 (#15) oracle: scripted hold/burst-by-green → does completion/util jump?
+  + green balance → does waste finally move? (gate before RL)
+- NL-4 (#16) RL: local module handles Discrete(N+1); forecast→obs; deadline-aware
+  SLA; retrain; rerun godeye 3-arm (success = godeye > none).
+
+⚠️ Honest: this is a sim-foundation rebuild. Invalidates all baselines/Pareto.
+And earlier carbon wins (−7%, RL +28%) were under the throttled+over-supplied
+dynamics → likely static-tilt artifacts → must be re-validated after the rebuild.

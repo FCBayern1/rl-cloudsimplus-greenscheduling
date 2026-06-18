@@ -690,9 +690,78 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
+     * NEW local agent (dispatch_rate mode): each DC's action value = how many
+     * cloudlets to RELEASE from its queue this step (0 = hold all = the temporal
+     * lever's "defer"; higher = burst-drain). Each released cloudlet is placed on
+     * the least-loaded VM — placement is green-IRRELEVANT (all VMs in a DC share
+     * its green; total DC power is invariant to which VM runs a cloudlet when
+     * hosts are always-on), so RL owns only the green-relevant temporal decision.
+     * Unthrottles the legacy 1-cloudlet/DC/step throughput bottleneck.
+     */
+    private Map<Integer, Boolean> executeLocalDispatchRate(Map<Integer, Integer> localActions) {
+        Map<Integer, Boolean> results = new HashMap<>();
+        for (Map.Entry<Integer, Integer> entry : localActions.entrySet()) {
+            DatacenterInstance dc = resolveDatacenterInstance(entry.getKey());
+            if (dc == null) {
+                results.put(entry.getKey(), false);
+                continue;
+            }
+            final int dcId = dc.getId();
+            LoadBalancingBroker localBroker = dc.getLocalBroker();
+            if (localBroker == null) {
+                results.put(dcId, false);
+                continue;
+            }
+            int dispatchCount = Math.max(0, entry.getValue());
+            int placed = 0;
+            // Bound attempts: a head cloudlet that fits no VM is re-queued to the
+            // tail by assignCloudletToVm, so cap attempts to avoid spinning.
+            int maxAttempts = dispatchCount + localBroker.getWaitingCloudletCount();
+            int attempts = 0;
+            while (placed < dispatchCount && localBroker.hasWaitingCloudlets()
+                    && attempts < maxAttempts) {
+                long vmId = selectLeastLoadedVmId(dc);
+                if (vmId < 0) {
+                    break; // no usable VM in this DC
+                }
+                if (localBroker.assignCloudletToVm(vmId)) {
+                    placed++;
+                }
+                attempts++;
+            }
+            // Any dispatch count is a valid action (0 = legitimate hold).
+            results.put(dcId, true);
+        }
+        return results;
+    }
+
+    /** Least-loaded VM (most free PEs) in a DC; -1 if none. Placement is green-irrelevant. */
+    private long selectLeastLoadedVmId(DatacenterInstance dc) {
+        long best = -1;
+        long bestFree = -1;
+        for (Vm vm : dc.getVmPool()) {
+            if (!vm.isCreated() || vm.isFailed()) {
+                continue;
+            }
+            long free = vm.getFreePesNumber();
+            if (free > bestFree) {
+                bestFree = free;
+                best = vm.getId();
+            }
+        }
+        return best;
+    }
+
+    /**
      * Execute local scheduling phase: assign cloudlets to VMs within each datacenter.
      */
     private Map<Integer, Boolean> executeLocalScheduling(Map<Integer, Integer> localActions) {
+        // NEW dispatch-rate local agent (gated; the legacy vm_placement path
+        // below is unchanged when the flag is off). See docs/Deferrable_Jobs_Lever.md.
+        if ("dispatch_rate".equals(settings.getLocalDispatchMode())) {
+            return executeLocalDispatchRate(localActions);
+        }
+
         Map<Integer, Boolean> results = new HashMap<>();
 
         for (Map.Entry<Integer, Integer> entry : localActions.entrySet()) {
