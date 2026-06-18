@@ -111,3 +111,38 @@ to defer and the forecast stays unused.
   misalignment for the lever to fix.
 - Residual risk: if the workload has no exploitable temporal structure, even the
   lever won't help — Phase 1.5 oracle settles this cheaply before the RL spend.
+
+## 6. PIVOT (2026-06-18): the local NoAssign hold already exists — try Option B first
+
+User observation: the LOCAL action `Discrete(max_vms+1)` already has a **NoAssign**
+option (action 0 → targetVmId -1) that HOLDS a cloudlet in the DC's local queue
+(verified: task not lost, re-assignable next step — MultiDatacenterSimulationCore
+~720). So a temporal hold lever ALREADY EXISTS — but it's crippled 3 ways:
+1. **forecast-blind**: `_convert_local_observation` has NO future-green features
+   (forecast lives only in the GLOBAL obs) → can't anticipate green.
+2. **penalized**: "NoAssign while cloudlets waiting → Invalid action" (SimCore ~726)
+   → reward discourages holding.
+3. **same-DC only**: a task at DC1 can only wait for DC1 to green, can't redirect to
+   DC3's green peak.
+
+### Two options:
+- **A (global defer, original plan)**: new route-level DEFER; hold + pick greenest
+  DC. Flexible, bigger build (action space +1, RLModule). Fixes all 3 limits.
+- **B (revive local hold)**: feed per-DC forecast into local obs + de-penalize the
+  NoAssign-hold + add a hold deadline. NO action-space / RLModule change (NoAssign
+  exists). Cheaper. Limit: same-DC only (depends on global router pre-positioning
+  tasks at soon-green DCs; likely captures imminent green peaks, not far/other-DC ones).
+
+### Plan: B first (cheap), A as fallback.
+- **B-oracle (do FIRST, cheapest, decisive — needs NO obs/reward/RL change):** a
+  scripted policy that reads the forecast DIRECTLY and uses the EXISTING NoAssign to
+  "hold a DC's waiting cloudlets while DC not green + forecast says green soon;
+  assign to VM when green." Run an episode, measure waste_ratio/carbon vs a no-hold
+  run. waste drops → B mechanism works → build B-RL. waste flat → same-DC limit is
+  fatal → go to A.
+- **B-RL (only if oracle passes):** (B1) per-DC forecast → local obs; (B2) de-penalize
+  NoAssign-hold; (B3) hold deadline + deadline-aware SLA (CloudletDescriptor deadline
+  field reused); retrain; re-run godeye 3-arm diagnostic (success = godeye > none).
+- **A (global defer):** only if B's same-DC limit proves fatal. Phases 1(#7-9)/2-4.
+
+CloudletDescriptor deadline field (done, #6) is used by BOTH B and A — not wasted.
