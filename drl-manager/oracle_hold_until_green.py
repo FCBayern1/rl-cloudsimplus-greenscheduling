@@ -85,8 +85,15 @@ def run(env, hold: bool, hold_thresh: float, seed: int) -> Dict[str, Any]:
     batch = env.global_routing_batch_size
     done = False
     n_hold_steps = 0
+    # Supply/demand probe: accumulate per-DC current power draw vs green power.
+    pow_sum = np.zeros(num_dc)
+    green_sum = np.zeros(num_dc)
+    n_steps = 0
     while not done:
         g = obs["global"]
+        pow_sum += _arr(g, "dc_current_power_w", num_dc)
+        green_sum += _arr(g, "dc_current_green_power_w", num_dc)
+        n_steps += 1
         global_action = greenest_dc_routing(g, num_dc, batch)
         local_actions = {}
         for dc in range(num_dc):
@@ -104,6 +111,8 @@ def run(env, hold: bool, hold_thresh: float, seed: int) -> Dict[str, Any]:
         done = term or trunc
     m = collect_metrics(info, num_dc)
     m["_hold_decisions"] = n_hold_steps
+    m["_mean_power_per_dc"] = (pow_sum / max(1, n_steps)).tolist()
+    m["_mean_green_per_dc"] = (green_sum / max(1, n_steps)).tolist()
     return m
 
 
@@ -114,6 +123,9 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--hold-thresh", type=float, default=0.3,
                     help="forecast dc_future_short_mean above which 'green is coming'")
+    ap.add_argument("--green-divisor", type=float, default=None,
+                    help="override compressed_power_divisor (larger = less wind; "
+                         "use to bring green/demand toward ~1x for the lever to matter)")
     args = ap.parse_args()
 
     import yaml
@@ -126,6 +138,11 @@ def main():
     cfg.setdefault("gateway_log_dir", "/tmp/oracle_gateway")
     cfg.setdefault("output_dir", "/tmp/oracle_gateway")
     os.makedirs("/tmp/oracle_gateway", exist_ok=True)
+    if args.green_divisor is not None:
+        old = cfg.get("compressed_power_divisor")
+        cfg["compressed_power_divisor"] = args.green_divisor
+        print(f"[calibration] compressed_power_divisor {old} → {args.green_divisor} "
+              f"(less wind → green/demand closer to ~1×)")
 
     print(f"=== B-oracle: hold-until-green vs no-hold ({args.experiment}, seed={args.seed}) ===")
     print("launching env + Java gateway...")
@@ -147,6 +164,18 @@ def main():
     dw = held["waste_ratio"] - base["waste_ratio"]
     dc = held["total_carbon_kg"] - base["total_carbon_kg"]
     print(f"\nΔwaste_ratio = {dw:+.4f}   Δcarbon_kg = {dc:+.4f}")
+
+    # --- SUPPLY/DEMAND PROBE (the calibration number) ---
+    pw = np.asarray(base["_mean_power_per_dc"])
+    gr = np.asarray(base["_mean_green_per_dc"])
+    print("\n=== SUPPLY/DEMAND per DC (mean W over episode) — calibration ===")
+    print(f"{'dc':>3} {'demand(power_W)':>16} {'green_supply_W':>16} {'green/demand':>13}")
+    for i in range(len(pw)):
+        ratio = gr[i] / pw[i] if pw[i] > 1e-6 else float('inf')
+        print(f"{i:>3} {pw[i]:>16.1f} {gr[i]:>16.1f} {ratio:>13.2f}x")
+    tot_p, tot_g = pw.sum(), gr.sum()
+    print(f"TOTAL demand={tot_p:.0f}W  green_supply={tot_g:.0f}W  → green is {tot_g/max(tot_p,1e-6):.1f}× demand")
+    print("(want ~1× for a temporal lever to matter; ≫1× = structural over-supply, no lever helps)")
     print("VERDICT:", "✅ hold REDUCES waste → local-hold lever works → build B-RL"
           if dw < -0.005 else
           "❌ waste ~unchanged → same-DC hold limit fatal → go to Option A (global defer)")
