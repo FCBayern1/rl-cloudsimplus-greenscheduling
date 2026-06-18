@@ -699,7 +699,17 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Each datacenter has its own action space
         # Action space includes: 0 = NoAssign, 1 to max_vms = VM indices
         max_vms = getattr(self, "max_vms", 1)
-        self.local_action_space = spaces.Discrete(max_vms + 1)  # +1 for NoAssign option
+        # NEW local agent (2026-06-18, gated): dispatch_rate mode replaces the
+        # per-VM placement action with "how many cloudlets to release this step"
+        # (0 = hold all = defer; N = burst-drain). Placement → sim best-fit.
+        # See docs/Deferrable_Jobs_Lever.md. Default = legacy vm_placement.
+        self.local_dispatch_mode = str(
+            self.config.get("local_dispatch_mode", "vm_placement")).strip()
+        if self.local_dispatch_mode == "dispatch_rate":
+            self.max_dispatch_per_step = int(self.config.get("max_dispatch_per_step", 20))
+            self.local_action_space = spaces.Discrete(self.max_dispatch_per_step + 1)
+        else:
+            self.local_action_space = spaces.Discrete(max_vms + 1)  # +1 for NoAssign option
 
         # Gymnasium requires self.action_space and self.observation_space
         # Combine global and local spaces into a Dict space
@@ -970,8 +980,13 @@ class HierarchicalMultiDCEnv(gym.Env):
             for dc_index in range(self.num_datacenters):
                 dc_id = self.dc_index_to_id.get(dc_index, dc_index)
                 agent_action = local_actions_map.get(dc_index, 0)
-                # Map agent action to Java targetVmId
-                target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
+                # dispatch_rate mode: action IS the raw release count (Java reads
+                # it as a dispatch count, not a VM id) — no -1 offset.
+                if getattr(self, "local_dispatch_mode", "vm_placement") == "dispatch_rate":
+                    target_vm_id = int(agent_action)
+                else:
+                    # legacy vm_placement: action=n → targetVmId=n-1 (0→-1 NoAssign)
+                    target_vm_id = int(agent_action) - 1  # 0→-1, 1→0, 2→1, ...
                 local_actions_java[int(dc_id)] = target_vm_id
                 logger.debug(
                     "DC index %d (dcId=%s): agent_action=%s → targetVmId=%d",
