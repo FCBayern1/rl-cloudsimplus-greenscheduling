@@ -675,6 +675,18 @@ class HierarchicalMultiDCEnv(gym.Env):
             ),
         })
 
+        # Deferrable-batch temporal lever (2026-06-20, gated by dispatch_rate):
+        # the local dispatch-rate agent must see WHETHER green is here / coming so
+        # it can decide hold-vs-run. Add this DC's green-now + short/long forecast
+        # to its local obs. Legacy vm_placement obs is unchanged.
+        if str(self.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate":
+            self.local_observation_space = spaces.Dict({
+                **self.local_observation_space.spaces,
+                "green_now": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "green_forecast_short": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "green_forecast_long": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+            })
+
     def _setup_action_spaces(self):
         """
         Define action spaces for global and local agents.
@@ -1114,7 +1126,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 if dc_index is None:
                     logger.warning("Unknown datacenter_id in reset observations: %s", dc_id_int)
                     continue
-                local_obs[dc_index] = self._convert_local_observation(dc_index, obs_state)
+                local_obs[dc_index] = self._inject_local_forecast(
+                    self._convert_local_observation(dc_index, obs_state), dc_index, global_obs)
 
         return {
             "global": global_obs,
@@ -1278,6 +1291,24 @@ class HierarchicalMultiDCEnv(gym.Env):
             "next_cloudlet_pes": np.array([min(int(local_obs_java.getNextCloudletPes()), 255)], dtype=np.int32),
         }
 
+    def _inject_local_forecast(self, local_obs_dict: Dict[str, Any], dc_index: int,
+                               global_obs: Dict[str, Any]) -> Dict[str, Any]:
+        """In dispatch_rate mode, add this DC's green-now + short/long green forecast
+        to its local obs so the local agent can decide hold-vs-run. No-op otherwise."""
+        if str(self.config.get("local_dispatch_mode", "vm_placement")).strip() != "dispatch_rate":
+            return local_obs_dict
+        gn = np.asarray(global_obs.get("dc_current_green_power_w", []), dtype=np.float32).ravel()
+        fs = np.asarray(global_obs.get("dc_future_short_mean", []), dtype=np.float32).ravel()
+        fl = np.asarray(global_obs.get("dc_future_long_mean", []), dtype=np.float32).ravel()
+        gmax = float(gn.max()) if gn.size else 0.0
+        gnow = (gn[dc_index] / gmax) if (gmax > 1e-9 and dc_index < gn.size) else 0.0
+        local_obs_dict["green_now"] = np.array([np.clip(gnow, 0.0, 1.0)], dtype=np.float32)
+        local_obs_dict["green_forecast_short"] = np.array(
+            [np.clip(fs[dc_index] if dc_index < fs.size else 0.0, 0.0, 1.0)], dtype=np.float32)
+        local_obs_dict["green_forecast_long"] = np.array(
+            [np.clip(fl[dc_index] if dc_index < fl.size else 0.0, 0.0, 1.0)], dtype=np.float32)
+        return local_obs_dict
+
     def _get_dc_host_count(self, dc_id: int) -> int:
         """Return configured host count for a datacenter (fallback to max_hosts)."""
         if hasattr(self, "dc_host_counts") and 0 <= dc_id < len(self.dc_host_counts):
@@ -1351,7 +1382,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                     )
 
                 if obs_state is not None:
-                    local_obs[dc_index] = self._convert_local_observation(dc_index, obs_state)
+                    local_obs[dc_index] = self._inject_local_forecast(
+                        self._convert_local_observation(dc_index, obs_state), dc_index, global_obs)
         except Exception as e:
             logger.error("Failed to parse local observations map: %s", e)
 
