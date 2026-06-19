@@ -18,15 +18,28 @@ public class CloudletDescriptor {
     // may wait up to this many steps so the agent can release it onto a DC when a
     // forecast-predicted green peak arrives. See docs/Deferrable_Jobs_Lever.md.
     private final long deferDeadlineSteps;
+    // Absolute COMPLETION deadline in simulation seconds (deferrable-batch carbon
+    // lever, 2026-06-20): the job should FINISH by this sim-time. <=0 means no
+    // deadline. Used by the deadline-aware Lagrangian SLA: a job whose finish time
+    // exceeds this (or that never finishes) is a deadline MISS. Distinct from
+    // deferDeadlineSteps (a routing-hold budget). Read from the CSV 'deadline' col.
+    private final long deadlineTime;
 
-    /** Full constructor with the deferral deadline. */
+    /** Full constructor with both the routing-defer budget and the completion deadline. */
     public CloudletDescriptor(int cloudletId, long submissionDelay, long mi, int numberOfCores,
-                              long deferDeadlineSteps) {
+                              long deferDeadlineSteps, long deadlineTime) {
         this.cloudletId = cloudletId;
         this.submissionDelay = submissionDelay;
         this.mi = mi;
         this.numberOfCores = numberOfCores;
         this.deferDeadlineSteps = Math.max(0, deferDeadlineSteps);
+        this.deadlineTime = deadlineTime;
+    }
+
+    /** Constructor with the deferral deadline only (no completion deadline). */
+    public CloudletDescriptor(int cloudletId, long submissionDelay, long mi, int numberOfCores,
+                              long deferDeadlineSteps) {
+        this(cloudletId, submissionDelay, mi, numberOfCores, deferDeadlineSteps, 0);
     }
 
     /**
@@ -63,6 +76,16 @@ public class CloudletDescriptor {
         return deferDeadlineSteps > 0;
     }
 
+    /** Absolute completion deadline in sim seconds (&lt;=0 = none). */
+    public long getDeadlineTime() {
+        return deadlineTime;
+    }
+
+    /** True if this cloudlet has a finite completion deadline. */
+    public boolean hasDeadline() {
+        return deadlineTime > 0;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o)
@@ -74,13 +97,14 @@ public class CloudletDescriptor {
                 getSubmissionDelay() == that.getSubmissionDelay() &&
                 getMi() == that.getMi() &&
                 getNumberOfCores() == that.getNumberOfCores() &&
-                getDeferDeadlineSteps() == that.getDeferDeadlineSteps();
+                getDeferDeadlineSteps() == that.getDeferDeadlineSteps() &&
+                getDeadlineTime() == that.getDeadlineTime();
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(getCloudletId(), getSubmissionDelay(), getMi(), getNumberOfCores(),
-                getDeferDeadlineSteps());
+                getDeferDeadlineSteps(), getDeadlineTime());
     }
 
     @Override
@@ -91,6 +115,7 @@ public class CloudletDescriptor {
                 ", mi=" + mi +
                 ", numberOfCores=" + numberOfCores +
                 ", deferDeadlineSteps=" + deferDeadlineSteps +
+                ", deadlineTime=" + deadlineTime +
                 '}';
     }
 

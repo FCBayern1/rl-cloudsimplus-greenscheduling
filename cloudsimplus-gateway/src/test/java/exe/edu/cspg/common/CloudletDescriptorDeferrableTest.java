@@ -59,4 +59,31 @@ public class CloudletDescriptorDeferrableTest {
         assertEquals(new CloudletDescriptor(7, 3, 500, 1),
                      new CloudletDescriptor(7, 3, 500, 1, 0));
     }
+
+    // --- Absolute completion deadline (deferrable-batch carbon lever, 2026-06-20) ---
+
+    @Test
+    void defaultsToNoCompletionDeadline() {
+        CloudletDescriptor d = new CloudletDescriptor(1, 0, 1000, 2, 5);
+        assertEquals(0, d.getDeadlineTime());
+        assertFalse(d.hasDeadline(), "ctors without a deadline must report no deadline");
+    }
+
+    @Test
+    void sixArgConstructorCarriesCompletionDeadline() {
+        CloudletDescriptor d = new CloudletDescriptor(1, 100, 1000, 2, 0, 3700);
+        assertEquals(3700, d.getDeadlineTime());
+        assertTrue(d.hasDeadline());
+        assertFalse(d.isDeferrable(), "deferDeadlineSteps=0 stays non-router-deferrable");
+    }
+
+    @Test
+    void completionDeadlineParticipatesInEqualsAndHashCode() {
+        CloudletDescriptor a = new CloudletDescriptor(1, 0, 1000, 2, 0, 3700);
+        CloudletDescriptor b = new CloudletDescriptor(1, 0, 1000, 2, 0, 3700);
+        CloudletDescriptor c = new CloudletDescriptor(1, 0, 1000, 2, 0, 9999);
+        assertEquals(a, b);
+        assertEquals(a.hashCode(), b.hashCode());
+        assertNotEquals(a, c, "different completion deadline must not be equal");
+    }
 }

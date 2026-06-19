@@ -34,6 +34,9 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
     private static final int CSV_MI_INDEX = 2;
     private static final int CSV_CORES_INDEX = 3;
     private static final int CSV_FIELD_COUNT = 4;
+    // Optional 7th column (index 6): absolute completion deadline in sim seconds.
+    // Present in deferrable-batch traces; ignored for legacy 4/6-column traces.
+    private static final int CSV_DEADLINE_INDEX = 6;
 
     private final String workloadMode; // "SWF" or "CSV"
     private int referenceMips; // Only used for SWF
@@ -223,7 +226,15 @@ public final class WorkloadFileReader extends TraceReaderAbstract {
         mi = Math.max(1, mi);
         numberOfCores = Math.max(1, numberOfCores);
 
-        final CloudletDescriptor descriptor = new CloudletDescriptor(cloudletId, submissionDelay, mi, numberOfCores);
+        // Optional absolute completion deadline (sim seconds) for deferrable-batch traces.
+        long deadlineTime = 0;
+        if (parsedLineArray.length > CSV_DEADLINE_INDEX
+                && isNumeric(parsedLineArray[CSV_DEADLINE_INDEX].trim())) {
+            deadlineTime = Long.parseLong(parsedLineArray[CSV_DEADLINE_INDEX].trim());
+        }
+
+        final CloudletDescriptor descriptor = new CloudletDescriptor(cloudletId, submissionDelay, mi,
+                numberOfCores, 0, deadlineTime);
 
         if (predicate.test(descriptor)) {
             descriptors.add(descriptor);
