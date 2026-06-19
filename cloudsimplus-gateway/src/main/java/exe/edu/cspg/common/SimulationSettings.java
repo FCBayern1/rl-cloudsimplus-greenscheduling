@@ -232,6 +232,12 @@ public class SimulationSettings {
     private final double slaTarget;
     private final double slaPendingTarget;
     private final boolean slaLagrangianEnabled;
+    // Deadline-aware SLA (deferrable-batch carbon lever, 2026-06-20). slaMode
+    // = "deadline_miss" → Lagrangian constraint = deadline_miss_rate ≤
+    // slaDeadlineMissTarget (lets the agent defer freely while meeting deadlines);
+    // "completion" (default) keeps the legacy completion-based SLA.
+    private final String slaMode;
+    private final double slaDeadlineMissTarget;
 
     // Green Energy Configuration
     private final boolean greenEnergyEnabled;
@@ -414,6 +420,8 @@ public class SimulationSettings {
         this.carbonMiFloor = getDoubleParam(params, "carbon_mi_floor", 0.0);
         this.slaTarget = getDoubleParam(params, "sla_target", 0.85);
         this.slaPendingTarget = getDoubleParam(params, "sla_pending_target", 0.15);
+        this.slaMode = getStringParam(params, "sla_mode", "completion").trim();
+        this.slaDeadlineMissTarget = getDoubleParam(params, "sla_deadline_miss_target", 0.10);
         this.slaLagrangianEnabled = getBoolParam(params, "sla_lagrangian_enabled", false);
         LOGGER.info("Global Reward Coefficients: α={}, β={}, γ={}",
                 this.globalRewardAlpha, this.globalRewardBeta, this.globalRewardGamma);
@@ -764,6 +772,16 @@ public class SimulationSettings {
     /** Target completion rate (c*) — episode violation triggers λ increase. */
     public double getSlaTarget() {
         return slaTarget;
+    }
+
+    /** SLA mode: "completion" (legacy) or "deadline_miss" (deferrable-batch). */
+    public String getSlaMode() {
+        return slaMode;
+    }
+
+    /** Max acceptable deadline-miss rate when slaMode = "deadline_miss". */
+    public double getSlaDeadlineMissTarget() {
+        return slaDeadlineMissTarget;
     }
 
     /** Per-step pending_ratio threshold (d) — excess above this feeds the Lagrangian. */

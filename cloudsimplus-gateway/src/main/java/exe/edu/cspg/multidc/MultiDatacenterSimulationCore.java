@@ -2152,8 +2152,19 @@ public class MultiDatacenterSimulationCore {
         }
         double slaPendingTarget = settings.getSlaPendingTarget();
         double slaTarget = settings.getSlaTarget();
-        double slaCostStep = Math.max(0.0, pendingRatio - slaPendingTarget);
-        double slaCostEpisode = Math.max(0.0, slaTarget - completionRateMi);
+        double slaCostStep;
+        double slaCostEpisode;
+        if ("deadline_miss".equals(settings.getSlaMode()) && deadlineTotal > 0) {
+            // Deadline-aware: constrain deadline_miss_rate (NOT raw pending/completion),
+            // so deferring work into green windows is free as long as deadlines hold.
+            double missTarget = settings.getSlaDeadlineMissTarget();
+            double missCost = Math.max(0.0, deadlineMissRate - missTarget);
+            slaCostStep = missCost;
+            slaCostEpisode = missCost;
+        } else {
+            slaCostStep = Math.max(0.0, pendingRatio - slaPendingTarget);
+            slaCostEpisode = Math.max(0.0, slaTarget - completionRateMi);
+        }
         stats.put("sla_pending_ratio", pendingRatio);
         stats.put("sla_cost_step", slaCostStep);
         stats.put("sla_cost_episode", slaCostEpisode);
