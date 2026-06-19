@@ -58,6 +58,10 @@ public class MultiDatacenterSimulationCore {
 
     // === Workload ===
     private List<Cloudlet> allCloudlets;
+    // cloudletId → absolute completion deadline (sim seconds) for the deadline-aware
+    // SLA. Populated from the descriptors (deferrable-batch traces). Empty when the
+    // trace carries no deadline column → deadline_miss_rate stays 0.
+    private final Map<Long, Long> cloudletDeadlineById = new HashMap<>();
 
     // === Simulation State ===
     private double currentClock = 0.0;
@@ -257,6 +261,15 @@ public class MultiDatacenterSimulationCore {
             LOGGER.info("Splitting large cloudlets (maxCloudletPes = {})", settings.getMaxCloudletPes());
             descriptors = splitLargeCloudletDescriptors(descriptors, settings.getMaxCloudletPes());
             LOGGER.info("Total descriptors after splitting: {}", descriptors.size());
+        }
+
+        // Record completion deadlines (cloudletId → deadline sim-seconds) before the
+        // descriptors are converted to Cloudlets (toCloudlet drops the deadline).
+        cloudletDeadlineById.clear();
+        for (CloudletDescriptor d : descriptors) {
+            if (d.hasDeadline()) {
+                cloudletDeadlineById.put((long) d.getCloudletId(), d.getDeadlineTime());
+            }
         }
 
         // Convert descriptors to Cloudlet objects
@@ -2085,6 +2098,41 @@ public class MultiDatacenterSimulationCore {
         stats.put("carbon_kg_per_mi", totalFinishedMi > 0 ? (totalCarbonKg / (totalFinishedMi + EPSILON)) : 0.0);
         double completionRateMi = totalWorkloadMi > 0 ? (totalFinishedMi / (totalWorkloadMi + EPSILON)) : 0.0;
         stats.put("completion_rate_mi", completionRateMi);
+
+        // ---------------------------------------------------------------------
+        // Deadline-aware SLA signal (deferrable-batch carbon lever, 2026-06-20).
+        // A cloudlet with a deadline MISSES if it finished after its deadline, or
+        // is still unfinished once the clock has passed its deadline. The
+        // Lagrangian uses deadline_miss_rate so the agent may freely defer work
+        // into green windows as long as it still completes before the deadline.
+        // ---------------------------------------------------------------------
+        double deadlineMissRate = 0.0;
+        int deadlineTotal = cloudletDeadlineById.size();
+        if (deadlineTotal > 0) {
+            Map<Long, Double> finishTimeById = new HashMap<>();
+            for (DatacenterInstance dc : datacenterInstances) {
+                LoadBalancingBroker lb = dc.getLocalBroker();
+                if (lb == null) continue;
+                List<Cloudlet> fin = lb.getCloudletFinishedList();
+                if (fin == null) continue;
+                for (Cloudlet c : fin) {
+                    finishTimeById.put(c.getId(), c.getFinishTime());
+                }
+            }
+            long misses = 0;
+            for (Map.Entry<Long, Long> e : cloudletDeadlineById.entrySet()) {
+                double deadline = e.getValue();
+                Double finish = finishTimeById.get(e.getKey());
+                if (finish != null) {
+                    if (finish > deadline) misses++;          // finished late
+                } else if (currentClock > deadline) {
+                    misses++;                                  // unfinished past deadline
+                }
+            }
+            deadlineMissRate = (double) misses / (double) deadlineTotal;
+        }
+        stats.put("deadline_miss_rate", deadlineMissRate);
+        stats.put("deadline_total", deadlineTotal);
 
         // ---------------------------------------------------------------------
         // SLA / Lagrangian cost signals
