@@ -105,6 +105,7 @@ public class HierarchicalMultiDCGateway {
                     .initialMediumVmCount(getIntParam(params, "initial_m_vm_count", 5))
                     .initialLargeVmCount(getIntParam(params, "initial_l_vm_count", 3))
                     .greenEnergyEnabled(getBooleanParam(params, "green_energy_enabled", true))
+                    .idleHostPowerDown(getBooleanParam(params, "idle_host_power_down", false))
                     .turbineId(getIntParam(params, "turbine_id", 57))
                     .windDataFile(getStringParam(params, "wind_data_file",
                             "windProduction/sdwpf_2001_2112_full.csv"))
@@ -171,6 +172,7 @@ public class HierarchicalMultiDCGateway {
                 .initialLargeVmCount(getIntParam(dcParams, "initial_l_vm_count", 3))
                 // Green energy configuration
                 .greenEnergyEnabled(getBooleanParam(dcParams, "green_energy_enabled", true))
+                .idleHostPowerDown(getBooleanParam(dcParams, "idle_host_power_down", false))
                 // Note: turbine_ids will be added after builder chain
                 .windDataFile(getStringParam(dcParams, "wind_data_file",
                         "windProduction/sdwpf_2001_2112_full.csv"))

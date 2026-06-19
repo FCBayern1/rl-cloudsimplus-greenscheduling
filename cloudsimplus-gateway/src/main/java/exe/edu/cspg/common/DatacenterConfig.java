@@ -67,6 +67,16 @@ public class DatacenterConfig {
     private final boolean greenEnergyEnabled;
 
     /**
+     * If true, a host with no running cloudlets (≈0 CPU utilisation) draws ZERO
+     * power instead of its idle/static floor — an idealised idle-host power-gating
+     * model. Lets temporal consolidation (defer work into green windows, sleep the
+     * rest) reduce the otherwise scheduling-invariant static carbon floor. Default
+     * false: existing experiments keep always-on hosts.
+     */
+    @Builder.Default
+    private final boolean idleHostPowerDown = false;
+
+    /**
      * List of wind turbine IDs for this datacenter.
      * Multiple turbines can supply power to a single datacenter.
      * Use @Singular to enable builder.turbineId(57).turbineId(58) syntax.

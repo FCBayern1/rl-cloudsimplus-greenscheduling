@@ -100,6 +100,26 @@ public class DatacenterInstance {
         return config.isGreenEnergyEnabled() && !greenEnergyProviders.isEmpty();
     }
 
+    /** Epsilon below which a host is treated as idle (no running cloudlets). */
+    private static final double IDLE_UTIL_EPS = 1e-6;
+
+    /**
+     * Instantaneous power draw of a host in Watts. With idle-host power-gating
+     * enabled, a host running no cloudlets (≈0 CPU utilisation) draws ZERO power
+     * (it sleeps) instead of its static/idle floor — making the otherwise
+     * scheduling-invariant static carbon floor reducible by temporal consolidation.
+     */
+    private double hostPowerW(Host host) {
+        if (host.getPowerModel() == null) {
+            return 0.0;
+        }
+        double utilization = host.getCpuPercentUtilization();
+        if (config.isIdleHostPowerDown() && utilization <= IDLE_UTIL_EPS) {
+            return 0.0; // idle host sleeps → no static draw
+        }
+        return host.getPowerModel().getPower(utilization);
+    }
+
     /**
      * Get current green power availability in Watts.
      * Aggregates power from all turbines.
@@ -271,13 +291,7 @@ public class DatacenterInstance {
             // otherwise callers may repeatedly read the previous timestep's delta and double-count it.
             // Provide an explicit zero-delta snapshot for this clock tick.
             currentPowerW = hostList.stream()
-                    .mapToDouble(host -> {
-                        if (host.getPowerModel() != null) {
-                            double utilization = host.getCpuPercentUtilization();
-                            return host.getPowerModel().getPower(utilization);
-                        }
-                        return 0.0;
-                    })
+                    .mapToDouble(this::hostPowerW)
                     .sum();
 
             double availableGreenPower = isGreenEnergyEnabled() ? getCurrentGreenPowerW(currentClock) : 0.0;
@@ -296,13 +310,7 @@ public class DatacenterInstance {
 
         // Calculate total power consumption from all hosts
         currentPowerW = hostList.stream()
-                .mapToDouble(host -> {
-                    if (host.getPowerModel() != null) {
-                        double utilization = host.getCpuPercentUtilization();
-                        return host.getPowerModel().getPower(utilization);
-                    }
-                    return 0.0;
-                })
+                .mapToDouble(this::hostPowerW)
                 .sum();
 
         double deltaGreenUsed = 0.0;
