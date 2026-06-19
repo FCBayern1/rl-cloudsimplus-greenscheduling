@@ -713,43 +713,51 @@ public class MultiDatacenterSimulationCore {
                 continue;
             }
             int dispatchCount = Math.max(0, entry.getValue());
+
+            // Local free-PE view of the VM fleet. assignCloudletToVm submits each
+            // cloudlet via a FUTURE CLOUDLET_SUBMIT event, so vm.getFreePesNumber()
+            // does NOT reflect cloudlets dispatched earlier in THIS step. Without our
+            // own bookkeeping, "most-free VM" returns the same VM every iteration and
+            // the whole step's dispatch piles onto a single VM (fleet starves, util
+            // caps ~10-15%). Track the running free-PE count locally and decrement on
+            // each assignment so cloudlets spread across the fleet.
+            Map<Long, Long> freePes = new HashMap<>();
+            for (Vm vm : dc.getVmPool()) {
+                if (vm.isCreated() && !vm.isFailed()) {
+                    freePes.put(vm.getId(), vm.getFreePesNumber());
+                }
+            }
             int placed = 0;
-            // Bound attempts: a head cloudlet that fits no VM is re-queued to the
-            // tail by assignCloudletToVm, so cap attempts to avoid spinning.
-            int maxAttempts = dispatchCount + localBroker.getWaitingCloudletCount();
-            int attempts = 0;
-            while (placed < dispatchCount && localBroker.hasWaitingCloudlets()
-                    && attempts < maxAttempts) {
-                long vmId = selectLeastLoadedVmId(dc);
+            while (placed < dispatchCount && localBroker.hasWaitingCloudlets()) {
+                Cloudlet next = localBroker.peekWaitingCloudlet();
+                if (next == null) {
+                    break;
+                }
+                final long need = Math.max(1, next.getPesNumber());
+                // most-free VM that still fits the next cloudlet (least-loaded, local view)
+                long vmId = -1;
+                long bestFree = -1;
+                for (Map.Entry<Long, Long> e : freePes.entrySet()) {
+                    long f = e.getValue();
+                    if (f >= need && f > bestFree) {
+                        bestFree = f;
+                        vmId = e.getKey();
+                    }
+                }
                 if (vmId < 0) {
-                    break; // no usable VM in this DC
+                    break; // no VM (accounting for in-step fills) can host the next cloudlet
                 }
                 if (localBroker.assignCloudletToVm(vmId)) {
+                    freePes.put(vmId, freePes.get(vmId) - need);
                     placed++;
+                } else {
+                    break; // refused despite pre-check; avoid spinning
                 }
-                attempts++;
             }
             // Any dispatch count is a valid action (0 = legitimate hold).
             results.put(dcId, true);
         }
         return results;
-    }
-
-    /** Least-loaded VM (most free PEs) in a DC; -1 if none. Placement is green-irrelevant. */
-    private long selectLeastLoadedVmId(DatacenterInstance dc) {
-        long best = -1;
-        long bestFree = -1;
-        for (Vm vm : dc.getVmPool()) {
-            if (!vm.isCreated() || vm.isFailed()) {
-                continue;
-            }
-            long free = vm.getFreePesNumber();
-            if (free > bestFree) {
-                bestFree = free;
-                best = vm.getId();
-            }
-        }
-        return best;
     }
 
     /**
