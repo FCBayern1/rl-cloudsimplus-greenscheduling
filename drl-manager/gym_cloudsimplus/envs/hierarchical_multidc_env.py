@@ -1903,6 +1903,11 @@ class HierarchicalMultiDCEnv(gym.Env):
         Returns:
             mask: Boolean array of shape (num_vms+1,) where True = action allowed
         """
+        # dispatch_rate mode: the action is "how many cloudlets to release" (0..N),
+        # every value is always a legal action → all-ones mask (no masking needed).
+        if str(self.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate":
+            return np.ones(self.local_action_space.n, dtype=bool)
+
         # Enforce explicit dcIndex usage to avoid id/index ambiguity.
         dc_index = dc_id
         if dc_index < 0 or dc_index >= self.num_datacenters:

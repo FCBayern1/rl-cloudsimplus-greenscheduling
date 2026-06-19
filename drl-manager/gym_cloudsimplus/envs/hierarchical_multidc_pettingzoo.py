@@ -287,6 +287,13 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             ),
         }
 
+        # Deferrable-batch temporal lever (2026-06-20): mirror the base env's
+        # per-DC green-now + forecast into the wrapper's local obs so the local
+        # dispatch-rate agent can decide hold-vs-run. Gated by dispatch_rate.
+        if str(self.base_env.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate":
+            for _k in ("green_now", "green_forecast_short", "green_forecast_long"):
+                local_obs_dict[_k] = spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
+
         # CTDE: add global_state to local agent observation for centralized critic
         if self.ctde_enabled:
             local_obs_dict["global_state"] = spaces.Box(
@@ -695,6 +702,12 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
                 "dc_id_onehot": dc_id_onehot,
                 "valid_vm_mask": valid_vm_mask,
             }
+
+            # Deferrable-batch lever: pass through the green-now + forecast features
+            # the base env injected (dispatch_rate only; keys absent otherwise).
+            for _k in ("green_now", "green_forecast_short", "green_forecast_long"):
+                if _k in local_obs:
+                    unified_obs[_k] = local_obs[_k]
 
             # CTDE: include global state for centralized critic
             if self.ctde_enabled:
