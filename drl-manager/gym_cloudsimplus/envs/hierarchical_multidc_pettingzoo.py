@@ -793,20 +793,26 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         global_action = flat_actions.get("global_agent")
 
         # Extract local actions with safety checks (avoid selecting padding-only VMs)
+        # NOTE: in dispatch_rate mode the local action is a RELEASE COUNT (0..max_dispatch),
+        # NOT a VM index, so the vm_count clamp below MUST NOT apply (it would corrupt the
+        # temporal lever — e.g. release-61 wrongly clamped to 0/hold on a 53-VM DC).
+        dispatch_rate_mode = str(
+            self.base_env.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate"
         local_actions = {}
         for i in range(self.num_datacenters):
             agent_name = f"local_agent_{i}"
             if agent_name in flat_actions:
                 raw_action = int(flat_actions[agent_name])
-                dc_vm_count = self.base_env._get_dc_vm_count(i)
 
-                # Safety check: action must be within [0, dc_vm_count]
-                if raw_action > dc_vm_count:
-                    logger.warning(
-                        f"Action {raw_action} for {agent_name} exceeds vm_count={dc_vm_count}, "
-                        f"clamping to 0 (NoAssign)."
-                    )
-                    raw_action = 0  # Fallback to NoAssign
+                if not dispatch_rate_mode:
+                    dc_vm_count = self.base_env._get_dc_vm_count(i)
+                    # Safety check (vm_placement only): action must be within [0, dc_vm_count]
+                    if raw_action > dc_vm_count:
+                        logger.warning(
+                            f"Action {raw_action} for {agent_name} exceeds vm_count={dc_vm_count}, "
+                            f"clamping to 0 (NoAssign)."
+                        )
+                        raw_action = 0  # Fallback to NoAssign
 
                 local_actions[i] = raw_action
 
