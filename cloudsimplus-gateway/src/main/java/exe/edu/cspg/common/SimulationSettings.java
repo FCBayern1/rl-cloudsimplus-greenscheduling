@@ -130,11 +130,12 @@ public class SimulationSettings {
     private final double rewardInvalidActionCoef;
     private final double rewardEnergyCoef;
     private final double rewardCompletionCoef;   // Coefficient for completion rate reward (positive reward)
-    // Deferrable-batch carbon lever (2026-06-20). In local_dispatch_mode=dispatch_rate
-    // the local agent IS the temporal lever; its old reward (queue/wait/util penalties)
-    // PUNISHES holding and carries no carbon signal. This coef weights a per-DC,
-    // per-step GREEN-FRACTION reward (greenUsed/(greenUsed+brownUsed) ∈ [0,1]) that
-    // rewards releasing work when green covers it → makes the lever learnable.
+    // Local-carbon reward (architecture A — temporal lever at the LOCAL agent).
+    // Default OFF. When true (and dispatch_rate), the local reward becomes a per-DC
+    // GREEN-FRACTION reward + completion (drops queue/wait/util). Use this ONLY if the
+    // lever lives at the local dispatch agent. In architecture B (global deferral,
+    // local = pure QoS) leave this false so the validated QoS reward is used.
+    private final boolean rewardLocalCarbonEnabled;
     private final double rewardLocalGreenCoef;
     private final double greenWastePenaltyCoef;  // Base coefficient for green waste penalty (scaled by DC count)
     private final double carbonEmissionPenaltyCoef;  // Coefficient for carbon emission penalty (OLD, kept for reference)
@@ -397,6 +398,7 @@ public class SimulationSettings {
         // Default 1.0 (aligned with per_action_carbon_weight): the green-fraction
         // reward (≤1.0) must be comparable to the completion reward (≤~1.2) so the
         // lever's payoff isn't drowned by completion + discounting of delayed work.
+        this.rewardLocalCarbonEnabled = getBoolParam(params, "reward_local_carbon_enabled", false);
         this.rewardLocalGreenCoef = getDoubleParam(params, "reward_local_green_coef", 1.0);
         this.greenWastePenaltyCoef = getDoubleParam(params, "green_waste_penalty_coef", 10.0); // Base coef per DC
         this.carbonEmissionPenaltyCoef = getDoubleParam(params, "carbon_emission_penalty_coef", 1.0); // Default 1.0 (OLD, kept for reference)

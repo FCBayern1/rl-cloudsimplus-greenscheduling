@@ -1840,14 +1840,13 @@ public class MultiDatacenterSimulationCore {
     private double calculateSingleLocalReward(DatacenterInstance dc, boolean wasInvalidAction) {
         LoadBalancingBroker localBroker = dc.getLocalBroker();
 
-        // === Deferrable-batch temporal lever (2026-06-20) ===
-        // In dispatch_rate mode the local agent decides hold-vs-release (the lever).
-        // The legacy reward below (queue/wait/util penalties) PUNISHES holding and
-        // carries NO carbon signal, so it would suppress the lever. Replace it with a
-        // per-DC, per-step GREEN-FRACTION reward (rewards releasing work when green
-        // covers it) + the completion reward. Holding grows the queue without penalty;
-        // deadlines are enforced by the global deadline-aware Lagrangian (sla_mode).
-        if ("dispatch_rate".equals(settings.getLocalDispatchMode())) {
+        // === Architecture A: temporal lever at the LOCAL agent (default OFF) ===
+        // Only when reward_local_carbon_enabled=true. The local agent then decides
+        // hold-vs-release and needs a carbon signal, so its reward becomes a per-DC
+        // GREEN-FRACTION reward + completion (drops queue/wait/util that punish
+        // holding). In architecture B (global deferral, local = QoS) this stays off
+        // and the validated QoS reward below is used unchanged.
+        if (settings.isRewardLocalCarbonEnabled()) {
             double localGreenCoef = settings.getRewardLocalGreenCoef();
             double completionCoefD = settings.getRewardCompletionCoef();
             double greenFrac = 0.0;
