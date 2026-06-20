@@ -1840,6 +1840,40 @@ public class MultiDatacenterSimulationCore {
     private double calculateSingleLocalReward(DatacenterInstance dc, boolean wasInvalidAction) {
         LoadBalancingBroker localBroker = dc.getLocalBroker();
 
+        // === Deferrable-batch temporal lever (2026-06-20) ===
+        // In dispatch_rate mode the local agent decides hold-vs-release (the lever).
+        // The legacy reward below (queue/wait/util penalties) PUNISHES holding and
+        // carries NO carbon signal, so it would suppress the lever. Replace it with a
+        // per-DC, per-step GREEN-FRACTION reward (rewards releasing work when green
+        // covers it) + the completion reward. Holding grows the queue without penalty;
+        // deadlines are enforced by the global deadline-aware Lagrangian (sla_mode).
+        if ("dispatch_rate".equals(settings.getLocalDispatchMode())) {
+            double localGreenCoef = settings.getRewardLocalGreenCoef();
+            double completionCoefD = settings.getRewardCompletionCoef();
+            double greenFrac = 0.0;
+            EnergyMetricsDelta d = dc.getLatestEnergyDelta();
+            if (d != null) {
+                double green = d.getDeltaGreenEnergyUsedWh();
+                double brown = d.getDeltaBrownEnergyUsedWh();
+                double consumed = green + brown;
+                if (consumed > 1e-9) {
+                    greenFrac = green / consumed;   // ∈ [0,1]; 0 when nothing ran this step
+                }
+            }
+            double greenReward = localGreenCoef * greenFrac;
+            int completedNow = (localBroker != null)
+                    ? localBroker.getCloudletsFinishedLastStep(currentClock).size() : 0;
+            double completionRewardD = completionCoefD * Math.log1p(completedNow);
+            double total = greenReward + completionRewardD;
+            final int dcIdD = dc.getId();
+            epLocalCompletionSum.put(dcIdD, epLocalCompletionSum.getOrDefault(dcIdD, 0.0) + completionRewardD);
+            LOGGER.debug("DC {} dispatch-rate local reward: total={} (green={}·{}={}, completion={}[{}])",
+                    dc.getName(), String.format("%.3f", total), localGreenCoef,
+                    String.format("%.2f", greenFrac), String.format("%.3f", greenReward),
+                    String.format("%.3f", completionRewardD), completedNow);
+            return total;
+        }
+
         // Get coefficients from settings
         double waitTimeCoef = settings.getRewardWaitTimeCoef();
         double utilizationCoef = settings.getRewardUnutilizationCoef();
