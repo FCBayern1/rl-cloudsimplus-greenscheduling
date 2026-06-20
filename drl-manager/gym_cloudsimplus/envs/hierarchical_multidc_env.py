@@ -675,11 +675,11 @@ class HierarchicalMultiDCEnv(gym.Env):
             ),
         })
 
-        # Deferrable-batch temporal lever (2026-06-20, gated by dispatch_rate):
-        # the local dispatch-rate agent must see WHETHER green is here / coming so
-        # it can decide hold-vs-run. Add this DC's green-now + short/long forecast
-        # to its local obs. Legacy vm_placement obs is unchanged.
-        if str(self.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate":
+        # Architecture A only (local temporal lever): the local agent sees green-now
+        # + forecast so it can decide hold-vs-run. Gated by reward_local_carbon_enabled
+        # — in architecture B (global defer, local = pure QoS) the local agent does NOT
+        # do carbon timing, so it gets NO forecast features (clean QoS obs).
+        if bool(self.config.get("reward_local_carbon_enabled", False)):
             self.local_observation_space = spaces.Dict({
                 **self.local_observation_space.spaces,
                 "green_now": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
@@ -1309,7 +1309,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                                global_obs: Dict[str, Any]) -> Dict[str, Any]:
         """In dispatch_rate mode, add this DC's green-now + short/long green forecast
         to its local obs so the local agent can decide hold-vs-run. No-op otherwise."""
-        if str(self.config.get("local_dispatch_mode", "vm_placement")).strip() != "dispatch_rate":
+        if not bool(self.config.get("reward_local_carbon_enabled", False)):
             return local_obs_dict
         gn = np.asarray(global_obs.get("dc_current_green_power_w", []), dtype=np.float32).ravel()
         fs = np.asarray(global_obs.get("dc_future_short_mean", []), dtype=np.float32).ravel()

@@ -889,12 +889,12 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 f"space; got {type(action_space)}"
             )
         nvec = [int(x) for x in action_space.nvec]
-        self.num_dcs = nvec[0]
         self.num_batch_slots = len(nvec)
-        if not all(n == self.num_dcs for n in nvec):
+        self.num_action_choices = nvec[0]
+        if not all(n == self.num_action_choices for n in nvec):
             raise ValueError(
                 "Score-based module assumes all MultiDiscrete components are "
-                f"equal (uniform per-slot DC choice); got nvec={nvec}"
+                f"equal (uniform per-slot choice); got nvec={nvec}"
             )
         self.action_dim = int(sum(nvec))
         self.action_dist_cls = self._get_multi_categorical_cls(action_space)
@@ -907,6 +907,25 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             raise ValueError(
                 "Score-based module expects a Dict observation; got "
                 f"{type(inner)}"
+            )
+        # Architecture B (global defer): the REAL number of DCs comes from the per-DC
+        # obs feature length, NOT from the action nvec — with defer enabled the action
+        # has num_dc+1 choices (the extra = DEFER/hold) but DC features still have
+        # num_dc rows. Decouple the two so DC encoders/scores use the real count and a
+        # separate DEFER logit head supplies the extra choice.
+        num_real_dcs = None
+        for _k, _sub in inner.spaces.items():
+            if _k.startswith("dc_") and isinstance(_sub, spaces.Box) and len(_sub.shape) == 1:
+                num_real_dcs = int(_sub.shape[0])
+                break
+        if num_real_dcs is None:
+            num_real_dcs = self.num_action_choices  # no per-DC keys → fall back
+        self.num_dcs = num_real_dcs
+        self.global_defer = (self.num_action_choices == self.num_dcs + 1)
+        if self.num_action_choices not in (self.num_dcs, self.num_dcs + 1):
+            raise ValueError(
+                f"Score-based action choices ({self.num_action_choices}) must equal "
+                f"num_dcs ({self.num_dcs}) or num_dcs+1 (defer); check global_defer_enabled."
             )
         self._categorize_keys(inner)
 
@@ -969,6 +988,13 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         self.dc_encoder = nn.Linear(max(1, self.dc_feat_dim), d_model)
         self.ctx_to_cloudlet = nn.Linear(d_model, d_model)
         self.ctx_to_dc = nn.Linear(d_model, d_model)
+
+        # Architecture B (global defer): a per-cloudlet DEFER logit. For each batch
+        # slot, the action choices are [num_dc DC scores | 1 defer logit]. The defer
+        # logit is computed from the cloudlet query q_i so "hold this cloudlet" is a
+        # learned function of the cloudlet + context (e.g. forecast says green soon).
+        if self.global_defer:
+            self.defer_head = nn.Linear(d_model, 1)
 
         # Smaller init on the per-axis encoders so that initial scores are
         # close to uniform (||q||,||k|| ≈ 0.1 instead of ≈ 1.0) — gives PPO a
@@ -1302,7 +1328,12 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
 
         scores = torch.einsum("btid,btjd->btij", q, k) / (
             math.sqrt(self.d_model) * self.score_temperature
-        )
+        )  # (B, T, N_batch, num_dcs)
+        # Architecture B: append a per-cloudlet DEFER logit so each slot's choices
+        # become [num_dc DC scores | defer] → (B, T, N_batch, num_dcs+1).
+        if self.global_defer:
+            defer_logit = self.defer_head(q) / self.score_temperature  # (B,T,N_batch,1)
+            scores = torch.cat([scores, defer_logit], dim=-1)
         T = scores.shape[1]
         logits = scores.reshape(B, T, self.action_dim)
 

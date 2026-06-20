@@ -287,10 +287,10 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             ),
         }
 
-        # Deferrable-batch temporal lever (2026-06-20): mirror the base env's
-        # per-DC green-now + forecast into the wrapper's local obs so the local
-        # dispatch-rate agent can decide hold-vs-run. Gated by dispatch_rate.
-        if str(self.base_env.config.get("local_dispatch_mode", "vm_placement")).strip() == "dispatch_rate":
+        # Architecture A only: mirror green-now + forecast into local obs so the
+        # local agent can do carbon timing. Gated by reward_local_carbon_enabled; in
+        # architecture B (global defer, local = pure QoS) local gets no forecast.
+        if bool(self.base_env.config.get("reward_local_carbon_enabled", False)):
             for _k in ("green_now", "green_forecast_short", "green_forecast_long"):
                 local_obs_dict[_k] = spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
 
