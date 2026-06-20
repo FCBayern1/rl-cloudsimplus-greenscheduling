@@ -701,10 +701,14 @@ class HierarchicalMultiDCEnv(gym.Env):
         """
         # Global action space: fixed-size batch of routing decisions.
         # Each element is a DC index ∈ {0, ..., num_datacenters-1}.
-        # We no longer use an explicit "NoAssign" action for the global agent;
-        # extra actions beyond the current queue length are ignored downstream.
+        # Architecture B (2026-06-20, gated by global_defer_enabled): add a DEFER
+        # option (index = num_datacenters) so the global agent can HOLD a cloudlet
+        # for a greener moment instead of routing it now — the temporal lever at the
+        # global level. Legacy routing (no defer) is unchanged when the flag is off.
+        self.global_defer_enabled = bool(self.config.get("global_defer_enabled", False))
+        n_global_choices = self.num_datacenters + (1 if self.global_defer_enabled else 0)
         self.global_action_space = spaces.MultiDiscrete(
-            [self.num_datacenters] * self.global_routing_batch_size
+            [n_global_choices] * self.global_routing_batch_size
         )
 
         # Local action spaces: Select VM for each datacenter's next cloudlet
