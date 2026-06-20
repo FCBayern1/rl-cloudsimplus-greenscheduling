@@ -1265,6 +1265,16 @@ class HierarchicalMultiDCEnv(gym.Env):
             obs["dc_future_long_mean"]        = long_mean
             obs["dc_future_long_peak_timing"] = long_peak_timing
 
+        # No-forecast ablation (deferrable track): the regular env does not honor
+        # the ablation env's forecast_mode, so explicitly zero the future-trend
+        # features here when forecast_mode=="none". Both the global router and the
+        # local dispatch agent (via _inject_local_forecast) then see no prediction;
+        # green_now (current observable state) is intentionally kept.
+        if str(self.config.get("forecast_mode", "full")).strip() == "none":
+            for _k in ("dc_future_short_mean", "dc_future_short_trend",
+                       "dc_future_long_mean", "dc_future_long_peak_timing"):
+                obs[_k] = np.zeros(self.num_datacenters, dtype=np.float32)
+
         return obs
 
     def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
