@@ -521,10 +521,24 @@ public class MultiDatacenterSimulationCore {
         // try/catch around accounting so an exception in proxy formulas
         // can never strand cloudlets (which were removed from the queue
         // by getBatchForRouting and would leak if accounting throws).
+        // Architecture B: the defer action index is num_dc (one past the last DC).
+        final int deferActionIndex = datacenterInstances.size();
+        final boolean deferEnabled = settings.isGlobalDeferEnabled();
         int routedCount = 0;
+        int deferredCount = 0;
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
             int targetDcIndex = globalActions.get(i);
+
+            // DEFER: hold this cloudlet in the global queue (re-presented next step)
+            // instead of routing it now — the temporal lever. The agent should defer
+            // during brown and route during green (rewarded by the per-action carbon
+            // reward, which uses current green). No per-action reward while held.
+            if (deferEnabled && targetDcIndex == deferActionIndex) {
+                globalBroker.requeueCloudletToTail(cloudlet);
+                deferredCount++;
+                continue;
+            }
 
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
@@ -543,8 +557,9 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        LOGGER.debug("Routed {}/{} cloudlets to datacenters, {} remain in global queue",
-                routedCount, cloudletsToRoute.size(), globalBroker.getGlobalWaitingCloudletsCount());
+        LOGGER.debug("Routed {}/{} cloudlets ({} deferred), {} remain in global queue",
+                routedCount, cloudletsToRoute.size(), deferredCount,
+                globalBroker.getGlobalWaitingCloudletsCount());
         return routedCount;
     }
 

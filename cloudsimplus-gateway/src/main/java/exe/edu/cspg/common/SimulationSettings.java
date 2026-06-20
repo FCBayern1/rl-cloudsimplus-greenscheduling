@@ -71,6 +71,13 @@ public class SimulationSettings {
     //                    the action the green-relevant temporal lever.
     //                    See docs/Deferrable_Jobs_Lever.md.
     private final String localDispatchMode;
+    // Architecture B — temporal lever at the GLOBAL agent (2026-06-20). When true,
+    // the global routing action gains a DEFER option (index = num_dc): instead of
+    // routing a cloudlet to a DC, the agent HOLDS it in the global queue (re-presented
+    // next step) so it can be routed later when green arrives. The per-action carbon
+    // reward already rewards routing-during-green (marginalKg uses current green), so
+    // deferring-then-routing-on-green is naturally incentivized. Default false.
+    private final boolean globalDeferEnabled;
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
@@ -344,6 +351,7 @@ public class SimulationSettings {
         // Workload Configuration
         this.workloadMode = getStringParam(params, "workload_mode", "SWF");
         this.localDispatchMode = getStringParam(params, "local_dispatch_mode", "vm_placement").trim();
+        this.globalDeferEnabled = getBoolParam(params, "global_defer_enabled", false);
         this.cloudletTraceFile = getStringParam(params, "cloudlet_trace_file",
                 "traces/LLNL-Atlas-2006-2.1-cln-test.swf");
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",
