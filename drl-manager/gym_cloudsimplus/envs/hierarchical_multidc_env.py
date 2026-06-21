@@ -968,19 +968,24 @@ class HierarchicalMultiDCEnv(gym.Env):
         # - Actions are one-to-one mapped to DC indices; there is no explicit NoAssign.
         # - If there are more actions than available cloudlets, extra actions are ignored.
         # Convert actions to DC indices and clamp out-of-range values
+        # Architecture B: when global_defer_enabled, index == num_datacenters is the
+        # DEFER action (valid) and must pass through to Java unchanged. Without this,
+        # the old clamp turned every defer into "route to the last DC", silently
+        # killing the temporal lever.
+        max_valid = self.num_datacenters + (1 if getattr(self, "global_defer_enabled", False) else 0) - 1
         global_actions_filtered = []
         for i, action_val in enumerate(global_actions):
             action_int = int(action_val)
             if action_int < 0:
                 logger.warning(f"Global action[{i}] = {action_int} < 0, clamping to 0")
                 dc_index = 0
-            elif action_int >= self.num_datacenters:
+            elif action_int > max_valid:
                 logger.warning(
-                    f"Global action[{i}] = {action_int} >= {self.num_datacenters}, clamping to {self.num_datacenters - 1}"
+                    f"Global action[{i}] = {action_int} > {max_valid}, clamping to {max_valid}"
                 )
-                dc_index = self.num_datacenters - 1
+                dc_index = max_valid
             else:
-                dc_index = action_int
+                dc_index = action_int  # includes the defer index (== num_datacenters) when enabled
             global_actions_filtered.append(dc_index)
         
         global_actions = global_actions_filtered
