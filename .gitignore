@@ -217,3 +217,10 @@ data/
 
 # config.yml safety backups (auto-generated)
 config.yml.bak*
+
+# 本地 docs（不跟踪）—— 注:已被跟踪的旧 .md 不受影响,需 git rm --cached 才会脱离
+docs/
+# 所有 config.yml 备份变体(.from_* / .relaybak* / .bak* 等)
+config.yml.*
+# 通用临时备份
+*.bak

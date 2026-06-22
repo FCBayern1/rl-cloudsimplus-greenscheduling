@@ -11,3 +11,8 @@
 - 至少覆盖:每次调度决策的耗时(平均/p95/p99)、整次仿真的 wall-clock 时间、相对 baseline(如 FCFS/Round-Robin)的相对开销。
 - 涉及推理的算法(RL policy、ML 预测器等)还要单独报告推理延迟与内存占用。
 - 结果要和效果指标一起出在同一份评测报告里,不能只报效果不报代价。
+
+## 评测报告与方法参考(指针)
+- **评测报告骨架**(效果/开销/推理 三段,强制对 baseline 比):见 `docs/EVAL_REPORT_TEMPLATE.md`。
+- **决策延迟复用现成仪表**:`src/baselines/evaluate.py` 已用 `time.perf_counter_ns()` 测 global/local 每次决策延迟并归约为 `*_decision_us_mean/p50/p95/p99`(µs)。新调度器注册到 `GLOBAL_SCHEDULERS`/`LOCAL_SCHEDULERS` 即自动获得,**不要另造测量**。
+- **方法地图**(碳感知/RL 调度/可延迟作业,用于 related work / 找 novelty gap):见 `docs/METHODS_MAP.md`。
