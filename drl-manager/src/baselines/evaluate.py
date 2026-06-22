@@ -358,6 +358,7 @@ def run_evaluation(
     output_csv: Optional[str] = None,
     verbose: bool = True,
     force_full_episode: bool = False,
+    global_defer: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Run evaluation with specified Global + Local scheduler combination.
@@ -405,6 +406,14 @@ def run_evaluation(
     # Create Global Scheduler (heuristic or baseline; RLlib uses run_rllib_evaluation)
     GlobalCls = GLOBAL_SCHEDULERS[global_scheduler_name]
     global_scheduler = GlobalCls(num_dcs, batch_size)
+    # Fair comparison with arch-B RL: give the heuristic the same forecast-driven
+    # DEFER lever (only the routing/defer DECISION differs then). Needs the env's
+    # global_defer_enabled=true so the env accepts the defer action index.
+    if global_defer:
+        from src.baselines.global_schedulers import DeferringGlobalScheduler
+        global_scheduler = DeferringGlobalScheduler(global_scheduler, num_dcs, batch_size)
+        if verbose:
+            print(f"Global defer ENABLED — wrapped {global_scheduler_name} with forecast-driven defer rule")
 
     # Create Local Schedulers (one per DC)
     LocalCls = LOCAL_SCHEDULERS[local_scheduler_name]
@@ -509,6 +518,9 @@ def _convert_global_obs_for_scheduler(global_obs: Dict[str, Any]) -> Dict[str, A
         'dc_available_pes': global_obs.get('dc_available_pes', []),
         'dc_current_green_power_w': global_obs.get('dc_current_green_power_w', []),
         'dc_current_power_w': global_obs.get('dc_current_power_w', []),
+        # Forecast — needed by the defer rule (heuristic baselines with global defer)
+        'dc_future_short_mean': global_obs.get('dc_future_short_mean', []),
+        'dc_future_long_mean': global_obs.get('dc_future_long_mean', []),
         'upcoming_cloudlets_count': global_obs.get('upcoming_cloudlets_count', 0),
         'batch_cloudlet_pes': global_obs.get('batch_cloudlet_pes', []),
         'batch_cloudlet_mi': global_obs.get('batch_cloudlet_mi', []),
@@ -925,6 +937,9 @@ if __name__ == "__main__":
                         help="Local scheduler algorithm")
     parser.add_argument("--experiment", type=str, default="experiment_multi_dc_10",
                         help="Experiment name from config.yml")
+    parser.add_argument("--global-defer", dest="global_defer", action="store_true",
+                        help="Give the heuristic global scheduler the forecast-driven DEFER lever "
+                             "(fair comparison with arch-B RL; needs global_defer_enabled in the config)")
     parser.add_argument(
         "--override",
         action="append",
@@ -1084,5 +1099,6 @@ if __name__ == "__main__":
             config=config,
             num_episodes=args.episodes,
             seed=args.seed,
-            output_csv=args.output
+            output_csv=args.output,
+            global_defer=args.global_defer,
         )

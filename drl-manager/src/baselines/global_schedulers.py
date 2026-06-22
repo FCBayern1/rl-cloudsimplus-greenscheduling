@@ -952,6 +952,55 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         return {"obs": to_tensor(obs)}
 
 
+class DeferringGlobalScheduler(GlobalScheduler):
+    """Wraps ANY global scheduler to add the temporal DEFER capability (for a fair
+    comparison with the RL's arch-B global defer).
+
+    The inner scheduler picks a target DC for each cloudlet; this wrapper then
+    overrides that with DEFER (action index = num_datacenters) when the target DC
+    has little green NOW but the forecast says green is coming soon — i.e. hold the
+    cloudlet for a greener moment instead of routing it now. This gives the heuristics
+    the SAME forecast-driven defer lever as the RL, so the only variable left is the
+    routing/defer DECISION (learned vs rule-based). Requires env global_defer_enabled.
+    """
+
+    def __init__(self, inner: 'GlobalScheduler', num_datacenters: int, batch_size: int,
+                 green_now_thresh: float = 0.05, forecast_thresh: float = 0.3):
+        super().__init__(num_datacenters, batch_size)
+        self.inner = inner
+        self.green_now_thresh = green_now_thresh
+        self.forecast_thresh = forecast_thresh
+        # Track which DCs have EVER shown green this episode. Brown DCs (no turbines)
+        # carry a 0.5 PLACEHOLDER forecast that must NOT trigger defer — otherwise
+        # cloudlets routed there would be held forever (they never go green).
+        self._seen_green = np.zeros(num_datacenters, dtype=bool)
+
+    def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
+        actions = list(self.inner.schedule(global_obs))
+        nd = self.num_datacenters
+        gn = np.asarray(global_obs.get('dc_current_green_power_w', []), dtype=float).ravel()
+        gr = np.asarray(global_obs.get('dc_green_ratio', []), dtype=float).ravel()
+        fut = np.asarray(global_obs.get('dc_future_short_mean', []), dtype=float).ravel()
+        # Update green-capable set from observed green this step.
+        for d in range(min(nd, gn.size)):
+            if gn[d] > 1.0:
+                self._seen_green[d] = True
+        for i, dc in enumerate(actions):
+            if dc < 0 or dc >= nd:
+                continue
+            if not self._seen_green[dc]:
+                continue  # never-green DC → routing there now is the best we can do
+            green_now = ((gn[dc] if dc < gn.size else 0.0) > 1.0
+                         or (gr[dc] if dc < gr.size else 0.0) > self.green_now_thresh)
+            green_coming = (fut[dc] if dc < fut.size else 0.0) > self.forecast_thresh
+            if (not green_now) and green_coming:
+                actions[i] = nd  # DEFER — hold for the coming green window
+        return actions
+
+    def __str__(self):
+        return f"Defer({self.inner})"
+
+
 # === Register all global schedulers ===
 GLOBAL_SCHEDULERS = {
     'random': RandomGlobalScheduler,
