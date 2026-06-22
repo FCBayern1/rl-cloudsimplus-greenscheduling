@@ -42,6 +42,23 @@ class RandomLocalScheduler(LocalScheduler):
         return 0  # NoAssign
 
 
+class DrainLocalScheduler(LocalScheduler):
+    """Drain Local Scheduler — for dispatch_rate mode.
+
+    In dispatch_rate mode the local action is "how many cloudlets to release this
+    step", and the action_mask is all-ones of length (max_dispatch+1). This baseline
+    always returns the MAX release count (last valid action) = release everything,
+    matching the RL's QoS-driven local (which drains). Using a vm_placement local
+    scheduler here would emit a VM index (0/1) interpreted as a release count of 0/1
+    → re-throttles throughput to ~1 cloudlet/step. Use this for dispatch_rate
+    baselines so only the GLOBAL routing heuristic differs.
+    """
+
+    def schedule(self, local_obs: Dict[str, Any], action_mask: np.ndarray) -> int:
+        valid = _valid_action_indices(action_mask)
+        return int(valid.max()) if valid.size > 0 else 0
+
+
 class FirstFitLocalScheduler(LocalScheduler):
     """First Fit Local Scheduler"""
 
@@ -777,6 +794,7 @@ def create_rllib_new_api_schedulers(algo, env, num_dcs: int, batch_size: int, nu
 # === Register Local Schedulers ===
 LOCAL_SCHEDULERS = {
     'random': RandomLocalScheduler,
+    'drain': DrainLocalScheduler,
     'first_fit': FirstFitLocalScheduler,
     'best_fit': BestFitLocalScheduler,
     'worst_fit': WorstFitLocalScheduler,
