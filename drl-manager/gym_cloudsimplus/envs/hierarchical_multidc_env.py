@@ -515,13 +515,18 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Global observation space (aggregated DC-level metrics)
         self.global_observation_space = spaces.Dict({
             # Green energy metrics (W - Watts)
+            # NOTE (2026-06-23): high was 5e6 W (5 MW) but actual green/demand are
+            # ~tens–thousands of W in these regimes, so the input-scale normalization
+            # (value/high) squashed them to ~1e-5 ≈ 0 — the policy was BLIND to which
+            # DC is green and could never learn green-aware routing. Lowered to the
+            # real scale (turbine-peak / DC-capacity) so the signal is visible.
             "dc_current_green_power_w": spaces.Box(
-                low=0.0, high=5000000.0,  # 5 MW max (increased to accommodate high wind power)
+                low=0.0, high=float(self.config.get("obs_green_power_high", 3000.0)),
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
             "dc_current_power_w": spaces.Box(
-                low=0.0, high=5_000_000.0,
+                low=0.0, high=float(self.config.get("obs_power_high", 5000.0)),
                 shape=(self.num_datacenters,),
                 dtype=np.float32
             ),
