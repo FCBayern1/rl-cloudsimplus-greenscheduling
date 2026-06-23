@@ -109,6 +109,7 @@ public class MultiDatacenterSimulationCore {
     // - PER_MI mode: signal = step carbon per completed MI (kg/MI) or CARBON_RATIO_MAX if MI==0
     private double epGlobalCarbonSignalSum = 0.0;        // Σ signal, total carbon emission sum at each timestep in kg
     private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
+    private int epDeadlineForcedCount = 0;               // Fix A: # cloudlets force-routed at deadline backstop
     private double lastGlobalCarbonSignal = 0.0;         // last step signal
     private double lastGlobalCarbonPenaltyNorm = 0.0;    // last step Ĉ
 
@@ -188,6 +189,7 @@ public class MultiDatacenterSimulationCore {
         stepRoutedCount = 0;
         epGlobalCarbonSignalSum = 0.0;
         epGlobalCarbonPenaltyNormSum = 0.0;
+        epDeadlineForcedCount = 0;
         lastGlobalCarbonSignal = 0.0;
         lastGlobalCarbonPenaltyNorm = 0.0;
         epLocalWaitSum.clear();
@@ -526,6 +528,7 @@ public class MultiDatacenterSimulationCore {
         final boolean deferEnabled = settings.isGlobalDeferEnabled();
         int routedCount = 0;
         int deferredCount = 0;
+        int deadlineForcedCount = 0;
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
             int targetDcIndex = globalActions.get(i);
@@ -535,6 +538,27 @@ public class MultiDatacenterSimulationCore {
             // during brown and route during green (rewarded by the per-action carbon
             // reward, which uses current green). No per-action reward while held.
             if (deferEnabled && targetDcIndex == deferActionIndex) {
+                // Fix A (deadline backstop): a deferred cloudlet whose deadline is within
+                // deferDeadlineSlackSec of now can no longer safely wait — force-route it to
+                // the greenest available DC instead of deferring again. Without this, the
+                // deterministic policy defers work indefinitely → starvation collapse.
+                Long ddl = settings.isDeferDeadlineForceEnabled()
+                        ? cloudletDeadlineById.get(cloudlet.getId()) : null;
+                if (ddl != null && currentClock + settings.getDeferDeadlineSlackSec() >= ddl) {
+                    int forced = pickGreenestAvailableDc(cloudlet);
+                    if (forced >= 0 && globalBroker.routeCloudletToDatacenter(cloudlet, forced)) {
+                        routedCount++;
+                        deadlineForcedCount++;
+                        try {
+                            accumulatePerActionReward(cloudlet, forced);
+                        } catch (Throwable t) {
+                            LOGGER.error("forced-route accumulatePerActionReward failed for cloudlet={} dc={}: {}",
+                                    cloudlet.getId(), forced, t.getMessage(), t);
+                        }
+                        continue;
+                    }
+                    // forced routing failed (no DC accepted) → fall through to normal defer.
+                }
                 globalBroker.requeueCloudletToTail(cloudlet);
                 deferredCount++;
                 continue;
@@ -557,10 +581,33 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        LOGGER.debug("Routed {}/{} cloudlets ({} deferred), {} remain in global queue",
-                routedCount, cloudletsToRoute.size(), deferredCount,
+        LOGGER.debug("Routed {}/{} cloudlets ({} deferred, {} deadline-forced), {} remain in global queue",
+                routedCount, cloudletsToRoute.size(), deferredCount, deadlineForcedCount,
                 globalBroker.getGlobalWaitingCloudletsCount());
+        epDeadlineForcedCount += deadlineForcedCount;
         return routedCount;
+    }
+
+    /**
+     * Fix A helper: pick the greenest DC (lowest marginal carbon) that has enough free
+     * PEs for {@code cloudlet}.  Falls back to the greenest DC overall if none has free
+     * capacity (the cloudlet must still be routed to honour its deadline).  Returns -1
+     * only if there are no datacenters at all.
+     */
+    private int pickGreenestAvailableDc(Cloudlet cloudlet) {
+        int bestWithCap = -1; double bestCapKg = Double.MAX_VALUE;
+        int bestAny = -1;     double bestAnyKg = Double.MAX_VALUE;
+        int cloudletPes = (int) Math.max(1L, cloudlet.getPesNumber());
+        for (int d = 0; d < datacenterInstances.size(); d++) {
+            DcCostFeatures f = computeDcCostFeatures(cloudlet, d);
+            if (f == null) continue;
+            if (f.marginalKg < bestAnyKg) { bestAnyKg = f.marginalKg; bestAny = d; }
+            DatacenterInstance dc = datacenterInstances.get(d);
+            if (dc != null && dc.getTotalAvailablePes() >= cloudletPes && f.marginalKg < bestCapKg) {
+                bestCapKg = f.marginalKg; bestWithCap = d;
+            }
+        }
+        return bestWithCap >= 0 ? bestWithCap : bestAny;
     }
 
     /**
@@ -2181,6 +2228,7 @@ public class MultiDatacenterSimulationCore {
         }
         stats.put("deadline_miss_rate", deadlineMissRate);
         stats.put("deadline_total", deadlineTotal);
+        stats.put("deadline_forced_count", epDeadlineForcedCount);
 
         // ---------------------------------------------------------------------
         // SLA / Lagrangian cost signals

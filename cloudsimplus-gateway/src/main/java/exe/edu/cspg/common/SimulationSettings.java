@@ -78,6 +78,12 @@ public class SimulationSettings {
     // reward already rewards routing-during-green (marginalKg uses current green), so
     // deferring-then-routing-on-green is naturally incentivized. Default false.
     private final boolean globalDeferEnabled;
+    // Fix A (deadline backstop): when the agent picks DEFER for a cloudlet whose
+    // deadline is within deferDeadlineSlackSec of the current clock, override the
+    // defer and force-route it to the greenest available DC instead. Prevents the
+    // deterministic policy from deferring work indefinitely (starvation collapse).
+    private final boolean deferDeadlineForceEnabled;
+    private final double deferDeadlineSlackSec;
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
@@ -352,6 +358,8 @@ public class SimulationSettings {
         this.workloadMode = getStringParam(params, "workload_mode", "SWF");
         this.localDispatchMode = getStringParam(params, "local_dispatch_mode", "vm_placement").trim();
         this.globalDeferEnabled = getBoolParam(params, "global_defer_enabled", false);
+        this.deferDeadlineForceEnabled = getBoolParam(params, "defer_deadline_force_enabled", true);
+        this.deferDeadlineSlackSec = getDoubleParam(params, "defer_deadline_slack_sec", 600.0);
         this.cloudletTraceFile = getStringParam(params, "cloudlet_trace_file",
                 "traces/LLNL-Atlas-2006-2.1-cln-test.swf");
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",
