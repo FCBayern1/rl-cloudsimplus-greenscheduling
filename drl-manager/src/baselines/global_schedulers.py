@@ -916,10 +916,13 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         """Sample from MultiDiscrete distribution inputs."""
         import torch
 
-        # dist_inputs shape: (batch, num_dcs * num_dcs) for 10x10 MultiDiscrete
-        # Each sub-action has num_dcs logits
+        # dist_inputs shape: (batch, batch_size * num_choices). The per-slot choice
+        # count is num_datacenters (+1 when the global DEFER head is active), so
+        # derive it from the actual tensor size instead of hardcoding num_datacenters
+        # — otherwise an arch-B defer checkpoint (6 logits/slot) mis-reshapes against 5.
         batch_size = dist_inputs.shape[0]
-        logits = dist_inputs.reshape(batch_size, self.batch_size, self.num_datacenters)
+        num_choices = dist_inputs.shape[-1] // self.batch_size
+        logits = dist_inputs.reshape(batch_size, self.batch_size, num_choices)
 
         # Greedy: take argmax for each sub-action
         actions = torch.argmax(logits, dim=-1)  # (batch, batch_size)
