@@ -842,16 +842,22 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
     This is required for models trained with enable_rl_module_and_learner=True.
     """
 
-    def __init__(self, num_datacenters: int, batch_size: int, algo):
+    def __init__(self, num_datacenters: int, batch_size: int, algo, stochastic: bool = False):
         """
         Args:
             num_datacenters: number of datacenters
             batch_size: number of cloudlets per step
             algo: loaded RLlib Algorithm instance (New API Stack)
+            stochastic: if True, sample each per-slot routing choice from the policy's
+                categorical distribution instead of taking argmax. Needed for a faithful
+                iso-completion comparison: with 128 simultaneous routing slots seeing
+                identical obs, greedy argmax collapses all slots onto a single DC (overload),
+                whereas the trained policy relies on sampling to spread load across DCs.
         """
         super().__init__(num_datacenters, batch_size)
         self.algo = algo
         self.policy_id = "global_policy"
+        self.stochastic = stochastic
 
         # Get the RLModule from the algorithm
         self._rl_module = self._get_rl_module()
@@ -924,8 +930,17 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         num_choices = dist_inputs.shape[-1] // self.batch_size
         logits = dist_inputs.reshape(batch_size, self.batch_size, num_choices)
 
-        # Greedy: take argmax for each sub-action
-        actions = torch.argmax(logits, dim=-1)  # (batch, batch_size)
+        if self.stochastic:
+            # Sample each per-slot choice from its categorical (Gumbel-max trick keeps
+            # this in pure torch without constructing a Distribution object). This spreads
+            # routing across DCs the way the trained stochastic policy does, instead of
+            # collapsing every slot to the single argmax DC.
+            u = torch.rand_like(logits).clamp_(1e-9, 1.0 - 1e-7)
+            gumbel = -torch.log(-torch.log(u))
+            actions = torch.argmax(logits + gumbel, dim=-1)  # (batch, batch_size)
+        else:
+            # Greedy: take argmax for each sub-action
+            actions = torch.argmax(logits, dim=-1)  # (batch, batch_size)
         return actions
 
     def _obs_to_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:

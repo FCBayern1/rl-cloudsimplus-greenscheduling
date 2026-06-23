@@ -714,6 +714,7 @@ def run_rllib_evaluation(
     use_new_api: bool = False,
     py4j_port: Optional[int] = None,
     force_full_episode: bool = False,
+    stochastic: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
@@ -801,6 +802,7 @@ def run_rllib_evaluation(
             batch_size=batch_size,
             num_vms=max_vms,
             max_hosts=max_hosts,
+            stochastic=stochastic,
         )
     elif shared_local:
         # 所有 DC 显式使用同一个本地策略 "shared_local_policy"
@@ -972,6 +974,10 @@ if __name__ == "__main__":
                         help="Base directory to save compare_result outputs when using --compare")
     parser.add_argument("--shared-local", action="store_true",
                         help="For RLlib evaluation: treat all local agents as sharing 'shared_local_policy'")
+    parser.add_argument("--stochastic", action="store_true",
+                        help="For RLlib (new-API) evaluation: sample global routing choices from the policy "
+                             "distribution instead of greedy argmax. Needed for a faithful iso-completion "
+                             "comparison — greedy argmax collapses all 128 same-obs routing slots onto one DC.")
     parser.add_argument("--new-api", action="store_true",
                         help="For RLlib evaluation: use New API Stack (RLModule) for inference. "
                              "Required for models trained with enable_rl_module_and_learner=True (e.g., GTrXL)")
@@ -1025,6 +1031,7 @@ if __name__ == "__main__":
             shared_local=args.shared_local,
             use_new_api=args.new_api,
             py4j_port=args.py4j_port,
+            stochastic=args.stochastic,
         )
     elif args.compare:
         # 比较多个组合

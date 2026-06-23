@@ -15,11 +15,12 @@ torch = pytest.importorskip("torch")
 from src.baselines.global_schedulers import RLlibNewAPIGlobalScheduler
 
 
-def _make_scheduler(batch_size):
+def _make_scheduler(batch_size, stochastic=False):
     # Bypass the heavy __init__ (it loads an RLlib checkpoint); we only exercise the
     # pure reshape/argmax logic, which depends solely on self.batch_size.
     sched = object.__new__(RLlibNewAPIGlobalScheduler)
     sched.batch_size = batch_size
+    sched.stochastic = stochastic
     return sched
 
 
@@ -58,3 +59,22 @@ def test_sample_multidiscrete_argmax_picks_per_slot_max():
     dist_inputs = logits.reshape(1, 4 * num_choices)
     actions = sched._sample_multidiscrete(dist_inputs)
     assert actions[0].tolist() == want
+
+
+def test_stochastic_spreads_where_argmax_collapses():
+    """With identical near-uniform logits on every slot, greedy argmax collapses all slots
+    to one DC, while stochastic sampling spreads them across DCs (the whole point of the flag)."""
+    num_choices = 5
+    batch = 128
+    # Identical logits per slot, very slight preference for DC1 — argmax must pick DC1 everywhere.
+    base = torch.tensor([0.0, 0.01, 0.0, 0.0, 0.0])
+    logits = base.repeat(1, batch, 1)
+    dist_inputs = logits.reshape(1, batch * num_choices)
+
+    greedy = _make_scheduler(batch, stochastic=False)._sample_multidiscrete(dist_inputs)
+    assert len(set(greedy[0].tolist())) == 1  # collapsed onto a single DC
+
+    torch.manual_seed(0)
+    stoch = _make_scheduler(batch, stochastic=True)._sample_multidiscrete(dist_inputs)
+    assert len(set(stoch[0].tolist())) >= 3  # spread across multiple DCs
+    assert tuple(stoch.shape) == (1, batch)

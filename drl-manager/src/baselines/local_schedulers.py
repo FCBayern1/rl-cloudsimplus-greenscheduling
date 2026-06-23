@@ -759,7 +759,7 @@ class RLlibNewAPILocalScheduler(LocalScheduler):
 
 
 def create_rllib_new_api_schedulers(algo, env, num_dcs: int, batch_size: int, num_vms: int,
-                                     max_hosts: int = 16):
+                                     max_hosts: int = 16, stochastic: bool = False):
     """
     Create RLlib-based Global and Local schedulers for New API Stack.
 
@@ -776,7 +776,7 @@ def create_rllib_new_api_schedulers(algo, env, num_dcs: int, batch_size: int, nu
     """
     from .global_schedulers import RLlibNewAPIGlobalScheduler
 
-    global_scheduler = RLlibNewAPIGlobalScheduler(num_dcs, batch_size, algo)
+    global_scheduler = RLlibNewAPIGlobalScheduler(num_dcs, batch_size, algo, stochastic=stochastic)
 
     local_schedulers = {}
     for dc_id in range(num_dcs):
