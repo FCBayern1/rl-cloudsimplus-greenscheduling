@@ -32,13 +32,15 @@ EXPERIMENT = "experiment_multi_5dc_carbon_v2_deferrable_gdpd"
 N_STEPS = 260  # first force-route fires ~step (deadline 120 - slack 25); 260 is comfortably past it
 
 
-def _make_env(force_enabled: bool):
+def _make_env(force_enabled: bool, urgency_weight: float = 0.0):
     cfg = yaml.safe_load(open(CONFIG))[EXPERIMENT]
     cfg = dict(cfg)
     cfg["cloudlet_trace_file"] = "traces/test_backstop_tiny.csv"
     cfg["max_cloudlets_to_create_from_workload_file"] = 300
     cfg["defer_deadline_force_enabled"] = force_enabled
     cfg["defer_deadline_slack_sec"] = 25.0
+    cfg["defer_urgency_weight"] = urgency_weight
+    cfg["defer_urgency_window_sec"] = 120.0  # matches the tiny trace's deadline horizon
     cfg.pop("py4j_port", None)
     os.makedirs("/tmp/backstop_gateway", exist_ok=True)
     cfg.setdefault("gateway_log_dir", "/tmp/backstop_gateway")
@@ -105,3 +107,24 @@ def test_backstop_off_defers_forever():
     assert forced == 0, f"with backstop OFF nothing should be forced, got {forced}"
     # all work stays deferred in the global queue → essentially nothing finishes
     assert finished < 5, f"with backstop OFF an always-defer policy should starve, got finished={finished}"
+
+
+@pytest.mark.slow
+def test_urgency_cost_charged_when_enabled():
+    """Fix B: with defer_urgency_weight>0, an always-defer policy accrues a NEGATIVE
+    urgency cost (deferring near-deadline work is no longer free); with weight=0 it is
+    exactly 0. Backstop OFF so cloudlets actually sit deferred and age toward deadline."""
+    env_off = _make_env(force_enabled=False, urgency_weight=0.0)
+    try:
+        info_off = _run_all_defer(env_off)
+    finally:
+        env_off.close()
+    env_on = _make_env(force_enabled=False, urgency_weight=5.0)
+    try:
+        info_on = _run_all_defer(env_on)
+    finally:
+        env_on.close()
+    cost_off = _get(info_off, "defer_urgency_cost_sum")
+    cost_on = _get(info_on, "defer_urgency_cost_sum")
+    assert cost_off == 0.0, f"weight=0 should charge no urgency cost, got {cost_off}"
+    assert cost_on < 0.0, f"weight>0 should charge a negative urgency cost, got {cost_on}"

@@ -110,6 +110,7 @@ public class MultiDatacenterSimulationCore {
     private double epGlobalCarbonSignalSum = 0.0;        // Σ signal, total carbon emission sum at each timestep in kg
     private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
     private int epDeadlineForcedCount = 0;               // Fix A: # cloudlets force-routed at deadline backstop
+    private double epDeferUrgencyCostSum = 0.0;          // Fix B: Σ urgency-scaled deferral cost (≤0)
     private double lastGlobalCarbonSignal = 0.0;         // last step signal
     private double lastGlobalCarbonPenaltyNorm = 0.0;    // last step Ĉ
 
@@ -190,6 +191,7 @@ public class MultiDatacenterSimulationCore {
         epGlobalCarbonSignalSum = 0.0;
         epGlobalCarbonPenaltyNormSum = 0.0;
         epDeadlineForcedCount = 0;
+        epDeferUrgencyCostSum = 0.0;
         lastGlobalCarbonSignal = 0.0;
         lastGlobalCarbonPenaltyNorm = 0.0;
         epLocalWaitSum.clear();
@@ -538,13 +540,13 @@ public class MultiDatacenterSimulationCore {
             // during brown and route during green (rewarded by the per-action carbon
             // reward, which uses current green). No per-action reward while held.
             if (deferEnabled && targetDcIndex == deferActionIndex) {
+                Long ddl = cloudletDeadlineById.get(cloudlet.getId());
                 // Fix A (deadline backstop): a deferred cloudlet whose deadline is within
                 // deferDeadlineSlackSec of now can no longer safely wait — force-route it to
                 // the greenest available DC instead of deferring again. Without this, the
                 // deterministic policy defers work indefinitely → starvation collapse.
-                Long ddl = settings.isDeferDeadlineForceEnabled()
-                        ? cloudletDeadlineById.get(cloudlet.getId()) : null;
-                if (ddl != null && currentClock + settings.getDeferDeadlineSlackSec() >= ddl) {
+                if (settings.isDeferDeadlineForceEnabled() && ddl != null
+                        && currentClock + settings.getDeferDeadlineSlackSec() >= ddl) {
                     int forced = pickGreenestAvailableDc(cloudlet);
                     if (forced >= 0 && globalBroker.routeCloudletToDatacenter(cloudlet, forced)) {
                         routedCount++;
@@ -558,6 +560,19 @@ public class MultiDatacenterSimulationCore {
                         continue;
                     }
                     // forced routing failed (no DC accepted) → fall through to normal defer.
+                }
+                // Fix B (urgency deferral cost): deferring is NOT free — charge the global
+                // per-action reward an urgency-scaled cost so the agent stops mindlessly
+                // deferring (which a forecast makes look free).  urgency ramps from 0 (far
+                // from deadline) to 1 (at deadline) over deferUrgencyWindowSec.
+                double wUrg = settings.getDeferUrgencyWeight();
+                if (wUrg > 0.0 && ddl != null) {
+                    double window = Math.max(1.0, settings.getDeferUrgencyWindowSec());
+                    double urgency = Math.max(0.0,
+                            Math.min(1.0, 1.0 - (ddl - currentClock) / window));
+                    double cost = -wUrg * urgency;
+                    stepPerActionRewardSum += cost;
+                    epDeferUrgencyCostSum += cost;
                 }
                 globalBroker.requeueCloudletToTail(cloudlet);
                 deferredCount++;
@@ -2229,6 +2244,7 @@ public class MultiDatacenterSimulationCore {
         stats.put("deadline_miss_rate", deadlineMissRate);
         stats.put("deadline_total", deadlineTotal);
         stats.put("deadline_forced_count", epDeadlineForcedCount);
+        stats.put("defer_urgency_cost_sum", epDeferUrgencyCostSum);
 
         // ---------------------------------------------------------------------
         // SLA / Lagrangian cost signals

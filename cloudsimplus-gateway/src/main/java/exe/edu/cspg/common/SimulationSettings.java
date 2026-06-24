@@ -84,6 +84,14 @@ public class SimulationSettings {
     // deterministic policy from deferring work indefinitely (starvation collapse).
     private final boolean deferDeadlineForceEnabled;
     private final double deferDeadlineSlackSec;
+    // Fix B (urgency deferral cost): deferring a cloudlet is no longer free. The global
+    // per-action reward gets −deferUrgencyWeight·urgency for each deferred cloudlet, where
+    // urgency = clamp(1 − (deadline − now)/deferUrgencyWindowSec, 0, 1). Fresh work (far
+    // from deadline) ≈ free to defer; near-deadline work is expensive → the agent learns
+    // to route urgent work instead of mindlessly deferring (which a forecast otherwise
+    // makes look free). Default weight 0.0 = disabled (backward compatible).
+    private final double deferUrgencyWeight;
+    private final double deferUrgencyWindowSec;
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
@@ -360,6 +368,8 @@ public class SimulationSettings {
         this.globalDeferEnabled = getBoolParam(params, "global_defer_enabled", false);
         this.deferDeadlineForceEnabled = getBoolParam(params, "defer_deadline_force_enabled", true);
         this.deferDeadlineSlackSec = getDoubleParam(params, "defer_deadline_slack_sec", 600.0);
+        this.deferUrgencyWeight = getDoubleParam(params, "defer_urgency_weight", 0.0);
+        this.deferUrgencyWindowSec = getDoubleParam(params, "defer_urgency_window_sec", 3600.0);
         this.cloudletTraceFile = getStringParam(params, "cloudlet_trace_file",
                 "traces/LLNL-Atlas-2006-2.1-cln-test.swf");
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",
