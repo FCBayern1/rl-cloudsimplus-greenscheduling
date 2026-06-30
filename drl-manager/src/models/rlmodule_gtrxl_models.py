@@ -1335,6 +1335,14 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             defer_logit = self.defer_head(q) / self.score_temperature  # (B,T,N_batch,1)
             scores = torch.cat([scores, defer_logit], dim=-1)
         T = scores.shape[1]
+        if os.environ.get("DEBUG_SHAPES"):
+            logger.warning(
+                "[DEBUG_SHAPES] B=%s T=%s scores=%s num_batch_slots=%s num_action_choices=%s "
+                "action_dim=%s q=%s per_cloudlet_keys=%s",
+                B, T, tuple(scores.shape), self.num_batch_slots,
+                getattr(self, "num_action_choices", "?"), self.action_dim,
+                tuple(q.shape), self.cloudlet_keys,
+            )
         logits = scores.reshape(B, T, self.action_dim)
 
         # === Critic branch ===

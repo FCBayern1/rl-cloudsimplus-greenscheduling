@@ -100,8 +100,12 @@ except Exception:
 
 
 def load_config(experiment_name: str) -> dict:
-    """Load configuration for specified experiment from config.yml"""
-    config_path = Path(__file__).parent.parent.parent.parent / "config.yml"
+    """Load configuration for specified experiment from config.yml
+    (or EVAL_CONFIG_PATH if set — lets eval use an alternate config like config_C.yml
+    without touching the default)."""
+    import os as _os
+    _override = _os.environ.get("EVAL_CONFIG_PATH")
+    config_path = Path(_override) if _override else (Path(__file__).parent.parent.parent.parent / "config.yml")
     with open(config_path, 'r', encoding='utf-8') as f:
         all_config = yaml.safe_load(f)
 
@@ -201,6 +205,10 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
         'remaining_cloudlets': _safe_get(info, 'remaining_cloudlets', 0),
         # Java Multi-DC info uses "cloudlets_routed"; keep backward compat with "routed_cloudlets".
         'routed_cloudlets': _safe_get(info, 'cloudlets_routed', _safe_get(info, 'routed_cloudlets', 0)),
+        # Fix A: how many cloudlets the deadline backstop force-routed (vs proactively routed by the
+        # policy). High share ⇒ the heuristic backstop is doing the routing, not the learned policy.
+        'deadline_forced_count': _safe_get(gs, 'deadline_forced_count', 0),
+        'total_finished_cloudlets': _safe_get(gs, 'total_finished_cloudlets', 0),
     }
 
     # Extra debug counters from Java global energy stats (if present)
@@ -876,12 +884,16 @@ def run_rllib_evaluation(
                 f"received(sum)={metrics.get('total_received_cloudlets')}, "
                 f"finished(sum)={metrics.get('sum_finished_dc')}"
             )
+            forced = int(metrics.get('deadline_forced_count') or 0)
+            fin = int(metrics.get('total_finished_cloudlets') or 0)
+            forced_share = (forced / fin) if fin else 0.0
             print(f"Episode {ep+1}/{num_episodes}: "
                   f"Steps={steps}, "
                   f"Routed={metrics['routed_rate']:.2%}, "
                   f"Finished={metrics['finished_rate']:.2%}, "
                   f"GreenRatio={metrics['green_ratio']:.2%}, "
-                  f"Carbon={metrics['total_carbon_kg']:.4f}kg")
+                  f"Carbon={metrics['total_carbon_kg']:.4f}kg, "
+                  f"DeadlineForced={forced} ({forced_share:.1%} of finished)")
 
     env.close()
 
@@ -929,6 +941,18 @@ def run_rllib_evaluation(
 
 
 if __name__ == "__main__":
+    # HPC (Isambard aarch64) Ray guard: on a 288-core node, RLlib's auto ray.init() pre-warms
+    # ~288 workers that all import the heavy stack from NFS at once → none register → the eval
+    # HANGS forever at "Started a local Ray instance" (same 288-worker storm the training
+    # entrypoint already guards against). Cap Ray to the cgroup allocation BEFORE any RLlib code
+    # auto-inits it. Gated on RAY_LIMIT_CPUS — unset on the workstation, so local evals are unchanged.
+    _ray_limit = os.environ.get("RAY_LIMIT_CPUS")
+    if _ray_limit:
+        import ray as _ray
+        if not _ray.is_initialized():
+            _ray.init(num_cpus=int(_ray_limit), include_dashboard=False, ignore_reinit_error=True)
+            print(f"[eval] Ray initialized with num_cpus={_ray_limit} (HPC 288-worker-storm guard)")
+
     parser = argparse.ArgumentParser(description="Evaluate baseline scheduling algorithms")
 
     parser.add_argument("--global", dest="global_sched", type=str, default='random',

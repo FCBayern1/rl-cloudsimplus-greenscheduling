@@ -74,6 +74,7 @@ class EnsembleQHeads(nn.Module):
         K: int = 5,
         prior_lambda: float = 3.0,
         hidden_dim: int = 128,
+        detach_input: bool = True,
     ):
         super().__init__()
         if K < 1:
@@ -83,6 +84,13 @@ class EnsembleQHeads(nn.Module):
         self.prior_lambda = prior_lambda
         self.hidden_dim = hidden_dim
         self.d_model = d_model
+        # detach_input=True (default): the Q-ensemble reads the GTrXL trunk features
+        # but does NOT backprop the Q-loss into them. The Q-heads are a DIAGNOSTIC
+        # (epistemic-uncertainty / responsibility signal), so letting the Q-regression
+        # objective reshape the SHARED actor trunk corrupts the policy's representation
+        # → near-uniform, carbon-blind routing (the eucrd carbon-blindness bug). The
+        # Q-heads' own params still train; only the gradient PAST the input is cut.
+        self.detach_input = detach_input
 
         self.q_heads = nn.ModuleList(
             [_make_head_mlp(d_model, hidden_dim, action_dim) for _ in range(K)]
@@ -131,6 +139,12 @@ class EnsembleQHeads(nn.Module):
             raise ValueError(
                 f"EnsembleQHeads expects (B, d_model), got shape {tuple(state_repr.shape)}"
             )
+
+        # Cut the Q-loss gradient from flowing back into the SHARED GTrXL trunk
+        # (see __init__: prevents Q-regression from corrupting the actor's policy
+        # representation). The q-heads' own params still train normally.
+        if self.detach_input:
+            state_repr = state_repr.detach()
 
         # Stack along K dim so downstream lookups are simple.
         q_stack = torch.stack([h(state_repr) for h in self.q_heads], dim=1)

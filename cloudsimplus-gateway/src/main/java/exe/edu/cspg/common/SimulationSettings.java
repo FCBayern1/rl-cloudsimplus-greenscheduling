@@ -92,6 +92,10 @@ public class SimulationSettings {
     // makes look free). Default weight 0.0 = disabled (backward compatible).
     private final double deferUrgencyWeight;
     private final double deferUrgencyWindowSec;
+    // Route A (honest defer): a small ALWAYS-ON base cost charged per deferred cloudlet on top
+    // of the urgency cost, so even fresh work isn't free to defer. Stops the argmax "always
+    // defer" drift. Anchored to a fraction of a green-routing reward. Default 0.0 = disabled.
+    private final double deferBaseCost;
     private final String cloudletTraceFile; // Path for trace file
     private final int maxCloudletsToCreateFromWorkloadFile; // Limit for SWF mode
     private final int workloadReaderMips; // MIPS ref for SWF runtime calculation
@@ -370,6 +374,7 @@ public class SimulationSettings {
         this.deferDeadlineSlackSec = getDoubleParam(params, "defer_deadline_slack_sec", 600.0);
         this.deferUrgencyWeight = getDoubleParam(params, "defer_urgency_weight", 0.0);
         this.deferUrgencyWindowSec = getDoubleParam(params, "defer_urgency_window_sec", 3600.0);
+        this.deferBaseCost = getDoubleParam(params, "defer_base_cost", 0.0);
         this.cloudletTraceFile = getStringParam(params, "cloudlet_trace_file",
                 "traces/LLNL-Atlas-2006-2.1-cln-test.swf");
         this.maxCloudletsToCreateFromWorkloadFile = getIntParam(params, "max_cloudlets_to_create_from_workload_file",

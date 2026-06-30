@@ -930,6 +930,30 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         num_choices = dist_inputs.shape[-1] // self.batch_size
         logits = dist_inputs.reshape(batch_size, self.batch_size, num_choices)
 
+        # DECODE_TOPK (env-gated experiment): deterministic PROPORTIONAL-ALLOCATION decode for an
+        # allocation policy. Per-slot argmax wrongly collapses a homogeneous batch onto one DC; this
+        # instead spreads the batch ∝ the policy's mean distribution, but only over its TOP-K choices
+        # (drops the low-prob — typically brown — DCs). Deterministic + reproducible (no sampling).
+        import os as _os
+        _topk = int(_os.environ.get("DECODE_TOPK", "0") or 0)
+        if _topk > 0:
+            probs = torch.softmax(logits, dim=-1)                  # (B, n_slots, n_choices)
+            pbar = probs.mean(dim=1)                               # (B, n_choices) batch alloc dist
+            k = min(_topk, pbar.shape[-1])
+            kth = torch.topk(pbar, k, dim=-1).values[..., -1:]    # (B,1) k-th largest
+            pm = pbar * (pbar >= kth).to(pbar.dtype)              # keep top-k, zero the rest
+            pm = pm / pm.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+            B, n_slots, n_ch = logits.shape
+            acts = torch.zeros(B, n_slots, dtype=torch.long, device=logits.device)
+            acc = torch.zeros(B, n_ch, device=logits.device)
+            ar = torch.arange(B, device=logits.device)
+            for s in range(n_slots):                               # Webster sequential allocation
+                acc = acc + pm
+                c = torch.argmax(acc, dim=-1)
+                acts[:, s] = c
+                acc[ar, c] -= 1.0
+            return acts
+
         if self.stochastic:
             # Sample each per-slot choice from its categorical (Gumbel-max trick keeps
             # this in pure torch without constructing a Distribution object). This spreads

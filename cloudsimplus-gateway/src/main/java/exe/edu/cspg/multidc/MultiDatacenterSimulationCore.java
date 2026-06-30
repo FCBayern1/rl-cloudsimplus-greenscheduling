@@ -96,6 +96,12 @@ public class MultiDatacenterSimulationCore {
     // (which then resets them).
     private double stepPerActionRewardSum = 0.0;   // Σᵢ rᵢ for this step
     private double stepMarginalCarbonKg = 0.0;     // Σᵢ marginal_kg for this step (logging only)
+    // Tier-1 per-cloudlet credit: r_i for each routing slot this step, slot-aligned with the
+    // global action (index i = globalActions[i]). Slots [stepRoutingActionCount, batch) had no
+    // cloudlet → 0 (masked). Σ over valid slots == stepPerActionRewardSum (invariant). Exposed
+    // CSV-encoded in the step stats; only read by the learner when per_slot_credit is enabled.
+    private double[] stepPerSlotReward = new double[0];
+    private int stepRoutingActionCount = 0;
     private int    stepRoutedCount = 0;            // number of successful routings this step
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
@@ -504,6 +510,10 @@ public class MultiDatacenterSimulationCore {
 
         // Get batch for routing (up to the size of global actions provided)
         int batchSize = globalActions.size();
+        // Tier-1: reset the per-slot reward buffer every step BEFORE any early return, so a
+        // no-cloudlet step exposes an all-zero (fully masked) vector rather than stale values.
+        stepPerSlotReward = new double[batchSize];
+        stepRoutingActionCount = 0;
         List<Cloudlet> cloudletsToRoute = globalBroker.getBatchForRouting(batchSize);
 
         if (cloudletsToRoute.isEmpty()) {
@@ -531,6 +541,7 @@ public class MultiDatacenterSimulationCore {
         int routedCount = 0;
         int deferredCount = 0;
         int deadlineForcedCount = 0;
+        stepRoutingActionCount = actionCount;   // Tier-1: valid-slot count (buffer reset earlier)
         for (int i = 0; i < actionCount; i++) {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
             int targetDcIndex = globalActions.get(i);
@@ -552,7 +563,7 @@ public class MultiDatacenterSimulationCore {
                         routedCount++;
                         deadlineForcedCount++;
                         try {
-                            accumulatePerActionReward(cloudlet, forced);
+                            stepPerSlotReward[i] = accumulatePerActionReward(cloudlet, forced);
                         } catch (Throwable t) {
                             LOGGER.error("forced-route accumulatePerActionReward failed for cloudlet={} dc={}: {}",
                                     cloudlet.getId(), forced, t.getMessage(), t);
@@ -561,18 +572,27 @@ public class MultiDatacenterSimulationCore {
                     }
                     // forced routing failed (no DC accepted) → fall through to normal defer.
                 }
-                // Fix B (urgency deferral cost): deferring is NOT free — charge the global
-                // per-action reward an urgency-scaled cost so the agent stops mindlessly
-                // deferring (which a forecast makes look free).  urgency ramps from 0 (far
-                // from deadline) to 1 (at deadline) over deferUrgencyWindowSec.
+                // Honest deferral cost (Route A): deferring is NOT free — charge the global
+                // per-action reward so the argmax policy stops drifting to "always defer".
+                //   base    : a small ALWAYS-ON opportunity cost so even FRESH work (urgency≈0)
+                //             isn't free to defer. Anchored to a fraction of a green-routing
+                //             reward (~+1.8), so green-routing strictly beats defer when green
+                //             is available, while defer still beats brown-routing when it isn't.
+                //   urgency : Fix B — ramps 0 (far from deadline) → 1 (at deadline) over
+                //             deferUrgencyWindowSec, so near-deadline work is much costlier to defer.
+                double wBase = settings.getDeferBaseCost();
+                double cost = -wBase;
                 double wUrg = settings.getDeferUrgencyWeight();
                 if (wUrg > 0.0 && ddl != null) {
                     double window = Math.max(1.0, settings.getDeferUrgencyWindowSec());
                     double urgency = Math.max(0.0,
                             Math.min(1.0, 1.0 - (ddl - currentClock) / window));
-                    double cost = -wUrg * urgency;
+                    cost += -wUrg * urgency;
+                }
+                stepPerSlotReward[i] = cost;          // Tier-1: deferred slot's reward = its defer cost
+                if (cost != 0.0) {
                     stepPerActionRewardSum += cost;
-                    epDeferUrgencyCostSum += cost;
+                    epDeferUrgencyCostSum += cost;   // now = total deferral cost (base + urgency)
                 }
                 globalBroker.requeueCloudletToTail(cloudlet);
                 deferredCount++;
@@ -583,7 +603,7 @@ public class MultiDatacenterSimulationCore {
             if (routed) {
                 routedCount++;
                 try {
-                    accumulatePerActionReward(cloudlet, targetDcIndex);
+                    stepPerSlotReward[i] = accumulatePerActionReward(cloudlet, targetDcIndex);
                 } catch (Throwable t) {
                     LOGGER.error("accumulatePerActionReward failed for cloudlet={} dc={}: {}",
                             cloudlet.getId(), targetDcIndex, t.getMessage(), t);
@@ -662,12 +682,12 @@ public class MultiDatacenterSimulationCore {
      * version's ±0.05 because the baseline-constant part cancels).  Still
      * comparable to λ·c_step mid-training, so Lagrangian and shaping balance.
      */
-    private void accumulatePerActionReward(Cloudlet cloudlet, int dcIndex) {
+    private double accumulatePerActionReward(Cloudlet cloudlet, int dcIndex) {
         if (dcIndex < 0 || dcIndex >= datacenterInstances.size()) {
-            return;
+            return 0.0;
         }
         int numDcs = datacenterInstances.size();
-        if (numDcs == 0) return;
+        if (numDcs == 0) return 0.0;
 
         // 2026-05-20 reward redesign — switched from "diff vs RR baseline" to
         // ABSOLUTE per-action reward.
@@ -695,7 +715,7 @@ public class MultiDatacenterSimulationCore {
         if (actual == null) {
             // Defensive — shouldn't happen since dcIndex was already validated
             // by routeCloudletToDatacenter.
-            return;
+            return 0.0;
         }
 
         double wCarbon       = settings.getPerActionCarbonWeight();
@@ -714,6 +734,7 @@ public class MultiDatacenterSimulationCore {
             "PerActionAbs dc={} marg={} margNorm={} prob={} r_i={}",
             dcIndex, actual.marginalKg, margNorm, actual.probComplete, rAbsolute
         );
+        return rAbsolute;
     }
 
     /**
@@ -2065,6 +2086,18 @@ public class MultiDatacenterSimulationCore {
         // Add global energy statistics
         Map<String, Object> globalEnergyStats = calculateGlobalEnergyStatistics();
         info.put("global_energy_stats", globalEnergyStats);
+
+        // Tier-1 per-cloudlet credit: CSV-encode the per-slot reward vector + the valid-slot count.
+        // CSV (not a raw array) because HierarchicalStepResult bridges info to Python as a STRING map
+        // (String.valueOf), which would turn a double[] into a useless "[D@..". The learner parses this
+        // back to a slot-aligned reward vector. Σ over valid slots == global per-action reward (invariant).
+        StringBuilder sb = new StringBuilder(stepPerSlotReward.length * 8);
+        for (int i = 0; i < stepPerSlotReward.length; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(stepPerSlotReward[i]);
+        }
+        info.put("per_slot_reward_csv", sb.toString());
+        info.put("routing_action_count", stepRoutingActionCount);
 
         return info;
     }

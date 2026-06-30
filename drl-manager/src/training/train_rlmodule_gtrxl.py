@@ -75,6 +75,10 @@ from src.learners.crd_q_loss import CRDPPOTorchLearner
 # the run keeps RLlib's vanilla PPOTorchLearner (or CRDPPOTorchLearner with
 # the normalization gate off) and is bit-identical to pre-P1 behavior.
 from src.learners.normalized_critic_loss import NormalizedCriticPPOTorchLearner
+# Tier-1 per-slot credit: masks PADDING routing slots out of the global router's joint log-prob,
+# so the PPO ratio depends only on the ~4 real cloudlets per step (untangles the actor from the
+# 124-padding-slot ratio noise). Inherits the normalized critic; gated by per_slot_credit.enabled.
+from src.learners.per_slot_credit_loss import PerSlotCreditPPOTorchLearner
 
 # Setup logging
 logging.basicConfig(
@@ -517,6 +521,19 @@ def create_rlmodule_config(
             bool(norm_critic_cfg.get("local", False)),
         )
 
+    # Tier-1 per-slot credit: inject the gate into the GLOBAL module's model_config (the learner
+    # reads model_config["per_slot_credit"] per module). Only the global router is MultiDiscrete;
+    # the learner no-ops on the local Discrete module. Swaps in PerSlotCreditPPOTorchLearner below.
+    ps_credit_cfg = env_config.get("per_slot_credit", {}) or {}
+    ps_credit_enabled = (
+        bool(ps_credit_cfg.get("enabled", False)) if isinstance(ps_credit_cfg, dict) else False
+    )
+    if ps_credit_enabled:
+        ps_knobs = {"enabled": True, "mask_padding": bool(ps_credit_cfg.get("mask_padding", True))}
+        gtrxl_config = dict(gtrxl_config)
+        gtrxl_config["per_slot_credit"] = ps_knobs
+        logger.info("[Tier-1 per-slot credit] enabled on global module — knobs=%s", ps_knobs)
+
     if use_parameter_sharing:
         sample_local_agent = "local_agent_0"
         unified_local_obs_space = sample_env.observation_space(sample_local_agent)
@@ -688,8 +705,13 @@ def create_rlmodule_config(
                 # Learner-class precedence: CRD (already inherits the
                 # normalized critic) > P1 normalized critic > RLlib default.
                 # Passing no key keeps RLlib's vanilla PPOTorchLearner.
+                # precedence: CRD > Tier-1 per-slot credit > P1 normalized critic > RLlib default.
+                # (PerSlotCreditPPOTorchLearner inherits NormalizedCriticPPOTorchLearner, so it
+                # honors the normalized_critic gate too.)
                 **({"learner_class": crd_learner_class}
                    if crd_learner_class is not None
+                   else {"learner_class": PerSlotCreditPPOTorchLearner}
+                   if ps_credit_enabled
                    else {"learner_class": NormalizedCriticPPOTorchLearner}
                    if norm_critic_enabled else {}),
             }

@@ -198,6 +198,17 @@ def main():
         logger.error(f"Failed to import training module: {e}")
         sys.exit(1)
 
+    # HPC cgroup workaround: on a Slurm GH200 node Ray auto-detects ALL 288 node CPUs
+    # (it ignores the cpuset cgroup), then pre-warms ~288 Python workers that simultaneously
+    # import the heavy torch/ray stack from the NFS conda env → none register within the
+    # timeout → env_runners never start (training hangs at "Started a local Ray instance").
+    # Cap Ray to the actual allocation via RAY_LIMIT_CPUS before RLlib auto-inits Ray.
+    _ray_limit = os.environ.get("RAY_LIMIT_CPUS")
+    if _ray_limit:
+        import ray
+        ray.init(num_cpus=int(_ray_limit), include_dashboard=False, ignore_reinit_error=True)
+        logger.info(f"Ray initialized with num_cpus={_ray_limit} (HPC cgroup workaround)")
+
     # Load configuration
     config_path = Path(args.config)
     if not config_path.is_absolute():

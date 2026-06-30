@@ -382,26 +382,42 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Prepare command
         # Use --no-daemon to avoid lingering Gradle daemons for each worker
         # Use -q to reduce noise
-        cmd = [
-            gradlew_path,
-            "--no-daemon",
-            "-PappMainClass=exe.edu.cspg.MainMultiDC",
-            "run",
-            "-q",
-            f"--args=--port {port}",
-        ]
+        # HPC/offline mode (env var GATEWAY_LIBS = dir of pre-installed jars from
+        # `gradlew installDist`): launch the JVM directly, bypassing gradle. Compute
+        # nodes typically have no internet and `gradlew run` either hangs resolving
+        # deps or serializes 8 cold builds past the walltime. java -cp lib/* is fast,
+        # offline, and free of gradle-cache contention. Unset -> original gradlew path.
+        gateway_libs = os.environ.get("GATEWAY_LIBS")
+        if gateway_libs:
+            java_home = os.environ.get("JAVA_HOME")
+            java_bin = os.path.join(java_home, "bin", "java") if java_home else "java"
+            cmd = [
+                java_bin,
+                "-cp", os.path.join(gateway_libs, "*"),
+                "exe.edu.cspg.MainMultiDC",
+                "--port", str(port),
+            ]
+        else:
+            cmd = [
+                gradlew_path,
+                "--no-daemon",
+                "-PappMainClass=exe.edu.cspg.MainMultiDC",
+                "run",
+                "-q",
+                f"--args=--port {port}",
+            ]
 
-        # When running concurrent gateways across SLURM array tasks that share
-        # the repo on Lustre, the project-local <gateway>/.gradle cache lock
-        # (fileHashes.lock etc.) becomes a cross-node contention point and every
-        # task but one times out. Setting GRADLE_PROJECT_CACHE_DIR (typically to
-        # node-local $TMPDIR) redirects the project cache so each task gets its
-        # own isolated state.
-        project_cache_dir = os.environ.get("GRADLE_PROJECT_CACHE_DIR")
-        if project_cache_dir:
-            os.makedirs(project_cache_dir, exist_ok=True)
-            cmd.insert(1, "--project-cache-dir")
-            cmd.insert(2, project_cache_dir)
+            # When running concurrent gateways across SLURM array tasks that share
+            # the repo on Lustre, the project-local <gateway>/.gradle cache lock
+            # (fileHashes.lock etc.) becomes a cross-node contention point and every
+            # task but one times out. Setting GRADLE_PROJECT_CACHE_DIR (typically to
+            # node-local $TMPDIR) redirects the project cache so each task gets its
+            # own isolated state.
+            project_cache_dir = os.environ.get("GRADLE_PROJECT_CACHE_DIR")
+            if project_cache_dir:
+                os.makedirs(project_cache_dir, exist_ok=True)
+                cmd.insert(1, "--project-cache-dir")
+                cmd.insert(2, project_cache_dir)
         
         logger.info(f"Launching Java Gateway on port {port}...")
         logger.debug(f"Command: {' '.join(cmd)}")
@@ -592,7 +608,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 dtype=np.int32
             ),
             "batch_cloudlet_mi": spaces.Box(
-                low=0, high=2000000,  # Max MI for a cloudlet
+                low=0, high=int(self.config.get("obs_cloudlet_mi_high", 2000000)),  # Max MI/cloudlet (configurable for long-job regimes)
                 shape=(self.global_routing_batch_size,),
                 dtype=np.int64
             ),
@@ -1274,6 +1290,18 @@ class HierarchicalMultiDCEnv(gym.Env):
                 f = feats[dc_id]
                 short_mean[i], short_trend[i], long_mean[i], long_peak_timing[i] = f
 
+            # E3 forecast-SHIFT probe (EVAL-ONLY, env-var gated; default off so training
+            # & normal eval are untouched). Injects increasing forecast error to test
+            # whether a forecast-trusting policy degrades gracefully (toward noforecast)
+            # or COLLAPSES below it (over-trust → EU-CRD has room). Modes via
+            # FORECAST_PERTURB_MODE, magnitude via FORECAST_PERTURB_EPS:
+            #   blend   — features → (1-eps)*real + eps*neutral (uninformative): graceful test
+            #   shuffle — permute per-DC forecast across DCs (points to WRONG DCs): adversarial
+            #   noise   — add N(0,eps) then clip: noisy-sensor test
+            short_mean, short_trend, long_mean, long_peak_timing = self._perturb_forecast(
+                short_mean, short_trend, long_mean, long_peak_timing, sim_step
+            )
+
             obs["dc_future_short_mean"]       = short_mean
             obs["dc_future_short_trend"]      = short_trend
             obs["dc_future_long_mean"]        = long_mean
@@ -1290,6 +1318,48 @@ class HierarchicalMultiDCEnv(gym.Env):
                 obs[_k] = np.zeros(self.num_datacenters, dtype=np.float32)
 
         return obs
+
+    def _perturb_forecast(self, short_mean, short_trend, long_mean, long_peak_timing, sim_step):
+        """E3 forecast-shift probe (EVAL-ONLY). Gated by env var FORECAST_PERTURB_MODE
+        (unset/'none' → identity, so training & normal eval are untouched). Magnitude
+        via FORECAST_PERTURB_EPS. Lets us inject increasing forecast error at eval to see
+        whether a forecast-trusting policy degrades gracefully or collapses below noforecast."""
+        import os as _os
+        mode = str(_os.environ.get("FORECAST_PERTURB_MODE", "none")).strip().lower()
+        if mode in ("", "none"):
+            return short_mean, short_trend, long_mean, long_peak_timing
+        try:
+            eps = float(_os.environ.get("FORECAST_PERTURB_EPS", "0.0"))
+        except ValueError:
+            eps = 0.0
+        neut_m, neut_t, neut_p = 0.5, 0.0, 0.5  # uninformative defaults (match init above)
+        if mode == "blend" and eps > 0.0:
+            a = float(min(max(eps, 0.0), 1.0))
+            short_mean       = (1 - a) * short_mean       + a * neut_m
+            short_trend      = (1 - a) * short_trend      + a * neut_t
+            long_mean        = (1 - a) * long_mean        + a * neut_m
+            long_peak_timing = (1 - a) * long_peak_timing + a * neut_p
+        elif mode == "shuffle":
+            # Reverse the per-DC forecast (DC0 cleanest ↔ DC4 dirtiest): coherent WRONG forecast.
+            short_mean       = short_mean[::-1]
+            short_trend      = short_trend[::-1]
+            long_mean        = long_mean[::-1]
+            long_peak_timing = long_peak_timing[::-1]
+        elif mode == "anti":
+            # MAXIMALLY adversarial: invert the forecast (high predicted-green where it's actually
+            # low, trend flipped). If the policy over-trusts, this should hurt the most.
+            short_mean       = 1.0 - short_mean
+            short_trend      = -short_trend
+            long_mean        = 1.0 - long_mean
+            long_peak_timing = 1.0 - long_peak_timing
+        elif mode == "noise" and eps > 0.0:
+            rng = np.random.default_rng(int(sim_step) & 0x7FFFFFFF)
+            short_mean       = np.clip(short_mean + rng.normal(0, eps, short_mean.shape), 0.0, 1.0)
+            short_trend      = np.clip(short_trend + rng.normal(0, eps, short_trend.shape), -1.0, 1.0)
+            long_mean        = np.clip(long_mean + rng.normal(0, eps, long_mean.shape), 0.0, 1.0)
+            long_peak_timing = np.clip(long_peak_timing + rng.normal(0, eps, long_peak_timing.shape), 0.0, 1.0)
+        return (np.asarray(short_mean, dtype=np.float32), np.asarray(short_trend, dtype=np.float32),
+                np.asarray(long_mean, dtype=np.float32), np.asarray(long_peak_timing, dtype=np.float32))
 
     def _convert_local_observation(self, dc_id: int, local_obs_java) -> Dict[str, Any]:
         """

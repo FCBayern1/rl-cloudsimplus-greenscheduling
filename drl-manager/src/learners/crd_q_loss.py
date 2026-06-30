@@ -39,6 +39,12 @@ from src.baselines.local_schedulers import BestFitLocalScheduler
 from src.crd.blender import CRDBlender
 from src.crd.cf_math import forecast_cf_per_step
 from src.learners.normalized_critic_loss import NormalizedCriticPPOTorchLearner
+# CRD inherits PerSlotCredit (which itself inherits NormalizedCritic) so that when
+# per_slot_credit.enabled=true (Tier-1 routing-slot masking, needed by the deferrable
+# gdpd/C-regime arch) the masked surrogate is applied AFTER CRD reweights ADVANTAGES.
+# When per_slot_credit is off (legacy 5dc_v2 CRD configs) PerSlotCredit is a pass-through
+# to NormalizedCritic → bit-identical to before this change.
+from src.learners.per_slot_credit_loss import PerSlotCreditPPOTorchLearner
 from src.models.rlmodule_gtrxl_ensemble import COL_Q_ENSEMBLE
 
 
@@ -104,7 +110,7 @@ COL_CRD_RHO_ROUTING = "crd_rho_routing"
 COL_CRD_RHO_SCHEDULING = "crd_rho_scheduling"
 
 
-class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
+class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
     """
     PPO learner with EU-CRD Q-head TD loss bolted on.
 
@@ -1821,7 +1827,12 @@ class CRDPPOTorchLearner(NormalizedCriticPPOTorchLearner):
                 )
                 return
 
-        batch[Postprocessing.ADVANTAGES] = adv * rho_view
+        # Ablation gate (crd.responsibility.reweight_advantages, default True): when False,
+        # the rho shares are still computed + logged above but NOT multiplied into the
+        # advantage — isolates "does the responsibility-shrinking hurt the policy?" from the
+        # ensemble-module/integration. Default preserves the standard EU-CRD reweighting.
+        if bool(cfg.get("reweight_advantages", True)):
+            batch[Postprocessing.ADVANTAGES] = adv * rho_view
 
     def _read_module_responsibility_config(
         self, module_id: ModuleID
