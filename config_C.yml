@@ -27186,7 +27186,7 @@ experiment_multi_5dc_carbon_v2_gdpd_rwtight_timecapV3:
   experiment_type_dir: Multi_Datacenter
   global_completion_rate_mi_coef: 0.3
   global_defer_enabled: true
-  use_flat_obs_protocol: false
+  use_flat_obs_protocol: true
   global_model:
     clip_range: 0.2
     ent_coef: 0.002
@@ -27458,7 +27458,7 @@ experiment_multi_5dc_carbon_v2_gdpd_rwtight_noforecastV3:
   experiment_type_dir: Multi_Datacenter
   global_completion_rate_mi_coef: 0.3
   global_defer_enabled: true
-  use_flat_obs_protocol: false
+  use_flat_obs_protocol: true
   global_model:
     clip_range: 0.2
     ent_coef: 0.002
@@ -27731,7 +27731,7 @@ experiment_multi_5dc_carbon_v2_gdpd_rwtight_godeyeV3:
   experiment_type_dir: Multi_Datacenter
   global_completion_rate_mi_coef: 0.3
   global_defer_enabled: true
-  use_flat_obs_protocol: false
+  use_flat_obs_protocol: true
   global_model:
     clip_range: 0.2
     ent_coef: 0.002
