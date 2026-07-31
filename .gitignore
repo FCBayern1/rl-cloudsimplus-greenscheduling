@@ -224,3 +224,25 @@ docs/
 config.yml.*
 # 通用临时备份
 *.bak
+
+# ── Experiment outputs & archives (local only, never commit) ──
+/isambard_backup/
+/isambard_exodus/
+/logs/
+/drl-manager/logs/
+/local_eval_rt/
+/ray_results/
+/drl-manager/ray_results/
+# Paper writing & figures (kept local; figures regenerate from scripts/)
+/paper_materials/
+# Root scratch artefacts
+/EUCRD.png
+# Config backups & imported checkpoints
+config_C.yml.bak_*
+config.yml.bak_*
+/drl-manager/ckpt_from_isambard/
+# Large root artefacts (paper packs, exports, screenshots)
+/*.zip
+/*.tar.gz
+/*.pdf
+/image.png
