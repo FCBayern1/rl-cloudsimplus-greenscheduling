@@ -83,6 +83,7 @@ def main():
     cfg.setdefault("gateway_log_dir", "/tmp/oracle_gateway")
     cfg.setdefault("output_dir", "/tmp/oracle_gateway")
     os.makedirs("/tmp/oracle_gateway", exist_ok=True)
+    cfg["use_flat_obs_protocol"] = False  # local gradlew-run jar lacks getStepAsFlatMap
     cfg["local_dispatch_mode"] = "dispatch_rate"
     cfg["max_dispatch_per_step"] = args.max_dispatch
     cfg["compressed_power_divisor"] = args.green_divisor

@@ -486,6 +486,37 @@ def create_rlmodule_config(
             f"crd config keys: {sorted(crd_cfg.keys())}"
         )
 
+    # Risk-averse baselines (cross-comparison): route through CRDPPOTorchLearner
+    # (which carries the risk-objective advantage transform) but WITHOUT the
+    # ensemble/responsibility machinery — vanilla backbone + risk-transformed
+    # advantage. Activated by crd.risk.kind when crd.enabled is false.
+    _risk_cfg = (crd_cfg.get("risk", {}) or {}) if isinstance(crd_cfg, dict) else {}
+    _risk_kind = str(_risk_cfg.get("kind", "none")).strip().lower()
+    if not crd_enabled and _risk_kind not in ("", "none"):
+        gtrxl_config = dict(gtrxl_config); gtrxl_config["crd"] = crd_cfg
+        local_model_cfg = dict(local_model_cfg); local_model_cfg["crd"] = crd_cfg
+        crd_learner_class = CRDPPOTorchLearner
+        logger.info(
+            f"[risk baseline] kind={_risk_kind} — {CRDPPOTorchLearner.__name__} "
+            f"with vanilla (non-ensemble) modules; EU-CRD machinery inert."
+        )
+
+    # CCA-PG baseline (cross-comparison): same routing as the risk baselines —
+    # vanilla backbone through CRDPPOTorchLearner, whose `_apply_cca` hook
+    # replaces the advantage with R_t - V^h(V, Phi). Activated by
+    # crd.cca.enabled when crd.enabled is false and no risk objective is set.
+    _cca_cfg = (crd_cfg.get("cca", {}) or {}) if isinstance(crd_cfg, dict) else {}
+    _cca_on = bool(_cca_cfg.get("enabled", False))
+    if not crd_enabled and _risk_kind in ("", "none") and _cca_on:
+        gtrxl_config = dict(gtrxl_config); gtrxl_config["crd"] = crd_cfg
+        local_model_cfg = dict(local_model_cfg); local_model_cfg["crd"] = crd_cfg
+        crd_learner_class = CRDPPOTorchLearner
+        logger.info(
+            f"[CCA baseline] horizon={_cca_cfg.get('horizon', 12)} — "
+            f"{CRDPPOTorchLearner.__name__} with vanilla (non-ensemble) modules; "
+            f"EU-CRD machinery inert, advantage replaced by hindsight baseline."
+        )
+
     # ------------------------------------------------------------------
     # P1 critic fix (2026-06-11): normalized critic vf loss.
     # `normalized_critic.enabled=true` in the env config injects the gate

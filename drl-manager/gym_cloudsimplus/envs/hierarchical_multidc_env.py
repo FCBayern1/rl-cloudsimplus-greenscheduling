@@ -871,6 +871,12 @@ class HierarchicalMultiDCEnv(gym.Env):
         """
         super().reset(seed=seed)
 
+        # Targeted perturbation curriculum: FORECAST_PERTURB_PROB in (0,1] makes the
+        # perturbation an EPISODE-LEVEL lottery instead of always-on, so training can
+        # mix clean and corrupted-forecast episodes (kn2 curriculum). Unset/<=0 keeps
+        # the historical semantics (MODE applies to every episode).
+        self._perturb_this_episode = self._draw_perturb_episode()
+
         # Connect to Java if not already connected (with retry mechanism)
         self._connect_to_java()
 
@@ -1319,14 +1325,35 @@ class HierarchicalMultiDCEnv(gym.Env):
 
         return obs
 
+    def _draw_perturb_episode(self) -> bool:
+        """Episode-level lottery for the perturbation curriculum. Returns True when
+        FORECAST_PERTURB_MODE is active AND this episode is selected: always selected
+        when FORECAST_PERTURB_PROB is unset/<=0 (historical always-on semantics),
+        Bernoulli(prob) via the gym-seeded RNG otherwise (reproducible per seed)."""
+        import os as _os
+        mode = str(_os.environ.get("FORECAST_PERTURB_MODE", "none")).strip().lower()
+        if mode in ("", "none"):
+            return False
+        try:
+            prob = float(_os.environ.get("FORECAST_PERTURB_PROB", "0.0"))
+        except ValueError:
+            prob = 0.0
+        if prob <= 0.0:
+            return True
+        return bool(self.np_random.random() < min(prob, 1.0))
+
     def _perturb_forecast(self, short_mean, short_trend, long_mean, long_peak_timing, sim_step):
         """E3 forecast-shift probe (EVAL-ONLY). Gated by env var FORECAST_PERTURB_MODE
         (unset/'none' → identity, so training & normal eval are untouched). Magnitude
         via FORECAST_PERTURB_EPS. Lets us inject increasing forecast error at eval to see
-        whether a forecast-trusting policy degrades gracefully or collapses below noforecast."""
+        whether a forecast-trusting policy degrades gracefully or collapses below noforecast.
+        With FORECAST_PERTURB_PROB set, only episodes selected by _draw_perturb_episode
+        are perturbed (training curriculum mode)."""
         import os as _os
         mode = str(_os.environ.get("FORECAST_PERTURB_MODE", "none")).strip().lower()
         if mode in ("", "none"):
+            return short_mean, short_trend, long_mean, long_peak_timing
+        if not getattr(self, "_perturb_this_episode", True):
             return short_mean, short_trend, long_mean, long_peak_timing
         try:
             eps = float(_os.environ.get("FORECAST_PERTURB_EPS", "0.0"))
@@ -1759,6 +1786,18 @@ class HierarchicalMultiDCEnv(gym.Env):
                             env_idx = self.dc_id_to_index.get(int(dc_id))
                             if env_idx is not None and 0 <= env_idx < self.num_datacenters:
                                 pred_w_full[env_idx] = float(pred_w_provider[src_idx])
+                        # v5.1 scale fix (config-gated crd.forecast.scale_fix):
+                        # the provider returns raw kW*1000 W, but actual_wind_w
+                        # from the gateway is divided by compressed_power_divisor
+                        # under COMPRESSED scaling (1500x in the C-regime), so
+                        # without this the forecast counterfactual compares
+                        # against a 1500x-inflated hypothetical supply and
+                        # R_forecast is a biased constant unrelated to error.
+                        _fc_cfg = ((self.config.get("crd", {}) or {}).get("forecast", {}) or {})
+                        if bool(_fc_cfg.get("scale_fix", False)):
+                            _div = float(self.config.get("compressed_power_divisor", 60.0) or 60.0)
+                            if _div > 0:
+                                pred_w_full = [p / _div for p in pred_w_full]
                         crd["predicted_wind_w"] = pred_w_full
                 except Exception as e:
                     logger.debug(f"timecap predicted_wind_w accessor failed: {e}")

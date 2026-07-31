@@ -157,6 +157,8 @@ def forecast_cf_per_step(
     predicted_wind_w: Sequence[float],
     beta: float,
     gamma: float,
+    carbon_norm: bool = False,
+    magnitude: bool = False,
 ) -> float:
     """
     R_forecast for a single timestep, given the CRD info snapshot and the
@@ -186,4 +188,29 @@ def forecast_cf_per_step(
     carbon_pred = carbon_kg_aggregated(predicted_wind_w, p_total, dt, gf, bf)
     waste_actual = waste_ratio_aggregated(actual, p_total, dt)
     waste_pred = waste_ratio_aggregated(predicted_wind_w, p_total, dt)
-    return beta * (carbon_actual - carbon_pred) + gamma * (waste_actual - waste_pred)
+    d_carbon = carbon_actual - carbon_pred
+    d_waste = waste_actual - waste_pred
+    # v5.2 (carbon_norm): the raw carbon diff is dt-scaled kg (~1e-3 at a 1 s
+    # timestep) while the waste diff is dimensionless (~0.3) — without this
+    # the beta term is numerically dead and R_forecast measures forecast error
+    # through the waste proxy only. Normalise by the worst-case (all-brown)
+    # step carbon so both terms are dimensionless and beta/gamma weight what
+    # they claim to weight.
+    if carbon_norm:
+        try:
+            c_max = sum(
+                float(p) * float(dt) / 1000.0 * float(b)
+                for p, b in zip(p_total, bf)
+            )
+        except TypeError:
+            c_max = float(p_total) * float(dt) / 1000.0 * float(bf)
+        if c_max > 1e-12:
+            d_carbon = d_carbon / c_max
+    # v5.2 (magnitude): the beta and gamma terms carry OPPOSITE signs for the
+    # same forecast error and partially cancel — |R_f| would dip through ~0 at
+    # the cancellation point, under-attributing a genuinely large error. The
+    # attribution pipeline consumes |R_f| anyway, so summing magnitudes gives
+    # a monotone forecast-error signal.
+    if magnitude:
+        return beta * abs(d_carbon) + gamma * abs(d_waste)
+    return beta * d_carbon + gamma * d_waste

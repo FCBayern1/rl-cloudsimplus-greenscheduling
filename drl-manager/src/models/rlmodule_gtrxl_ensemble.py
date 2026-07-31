@@ -267,6 +267,9 @@ class GTrXLEnsembleMaskedActionRLModule(_GTrXLFeatureCapture, GTrXLMaskedActionR
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # v5.1: reset the capture slot so a hook miss can never silently reuse
+        # the PREVIOUS call's features (also drops the pinned activation graph).
+        self._captured_features = None
         out = super()._forward_train(batch, **kwargs)
         # Features were captured during super()._forward_train via the hook.
         if self._captured_features is None:
@@ -383,6 +386,9 @@ class GTrXLEnsembleGlobalRLModule(_GTrXLFeatureCapture, GTrXLGlobalRLModule):
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # v5.1: reset the capture slot so a hook miss can never silently reuse
+        # the PREVIOUS call's features (also drops the pinned activation graph).
+        self._captured_features = None
         out = super()._forward_train(batch, **kwargs)
         if self._captured_features is None:
             raise RuntimeError(
@@ -528,6 +534,9 @@ class GTrXLScoreBasedEnsembleGlobalRLModule(
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # v5.1: reset the capture slot so a hook miss can never silently reuse
+        # the PREVIOUS call's features (also drops the pinned activation graph).
+        self._captured_features = None
         out = super()._forward_train(batch, **kwargs)
         if self._captured_features is None:
             raise RuntimeError(

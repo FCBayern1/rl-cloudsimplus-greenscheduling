@@ -340,6 +340,29 @@ def _summarize_decision_latency(samples_ns: List[int], prefix: str) -> Dict[str,
     }
 
 
+def _capture_memory_mb() -> Dict[str, float]:
+    """Peak process RSS and (if a CUDA policy is loaded) peak GPU allocation, in MB.
+
+    Efficiency-overhead metric (see the eval-report template). ru_maxrss is the
+    process-wide peak RSS, monotonic over the run, which is the footprint figure
+    the report asks for. GPU peak is read per call and zero on CPU-only runs.
+    """
+    out = {"peak_cpu_rss_mb": 0.0, "peak_gpu_mem_mb": 0.0}
+    try:
+        import resource
+        # Linux reports ru_maxrss in KiB, macOS in bytes; assume Linux (cluster).
+        out["peak_cpu_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    except Exception:
+        pass
+    try:
+        import torch
+        if torch.cuda.is_available():
+            out["peak_gpu_mem_mb"] = torch.cuda.max_memory_allocated() / (1024.0 ** 2)
+    except Exception:
+        pass
+    return out
+
+
 def _checkpoint_label_from_path(checkpoint_path: str) -> str:
     """
     Derive a readable label from a checkpoint path for compare tables.
@@ -444,6 +467,16 @@ def run_evaluation(
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 
+        # Efficiency overhead: reset the GPU peak counter and start the
+        # wall-clock for the whole simulated episode.
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+        ep_wall_t0 = time.perf_counter_ns()
+
         while not done:
             # Convert observation for global scheduler
             global_obs = _convert_global_obs_for_scheduler(obs['global'])
@@ -483,6 +516,9 @@ def run_evaluation(
         metrics['episode_length'] = steps
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
+        # Efficiency overhead: episode wall-clock (s) and peak memory footprint.
+        metrics["episode_wall_s"] = (time.perf_counter_ns() - ep_wall_t0) / 1e9
+        metrics.update(_capture_memory_mb())
         all_results.append(metrics)
 
         if verbose:
@@ -567,6 +603,7 @@ def _print_summary(
     avg_carbon = np.mean([r['total_carbon_kg'] for r in results])
     avg_carbon_intensity = np.mean([r.get('carbon_intensity', 0) for r in results])
     avg_carbon_per_cloudlet = np.mean([r['carbon_per_finished_cloudlet'] for r in results])
+    avg_carbon_per_mi = np.mean([r['carbon_per_completion_mi'] for r in results])
     avg_steps = np.mean([r['episode_length'] for r in results])
     total_energy = np.mean([r['total_energy_wh'] for r in results])
     avg_green_used = np.mean([r.get('green_used_wh', 0) for r in results])
@@ -583,6 +620,7 @@ def _print_summary(
     print(f"Avg Carbon Emission: {avg_carbon:.4f} kg")
     print(f"Avg Carbon Intensity: {avg_carbon_intensity:.4f} kg/kWh")
     print(f"Avg Carbon/Cloudlet: {avg_carbon_per_cloudlet*1000:.4f} g/task")
+    print(f"Avg Carbon/MI: {avg_carbon_per_mi:.6f} kg/mi-completion")
 
     if results and "global_decision_us_mean" in results[0]:
         gmean = np.mean([r["global_decision_us_mean"] for r in results])
@@ -767,6 +805,9 @@ def run_rllib_evaluation(
     # If you are running training concurrently, override py4j_port to avoid colliding
     # with the training Java gateway.
     algo = load_rllib_algorithm(checkpoint_path, py4j_port_override=py4j_port)
+    # The trust sentinel (TRUST_GATE_MODE) loads the EU-CRD Q-ensemble weights
+    # straight from the checkpoint files; expose the path to the scheduler.
+    os.environ["EVAL_CHECKPOINT_PATH"] = str(Path(checkpoint_path).resolve())
 
     if verbose:
         print("✓ Model loaded!")
@@ -847,6 +888,16 @@ def run_rllib_evaluation(
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 
+        # Efficiency overhead: reset the GPU peak counter and start the
+        # wall-clock for the whole simulated episode.
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+        ep_wall_t0 = time.perf_counter_ns()
+
         while not done:
             # Global scheduling
             t0 = time.perf_counter_ns()
@@ -874,6 +925,9 @@ def run_rllib_evaluation(
         metrics['episode_length'] = steps
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
+        # Efficiency overhead: episode wall-clock (s) and peak memory footprint.
+        metrics["episode_wall_s"] = (time.perf_counter_ns() - ep_wall_t0) / 1e9
+        metrics.update(_capture_memory_mb())
         all_results.append(metrics)
 
         if verbose:
@@ -896,6 +950,11 @@ def run_rllib_evaluation(
                   f"DeadlineForced={forced} ({forced_share:.1%} of finished)")
 
     env.close()
+
+    sentinel = getattr(global_scheduler, "_sentinel", None)
+    if sentinel is not None:
+        print(sentinel.summary())
+        sentinel.close()
 
     # 保存结果
     if output_csv is None:

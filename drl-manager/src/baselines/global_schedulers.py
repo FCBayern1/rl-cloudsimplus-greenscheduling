@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from .base import GlobalScheduler
@@ -34,6 +35,35 @@ def _normalize_01(x: np.ndarray) -> np.ndarray:
 def _bincount_assignments(assignments: np.ndarray, num_dcs: int) -> np.ndarray:
     # assignments are int DC ids in [0, num_dcs)
     return np.bincount(assignments, minlength=num_dcs).astype(np.int32)
+
+
+def _green_capacity_greedy(desirability, batch_size: int, num_dcs: int,
+                           avail_pes=None, green_floor: float = 0.25) -> List[int]:
+    """Spread a routing batch across DCs, sending MORE to high-`desirability` (e.g. greener)
+    DCs but WITHOUT collapsing the whole batch onto one DC (which overloads it → near-zero
+    completion). Each DC gets a target share of the batch
+        share[dc] ∝ (desirability_norm[dc] + green_floor) * capacity_weight[dc]
+    so the greenest DC receives the largest slice, a `green_floor` keeps brown DCs from being
+    starved (guaranteeing the batch spreads), and free-PE capacity (`avail_pes`) gently biases
+    away from small DCs. Cloudlets are assigned greedily to whichever DC is furthest below its
+    running share target. Returns a list[int] of length batch_size."""
+    des = _normalize_01(_as_np_1d(desirability, num_dcs, fill=0.0, dtype=np.float32))
+    cap = _as_np_1d(avail_pes, num_dcs, fill=0.0, dtype=np.float64)
+    cap = np.maximum(cap, 0.0)
+    if cap.sum() <= 0:
+        cap = np.ones(num_dcs, dtype=np.float64)
+    cap_w = 0.5 + 0.5 * (cap / (cap.max() + 1e-9))     # soft capacity bias in [0.5, 1.0]
+    weight = (des + green_floor) * cap_w
+    share = weight / weight.sum()                       # fraction of batch per DC
+    assigned = np.zeros(num_dcs, dtype=np.float64)
+    actions: List[int] = []
+    for i in range(batch_size):
+        target = share * (i + 1)                        # cumulative target assignments per DC
+        deficit = target - assigned                     # most-underserved DC wins the cloudlet
+        dc = int(np.argmax(deficit))
+        actions.append(dc)
+        assigned[dc] += 1.0
+    return actions
 
 
 class RandomGlobalScheduler(GlobalScheduler):
@@ -82,9 +112,27 @@ class GreenAwareGlobalScheduler(GlobalScheduler):
 
     def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
         green_ratios = np.array(global_obs.get('dc_green_ratio', [0.5] * self.num_datacenters))
-        # Assign Cloudlet to the DC with highest Green Energy
-        best_dc = int(np.argmax(green_ratios))
-        return [best_dc] * self.batch_size
+        # Prefer greener DCs but spread across capacity (routing the whole batch to a single
+        # greenest DC overloads it → near-zero completion).
+        return _green_capacity_greedy(green_ratios, self.batch_size, self.num_datacenters,
+                                      global_obs.get('dc_available_pes'))
+
+
+class GreenForecastAwareGlobalScheduler(GlobalScheduler):
+    """SPATIAL-forecast routing: route to the DC with the highest FORECAST green over the
+    near future (dc_future_long_mean = the about-to-be-green DC), instead of the
+    currently-green DC. Same one-line logic as green_aware but using FUTURE green →
+    isolates the spatial-routing value of the forecast (vs green_aware = forecast-blind)."""
+
+    def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
+        fut = global_obs.get('dc_future_long_mean')
+        if fut is None:
+            fut = global_obs.get('dc_future_short_mean')
+        if fut is None:                       # no forecast available → fall back to green-now
+            fut = global_obs.get('dc_green_ratio', [0.5] * self.num_datacenters)
+        # Prefer DCs greenest in the near future, spread across capacity (no single-DC collapse).
+        return _green_capacity_greedy(fut, self.batch_size, self.num_datacenters,
+                                      global_obs.get('dc_available_pes'))
 
 
 class GreenQueueBalancedGlobalScheduler(GlobalScheduler):
@@ -138,11 +186,13 @@ class MinBrownPowerGlobalScheduler(GlobalScheduler):
             max_finite = float(np.max(finite)) if finite.size else 0.0
             cur = np.where(np.isfinite(current_power), current_power, max_finite)
             brown = cur * (1.0 - np.clip(green_ratio, 0.0, 1.0))
-            best_dc = int(np.argmin(brown))
+            desirability = -brown              # less brown power == more desirable
         else:
-            best_dc = int(np.argmax(green_ratio))
+            desirability = green_ratio
 
-        return [best_dc] * self.batch_size
+        # Prefer least-brown DCs, spread across capacity (no single-DC collapse).
+        return _green_capacity_greedy(desirability, self.batch_size, self.num_datacenters,
+                                      global_obs.get('dc_available_pes'))
 
 
 class WeightedScoreGlobalScheduler(GlobalScheduler):
@@ -862,6 +912,36 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         # Get the RLModule from the algorithm
         self._rl_module = self._get_rl_module()
 
+        # EU-CRD deployment-time trust sentinel (env-gated via TRUST_GATE_MODE;
+        # see src/baselines/trust_sentinel.py). Loads the trained Q-ensemble
+        # from the learner-side checkpoint files — the env-runner module may be
+        # inference-only with randomly-initialised q_heads.
+        self._sentinel = None
+        import os as _os
+        if _os.environ.get("TRUST_GATE_MODE", "").strip():
+            source = _os.environ.get("TRUST_GATE_SOURCE", "qvar").strip().lower()
+            if source == "resid":
+                # Forecast-verification monitor: audits forecast vs realized
+                # green online; no Q-ensemble needed (vanilla ckpts work too).
+                from src.baselines.trust_sentinel import ForecastResidualMonitor
+                self._sentinel = ForecastResidualMonitor.from_env(num_slots=batch_size)
+            else:
+                from src.baselines.trust_sentinel import TrustSentinel
+                ckpt = _os.environ.get("EVAL_CHECKPOINT_PATH", "").strip()
+                if not ckpt:
+                    raise RuntimeError(
+                        "TRUST_GATE_MODE is set but EVAL_CHECKPOINT_PATH is empty — "
+                        "run via evaluate.py --checkpoint so the sentinel can load "
+                        "the Q-ensemble weights."
+                    )
+                self._sentinel = TrustSentinel.from_env(
+                    ckpt, num_slots=batch_size, policy_id=self.policy_id
+                )
+            print(
+                f"[TrustSentinel] active: {self._sentinel.summary()} "
+                f"thresh={self._sentinel.threshold}"
+            )
+
     def _get_rl_module(self):
         """Get the RLModule for inference."""
         try:
@@ -883,6 +963,15 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         if self._rl_module is None:
             raise RuntimeError("RLModule not available. Make sure algorithm uses New API Stack.")
 
+        # Trust sentinel (resid source): audit the RAW obs (forecast vs realized
+        # green) BEFORE the policy sees them, then — in repair mode — hand the
+        # policy a repaired view (lying DCs' forecast features inverted). The
+        # ring buffer keeps the raw stream, so the trust estimate can't oscillate.
+        if self._sentinel is not None and hasattr(self._sentinel, "measure_obs"):
+            self._sentinel.measure_obs(global_obs)
+            if hasattr(self._sentinel, "repair"):
+                global_obs = self._sentinel.repair(global_obs)
+
         # Wrap observation to match training-time PettingZoo format
         wrapped_obs = {"observation": global_obs}
 
@@ -898,8 +987,19 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         with torch.no_grad():
             output = module.forward_inference(batch)
 
+        # Trust sentinel (qvar source): epistemic disagreement on the trunk
+        # features the policy just used (ensemble forward hook). Gating for
+        # both sources happens in _sample_multidiscrete.
+        if self._sentinel is not None and not hasattr(self._sentinel, "measure_obs"):
+            self._sentinel.measure(getattr(module, "_captured_features", None))
+
         # Extract action
         if "actions" in output:
+            if self._sentinel is not None:
+                raise RuntimeError(
+                    "TrustSentinel needs action_dist_inputs to gate/log per-"
+                    "decision, but the module returned pre-sampled 'actions'."
+                )
             actions = output["actions"]
         elif "action_dist_inputs" in output:
             # For MultiDiscrete, action_dist_inputs shape: (batch, sum of nvec).
@@ -929,6 +1029,13 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         batch_size = dist_inputs.shape[0]
         num_choices = dist_inputs.shape[-1] // self.batch_size
         logits = dist_inputs.reshape(batch_size, self.batch_size, num_choices)
+
+        # Trust sentinel: in gate mode, suppress the DEFER column (last choice)
+        # when the just-measured ensemble disagreement exceeds the threshold —
+        # the policy then falls back to reactive run-now with its learned
+        # spatial routing intact. In log mode this only records the signal.
+        if self._sentinel is not None:
+            logits = self._sentinel.maybe_gate(logits)
 
         # DECODE_TOPK (env-gated experiment): deterministic PROPORTIONAL-ALLOCATION decode for an
         # allocation policy. Per-slot argmax wrongly collapses a homogeneous batch onto one DC; this
@@ -1010,8 +1117,19 @@ class DeferringGlobalScheduler(GlobalScheduler):
                  green_now_thresh: float = 0.05, forecast_thresh: float = 0.3):
         super().__init__(num_datacenters, batch_size)
         self.inner = inner
-        self.green_now_thresh = green_now_thresh
-        self.forecast_thresh = forecast_thresh
+        # 2026-07-24 scale-fix: the normalized forecast (dc_future_short_mean)
+        # for green DCs sits in ~[0, 0.05] on this testbed, so the historical
+        # default forecast_thresh=0.3 could NEVER be crossed and the defer rule
+        # was inert (every "GQB+defer" run was spatial-only). Thresholds are now
+        # env-configurable and the trigger count is tracked for transparency.
+        self.green_now_thresh = float(os.environ.get("DEFER_GREEN_NOW_THRESH", green_now_thresh))
+        self.forecast_thresh = float(os.environ.get("DEFER_FORECAST_THRESH", forecast_thresh))
+        # RELATIVE mode: defer when forecast exceeds current green ratio by margin
+        # (scale-free: "greener coming than now"). Off by default.
+        self.relative = os.environ.get("DEFER_RELATIVE", "").strip() == "1"
+        self.relative_margin = float(os.environ.get("DEFER_RELATIVE_MARGIN", "0.0"))
+        self._n_defers = 0
+        self._n_calls = 0
         # Track which DCs have EVER shown green this episode. Brown DCs (no turbines)
         # carry a 0.5 PLACEHOLDER forecast that must NOT trigger defer — otherwise
         # cloudlets routed there would be held forever (they never go green).
@@ -1032,15 +1150,28 @@ class DeferringGlobalScheduler(GlobalScheduler):
                 continue
             if not self._seen_green[dc]:
                 continue  # never-green DC → routing there now is the best we can do
+            gr_dc = gr[dc] if dc < gr.size else 0.0
+            fut_dc = fut[dc] if dc < fut.size else 0.0
             green_now = ((gn[dc] if dc < gn.size else 0.0) > 1.0
-                         or (gr[dc] if dc < gr.size else 0.0) > self.green_now_thresh)
-            green_coming = (fut[dc] if dc < fut.size else 0.0) > self.forecast_thresh
+                         or gr_dc > self.green_now_thresh)
+            if self.relative:
+                # scale-free: forecast promises more green than there is right now
+                green_coming = fut_dc > gr_dc + self.relative_margin
+            else:
+                green_coming = fut_dc > self.forecast_thresh
             if (not green_now) and green_coming:
                 actions[i] = nd  # DEFER — hold for the coming green window
+                self._n_defers += 1
+        self._n_calls += 1
         return actions
 
     def __str__(self):
         return f"Defer({self.inner})"
+
+    def summary(self) -> str:
+        rate = (100.0 * self._n_defers / max(1, self._n_calls))
+        return (f"DeferringGlobalScheduler: {self._n_defers} defers over "
+                f"{self._n_calls} calls ({rate:.1f}% of slots)")
 
 
 # === Register all global schedulers ===
@@ -1049,6 +1180,7 @@ GLOBAL_SCHEDULERS = {
     'round_robin': RoundRobinGlobalScheduler,
     'min_queue': MinQueueGlobalScheduler,
     'green_aware': GreenAwareGlobalScheduler,
+    'green_forecast': GreenForecastAwareGlobalScheduler,
     'green_queue_balanced': GreenQueueBalancedGlobalScheduler,
     'min_brown_power': MinBrownPowerGlobalScheduler,
     'weighted_score': WeightedScoreGlobalScheduler,

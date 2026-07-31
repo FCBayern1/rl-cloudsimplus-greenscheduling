@@ -110,6 +110,16 @@ COL_CRD_RHO_ROUTING = "crd_rho_routing"
 COL_CRD_RHO_SCHEDULING = "crd_rho_scheduling"
 
 
+class _PolicySelfBaselineMarker:
+    """Sentinel for crd.baseline.kind='policy_self'. Carries the shape fields the
+    baseline-gating code reads; the actual counterfactual action is drawn from the
+    policy distribution in _compute_policy_self_baseline_action, not from a router."""
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        self.num_datacenters = int(num_datacenters)
+        self.batch_size = int(batch_size)
+
+
 class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
     """
     PPO learner with EU-CRD Q-head TD loss bolted on.
@@ -158,6 +168,18 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # M3: per-module CRDBlender (stateful EMA of σ² + adaptive τ) that
         # combines ΔQ and Δr into R^routing.
         self._crd_blenders: Dict[ModuleID, CRDBlender] = {}
+        # CCA-PG baseline: per-module hindsight net + its online optimizer,
+        # lazily built on first use. Config-gated cross-comparison method.
+        self._cca_nets: Dict[ModuleID, Any] = {}
+        self._cca_opts: Dict[ModuleID, Any] = {}
+        # v5: per-module per-source running-scale EMAs (share normalisation)
+        # and the forecast-anomaly EMA (anomaly-gated quarantine). Both are
+        # config-gated (responsibility.normalize_shares / .anomaly_gate),
+        # default off — bit-identical to v4 unless enabled.
+        self._crd_share_scale_ema: Dict[ModuleID, Dict[str, float]] = {}
+        self._crd_forecast_anom_ema: Dict[ModuleID, Dict[str, float]] = {}
+        # v5.2: training-iteration counter for the stable bootstrap mask.
+        self._crd_train_iter: int = 0
         # M2.4: warn-once flag for the dq/sigma2 alignment failure path.
         # Layout mismatches between the padded q_ensemble and the
         # sequence-packed `infos`-derived baseline_action are still under
@@ -181,6 +203,15 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                 "the padded (B,T) grid. ΔQ/σ² may be skipped as a result."
             )
 
+    def before_gradient_based_update(self, *, timesteps=None, **kwargs) -> None:
+        # v5.2: one tick per TRAINING ITERATION (not per minibatch call) — the
+        # stable bootstrap mask is seeded from this so all epochs/minibatches
+        # of one iteration share head-data assignments (per-call resampling let
+        # every head see every transition, collapsing bootstrap diversity onto
+        # the priors alone).
+        self._crd_train_iter += 1
+        return super().before_gradient_based_update(timesteps=timesteps, **kwargs)
+
     def compute_loss_for_module(
         self,
         *,
@@ -195,6 +226,17 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # stack. M2.2-M2.5 will fill in the actual computation here.
         self._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
 
+        # Risk-averse baseline objectives (CVaR / risk-sensitive / mean-variance).
+        # Config-gated cross-comparison methods: transform the advantage BEFORE the
+        # base PPO loss so they act on the vanilla backbone (no ensemble/EU-CRD
+        # machinery). Default kind="none" is bit-identical to standard PPO.
+        self._apply_risk_objective(module_id=module_id, batch=batch)
+
+        # CCA-PG baseline (Mesnard 2021): replace the advantage with
+        # R_t - V^h(V(s_t), Phi_t), Phi = future realised green. Config-gated,
+        # no-op unless crd.cca.enabled — acts on the vanilla backbone.
+        self._apply_cca(module_id=module_id, batch=batch)
+
         base_loss = super().compute_loss_for_module(
             module_id=module_id,
             config=config,
@@ -205,6 +247,12 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         q_ensemble = fwd_out.get(COL_Q_ENSEMBLE)
         if q_ensemble is None:
             return base_loss  # Non-ensemble module — no Q-loss contribution.
+
+        # Ablation gate (crd.local_cf_enabled=false): a gated local module's
+        # Q-ensemble has no consumer (no ΔQ_local), so skip its TD loss too —
+        # the local layer is trained by the base PPO loss alone.
+        if self._skip_local_cf(module_id):
+            return base_loss
 
         crd_cfg = self._read_module_crd_config(module_id)
         coef = float(crd_cfg.get("q_loss_coef", _DEFAULT_Q_LOSS_COEF))
@@ -227,7 +275,12 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # → raw Q-loss (bit-identical to pre-normalization behavior).
         var_ema = self._vf_target_var_ema.get(module_id)
         target_var = max(float(var_ema), 1e-8) if var_ema is not None else 1.0
-        q_loss = self._compute_q_loss(q_ensemble, batch, bootstrap_p, target_var=target_var)
+        q_loss = self._compute_q_loss(
+            q_ensemble, batch, bootstrap_p, target_var=target_var,
+            mask_padding=self._read_crd_mask_padding(module_id),
+            stable_seed=(self._crd_train_iter
+                         if bool(crd_cfg.get("stable_bootstrap", False)) else None),
+        )
         return base_loss + coef * q_loss
 
     # ------------------------------------------------------------------ helpers
@@ -267,6 +320,23 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                 f"fwd_out_keys={sorted(fwd_out.keys())}; "
                 f"has_q_ensemble=True"
             )
+
+        # Ablation gate (crd.local_cf_enabled, default True): when False, local
+        # scheduler (Discrete-action) modules skip the ENTIRE counterfactual
+        # pipeline — no forecast CF, no BestFit baseline, no R_scheduling, no
+        # advantage reweight — reverting the local layer to conventional PPO.
+        # Paired with the Q-loss skip in compute_loss_for_module. The global
+        # router is unaffected.
+        if self._skip_local_cf(module_id):
+            if not hasattr(self, "_crd_local_cf_gate_logged"):
+                self._crd_local_cf_gate_logged = {}
+            if not self._crd_local_cf_gate_logged.get(module_id, False):
+                self._crd_local_cf_gate_logged[module_id] = True
+                logger.info(
+                    f"[CRD] local_cf_enabled=false — module {module_id!r} "
+                    "skips the local counterfactual pipeline (conventional PPO)."
+                )
+            return
 
         # M2.2: forecast counterfactual. Shared by both layers — every agent's
         # info["crd"] carries the same exogenous wind snapshot, so the forecast
@@ -348,11 +418,48 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         if metrics is None:
             return
 
+        lm = batch.get(Columns.LOSS_MASK)
+
         def _scalar_mean(key: str):
+            # Masked mean when the loss mask aligns: padded cells carry garbage
+            # magnitudes (e.g. |dr| ~ 51 at pads vs ~0.5 valid) that otherwise
+            # dominate the diagnostic and hide dead mechanisms. Logging-only.
             t = batch.get(key)
             if isinstance(t, torch.Tensor) and t.numel() > 0:
+                if isinstance(lm, torch.Tensor) and lm.shape == t.shape and bool(lm.any()):
+                    t = t[lm.bool()]
                 return t.detach().float().mean().item()
             return None
+
+        def _scalar_spread(key: str, short: str) -> Dict[str, float]:
+            """Within-batch dispersion of a ρ column, plus the reweight strength.
+
+            The batch MEAN of ρ is stable by averaging and says nothing about
+            whether credit is actually redistributed: the mean-preserving update
+            multiplies each advantage by w = ρ_t / mean(ρ), so if ρ_t barely
+            varies across transitions then w ≈ 1 and the reweighting is inert.
+            std(w) is therefore the metric that tells a live mechanism from a
+            no-op. Logging-only, computed on the detached column.
+            """
+            t = batch.get(key)
+            if not (isinstance(t, torch.Tensor) and t.numel() > 1):
+                return {}
+            if isinstance(lm, torch.Tensor) and lm.shape == t.shape and bool(lm.any()):
+                t = t[lm.bool()]
+            t = t.detach().float().flatten()
+            if t.numel() < 2:
+                return {}
+            mean = t.mean()
+            out = {
+                f"crd/{short}_std": t.std(unbiased=False).item(),
+                f"crd/{short}_p10": torch.quantile(t, 0.1).item(),
+                f"crd/{short}_p90": torch.quantile(t, 0.9).item(),
+            }
+            if torch.isfinite(mean) and float(mean) > 1e-6:
+                w = t / mean
+                out["crd/reweight_w_std"] = w.std(unbiased=False).item()
+                out["crd/reweight_w_max"] = w.max().item()
+            return out
 
         diag = {
             "crd/rho_forecast_mean": _scalar_mean(COL_CRD_RHO_FORECAST),
@@ -364,6 +471,9 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             "crd/dr_mean": _scalar_mean(COL_CRD_DR),
             "crd/r_routing_mean": _scalar_mean(COL_CRD_R_ROUTING),
             "crd/r_scheduling_mean": _scalar_mean(COL_CRD_R_SCHEDULING),
+            "crd/reweight_applied": (
+                1.0 if isinstance(batch.get("crd_reweight_applied"), torch.Tensor) else 0.0
+            ),
         }
         # |R_forecast| magnitude (sign-agnostic — how strong the forecast-CF
         # signal is, which is what the attribution-fidelity experiment tracks).
@@ -374,6 +484,20 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         tau = batch.get(COL_CRD_TAU)
         if isinstance(tau, torch.Tensor) and tau.numel() == 1:
             diag["crd/tau"] = tau.detach().float().item()
+
+        # Dispersion of the share this module is actually reweighted by, so the
+        # curves can distinguish an active decomposition from an inert one.
+        # Same rule the reweighting itself uses: a module is the global router
+        # when R_routing is present, otherwise a local scheduler.
+        if isinstance(batch.get(COL_CRD_R_ROUTING), torch.Tensor):
+            own_rho_col, own_short = COL_CRD_RHO_ROUTING, "rho_routing"
+        else:
+            own_rho_col, own_short = COL_CRD_RHO_SCHEDULING, "rho_scheduling"
+        try:
+            diag.update(_scalar_spread(own_rho_col, own_short))
+        except Exception:
+            # Dispersion stats are a diagnostic; never let them stop training.
+            pass
 
         diag = {k: v for k, v in diag.items() if v is not None}
         if not diag:
@@ -427,6 +551,12 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         forecast_cfg = self._read_module_forecast_config(module_id)
         beta = float(forecast_cfg.get("beta", _DEFAULT_BETA_FORECAST))
         gamma = float(forecast_cfg.get("gamma", _DEFAULT_GAMMA_FORECAST))
+        # v5.2 R_f repairs (both default False = legacy): carbon_norm makes the
+        # beta term dimensionless (worst-case step-carbon normalisation) so it
+        # is not numerically dead at 1 s timesteps; magnitude sums |terms| so
+        # opposite-signed beta/gamma cannot cancel a real forecast error.
+        carbon_norm = bool(forecast_cfg.get("carbon_norm", False))
+        magnitude = bool(forecast_cfg.get("magnitude", False))
 
         # ── Preferred path: obs-based forecast (M-fix) ──────────────────────
         # The env attaches a per-step `crd_aux` snapshot to the obs (a sibling
@@ -435,7 +565,10 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # minibatching — unlike `infos`, whose length is unreliable
         # (observed 95 vs 2048; 1953 vs 1952). When present this is the
         # authoritative path and we skip infos entirely.
-        obs_based = self._compute_forecast_cf_from_obs(batch, beta=beta, gamma=gamma)
+        obs_based = self._compute_forecast_cf_from_obs(
+            batch, beta=beta, gamma=gamma,
+            carbon_norm=carbon_norm, magnitude=magnitude,
+        )
         if obs_based is not None:
             batch[COL_CRD_FORECAST] = obs_based
             return
@@ -446,7 +579,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             return  # nothing to compute against
 
         r_forecast_list, n_missing_pred = self._compute_forecast_cf_values(
-            infos=infos, beta=beta, gamma=gamma
+            infos=infos, beta=beta, gamma=gamma,
+            carbon_norm=carbon_norm, magnitude=magnitude,
         )
         if not r_forecast_list:
             return
@@ -502,7 +636,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         batch[COL_CRD_FORECAST] = forecast_tensor
 
     def _compute_forecast_cf_from_obs(
-        self, batch: Dict[str, Any], *, beta: float, gamma: float
+        self, batch: Dict[str, Any], *, beta: float, gamma: float,
+        carbon_norm: bool = False, magnitude: bool = False,
     ) -> Optional[torch.Tensor]:
         """
         Compute R_forecast per (b, t) from the env's `crd_aux` obs channel,
@@ -576,7 +711,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                     "brown_carbon_factor": bf_np[b, t],
                 }
                 out[b, t] = forecast_cf_per_step(
-                    crd_info, p_np[b, t], beta=beta, gamma=gamma
+                    crd_info, p_np[b, t], beta=beta, gamma=gamma,
+                    carbon_norm=carbon_norm, magnitude=magnitude,
                 )
 
         tensor = torch.tensor(out, dtype=torch.float32)
@@ -661,6 +797,9 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         sched = self._get_or_build_baseline_scheduler(module_id)
         if sched is None:
             return
+        if isinstance(sched, _PolicySelfBaselineMarker):
+            self._compute_policy_self_baseline_action(module_id=module_id, batch=batch)
+            return
 
         # ── Preferred path: build (B, T, bs) from padded obs ────────────
         baseline_from_obs = self._compute_baseline_from_obs(batch, sched)
@@ -740,6 +879,10 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             )
             return None
         if green_ratio.shape != queue_sizes.shape:
+            self._warn_baseline_obs_unavailable_once(
+                f"dc_green_ratio {tuple(green_ratio.shape)} != dc_queue_sizes "
+                f"{tuple(queue_sizes.shape)}"
+            )
             return None
         # Accept padded (B, T, num_dc); also accept (N, num_dc) flat layouts
         # by reshaping to (N, 1, num_dc) so the same iteration works.
@@ -754,6 +897,11 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             return None
 
         if num_dc != scheduler.num_datacenters:
+            self._warn_baseline_obs_unavailable_once(
+                f"obs num_dc={num_dc} != scheduler num_dc="
+                f"{scheduler.num_datacenters} (DEFER-slot miscount? see "
+                f"crd.baseline.infer_num_dc) — falling back to the infos layout"
+            )
             return None
 
         bs = scheduler.batch_size
@@ -856,15 +1004,43 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             num_dc = int(nvec[0])
             batch_size = len(nvec)
             crd_cfg = self._read_module_baseline_config(module_id)
+            # v5 fix (config-gated): nvec[0] counts ACTION CHOICES, which is
+            # num_dc + 1 when the global DEFER slot is enabled — NOT the DC
+            # count. Building the baseline with num_dc=6 on a 5-DC env made
+            # every obs-grid alignment check fail silently (5 != 6): the
+            # baseline fell back to the off-by-two infos layout (ΔQ/σ²
+            # intermittently skipped) and Δr degraded to a constant 0 for the
+            # router. Infer the true DC count from the observation space.
+            if bool(crd_cfg.get("infer_num_dc", False)):
+                inferred = self._infer_num_dc_from_obs_space(module)
+                if inferred is None:
+                    logger.warning(
+                        f"[CRD] {module_id!r}: infer_num_dc=True but the "
+                        f"observation space was not recognisable — keeping "
+                        f"nvec[0]={num_dc}, which may include the DEFER slot"
+                    )
+                elif inferred != num_dc:
+                    logger.info(
+                        f"[CRD] {module_id!r}: baseline num_dc corrected "
+                        f"{num_dc} -> {inferred} (observation-space inference; "
+                        f"nvec[0] includes the DEFER slot)"
+                    )
+                    num_dc = inferred
             green_w = float(
                 crd_cfg.get("green_weight", _DEFAULT_BASELINE_GREEN_WEIGHT)
             )
-            sched = GreenQueueBalancedGlobalScheduler(
-                num_datacenters=num_dc, batch_size=batch_size, green_weight=green_w
-            )
+            # 2026-07-25: the counterfactual baseline is configurable via
+            # crd.baseline.kind. Motivation: GreenQueueBalanced OUTPERFORMS the
+            # learned router on some regimes (C-regime: GQB 0.136 vs RL 0.152),
+            # which makes dQ = Q(action) - Q(baseline) systematically NEGATIVE
+            # (observed dq_mean ~ -14) and degenerates the routing credit into a
+            # constant penalty. A weaker, same-information baseline restores a
+            # signed signal. Default keeps the historical GreenQueueBalanced.
+            kind = str(crd_cfg.get("kind", "green_queue_balanced")).strip().lower()
+            sched = self._build_baseline_by_kind(kind, num_dc, batch_size, green_w)
             self._crd_baseline_schedulers[module_id] = sched
             logger.info(
-                f"[CRD] built GreenQueueBalanced baseline for {module_id!r}: "
+                f"[CRD] built {kind!r} baseline for {module_id!r}: "
                 f"num_dc={num_dc}, batch_size={batch_size}, green_weight={green_w}"
             )
             return sched
@@ -874,6 +1050,92 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             )
             self._crd_baseline_schedulers[module_id] = None
             return None
+
+    def _compute_policy_self_baseline_action(
+        self, *, module_id: ModuleID, batch: Dict[str, Any]
+    ) -> None:
+        """COMA-style self-baseline: draw the counterfactual action from the
+        policy's OWN per-slot distribution instead of a heuristic router.
+
+        Rationale (2026-07-25): a heuristic baseline that outperforms the
+        learned router makes dQ = Q(a) - Q(a~heuristic) systematically
+        negative, so routing credit degenerates into a constant penalty. With
+        a~pi the estimator is an unbiased single-sample version of the COMA
+        counterfactual advantage Q(s,a) - E_{a'~pi}[Q(s,a')], which is
+        centred at zero by construction and cannot be dominated by a stronger
+        baseline. Writes COL_CRD_BASELINE_ACTION in the same layout as the
+        heuristic path, so every downstream stage is unchanged.
+        """
+        logits = batch.get(Columns.ACTION_DIST_INPUTS)
+        actions = batch.get(Columns.ACTIONS)
+        if logits is None or actions is None:
+            return
+        if not isinstance(logits, torch.Tensor):
+            return
+        act = actions if isinstance(actions, torch.Tensor) else torch.as_tensor(actions)
+        n_slots = int(act.shape[-1]) if act.dim() >= 1 else 0
+        if n_slots <= 0 or logits.shape[-1] % n_slots != 0:
+            if not self._crd_dq_align_warned.get(f"{module_id}:self", False):
+                self._crd_dq_align_warned[f"{module_id}:self"] = True
+                logger.warning(
+                    f"[CRD] policy_self baseline: cannot split logits "
+                    f"{tuple(logits.shape)} into {n_slots} slots for "
+                    f"{module_id!r}; baseline action skipped."
+                )
+            return
+        n_choices = logits.shape[-1] // n_slots
+        per_slot = logits.reshape(*logits.shape[:-1], n_slots, n_choices)
+        probs = torch.softmax(per_slot.float(), dim=-1)
+        flat = probs.reshape(-1, n_choices)
+        sampled = torch.multinomial(flat, num_samples=1).squeeze(-1)
+        batch[COL_CRD_BASELINE_ACTION] = sampled.reshape(probs.shape[:-1]).long()
+
+    @staticmethod
+    def _build_baseline_by_kind(kind: str, num_dc: int, batch_size: int,
+                                green_weight: float) -> Any:
+        """Construct the counterfactual baseline router named by `kind`.
+
+        Supported kinds (all read the SAME observation the policy sees, so the
+        counterfactual stays information-fair):
+          green_queue_balanced  green score + queue balancing (default, strong)
+          green_aware           green score only (no queue term, weaker)
+          min_queue             load-only routing, green-blind (weak)
+          round_robin           fixed rotation, state-blind (weakest)
+          policy_self           COMA-style: baseline drawn from the policy's own
+                                distribution (no scheduler; returns a marker so
+                                the caller's gating still fires)
+        Unknown kinds fall back to green_queue_balanced with a warning.
+        """
+        if kind == "policy_self":
+            return _PolicySelfBaselineMarker(num_dc, batch_size)
+        from src.baselines.global_schedulers import (
+            GreenAwareGlobalScheduler,
+            MinQueueGlobalScheduler,
+            RoundRobinGlobalScheduler,
+        )
+
+        if kind == "green_queue_balanced":
+            return GreenQueueBalancedGlobalScheduler(
+                num_datacenters=num_dc, batch_size=batch_size,
+                green_weight=green_weight,
+            )
+        if kind == "green_aware":
+            return GreenAwareGlobalScheduler(
+                num_datacenters=num_dc, batch_size=batch_size)
+        if kind == "min_queue":
+            return MinQueueGlobalScheduler(
+                num_datacenters=num_dc, batch_size=batch_size)
+        if kind == "round_robin":
+            return RoundRobinGlobalScheduler(
+                num_datacenters=num_dc, batch_size=batch_size)
+        logger.warning(
+            f"[CRD] unknown crd.baseline.kind={kind!r}; "
+            "falling back to green_queue_balanced"
+        )
+        return GreenQueueBalancedGlobalScheduler(
+            num_datacenters=num_dc, batch_size=batch_size,
+            green_weight=green_weight,
+        )
 
     def _read_module_baseline_config(self, module_id: ModuleID) -> Dict[str, Any]:
         """Pull `crd.baseline` from the module's model_config; default to {}."""
@@ -1475,6 +1737,23 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         cfg = self._read_module_dr_config(module_id)
         alpha = float(cfg.get("alpha", _DEFAULT_ALPHA_DR))
 
+        # v5.3 (crd.delta_r.mode="green"): reward-ALIGNED Δr for the gdpd
+        # regime. The legacy load-std proxy tracks the α·L term of the OLD
+        # reward formula; under gdpd the reward is per-action carbon +
+        # completion (alpha=0 — load balance is NOT in the reward), so the
+        # load-std Δr measures a quantity with no guaranteed relation to the
+        # reward and systematically disagrees with ΔQ in sign (observed
+        # dr=+19 vs dq=-25 on rwtight). Green mode scores each slot by the
+        # decision-time green-fit of the DC it picks, agent minus baseline;
+        # DEFER slots contribute 0 (immediate green-fit is undefined for
+        # defer — long-horizon defer value is the ΔQ path's job).
+        if str(cfg.get("mode", "load_std")) == "green":
+            dr_tensor = self._compute_dr_green_from_obs(batch, sched, alpha)
+            if dr_tensor is not None:
+                batch[COL_CRD_DR] = dr_tensor
+                return
+            # ingredients unavailable → fall through to the legacy paths
+
         # ── Preferred path: obs-based, shape-aligned with ΔQ ──────────────
         # Reads dc_queue_sizes from the padded (B, T, num_dc) obs grid — the
         # same grid baseline_action lives on — so Δr comes out (B, T),
@@ -1574,6 +1853,60 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             tensor = tensor.to(ref.device, dtype=ref.dtype)
         return tensor
 
+    def _compute_dr_green_from_obs(
+        self, batch: Dict[str, Any], scheduler: Any, alpha: float
+    ) -> Optional[torch.Tensor]:
+        """
+        v5.3 green-mode Δr: per-(b,t) mean over routing slots of the
+        decision-time green-fit difference between the taken DC and the
+        baseline DC,
+            Δr = α · mean_slots[ g_ratio(dc_a) − g_ratio(dc_ã) ],
+        with DEFER slots contributing 0. Positive ⇔ the agent routes to
+        greener DCs than the heuristic — the same orientation ΔQ is meant
+        to have, so the soft blend mixes two estimators of the SAME quantity.
+        Returns None when the obs grid / baseline layout is unusable.
+        """
+        obs = batch.get(Columns.OBS)
+        if isinstance(obs, dict) and isinstance(obs.get("observation"), dict):
+            obs = obs["observation"]
+        if not isinstance(obs, dict):
+            return None
+        green = obs.get("dc_green_ratio")
+        if not isinstance(green, torch.Tensor):
+            return None
+        if green.dim() == 2:
+            green = green.view(green.shape[0], 1, green.shape[1])
+        if green.dim() != 3:
+            return None
+        B, T, num_dc = green.shape
+        if num_dc != scheduler.num_datacenters:
+            return None
+        baseline_action = batch.get(COL_CRD_BASELINE_ACTION)
+        if (
+            not isinstance(baseline_action, torch.Tensor)
+            or baseline_action.dim() != 3
+            or baseline_action.shape[:2] != (B, T)
+        ):
+            return None
+        bs = baseline_action.shape[2]
+        actual_bt = self._align_routing_to_bt(
+            batch.get(Columns.ACTIONS), B, T, bs, batch.get(Columns.LOSS_MASK)
+        )
+        if actual_bt is None:
+            return None
+        g = green.detach().float()
+        # Extra zero column at index num_dc: the DEFER action gathers 0.
+        gpad = torch.cat(
+            [g, torch.zeros(B, T, 1, dtype=g.dtype, device=g.device)], dim=-1
+        )
+        a = actual_bt.long().clamp(0, num_dc).to(g.device)
+        b = baseline_action.long().clamp(0, num_dc).to(g.device)
+        dr = alpha * (torch.gather(gpad, 2, a) - torch.gather(gpad, 2, b)).mean(dim=2)
+        ref = batch.get(Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES))
+        if isinstance(ref, torch.Tensor):
+            dr = dr.to(ref.device, dtype=ref.dtype)
+        return dr
+
     @staticmethod
     def _align_routing_to_bt(
         action: Any, B: int, T: int, bs: int, loss_mask: Optional[torch.Tensor]
@@ -1659,9 +1992,33 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             return
 
         blender = self._get_or_build_blender(module_id)
+        # v5.1 (config-gated crd.mask_padding): zero ΔQ/Δr/σ² at padded grid
+        # cells and keep them out of the τ EMA. Padded cells carry garbage
+        # magnitudes (all-zero pad actions → |Δr|≈51 vs ~0.5 valid) that
+        # otherwise dominate the blend statistics and diagnostics.
+        ema_mask = None
+        if self._read_crd_mask_padding(module_id):
+            m = self._bt_mask(batch, dq)
+            if m is not None:
+                dq = dq * m
+                dr = dr.to(dq.dtype).to(dq.device) * m
+                sigma2 = sigma2 * m
+                ema_mask = m
+        # v5.3 (config-gated crd.blender.sigma2_norm): divide σ² by the SAME
+        # running value-target variance the critic/Q-loss normalisation uses,
+        # so the gate compares RELATIVE epistemic uncertainty. Without this,
+        # σ² grows with the (squared) return scale as training progresses,
+        # the EMA-adaptive temperature τ = τ₀·exp(κ·σ̄²) explodes (observed
+        # τ→7.9e4 on rwtight, gate saturated open from iter ~35, entropy
+        # de-converged 1.74→4.19), and the epistemic gate is effectively dead.
+        if bool(self._read_module_blender_config(module_id).get("sigma2_norm", False)):
+            var_ema = self._vf_target_var_ema.get(module_id)
+            if var_ema is not None and float(var_ema) > 1e-8:
+                sigma2 = sigma2 / float(var_ema)
         try:
             r_blend, c_t, tau = blender.update_and_blend(
-                dq=dq, dr=dr.to(dq.dtype).to(dq.device), sigma2=sigma2
+                dq=dq, dr=dr.to(dq.dtype).to(dq.device), sigma2=sigma2,
+                ema_mask=ema_mask,
             )
         except Exception as e:
             logger.warning(f"[CRD] {out_col} blend failed for {module_id!r}: {e}")
@@ -1681,17 +2038,21 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         if module_id in self._crd_blenders:
             return self._crd_blenders[module_id]
         cfg = self._read_module_blender_config(module_id)
+        fixed_c = cfg.get("fixed_c")
         blender = CRDBlender(
             tau_0=float(cfg.get("tau_0", 1.0)),
             kappa=float(cfg.get("kappa", 0.5)),
             eta=float(cfg.get("eta", 0.05)),
+            tau_mode=str(cfg.get("tau_mode", "exp")),  # v5.3: "linear" = scale-free τ
             ema_init=cfg.get("ema_init"),  # None ⇒ bootstrap on first batch
+            fixed_c=None if fixed_c is None else float(fixed_c),  # ablation: EU off
         )
         self._crd_blenders[module_id] = blender
         logger.info(
             f"[CRD] built blender for {module_id!r}: "
             f"tau_0={blender.tau_0}, kappa={blender.kappa}, "
-            f"eta={blender.eta}, ema_init={blender.ema_init}"
+            f"eta={blender.eta}, tau_mode={blender.tau_mode}, "
+            f"ema_init={blender.ema_init}, fixed_c={blender.fixed_c}"
         )
         return blender
 
@@ -1791,6 +2152,36 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             except RuntimeError:
                 abs_r = zeros_like_r
 
+        # ── v5 (config-gated) share repairs ────────────────────────────────
+        # normalize_shares: the three |R_k| live in incommensurate units —
+        # R_routing is ΔQ-derived and grows with the critic's value scale
+        # (observed |ΔQ| ~ 10–60) while R_forecast stays in reward-proxy
+        # units (~0.1–0.2) — so raw ratios let one source swamp the rest
+        # (observed ρ_routing→0.99, ρ_forecast→0.03: quarantine inert).
+        # Divide each source by a running EMA of its own batch-mean magnitude
+        # so the shares compare RELATIVE anomaly, not native units.
+        # Padding-aware statistics (v5.1): all EMA statistics below exclude
+        # padded grid cells when crd.mask_padding is on.
+        v5_mask = self._bt_mask(batch, ref) if self._read_crd_mask_padding(module_id) else None
+        # anomaly_gate FIRST, on the RAW |R_f|: quarantine only ANOMALOUS
+        # forecast error. Ordinary residual error exists in every regime, and
+        # taxing it suppresses learning exactly on the informative wind-ramp
+        # transitions. Running it before scale-normalisation keeps the gate
+        # sensitive to SUSTAINED corruption (the scale EMA would otherwise
+        # absorb a persistent shift and blind the gate).
+        if bool(cfg.get("anomaly_gate", False)):
+            abs_f = self._forecast_anomaly_excess(
+                module_id, abs_f,
+                z=float(cfg.get("anomaly_z", 1.0)),
+                decay=float(cfg.get("anomaly_decay", 0.99)),
+                mask=v5_mask,
+            )
+        if bool(cfg.get("normalize_shares", False)):
+            decay = float(cfg.get("share_scale_decay", 0.99))
+            abs_f = self._scale_by_running_ema(module_id, "forecast", abs_f, decay, mask=v5_mask)
+            abs_r = self._scale_by_running_ema(module_id, "routing", abs_r, decay, mask=v5_mask)
+            abs_s = self._scale_by_running_ema(module_id, "scheduling", abs_s, decay, mask=v5_mask)
+
         eps = 1e-8
         total = abs_f + abs_r + abs_s + eps
 
@@ -1832,7 +2223,55 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # advantage — isolates "does the responsibility-shrinking hurt the policy?" from the
         # ensemble-module/integration. Default preserves the standard EU-CRD reweighting.
         if bool(cfg.get("reweight_advantages", True)):
-            batch[Postprocessing.ADVANTAGES] = adv * rho_view
+            # crd.responsibility.reweight_warmup_calls (default 0): leave the
+            # advantages untouched for the first N loss calls of this module.
+            # Root cause treated: at the start of training the Q-ensemble that
+            # produces ρ is itself untrained, yet its (garbage) shares already
+            # re-scale the policy gradient — amplified defer credit early on
+            # tips seeds into the irrecoverable always-defer basin (observed
+            # collapse rates: vanilla 1/10 vs v2 3/10). Warmup lets policy and
+            # ensemble earn competence under vanilla PPO first; ρ is still
+            # computed and logged above, so diagnostics are unaffected.
+            warmup = int(cfg.get("reweight_warmup_calls", 0))
+            if warmup > 0:
+                if not hasattr(self, "_crd_reweight_calls"):
+                    self._crd_reweight_calls = {}
+                n = self._crd_reweight_calls.get(module_id, 0) + 1
+                self._crd_reweight_calls[module_id] = n
+                if n <= warmup:
+                    return
+            w = rho_view
+            # crd.responsibility.normalize_rho (default False): mean-preserving
+            # reweighting. Plain multiplication by ρ∈[ρ_min,1] shrinks the AVERAGE
+            # advantage magnitude by mean(ρ) every batch — an implicit learning-rate
+            # cut that leaves the policy under-optimized at equal steps (observed as
+            # clean-carbon regret vs vanilla). Dividing by batch-mean(ρ) keeps the
+            # total learning signal constant and only REDISTRIBUTES credit across
+            # transitions (high-responsibility ones amplified, low ones damped).
+            if bool(cfg.get("normalize_rho", False)):
+                # v5.1: exclude padded cells from the mean-preserving denominator
+                # (pads sit at ρ≈1 or the floor depending on layout — either way
+                # they shift the divisor and turn "mean-preserving" into a
+                # padding-fraction-dependent effective-LR change).
+                denom_src = w
+                if v5_mask is not None and bool(v5_mask.any()) and v5_mask.shape == w.shape:
+                    denom_src = w[v5_mask.bool()]
+                denom = denom_src.mean()
+                if torch.isfinite(denom) and float(denom) > 1e-6:
+                    w = w / denom
+                    # crd.responsibility.normalize_rho_cap (default inf): uncapped
+                    # normalization over-amplifies high-ρ (defer-credit) transitions
+                    # ~1/mean(ρ)≈2-3x → observed defer saturation (rate 0.99, a
+                    # degenerate always-defer policy riding the deadline backstop).
+                    # Capping the amplification keeps the mean-preserving intent for
+                    # the DOWN-weighting while bounding the up-weighting.
+                    cap = float(cfg.get("normalize_rho_cap", float("inf")))
+                    if cap < float("inf"):
+                        w = w.clamp(max=cap)
+            batch[Postprocessing.ADVANTAGES] = adv * w
+            # v5.2 diagnostics honesty: a 0/1 signal that the multiply RAN
+            # (warmup/bail paths leave it absent → logged 0 via metrics).
+            batch["crd_reweight_applied"] = torch.ones(1, device=adv.device)
 
     def _read_module_responsibility_config(
         self, module_id: ModuleID
@@ -1844,6 +2283,237 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             return (mcfg.get("crd", {}) or {}).get("responsibility", {}) or {}
         except Exception:
             return {}
+
+    # ------------------------------------------------------------------ v5
+
+    @staticmethod
+    def _infer_num_dc_from_obs_space(module: Any) -> Optional[int]:
+        """True datacenter count from the module's observation space.
+
+        The global obs is Dict{action_mask, crd_aux, observation:{dc_*...}};
+        every dc_* Box has shape (num_dc,). Returns None when the layout is
+        not recognisable (caller keeps the nvec-derived count)."""
+        try:
+            space = getattr(module, "observation_space", None)
+            inner = space
+            if hasattr(space, "spaces") and "observation" in space.spaces:
+                inner = space.spaces["observation"]
+            if hasattr(inner, "spaces") and "dc_green_ratio" in inner.spaces:
+                return int(inner.spaces["dc_green_ratio"].shape[0])
+        except Exception:
+            pass
+        return None
+
+    def _read_crd_mask_padding(self, module_id: ModuleID) -> bool:
+        """Read the v5.1 `crd.mask_padding` gate (default False = v4 bit-identical)."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return bool((mcfg.get("crd", {}) or {}).get("mask_padding", False))
+        except Exception:
+            return False
+
+    def _read_crd_local_cf_enabled(self, module_id: ModuleID) -> bool:
+        """Read the `crd.local_cf_enabled` ablation gate (default True = M4 active)."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return bool((mcfg.get("crd", {}) or {}).get("local_cf_enabled", True))
+        except Exception:
+            return True
+
+    def _is_local_action_module(self, module_id: ModuleID) -> bool:
+        """
+        True iff the module's action space is Discrete (a local scheduler).
+        The global router is MultiDiscrete. Cached per module; defaults to
+        False when the module or its action space can't be inspected, so the
+        ablation gate can only ever fire on a positively identified local
+        module.
+        """
+        if not hasattr(self, "_crd_is_local_module"):
+            self._crd_is_local_module = {}
+        cached = self._crd_is_local_module.get(module_id)
+        if cached is not None:
+            return cached
+        try:
+            from gymnasium import spaces  # local import; avoid hard top-level dep
+
+            module = self.module[module_id].unwrapped()
+            is_local = isinstance(
+                getattr(module, "action_space", None), spaces.Discrete
+            )
+        except Exception:
+            is_local = False
+        self._crd_is_local_module[module_id] = is_local
+        return is_local
+
+    def _skip_local_cf(self, module_id: ModuleID) -> bool:
+        """
+        Ablation predicate (crd.local_cf_enabled=false): this module is a
+        local scheduler whose counterfactual pipeline is switched off. Used by
+        both _compute_crd_terms (skip CFs + reweight) and
+        compute_loss_for_module (skip the Q-ensemble TD loss).
+        """
+        return (not self._read_crd_local_cf_enabled(module_id)) and (
+            self._is_local_action_module(module_id)
+        )
+
+    @staticmethod
+    def _bt_mask(batch: Dict[str, Any], ref: torch.Tensor) -> Optional[torch.Tensor]:
+        """(B, T) float loss mask aligned to `ref`, or None when unavailable."""
+        lm = batch.get(Columns.LOSS_MASK)
+        if isinstance(lm, torch.Tensor) and lm.shape == ref.shape:
+            return lm.to(ref.dtype).to(ref.device)
+        return None
+
+    def _scale_by_running_ema(
+        self,
+        module_id: ModuleID,
+        key: str,
+        x: torch.Tensor,
+        decay: float,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Divide a source-magnitude tensor by the running EMA of its own
+        batch-mean, so the three responsibility sources become unit-free
+        before the share ratio.
+
+        Padding-aware: `mask` (0/1, same shape) keeps padded cells out of the
+        batch statistic. Zero-seed guard: while the EMA is ~0 (a dormant
+        source, e.g. R_forecast before predictions start flowing) the tensor
+        is returned UNSCALED — dividing by an epsilon would explode the share
+        by ~1e8 the moment the source wakes up."""
+        vals = x[mask.bool()] if (mask is not None and bool(mask.any())) else x
+        m = float(vals.mean().detach())
+        d = self._crd_share_scale_ema.setdefault(module_id, {})
+        prev = d.get(key)
+        ema = m if (prev is None or prev <= 1e-8) else decay * prev + (1.0 - decay) * m
+        d[key] = ema
+        if ema <= 1e-8:
+            return x
+        return x / ema
+
+    def _forecast_anomaly_excess(
+        self,
+        module_id: ModuleID,
+        x: torch.Tensor,
+        z: float,
+        decay: float,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Excess of |R_forecast| above a running mean + z*std baseline.
+
+        Ordinary forecast error contributes ~0 (no quarantine tax on the
+        informative ramp transitions); only anomalous spikes survive and
+        claim forecast share. Padding-aware via `mask`. NOTE: this must run
+        on the RAW |R_f| (before scale normalisation) — normalising first
+        would let the scale EMA absorb a SUSTAINED corruption within ~1/(1-decay)
+        calls and blind the gate to exactly the deployment threat it targets."""
+        vals = x[mask.bool()] if (mask is not None and bool(mask.any())) else x
+        m = float(vals.mean().detach())
+        s = float(vals.std().detach())
+        d = self._crd_forecast_anom_ema.setdefault(module_id, {})
+        em = m if d.get("mean") is None else decay * d["mean"] + (1.0 - decay) * m
+        es = s if d.get("std") is None else decay * d["std"] + (1.0 - decay) * s
+        d["mean"], d["std"] = em, es
+        return torch.clamp(x - (em + z * es), min=0.0)
+
+    def _read_module_risk_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.risk` from the module's model_config; default {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("risk", {}) or {}
+        except Exception:
+            return {}
+
+    def _apply_risk_objective(self, *, module_id: ModuleID, batch: Dict[str, Any]) -> None:
+        """Config-gated risk-averse baseline: transform ADVANTAGES in place.
+        No-op unless crd.risk.kind in {cvar, risk_sensitive, mean_variance}."""
+        cfg = self._read_module_risk_config(module_id)
+        if str(cfg.get("kind", "none")).strip().lower() in ("", "none"):
+            return
+        adv = batch.get(Postprocessing.ADVANTAGES)
+        if not isinstance(adv, torch.Tensor):
+            return
+        ret = batch.get(Postprocessing.VALUE_TARGETS)  # return distribution (dist_cvar)
+        from src.learners.risk_objectives import apply_risk_objective
+        batch[Postprocessing.ADVANTAGES] = apply_risk_objective(adv, cfg, ret=ret)
+
+    def _read_module_cca_config(self, module_id: ModuleID) -> Dict[str, Any]:
+        """Pull `crd.cca` from the module's model_config; default {}."""
+        try:
+            module = self.module[module_id].unwrapped()
+            mcfg = getattr(module, "model_config", {}) or {}
+            return (mcfg.get("crd", {}) or {}).get("cca", {}) or {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _extract_actual_green_bt_d(batch: Dict[str, Any]) -> Optional[torch.Tensor]:
+        """Return realised per-DC green power as (B, T, D) from crd_aux, or None.
+        Mirrors the unwrap logic in `_compute_forecast_cf_from_obs`."""
+        obs = batch.get(Columns.OBS)
+        if not isinstance(obs, dict):
+            return None
+        aux = obs.get("crd_aux")
+        if not isinstance(aux, dict) and isinstance(obs.get("observation"), dict):
+            aux = obs["observation"].get("crd_aux")
+        if not isinstance(aux, dict):
+            return None
+        g = aux.get("crd_actual_green_w")
+        if not isinstance(g, torch.Tensor):
+            return None
+        if g.dim() == 3:
+            return g
+        if g.dim() == 2:
+            return g.unsqueeze(1)  # (N, D) → (N, 1, D)
+        return None
+
+    def _apply_cca(self, *, module_id: ModuleID, batch: Dict[str, Any]) -> None:
+        """Config-gated CCA-PG baseline: replace ADVANTAGES with R_t - V^h.
+        No-op unless crd.cca.enabled. Trains a per-module hindsight net online
+        against the return, conditioned on V(s_t) and the future green Phi."""
+        cfg = self._read_module_cca_config(module_id)
+        if not bool(cfg.get("enabled", False)):
+            return
+        adv = batch.get(Postprocessing.ADVANTAGES)
+        ret = batch.get(Postprocessing.VALUE_TARGETS)
+        val = batch.get(Columns.VF_PREDS)
+        if not (isinstance(adv, torch.Tensor) and isinstance(ret, torch.Tensor)):
+            return
+        green = self._extract_actual_green_bt_d(batch)  # (B, T, D)
+        if green is None:
+            return  # crd_aux absent → leave vanilla advantage untouched.
+
+        from src.learners.cca import (
+            HindsightBaseline, future_green_phi, cca_advantage,
+        )
+        horizon = int(cfg.get("horizon", 12))
+        phi_bt_d = future_green_phi(green.detach().float(), horizon)  # (B, T, D)
+        B, T, D = phi_bt_d.shape
+        N = B * T
+        phi = phi_bt_d.reshape(N, D).to(adv.device, dtype=adv.dtype)
+        returns = ret.reshape(N).to(adv.device, dtype=adv.dtype)
+        if isinstance(val, torch.Tensor) and val.numel() == N:
+            value = val.detach().reshape(N).to(adv.device, dtype=adv.dtype)
+        else:
+            value = torch.zeros(N, device=adv.device, dtype=adv.dtype)
+
+        net = self._cca_nets.get(module_id)
+        if net is None:
+            net = HindsightBaseline(phi_dim=D, hidden=int(cfg.get("hidden", 64)))
+            net.to(adv.device, dtype=adv.dtype)
+            self._cca_nets[module_id] = net
+            self._cca_opts[module_id] = torch.optim.Adam(
+                net.parameters(), lr=float(cfg.get("lr", 1e-3))
+            )
+        opt = self._cca_opts[module_id]
+        new_adv, _loss = cca_advantage(
+            returns, value, phi, net, opt,
+            train_iters=int(cfg.get("train_iters", 1)),
+        )
+        batch[Postprocessing.ADVANTAGES] = new_adv.reshape(adv.shape)
 
     @staticmethod
     def _compute_dr_values(
@@ -1914,7 +2584,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
 
     @staticmethod
     def _compute_forecast_cf_values(
-        infos: Any, beta: float, gamma: float
+        infos: Any, beta: float, gamma: float,
+        carbon_norm: bool = False, magnitude: bool = False,
     ) -> tuple[list[float], int]:
         """
         Static helper that converts a sequence of info-dicts into a flat list
@@ -1936,7 +2607,10 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                     if pred is None:
                         n_missing_pred += 1
                     else:
-                        r = forecast_cf_per_step(crd, pred, beta=beta, gamma=gamma)
+                        r = forecast_cf_per_step(
+                            crd, pred, beta=beta, gamma=gamma,
+                            carbon_norm=carbon_norm, magnitude=magnitude,
+                        )
                 else:
                     n_missing_pred += 1  # No CRD snapshot → treat as missing.
             r_forecast_list.append(r)
@@ -1958,6 +2632,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         batch: Dict[str, Any],
         bootstrap_p: float,
         target_var: float = 1.0,
+        mask_padding: bool = False,
+        stable_seed: "int | None" = None,
     ) -> torch.Tensor:
         """
         TD-style MSE loss with per-sample bootstrap masking.
@@ -2017,7 +2693,13 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # Per-sample bootstrap mask: shape (B, K), broadcast over T.
         B = q_chosen.shape[0]
         K = q_chosen.shape[-1]
-        mask = (torch.rand(B, K, device=q_chosen.device) < bootstrap_p).float()
+        if stable_seed is not None:
+            # v5.2 (gated ensemble.stable_bootstrap): deterministic within one
+            # training iteration — epochs revisit the SAME head-data assignment.
+            g = torch.Generator().manual_seed(int(stable_seed))
+            mask = (torch.rand(B, K, generator=g) < bootstrap_p).float().to(q_chosen.device)
+        else:
+            mask = (torch.rand(B, K, device=q_chosen.device) < bootstrap_p).float()
         # Ensure no division by zero: if a sample has zero mask everywhere,
         # force include head 0 for that sample.
         any_per_sample = (mask.sum(dim=1) > 0).float()  # (B,)
@@ -2029,5 +2711,16 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # mirroring NormalizedCriticPPOTorchLearner's vf-loss normalization.
         sq_err = (q_chosen - target).pow(2) / target_var  # (B, T, K)
         masked = sq_err * mask                             # (B, T, K)
+        # v5.1 (gated by mask_padding at the call site): keep padded timesteps
+        # out of the TD loss — RLlib zero-pads VALUE_TARGETS, so without this
+        # the heads are regressed toward Q(pad-features)=0 and the valid-cell
+        # signal is diluted by the padding fraction.
+        if mask_padding:
+            lm = batch.get(Columns.LOSS_MASK)
+            if isinstance(lm, torch.Tensor) and lm.shape == q_chosen.shape[:2]:
+                lm_b = lm.to(sq_err.dtype).unsqueeze(-1)   # (B, T, 1)
+                masked = masked * lm_b
+                denom = (mask * lm_b).sum()
+                return masked.sum() / (denom + 1e-8)
         denom = mask.sum() * sq_err.shape[1]               # active heads × T
         return masked.sum() / (denom + 1e-8)
