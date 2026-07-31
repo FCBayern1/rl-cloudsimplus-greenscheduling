@@ -138,7 +138,9 @@ def test_setup_rejects_mismatched_shapes():
         observation_space=obs, action_space=act,
         model_config=dict(TINY_MODEL_CFG),
     )
-    with pytest.raises(ValueError, match="Per-DC key"):
+    # Either guard is a valid rejection: the arch-B choices/num_dcs check (fires
+    # first since GB-3) or the older per-DC obs-key shape check.
+    with pytest.raises(ValueError, match="Per-DC key|must equal num_dcs"):
         spec.build()
 
 

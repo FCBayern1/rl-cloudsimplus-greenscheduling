@@ -21,6 +21,7 @@ def _make_scheduler(batch_size, stochastic=False):
     sched = object.__new__(RLlibNewAPIGlobalScheduler)
     sched.batch_size = batch_size
     sched.stochastic = stochastic
+    sched._sentinel = None  # __init__ always sets this; bare object must too
     return sched
 
 

@@ -213,5 +213,55 @@ def test_blend_works_on_2d_tensors():
     assert r[1, 0].item() == pytest.approx(30.0, abs=1e-3)
 
 
+# ---------------------------------------------------------------------------
+# Ablation: fixed_c (epistemic-uncertainty gating OFF)
+# ---------------------------------------------------------------------------
+
+
+def test_fixed_c_one_ignores_sigma2():
+    """fixed_c=1.0 → c≡1 everywhere, so R=ΔQ regardless of σ² (EU calibration off)."""
+    b = CRDBlender(tau_0=1.0, fixed_c=1.0)
+    dq = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    dr = torch.tensor([[10.0, 20.0], [30.0, 40.0]])
+    # σ² varies wildly, but must have zero effect when fixed_c is set.
+    sigma2 = torch.tensor([[0.0, 100.0], [1e6, 5.0]])
+    r, c, tau = b.blend(dq, dr, sigma2)
+    assert torch.allclose(c, torch.ones_like(dq))
+    assert torch.allclose(r, dq)
+
+
+def test_fixed_c_half_is_constant_blend():
+    """fixed_c=0.5 → R = 0.5·ΔQ + 0.5·Δr, independent of σ²."""
+    b = CRDBlender(tau_0=1.0, fixed_c=0.5)
+    dq = torch.tensor([2.0, 4.0])
+    dr = torch.tensor([10.0, 20.0])
+    sigma2 = torch.tensor([0.0, 999.0])
+    r, c, _ = b.blend(dq, dr, sigma2)
+    assert torch.allclose(c, torch.full_like(dq, 0.5))
+    assert torch.allclose(r, 0.5 * dq + 0.5 * dr)
+
+
+def test_fixed_c_differs_from_adaptive():
+    """With high σ², adaptive c→0 (trust Δr) but fixed_c=1 stays on ΔQ — the ablation
+    must actually change behavior."""
+    dq = torch.tensor([1.0])
+    dr = torch.tensor([100.0])
+    sigma2 = torch.tensor([50.0])
+    adaptive = CRDBlender(tau_0=1.0, kappa=0.0, eta=1.0, ema_init=0.0)
+    r_adapt, _, _ = adaptive.blend(dq, dr, sigma2)
+    fixed = CRDBlender(tau_0=1.0, fixed_c=1.0)
+    r_fixed, _, _ = fixed.blend(dq, dr, sigma2)
+    assert r_adapt.item() == pytest.approx(100.0, abs=1e-2)  # adaptive → Δr
+    assert r_fixed.item() == pytest.approx(1.0)              # fixed → ΔQ
+    assert not torch.allclose(r_adapt, r_fixed)
+
+
+def test_invalid_fixed_c_raises():
+    with pytest.raises(ValueError, match="fixed_c must be in"):
+        CRDBlender(fixed_c=1.5)
+    with pytest.raises(ValueError, match="fixed_c must be in"):
+        CRDBlender(fixed_c=-0.1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
