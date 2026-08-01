@@ -18,3 +18,6 @@ run 拥挤中1.5x  experiment_sweep_rwv3m  traces/realwind_v3m.csv          data
 run 缺电版      experiment_sweep_scarce traces/realwind_stretch_tight.csv data/green_stretch_half.npy   504
 run 错峰版      experiment_sweep_offset traces/realwind_stretch_tight.csv data/green_stretch_offset.npy 504
 echo "SWEEP DONE $(date '+%H:%M')" | tee -a $OUT
+# appended: 8-DC scale scenario
+run dc8 experiment_sweep_dc8 traces/realwind_v3.csv data/green_stretch_8dc.npy 504
+echo "SWEEP+8DC DONE $(date '+%H:%M')" | tee -a $OUT
