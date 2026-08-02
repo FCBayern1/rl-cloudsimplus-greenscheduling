@@ -89,9 +89,41 @@ def render(values: dict, no_forecast: Optional[float], decode: str,
             ax.text(len(heights) - 0.5, no_forecast, " no forecast",
                     ha="right", va="bottom", fontsize=FONT_SIZE - 2, color="0.35")
         # shade the region above the line: forecast is a net liability here
-        top = max(max(heights), no_forecast) * 1.12
+        top = max(max(heights), no_forecast) * 1.16
         ax.axhspan(no_forecast, top, color="#b85450", alpha=0.07, zorder=1)
         ax.set_ylim(0, top)
+        # zone labels in the empty gap between the first two bars: the line
+        # splits the plane into asset (below) / liability (above)
+        ax.text(0.86, no_forecast * 1.012, "forecast hurts",
+                ha="center", va="bottom",
+                fontsize=FONT_SIZE - 3, color="#b85450", style="italic")
+        ax.text(0.86, no_forecast * 0.988, "forecast helps",
+                ha="center", va="top",
+                fontsize=FONT_SIZE - 3, color="#6c8ebf", style="italic")
+        # delta arrows: what a trusted forecast buys, what a corrupted one costs
+        keys_drawn = [k for k, _, _, _ in BAR_SPEC if values.get(k) is not None]
+        if "timecap" in keys_drawn and values["timecap"] < no_forecast:
+            xi = keys_drawn.index("timecap")
+            v = float(values["timecap"])
+            d = 100.0 * (v - no_forecast) / no_forecast
+            ax.annotate("", xy=(xi + 0.45, v), xytext=(xi + 0.45, no_forecast),
+                        arrowprops=dict(arrowstyle="<->", color="#6c8ebf",
+                                        linewidth=1.1, shrinkA=0, shrinkB=0))
+            ax.text(xi + 0.52, (v + no_forecast) / 2, f"{d:+.0f}%",
+                    ha="left", va="center", fontsize=FONT_SIZE - 2,
+                    color="#6c8ebf")
+        if "shuffle" in keys_drawn and values["shuffle"] > no_forecast:
+            xi = keys_drawn.index("shuffle")
+            v = float(values["shuffle"])
+            d = 100.0 * (v - no_forecast) / no_forecast
+            xc = xi + 0.45
+            ax.vlines(xc, no_forecast, v, color="#b85450", linewidth=1.1)
+            ax.hlines([no_forecast, v], xc - 0.05, xc + 0.05,
+                      color="#b85450", linewidth=1.1)
+            ax.text(xi + 0.5, no_forecast - 0.012 * no_forecast, f"{d:+.0f}%",
+                    ha="center", va="top", fontsize=FONT_SIZE - 2,
+                    color="#b85450")
+            ax.set_xlim(-0.55, xi + 0.8)
 
     ax.set_xticks(list(x))
     ax.set_xticklabels(labels, fontsize=FONT_SIZE - 1)
