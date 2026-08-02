@@ -34,27 +34,29 @@ FONT_SIZE = 10
 FIG_WIDTH_IN = 3.4    # single column
 FIG_HEIGHT_IN = 2.6
 
-# Ordered no-forecast baseline -> best forecast -> adversarial. (key, label, color)
-# "no_forecast" renders as a bar only when the value is passed via values{}
-# (--no-forecast-as-bar); otherwise it stays a dashed reference line.
-BAR_SPEC: Tuple[Tuple[str, str, str], ...] = (
-    ("no_forecast", "No\nforecast", "#8a8f98"),      # grey: baseline
-    ("oracle", "Oracle\nforecast", "#1baf7a"),       # aqua: best case
-    ("timecap", "TimeCAP\nforecast", "#2a78d6"),     # blue: realistic
-    ("shuffle", "Corrupted\nforecast", "#e34948"),   # red: liability
+# Ordered no-forecast baseline -> best forecast -> adversarial.
+# (key, label, fill, edge) — pastel fill + darker matching edge, the same
+# drawio palette as the framework figure (forecast channel = blue,
+# quarantined/corrupted = red), so the two figures share one colour language.
+BAR_SPEC: Tuple[Tuple[str, str, str, str], ...] = (
+    ("no_forecast", "No\nforecast", "#f5f5f5", "#666666"),   # grey: baseline
+    ("oracle", "Oracle\nforecast", "#d5e8d4", "#82b366"),    # green: best case
+    ("timecap", "TimeCAP\nforecast", "#dae8fc", "#6c8ebf"),  # blue: realistic
+    ("shuffle", "Corrupted\nforecast", "#f8cecc", "#b85450"), # red: liability
 )
 
 
-def build_bars(values: dict) -> Tuple[List[str], List[float], List[str]]:
-    """Return (labels, heights, colors) for the bars that have a value."""
-    labels, heights, colors = [], [], []
-    for key, label, color in BAR_SPEC:
+def build_bars(values: dict) -> Tuple[List[str], List[float], List[str], List[str]]:
+    """Return (labels, heights, fills, edges) for the bars that have a value."""
+    labels, heights, fills, edges = [], [], [], []
+    for key, label, fill, edge in BAR_SPEC:
         v = values.get(key)
         if v is not None:
             labels.append(label)
             heights.append(float(v))
-            colors.append(color)
-    return labels, heights, colors
+            fills.append(fill)
+            edges.append(edge)
+    return labels, heights, fills, edges
 
 
 def render(values: dict, no_forecast: Optional[float], decode: str,
@@ -65,13 +67,14 @@ def render(values: dict, no_forecast: Optional[float], decode: str,
         "font.size": FONT_SIZE,
         "axes.linewidth": 0.8,
     })
-    labels, heights, colors = build_bars(values)
+    labels, heights, fills, edges = build_bars(values)
     if not heights:
         raise ValueError("no bar values provided")
 
     fig, ax = plt.subplots(figsize=(FIG_WIDTH_IN, FIG_HEIGHT_IN))
     x = range(len(heights))
-    bars = ax.bar(x, heights, color=colors, width=0.62, zorder=3)
+    bars = ax.bar(x, heights, color=fills, edgecolor=edges,
+                  linewidth=1.1, width=0.62, zorder=3)
     for xi, h in zip(x, heights):
         ax.text(xi, h, f"{h:.3f}", ha="center", va="bottom",
                 fontsize=FONT_SIZE - 2, zorder=4)
@@ -87,7 +90,7 @@ def render(values: dict, no_forecast: Optional[float], decode: str,
                     ha="right", va="bottom", fontsize=FONT_SIZE - 2, color="0.35")
         # shade the region above the line: forecast is a net liability here
         top = max(max(heights), no_forecast) * 1.12
-        ax.axhspan(no_forecast, top, color="#e34948", alpha=0.06, zorder=1)
+        ax.axhspan(no_forecast, top, color="#b85450", alpha=0.07, zorder=1)
         ax.set_ylim(0, top)
 
     ax.set_xticks(list(x))

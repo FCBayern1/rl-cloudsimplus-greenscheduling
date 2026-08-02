@@ -9,13 +9,13 @@ _S.loader.exec_module(pm)
 
 
 def test_build_bars_keeps_order_and_skips_missing():
-    labels, h, c = pm.build_bars({"timecap": 0.39, "shuffle": 0.52})
+    labels, h, c, _e = pm.build_bars({"timecap": 0.39, "shuffle": 0.52})
     assert h == [0.39, 0.52]                      # oracle skipped, order kept
     assert "TimeCAP" in labels[0] and "Corrupted" in labels[1]
 
 
 def test_build_bars_all_present():
-    labels, h, _ = pm.build_bars({"oracle": 0.34, "timecap": 0.39, "shuffle": 0.52})
+    labels, h, _f, _e = pm.build_bars({"oracle": 0.34, "timecap": 0.39, "shuffle": 0.52})
     assert h == [0.34, 0.39, 0.52]
 
 
@@ -45,10 +45,11 @@ def test_cli(tmp_path):
 
 
 def test_build_bars_no_forecast_leads_when_present():
-    labels, h, c = pm.build_bars(
+    labels, h, fills, edges = pm.build_bars(
         {"no_forecast": 0.464, "timecap": 0.397, "shuffle": 0.478})
     assert h == [0.464, 0.397, 0.478]             # grey baseline bar first
-    assert "No" in labels[0] and c[0] == "#8a8f98"
+    assert "No" in labels[0]
+    assert fills[0] == "#f5f5f5" and edges[0] == "#666666"
 
 
 def test_cli_no_forecast_as_bar(tmp_path):
