@@ -34,9 +34,12 @@ FONT_SIZE = 10
 FIG_WIDTH_IN = 3.4    # single column
 FIG_HEIGHT_IN = 2.6
 
-# Ordered best-forecast -> adversarial. (key, label, color)
+# Ordered no-forecast baseline -> best forecast -> adversarial. (key, label, color)
+# "no_forecast" renders as a bar only when the value is passed via values{}
+# (--no-forecast-as-bar); otherwise it stays a dashed reference line.
 BAR_SPEC: Tuple[Tuple[str, str, str], ...] = (
-    ("oracle", "Oracle\nforecast", "#1baf7a"),      # aqua: best case
+    ("no_forecast", "No\nforecast", "#8a8f98"),      # grey: baseline
+    ("oracle", "Oracle\nforecast", "#1baf7a"),       # aqua: best case
     ("timecap", "TimeCAP\nforecast", "#2a78d6"),     # blue: realistic
     ("shuffle", "Corrupted\nforecast", "#e34948"),   # red: liability
 )
@@ -77,8 +80,11 @@ def render(values: dict, no_forecast: Optional[float], decode: str,
     if no_forecast is not None:
         ax.axhline(no_forecast, color="0.35", linewidth=1.1, linestyle=(0, (4, 2)),
                    zorder=2)
-        ax.text(len(heights) - 0.5, no_forecast, " no forecast",
-                ha="right", va="bottom", fontsize=FONT_SIZE - 2, color="0.35")
+        # the text label is redundant (and collides) when the baseline is
+        # already drawn as its own bar
+        if "no_forecast" not in values or values["no_forecast"] is None:
+            ax.text(len(heights) - 0.5, no_forecast, " no forecast",
+                    ha="right", va="bottom", fontsize=FONT_SIZE - 2, color="0.35")
         # shade the region above the line: forecast is a net liability here
         top = max(max(heights), no_forecast) * 1.12
         ax.axhspan(no_forecast, top, color="#e34948", alpha=0.06, zorder=1)
@@ -107,12 +113,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--timecap", type=float, default=None)
     p.add_argument("--shuffle", type=float, default=None)
     p.add_argument("--no-forecast", type=float, default=None, dest="no_forecast")
+    p.add_argument("--no-forecast-as-bar", action="store_true",
+                   help="render the no-forecast value as a leading grey bar "
+                        "in addition to the dashed reference line")
     p.add_argument("--decode", default="stochastic")
     p.add_argument("--out", default="paper_materials/figures/motivation.pdf")
     a = p.parse_args(argv)
     vals = {"oracle": a.oracle, "timecap": a.timecap, "shuffle": a.shuffle}
     if all(v is None for v in vals.values()):
         p.error("provide at least one of --oracle/--timecap/--shuffle")
+    if a.no_forecast_as_bar:
+        if a.no_forecast is None:
+            p.error("--no-forecast-as-bar requires --no-forecast")
+        vals["no_forecast"] = a.no_forecast
     render(vals, a.no_forecast, a.decode, a.out)
     print(f"[motivation] wrote {a.out}")
     return 0

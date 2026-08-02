@@ -42,3 +42,25 @@ def test_cli(tmp_path):
     rc = pm.main(["--timecap", "0.393", "--no-forecast", "0.464",
                   "--decode", "stochastic", "--out", str(out)])
     assert rc == 0 and out.exists()
+
+
+def test_build_bars_no_forecast_leads_when_present():
+    labels, h, c = pm.build_bars(
+        {"no_forecast": 0.464, "timecap": 0.397, "shuffle": 0.478})
+    assert h == [0.464, 0.397, 0.478]             # grey baseline bar first
+    assert "No" in labels[0] and c[0] == "#8a8f98"
+
+
+def test_cli_no_forecast_as_bar(tmp_path):
+    out = tmp_path / "m3.png"
+    rc = pm.main(["--timecap", "0.397", "--shuffle", "0.478",
+                  "--no-forecast", "0.464", "--no-forecast-as-bar",
+                  "--out", str(out)])
+    assert rc == 0 and out.exists() and out.stat().st_size > 0
+
+
+def test_cli_no_forecast_as_bar_requires_value(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit):
+        pm.main(["--timecap", "0.397", "--no-forecast-as-bar",
+                 "--out", str(tmp_path / "x.png")])
