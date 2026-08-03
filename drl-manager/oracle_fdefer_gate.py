@@ -65,7 +65,32 @@ def _deadline_stats(info):
     return out
 
 
-def run(env, policy, feast_thresh, green_capable, seed, max_dispatch, eta, horizon):
+def _route_batch(gn, green_capable, nd, batch, mode):
+    """Global routing for one batch. argmax = historical behaviour (whole
+    batch to the greenest DC). spread = proportional allocation across
+    green-capable DCs by current green power (largest-remainder rounding,
+    deterministic); equal split when no DC has green right now. Decouples
+    "forecast value" from the single-DC pile-up flaw of argmax routing."""
+    greens = sorted(green_capable)
+    if mode == "argmax" or not greens:
+        score = np.array([gn[i] if i in green_capable else -1e9 for i in range(nd)])
+        return [int(np.argmax(score))] * batch
+    w = np.array([max(float(gn[i]), 0.0) for i in greens])
+    if w.sum() <= 0.0:
+        w = np.ones(len(greens))
+    shares = w / w.sum() * batch
+    base = np.floor(shares).astype(int)
+    rem = batch - int(base.sum())
+    order = np.argsort(-(shares - base))
+    for j in range(rem):
+        base[order[j % len(greens)]] += 1
+    ga = []
+    for dc, k in zip(greens, base):
+        ga.extend([int(dc)] * int(k))
+    return ga
+
+
+def run(env, policy, feast_thresh, green_capable, seed, max_dispatch, eta, horizon, routing="argmax"):
     obs, info = env.reset(seed=seed)
     nd = env.num_datacenters; batch = env.global_routing_batch_size
     n_hold = 0; n_giveup = 0; t = 0
@@ -74,8 +99,7 @@ def run(env, policy, feast_thresh, green_capable, seed, max_dispatch, eta, horiz
     while not done:
         g = obs["global"]
         gn = _arr(g, "dc_current_green_power_w", nd)
-        score = np.array([gn[i] if i in green_capable else -1e9 for i in range(nd)])
-        ga = [int(np.argmax(score))] * batch
+        ga = _route_batch(gn, green_capable, nd, batch, routing)
         la = {}
         for dc in range(nd):
             if policy == "drain":
@@ -115,6 +139,8 @@ def main():
     ap.add_argument("--max-dispatch", type=int, default=300)
     ap.add_argument("--batch", type=int, default=200)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--routing", choices=["argmax", "spread"], default="argmax",
+                    help="global routing: argmax=whole batch to greenest DC (historical); spread=proportional to green power")
     args = ap.parse_args()
 
     import yaml
@@ -141,7 +167,7 @@ def main():
     res = {}
     for pol in ("drain", "reactive", "fcast"):
         res[pol] = run(env, pol, args.feast_thresh, green_capable, args.seed,
-                       args.max_dispatch, eta, args.horizon)
+                       args.max_dispatch, eta, args.horizon, routing=args.routing)
     env.close()
 
     print("\n=== RESULT ===")
