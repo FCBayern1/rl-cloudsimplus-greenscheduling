@@ -1,6 +1,27 @@
 # GPU 机器任务简报:找一个"预报真正有用"的调度场景
 
-给在 **GPU 机器**(RTX 3060 那台,tailscale)上运行的 Claude Code agent。本机(RTX 5080)正在跑 ablation,你和本机**分工不重叠**。读完这份再动手。
+给在 **GPU 机器**(RTX 3060 那台,tailscale)上运行的 Claude Code agent。本机(RTX 5080)跑训练,你和本机**分工不重叠**。读完这份再动手。
+
+---
+
+## ⭐ 当前任务(2026-08-03 更新,先看这段)
+
+**第二轮 spread-routing 规则测试已完成**(你的回报 `round2_results.md`,干得很好)。结论:五个场景无一干净 PASS;**8DC 碳杠杆最干净(fcast vs drain −26.5%、近等完成率)但严重过载**(drain 完成率只有 0.28),碳数字被丢活污染;错峰版第一轮的碾压被证实是 argmax 单机房堆积的假象。
+
+**现在要做的**:8DC 是冠军基座 + 目标规模,只差"负载标定"。本机已用反相工作负载生成器造了**两个降载档**(健康完成率目标),你跑这一轮标定 sweep:
+
+```bash
+cd ~/rl-cloudsimplus-greenscheduling && git pull
+cd drl-manager && nohup ./run_dc8_calib_sweep.sh > /dev/null 2>&1 &
+tail -f ~/scenario_sweep_dc8calib.summary
+```
+
+- `dc8_light`(~0.8G MI)与 `dc8_med`(~1.3G MI),同一套 8DC 绿电、反相到 brown 窗口、slack=1200 步,spread 路由,约 1.5 小时。
+- **判读**:哪个负载档让 **drain 完成率 ~≥90% 且 fcast 仍比 drain 省 ≥15% 碳**——那就是论文的载重头条场景(健康完成 + 预报省碳,无丢活嫌疑)。
+- **回报**:把 `~/scenario_sweep_dc8calib.summary` 贴回来 + 一句话:哪个档命中"健康完成 + 碳省",还是两个都不行(太轻→碳杠杆缩水 / 太重→完成率不够)。**不要**擅自设计新负载档——报回来由本机据完成率-碳曲线再标定下一档。
+- 若能顺手补 `green_ratio` / per-DC 分布更好(见第 6 节),但别为此改脚本逻辑再 push。
+
+下面是完整背景,首次接手或需要细节时再读。
 
 ---
 
