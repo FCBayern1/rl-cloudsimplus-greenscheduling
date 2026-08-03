@@ -55,6 +55,9 @@ FIG_HEIGHT_IN: float = 4.6   # 2x2 panel grid
 # Validated categorical slots 1-2 (see the data-viz palette reference).
 SERIES_COLORS: Tuple[str, ...] = ("#2a78d6", "#eb6834")
 SERIES_DASHES: Tuple[object, ...] = ("solid", (0, (5, 1.6)))
+# companion metric within a panel (tau, sigma(w)) uses the warm slot so the
+# two lines read apart at a glance; primary metric keeps the run colour.
+COMPANION_COLOR = "#eb6834"
 
 STEP_COL = "num_env_steps_sampled_lifetime"
 COLS: Dict[str, str] = {
@@ -170,11 +173,11 @@ def render(runs: Sequence[pd.DataFrame], labels: Sequence[str], out: str | Path)
             if xb and len(lo) == len(hi):
                 ax_rho.fill_between(xb, smooth(lo), smooth(hi),
                                     color=color, alpha=0.15, linewidth=0)
-            _trace(ax_rho, *extract(df, "w_std"), color, (0, (1, 1.2)),
+            _trace(ax_rho, *extract(df, "w_std"), COMPANION_COLOR, (0, (1, 1.2)),
                    rf"{label}: $\sigma(w)$", lw=1.0)
         _trace(ax_sigma, *extract(df, "sigma2"), color, "solid",
                rf"{label}: $\sigma^2$")
-        _trace(ax_sigma, *extract(df, "tau"), color, (0, (2, 1.4)),
+        _trace(ax_sigma, *extract(df, "tau"), COMPANION_COLOR, (0, (2, 1.4)),
                rf"{label}: $\tau_t$", lw=1.2)
         _trace(ax_dq, *extract(df, "dq"), color, dash, label)
 
