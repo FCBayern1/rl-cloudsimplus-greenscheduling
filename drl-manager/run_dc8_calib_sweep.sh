@@ -10,6 +10,10 @@
 # carbon at near-iso-completion. Same green (green_stretch_8dc), spread routing.
 # Full log per scenario in ~/sweep_logs/dc8calib_<name>.log; verdicts in
 # ~/scenario_sweep_dc8calib.summary.
+# NOTE: --horizon 1200 MATCHES the new traces median slack (1200 steps).
+# The old sweep used 504 because those traces had slack~504; with slack 1200 a
+# 504 horizon makes fcast give up on feasts 504-1200 steps away = under-defers =
+# underestimates forecast value. horizon must track median slack (see gate docstring).
 set -uo pipefail
 cd "$(dirname "$0")"
 OUT=~/scenario_sweep_dc8calib.summary
@@ -22,6 +26,6 @@ run () { # name experiment trace green horizon
     > ~/sweep_logs/dc8calib_$1.log 2>&1
   grep -aE "drain |reactive |fcast |GATE|Δ|vs-" ~/sweep_logs/dc8calib_$1.log | tail -8 | tee -a $OUT
 }
-run dc8_light experiment_sweep_dc8_light traces/realwind_dc8_light.csv data/green_stretch_8dc.npy 504
-run dc8_med   experiment_sweep_dc8_med   traces/realwind_dc8_med.csv   data/green_stretch_8dc.npy 504
+run dc8_light experiment_sweep_dc8_light traces/realwind_dc8_light.csv data/green_stretch_8dc.npy 1200
+run dc8_med   experiment_sweep_dc8_med   traces/realwind_dc8_med.csv   data/green_stretch_8dc.npy 1200
 echo "DC8 CALIB SWEEP DONE $(date '+%H:%M')" | tee -a $OUT
