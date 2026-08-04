@@ -4,22 +4,22 @@
 
 ---
 
-## ⭐ 当前任务(2026-08-03 更新,先看这段)
+## ⭐ 当前任务(2026-08-04 更新,先看这段)
 
-**第二轮 spread-routing 规则测试已完成**(你的回报 `round2_results.md`,干得很好)。结论:五个场景无一干净 PASS;**8DC 碳杠杆最干净(fcast vs drain −26.5%、近等完成率)但严重过载**(drain 完成率只有 0.28),碳数字被丢活污染;错峰版第一轮的碾压被证实是 argmax 单机房堆积的假象。
+**上一轮 dc8 标定 sweep 已回报(dc8calib_results.md,干得很好),两个关键结论:**
+1. **dc8_med(1.29 G-MI)命中健康负载锚点**:drain 完成率 1.0,fcast 碳 −38.5%,green_ratio +17pp——但这些是在一个路由 bug 的不利条件下拿到的保守下界。
+2. **你抓到的 spread 路由分块 bug 已修复**(commit d4d2854):`_route_batch` 改成平滑加权轮询(SWRR),动作列表现在按比例交错,批次填不满时前缀也不再全是 DC0。诊断精准,修法就是你建议的交错思路。
 
-**现在要做的**:8DC 是冠军基座 + 目标规模,只差"负载标定"。本机已用反相工作负载生成器造了**两个降载档**(健康完成率目标),你跑这一轮标定 sweep:
-
+**现在要做(按顺序):**
 ```bash
-cd ~/rl-cloudsimplus-greenscheduling && git pull
-cd drl-manager && nohup ./run_dc8_calib_sweep.sh > /dev/null 2>&1 &
+cd ~/rl-cloudsimplus-greenscheduling && git pull    # 拿到路由修复 + sweep 脚本已自带 trace 资源同步
+cd drl-manager && nohup ./run_dc8_calib_sweep.sh > /dev/null 2>&1 &   # horizon 已是 1200
 tail -f ~/scenario_sweep_dc8calib.summary
 ```
-
-- `dc8_light`(~0.8G MI)与 `dc8_med`(~1.3G MI),同一套 8DC 绿电、反相到 brown 窗口、slack=1200 步,spread 路由,约 1.5 小时。
-- **判读**:哪个负载档让 **drain 完成率 ~≥90% 且 fcast 仍比 drain 省 ≥15% 碳**——那就是论文的载重头条场景(健康完成 + 预报省碳,无丢活嫌疑)。
-- **回报**:把 `~/scenario_sweep_dc8calib.summary` 贴回来 + 一句话:哪个档命中"健康完成 + 碳省",还是两个都不行(太轻→碳杠杆缩水 / 太重→完成率不够)。**不要**擅自设计新负载档——报回来由本机据完成率-碳曲线再标定下一档。
-- 若能顺手补 `green_ratio` / per-DC 分布更好(见第 6 节),但别为此改脚本逻辑再 push。
+- 这一轮**同时修好了两件事**:路由交错(per-DC 分布现在可信)+ horizon=1200(预报价值的公平测量)。
+- **判读**:修好路由后 (a) drain 完成率曲线——1.29 G-MI 很可能能承载更高负载(med 之前 94% 挤 DC0 都能跑满);(b) fcast vs drain 碳降是否 ≥15% 且完成率代价可接受;(c) per-DC 分布是否终于按绿电比例(DC0 ~34% 而非 94%)。
+- **回报**:summary + 一句话:修好路由后哪个负载档命中"健康完成 + 预报省碳 + 分布合理"。若 med 完成率仍满且 light 也上来了,可能需要再加一个更重的档(报回来,本机加)。
+- green_ratio/per-DC 那个只读包装(calib_capture.py)继续用,方法对、不进仓库。
 
 下面是完整背景,首次接手或需要细节时再读。
 
