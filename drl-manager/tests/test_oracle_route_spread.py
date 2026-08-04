@@ -47,3 +47,20 @@ def test_spread_deterministic():
     a = og._route_batch([7.0, 3.0], {0, 1}, 2, 33, "spread")
     b = og._route_batch([7.0, 3.0], {0, 1}, 2, 33, "spread")
     assert a == b
+
+
+def test_spread_is_interleaved_not_blocked():
+    # weights 300/100/... -> a short prefix must NOT be all one DC (the bug:
+    # blocked list put ~all DC0 in the consumed prefix when batch underfills).
+    ga = og._route_batch([300.0, 100.0, 0.0], {0, 1}, 3, 100, "spread")
+    prefix = ga[:8]
+    assert set(prefix) == {0, 1}, f"prefix not interleaved: {prefix}"
+    # and DC0 (higher green) should lead but not monopolise the prefix
+    assert prefix.count(0) >= prefix.count(1) >= 1
+
+
+def test_spread_prefix_roughly_proportional():
+    # any reasonable prefix should reflect the 3:1 green ratio, not 100% DC0
+    ga = og._route_batch([300.0, 100.0], {0, 1}, 2, 40, "spread")
+    p = ga[:20]
+    assert 12 <= p.count(0) <= 18 and 2 <= p.count(1) <= 8

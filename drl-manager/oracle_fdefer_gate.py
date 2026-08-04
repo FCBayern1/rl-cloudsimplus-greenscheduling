@@ -68,8 +68,8 @@ def _deadline_stats(info):
 def _route_batch(gn, green_capable, nd, batch, mode):
     """Global routing for one batch. argmax = historical behaviour (whole
     batch to the greenest DC). spread = proportional allocation across
-    green-capable DCs by current green power (largest-remainder rounding,
-    deterministic); equal split when no DC has green right now. Decouples
+    green-capable DCs by current green power (largest-remainder counts, evenly interleaved so
+    any prefix stays proportional); equal split when no DC has green right now. Decouples
     "forecast value" from the single-DC pile-up flaw of argmax routing."""
     greens = sorted(green_capable)
     if mode == "argmax" or not greens:
@@ -84,9 +84,20 @@ def _route_batch(gn, green_capable, nd, batch, mode):
     order = np.argsort(-(shares - base))
     for j in range(rem):
         base[order[j % len(greens)]] += 1
-    ga = []
-    for dc, k in zip(greens, base):
-        ga.extend([int(dc)] * int(k))
+    # Smooth weighted round-robin (nginx-style): emit each DC base[k] times but
+    # EVENLY interspersed, so ANY prefix of the list is proportional to green.
+    # A blocked list ([0]*k0 + [1]*k1 + ...) breaks when the routing batch is
+    # not full (arrivals < batch_size): the env consumes only the prefix, which
+    # would be all DC0 -> single-DC pile-up. Interleaving fixes that.
+    weights = [int(b) for b in base]
+    total = sum(weights)
+    ga, current = [], [0] * len(greens)
+    for _ in range(total):
+        for k in range(len(greens)):
+            current[k] += weights[k]
+        k = max(range(len(greens)), key=lambda k: current[k])
+        current[k] -= total
+        ga.append(int(greens[k]))
     return ga
 
 

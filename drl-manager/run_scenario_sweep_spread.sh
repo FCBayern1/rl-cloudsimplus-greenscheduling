@@ -8,6 +8,8 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 OUT=~/scenario_sweep_spread.summary
+# sync freshly-generated traces into the JVM classpath (build/resources/main)
+cp -u ../cloudsimplus-gateway/src/main/resources/traces/*.csv ../cloudsimplus-gateway/build/resources/main/traces/ 2>/dev/null || true
 mkdir -p ~/sweep_logs
 run () { # name experiment trace green horizon
   echo "=== $1 start $(date '+%H:%M') ===" | tee -a $OUT
