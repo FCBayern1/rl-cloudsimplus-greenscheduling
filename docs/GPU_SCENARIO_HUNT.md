@@ -4,25 +4,32 @@
 
 ---
 
-## ⭐ 当前任务(2026-08-05 更新,先看这段)
+## ⭐ 当前任务(2026-08-05 晚更新,先看这段)
 
-**dc8_light 已在本机 5080 做了 RL 验证(Oracle vs NoForecast,Vanilla PPO),结果冷静但重要:**
-- RL 层面 oracle 预报 vs 训练好的 noforecast,iso-completion(都100%)下碳只低 **~12%**(单种子,s2/s3 在补)。
-- **规则测试的 −78.9% 是被 drain(无脑立即全派)这个烂基线放大的**。训练好的 noforecast 会用**当前绿电**,是强得多的基线。
-- **教训:fcast-vs-drain 高估预报价值,不能作为 RL 预报价值的代理。** 要用能逼近"训练策略"的基线。
+### 先说三个结论(回你上一轮的 npy bug 报告)
 
-**你这轮的任务(都不需训练,纯分析 + 规则测试):**
+1. **npy bug 抓得极漂亮,但 RL 结果是干净的。** RL 的 godeye 路径读的是 **Java 仿真器的真未来**(`global_obs_java.getDcFutureShortMean()` 等,本机 grep 确认 env 里 `.npy`/`np.load`/`green_ts` 引用 **0 次**)。所以 5080 上 dc8_light 的 **−12% 结果不受那个 npy bug 影响,成立。** 那个坏 npy 只喂给规则测试探针。
+2. **规则测试的 npy 不用修。** 那探针我们已经不信了(它拿 drain 当基线,系统性高估预报价值)。花 1 小时重建一份更准的 npy = 得到一个更准但我们不用的探针,低价值,**跳过**。
+3. **你的去相关度分析方向对,但有个关键修正:你是在 npy 上算的,而 npy ≠ 仿真器绿电(你自己发现只有 DC5 对齐)。RL 用的是仿真器绿电,所以真正该算去相关度的对象是"仿真器录出来的绿电",不是那份坏 npy。roll_900 的排序建在坏 npy 上,可能不直接迁移到 RL。**
 
-**任务1 — 绿电去相关度分析(纯 numpy,不跑仿真)。** 预报能赢过"会用当前绿电的策略",当且仅当**当前绿电 ≠ 决策相关的未来绿电**。对每个绿电剖面(`data/green_stretch.npy`、`green_stretch_offset.npy`、`green_stretch_8dc.npy`,以及你能构造的反相版),按每个绿电 DC 计算:
-- `corr( green[t], green[t+H] )`,H 取 300/600/900/1200 步(对应 slack 尺度);
-- 跨 DC 的"当前最绿 DC" vs "H 步后最绿 DC"是否一致的比例。
-- **去相关越高(corr 越低、最绿DC越常换)= 预报越载重。** 排个序:哪个绿电模式最载重。
+### dc8_light 为什么只有 12%(物理原因已找到)
 
-**任务2 — 用更好的代理基线重报。** 在标定场景(dc8_light / dc8_med)上重跑规则测试(脚本已有),但**判读改看 fcast vs reactive**(reactive 会等当前绿电,是 RL noforecast 的近似),不再只看 fcast vs drain。报 fcast 相对 reactive 的碳降 + 完成率——这才逼近 RL 层面的真实预报价值。
+它的绿电 DC 相位几乎对齐(`time_zone_offset_rows` = Nordic 0 / Germany 18 / Nordic2 36 / US_East 54,4 个绿电 DC 挤在 0–54 行内)→ 去相关度低 → "等当前最绿 DC"已接近最优 → 预报没多少可赢。**要更大的预报价值,得把绿电 DC 的相位拉开做成反相。**
 
-**任务3 — 构造并测反相 8DC 候选(若任务1显示反相最载重)。** 反相绿电(各 DC 峰值时间错开)让"当前绿电"成为最差的预测器。可用 `gen` 把现有 8dc 绿电各列做相位平移生成 `green_stretch_8dc_offset.npy`,配 dc8_light 的工作负载,规则测试它,报 fcast-vs-reactive + 去相关度。
+关键机制(本机已核实):`time_zone_offset_rows` 是 **Java 侧 GreenEnergyProvider 的参数**,它移的是**仿真器实际用的绿电**(RL godeye 读得到)。所以**反相可以纯靠 config 改这几个 offset 来做,RL 会正确看到**——不需要碰任何 npy。
 
-**回报**:①去相关度排序表 ②各候选 fcast-vs-reactive 碳降 ③一句话:哪个绿电模式/负载最可能在 RL 层面给出 >12% 的预报价值。**不要训练**(本机负责 RL)。构造新 green/trace 记得同步到 build classpath(打 jar 或 processResources,见你上次踩的坑)。
+### 你这轮的任务(纯分析 + 录仿真绿电,不训练)
+
+**任务 A — 在"仿真器录出的绿电"上重算去相关度(不是 npy!)。**
+- 跑一个 episode(规则测试路径就行,你这台验证过能跑),逐步录每个 DC 的 `dc_current_green_power_w`(或从仿真器日志/obs 里导出),得到"仿真器真实绿电时序"。
+- 对当前 dc8_light 的 4 个绿电 DC,算 `corr(green_dc[t], green_dc[t+H])`,H=300/600/900/1200;并算"当前最绿 DC" vs "H 步后最绿 DC"换手比例。这给出**当前场景**的去相关度基线(应该很低,解释 12%)。
+
+**任务 B — 扫 `time_zone_offset_rows`,找最大化仿真绿电去相关度的反相组合。**
+- 对 4 个绿电 DC(Nordic/Germany/Nordic2/US_East)尝试把 offset 拉开到跨越绿电主周期(比如均匀铺开 0 / T/4 / T/2 / 3T/4,T = 你从任务 A 录到的绿电主周期步数),让"当前最绿 DC"频繁换手。
+- 对每组候选 offset,**录一次仿真绿电**、算跨 DC 换手比例 + corr,选换手率最高 / corr 最低那组。
+- **报给本机:那组具体的 4 个 `time_zone_offset_rows` 数值 + 它的去相关度指标 vs 当前 dc8_light。** 本机据此建反相训练配置,在 5080 上 RL 测 Oracle vs NoForecast。
+
+**回报**:①当前 dc8_light 的仿真绿电去相关度(解释 12%) ②最佳反相 offset 组合(4 个数)+ 它的去相关度 ③一句话:反相相对当前场景去相关度提升多少、值不值得 RL 一试。**不要训练,不改 config/仓库逻辑,只报 offset 数值 + 指标。**
 
 下面是完整背景,首次接手或需要细节时再读。
 
