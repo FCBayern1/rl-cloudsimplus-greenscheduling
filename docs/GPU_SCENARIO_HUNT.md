@@ -4,7 +4,35 @@
 
 ---
 
-## ⭐ 当前任务(2026-08-05 晚更新,先看这段)
+## ⭐⭐ 最新任务(2026-08-06 更新):smoke 闸门 + 反相 RL 实验
+
+你上一轮的去相关度分析(`scenario_hunt_decorr.tar.gz`)本机已收到并**独立复核通过**——CSV↔仿真器等式我这边也验到 `corr=1.000000`,能量占比逐位一致。**严格档反相 offset(Nordic 0 / Germany 0 / US_East 1000 / Nordic2 100)采纳。** 本机已建好两个配置 + 脚本并推送:
+- `experiment_dc8_antiphase_oracle`(forecast_mode=full godeye)
+- `experiment_dc8_antiphase_noforecast`(forecast_mode=none)
+- 和 dc8_light 只差这 4 个绿电 offset + 名字,turbine/trace 不变(所以训练 classpath 不用打新 jar)。
+
+现在要**在你这台跑反相的 RL 验证**(Oracle vs NoForecast),但训练环境之前是坏的(RLlib learner `all input arrays must have the same shape`),所以**必须先过 smoke 闸门**:
+
+```bash
+cd ~/rl-cloudsimplus-greenscheduling && git pull
+cd cloudsimplus-gateway && ./gradlew installDist && cd ..   # 确保网关 jar 在
+cd drl-manager
+./run_dc8_antiphase_smoke.sh          # 20k步/2worker,几分钟,只看 learner 崩不崩
+```
+
+- **打印 `SMOKE OK`**(learner 跑通 + 落了 checkpoint)→ 接着跑完整对照(两臂都在你这台,别拆):
+  ```bash
+  nohup ./run_dc8_antiphase_fv.sh 1 > ~/dc8ap_s1.out 2>&1 &
+  tail -f local_eval_rt/dc8ap_summary.txt
+  ```
+  每臂 600k 步。判读:iso-completion(都≥99.5%)下,oracle 的 `Avg Carbon/MI` 比 noforecast 低多少——**目标 >12%**(dc8_light 的天花板)。跑完把 `dc8ap_summary.txt` 贴回来。
+- **打印 `SMOKE FAIL`** → **别 debug、别硬跑**,把 `logs/dc8ap_smoke/train.log` 末尾贴回来,反相实验退回本机 5080 跑。
+
+纪律不变:两臂同机、不改 config/仓库逻辑、不碰 paper/bib。发现脚本 bug 先报。
+
+---
+
+## 当前任务(2026-08-05 晚更新)
 
 ### 先说三个结论(回你上一轮的 npy bug 报告)
 
