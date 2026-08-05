@@ -34,6 +34,11 @@ FONT_SIZE = 10
 FIG_WIDTH_IN = 3.4    # single column
 FIG_HEIGHT_IN = 2.6
 
+# A forecast-value delta this small (|%|) is not worth its own arrow+label: the
+# bar and its printed value already say it, and a tiny annotation just crowds
+# the plane. The liability side (corrupted above the line) is always drawn.
+MIN_DELTA_ANNOT_PCT = 8.0
+
 # Ordered no-forecast baseline -> best forecast -> adversarial.
 # (key, label, fill, edge) — pastel fill + darker matching edge, the same
 # drawio palette as the framework figure (forecast channel = blue,
@@ -106,12 +111,15 @@ def render(values: dict, no_forecast: Optional[float], decode: str,
             xi = keys_drawn.index("timecap")
             v = float(values["timecap"])
             d = 100.0 * (v - no_forecast) / no_forecast
-            ax.annotate("", xy=(xi + 0.45, v), xytext=(xi + 0.45, no_forecast),
-                        arrowprops=dict(arrowstyle="<->", color="#6c8ebf",
-                                        linewidth=1.1, shrinkA=0, shrinkB=0))
-            ax.text(xi + 0.52, (v + no_forecast) / 2, f"{d:+.0f}%",
-                    ha="left", va="center", fontsize=FONT_SIZE - 2,
-                    color="#6c8ebf")
+            # only annotate the asset side when it is large enough to be worth it;
+            # otherwise the modest dip below the line speaks for itself
+            if abs(d) >= MIN_DELTA_ANNOT_PCT:
+                ax.annotate("", xy=(xi + 0.45, v), xytext=(xi + 0.45, no_forecast),
+                            arrowprops=dict(arrowstyle="<->", color="#6c8ebf",
+                                            linewidth=1.1, shrinkA=0, shrinkB=0))
+                ax.text(xi + 0.52, (v + no_forecast) / 2, f"{d:+.0f}%",
+                        ha="left", va="center", fontsize=FONT_SIZE - 2,
+                        color="#6c8ebf")
         if "shuffle" in keys_drawn and values["shuffle"] > no_forecast:
             xi = keys_drawn.index("shuffle")
             v = float(values["shuffle"])
