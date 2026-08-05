@@ -4,22 +4,25 @@
 
 ---
 
-## ⭐ 当前任务(2026-08-04 更新,先看这段)
+## ⭐ 当前任务(2026-08-05 更新,先看这段)
 
-**上一轮 dc8 标定 sweep 已回报(dc8calib_results.md,干得很好),两个关键结论:**
-1. **dc8_med(1.29 G-MI)命中健康负载锚点**:drain 完成率 1.0,fcast 碳 −38.5%,green_ratio +17pp——但这些是在一个路由 bug 的不利条件下拿到的保守下界。
-2. **你抓到的 spread 路由分块 bug 已修复**(commit d4d2854):`_route_batch` 改成平滑加权轮询(SWRR),动作列表现在按比例交错,批次填不满时前缀也不再全是 DC0。诊断精准,修法就是你建议的交错思路。
+**dc8_light 已在本机 5080 做了 RL 验证(Oracle vs NoForecast,Vanilla PPO),结果冷静但重要:**
+- RL 层面 oracle 预报 vs 训练好的 noforecast,iso-completion(都100%)下碳只低 **~12%**(单种子,s2/s3 在补)。
+- **规则测试的 −78.9% 是被 drain(无脑立即全派)这个烂基线放大的**。训练好的 noforecast 会用**当前绿电**,是强得多的基线。
+- **教训:fcast-vs-drain 高估预报价值,不能作为 RL 预报价值的代理。** 要用能逼近"训练策略"的基线。
 
-**现在要做(按顺序):**
-```bash
-cd ~/rl-cloudsimplus-greenscheduling && git pull    # 拿到路由修复 + sweep 脚本已自带 trace 资源同步
-cd drl-manager && nohup ./run_dc8_calib_sweep.sh > /dev/null 2>&1 &   # horizon 已是 1200
-tail -f ~/scenario_sweep_dc8calib.summary
-```
-- 这一轮**同时修好了两件事**:路由交错(per-DC 分布现在可信)+ horizon=1200(预报价值的公平测量)。
-- **判读**:修好路由后 (a) drain 完成率曲线——1.29 G-MI 很可能能承载更高负载(med 之前 94% 挤 DC0 都能跑满);(b) fcast vs drain 碳降是否 ≥15% 且完成率代价可接受;(c) per-DC 分布是否终于按绿电比例(DC0 ~34% 而非 94%)。
-- **回报**:summary + 一句话:修好路由后哪个负载档命中"健康完成 + 预报省碳 + 分布合理"。若 med 完成率仍满且 light 也上来了,可能需要再加一个更重的档(报回来,本机加)。
-- green_ratio/per-DC 那个只读包装(calib_capture.py)继续用,方法对、不进仓库。
+**你这轮的任务(都不需训练,纯分析 + 规则测试):**
+
+**任务1 — 绿电去相关度分析(纯 numpy,不跑仿真)。** 预报能赢过"会用当前绿电的策略",当且仅当**当前绿电 ≠ 决策相关的未来绿电**。对每个绿电剖面(`data/green_stretch.npy`、`green_stretch_offset.npy`、`green_stretch_8dc.npy`,以及你能构造的反相版),按每个绿电 DC 计算:
+- `corr( green[t], green[t+H] )`,H 取 300/600/900/1200 步(对应 slack 尺度);
+- 跨 DC 的"当前最绿 DC" vs "H 步后最绿 DC"是否一致的比例。
+- **去相关越高(corr 越低、最绿DC越常换)= 预报越载重。** 排个序:哪个绿电模式最载重。
+
+**任务2 — 用更好的代理基线重报。** 在标定场景(dc8_light / dc8_med)上重跑规则测试(脚本已有),但**判读改看 fcast vs reactive**(reactive 会等当前绿电,是 RL noforecast 的近似),不再只看 fcast vs drain。报 fcast 相对 reactive 的碳降 + 完成率——这才逼近 RL 层面的真实预报价值。
+
+**任务3 — 构造并测反相 8DC 候选(若任务1显示反相最载重)。** 反相绿电(各 DC 峰值时间错开)让"当前绿电"成为最差的预测器。可用 `gen` 把现有 8dc 绿电各列做相位平移生成 `green_stretch_8dc_offset.npy`,配 dc8_light 的工作负载,规则测试它,报 fcast-vs-reactive + 去相关度。
+
+**回报**:①去相关度排序表 ②各候选 fcast-vs-reactive 碳降 ③一句话:哪个绿电模式/负载最可能在 RL 层面给出 >12% 的预报价值。**不要训练**(本机负责 RL)。构造新 green/trace 记得同步到 build classpath(打 jar 或 processResources,见你上次踩的坑)。
 
 下面是完整背景,首次接手或需要细节时再读。
 
