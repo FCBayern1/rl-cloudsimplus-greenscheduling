@@ -42,6 +42,11 @@ def main():
     p.add_argument("--max-length-steps", type=int, default=1000, help="cap job length in steps")
     p.add_argument("--sim-duration", type=int, default=7200, help="episode length in steps")
     p.add_argument("--ref-mips", type=int, default=40000, help="= vm_pe_mips, so runtime==length_steps")
+    p.add_argument("--deadline-slack", type=int, default=1200,
+                   help="deadline = arrival + length_steps + slack. REQUIRED for the "
+                        "defer deadline-backstop (deadline<=0 rows are dropped from the "
+                        "deadline map in Java -> unbounded deferral -> starvation risk). "
+                        "1200 matches the dc8_light convention.")
     p.add_argument("--seed", type=int, default=42)
     a = p.parse_args()
 
@@ -62,12 +67,14 @@ def main():
     for cid, i in enumerate(order):
         length = int(MI[i]); pes = 1
         fs = max(100, length // 1000); os_ = max(50, fs // 2)
-        rows.append([cid, int(arrival[i]), length, pes, fs, os_])
+        # deadline: absolute sim-time, feasible by construction (covers own runtime)
+        ddl = int(arrival[i]) + int(L[i]) + a.deadline_slack
+        rows.append([cid, int(arrival[i]), length, pes, fs, os_, ddl])
 
     outp = Path("../cloudsimplus-gateway/src/main/resources") / a.out
     outp.parent.mkdir(parents=True, exist_ok=True)
     with open(outp, "w", newline="") as f:
-        w = csv.writer(f); w.writerow(["cloudlet_id","arrival_time","length","pes_required","file_size","output_size"])
+        w = csv.writer(f); w.writerow(["cloudlet_id","arrival_time","length","pes_required","file_size","output_size","deadline"])
         w.writerows(rows)
 
     # ---- verification ----
