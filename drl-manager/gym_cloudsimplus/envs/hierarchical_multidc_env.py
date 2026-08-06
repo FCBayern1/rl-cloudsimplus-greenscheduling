@@ -391,8 +391,17 @@ class HierarchicalMultiDCEnv(gym.Env):
         if gateway_libs:
             java_home = os.environ.get("JAVA_HOME")
             java_bin = os.path.join(java_home, "bin", "java") if java_home else "java"
-            cmd = [
-                java_bin,
+            cmd = [java_bin]
+            # `java -cp lib/*` scans every jar for logback.xml and the first hit
+            # wins; cloudsimplus-8.5.5.jar sorts before cloudsimplus-gateway.jar,
+            # so the library's DEBUG-level config silences ours (root=ERROR) and
+            # floods ~1GB/hr of DEBUG per worker. Force our config explicitly.
+            logback_cfg = os.path.abspath(os.path.join(
+                gateway_libs, os.pardir, os.pardir, os.pardir, os.pardir,
+                "src", "main", "resources", "logback.xml"))
+            if os.path.isfile(logback_cfg):
+                cmd.append("-Dlogback.configurationFile=" + logback_cfg)
+            cmd += [
                 "-cp", os.path.join(gateway_libs, "*"),
                 "exe.edu.cspg.MainMultiDC",
                 "--port", str(port),

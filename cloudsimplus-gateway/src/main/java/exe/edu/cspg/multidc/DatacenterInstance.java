@@ -345,8 +345,11 @@ public class DatacenterInstance {
             }
 
             double greenRatio = demandWh > 0 ? deltaGreenUsed / demandWh * 100 : 0;
-            LOGGER.debug("{}: Energy allocated (multi-turbine) - Green: {:.2f}Wh ({:.1f}%), Brown: {:.2f}Wh, Wasted: {:.2f}Wh, Turbines: {}",
-                    getName(), deltaGreenUsed, greenRatio, deltaBrownUsed, deltaGreenWasted, getTurbineCount());
+            // SLF4J uses {} anchors, not Python-style {:.2f}; the old format left
+            // every value unsubstituted. Pre-format to keep the intended precision.
+            LOGGER.debug("{}: Energy allocated (multi-turbine) - Green: {}Wh ({}%), Brown: {}Wh, Wasted: {}Wh, Turbines: {}",
+                    getName(), String.format("%.2f", deltaGreenUsed), String.format("%.1f", greenRatio),
+                    String.format("%.2f", deltaBrownUsed), String.format("%.2f", deltaGreenWasted), getTurbineCount());
         } else {
             // No green energy - all brown
             double timeDeltaHours = timeDelta / 3600.0;
