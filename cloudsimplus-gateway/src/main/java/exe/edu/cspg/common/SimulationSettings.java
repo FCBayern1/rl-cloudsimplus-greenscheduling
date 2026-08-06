@@ -212,6 +212,15 @@ public class SimulationSettings {
      *  (marginalKg = 700e3 / 3.5e6 · 0.255 ≈ 0.051).
      *  See MultiDatacenterSimulationCore.accumulatePerActionReward for use. */
     private final double perActionMargNormalizer;
+    /** 2026-08-06: when true, the per-action marginal-carbon estimate uses the
+     *  MEAN green power over the cloudlet's expected run window (MI / (pes ·
+     *  vmPeMips) steps) instead of the instantaneous green power at routing
+     *  time. With long jobs the instantaneous ratio actively mis-credits
+     *  routing (a DC green now but brown for the run window looks good, and
+     *  the window-optimal DC looks bad), teaching the policy greedy behaviour
+     *  regardless of forecast observability. Default false: short-job
+     *  experiments keep the historical (equivalent) behaviour. */
+    private final boolean perActionWindowCarbon;
 
     /**
      * Controls how the global carbon penalty signal is computed in multi-DC mode.
@@ -456,6 +465,7 @@ public class SimulationSettings {
         this.perActionCompletionWeight  = getDoubleParam(params, "per_action_completion_weight", 0.0);
         this.perActionOverflowSharpness = getDoubleParam(params, "per_action_overflow_sharpness", 3.0);
         this.perActionMargNormalizer    = getDoubleParam(params, "per_action_marg_normalizer", 0.05);
+        this.perActionWindowCarbon      = getBoolParam(params, "per_action_window_carbon", false);
 
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();

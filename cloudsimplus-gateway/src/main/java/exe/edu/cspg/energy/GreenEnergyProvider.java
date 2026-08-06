@@ -351,6 +351,35 @@ public class GreenEnergyProvider {
     }
 
     /**
+     * Mean green power (W) over the next {@code horizonSteps} simulation steps,
+     * starting at {@code simTime}. Used by the window-aware per-action carbon
+     * reward (per_action_window_carbon): for a long cloudlet the carbon it
+     * actually causes depends on the green supply over its whole run window,
+     * not on the instant it was routed. Unit handling mirrors
+     * {@link #getCurrentPowerW}: CSV kW → W, divided by the compressed-power
+     * divisor in COMPRESSED mode. In COMPRESSED mode 1 step == 1 CSV row and
+     * indices wrap cyclically (same as simTimeToRowIndex). Falls back to the
+     * instantaneous value outside COMPRESSED mode or without data.
+     */
+    public double getMeanFuturePowerW(double simTime, int horizonSteps) {
+        if (timeScalingMode != TimeScalingMode.COMPRESSED
+                || powerValues == null || powerValues.length == 0 || horizonSteps <= 1) {
+            return getCurrentPowerW(simTime);
+        }
+        int n = powerValues.length;
+        int start = simTimeToRowIndex(simTime);
+        if (start < 0) {
+            return getCurrentPowerW(simTime);
+        }
+        double sumKw = 0;
+        for (int i = 0; i < horizonSteps; i++) {
+            sumKw += powerValues[(start + i) % n];
+        }
+        double meanW = Math.max(0, (sumKw / horizonSteps) * 1000.0);
+        return meanW / compressedPowerDivisor;
+    }
+
+    /**
      * Compute future trend features for RL observation (God's Eye mode).
      */
     public double[] computeFutureTrendFeatures(double simTime) {

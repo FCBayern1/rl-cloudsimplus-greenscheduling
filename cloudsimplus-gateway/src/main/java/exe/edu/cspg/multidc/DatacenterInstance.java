@@ -134,6 +134,20 @@ public class DatacenterInstance {
     }
 
     /**
+     * Mean green power (W) over the next {@code horizonSteps} steps, aggregated
+     * over all turbines. Window-aware counterpart of getCurrentGreenPowerW,
+     * used by the per_action_window_carbon reward for long cloudlets.
+     */
+    public double getMeanFutureGreenPowerW(double simulationTime, int horizonSteps) {
+        if (!isGreenEnergyEnabled()) {
+            return 0.0;
+        }
+        return greenEnergyProviders.stream()
+                .mapToDouble(p -> p.getMeanFuturePowerW(simulationTime, horizonSteps))
+                .sum();
+    }
+
+    /**
      * Add a green energy provider to this datacenter.
      */
     public void addGreenEnergyProvider(GreenEnergyProvider provider) {

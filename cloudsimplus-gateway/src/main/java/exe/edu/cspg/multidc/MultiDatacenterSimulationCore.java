@@ -767,6 +767,22 @@ public class MultiDatacenterSimulationCore {
         int  cloudletPes = (int)  Math.max(1L, cloudlet.getPesNumber());
         long cloudletMi  = (long) Math.max(0L, cloudlet.getLength());
 
+        // Window-aware carbon (per_action_window_carbon): with long cloudlets the
+        // instantaneous green ratio mis-credits routing (green-now-brown-later DCs
+        // look good; the window-optimal DC looks bad). Replace the numerator with
+        // the mean green power over the cloudlet's expected run window.
+        if (settings.isPerActionWindowCarbon() && dc.isGreenEnergyEnabled()) {
+            Long vmMipsL = dc.getConfig().getVmPeMips();
+            double vmMips = (vmMipsL != null && vmMipsL > 0) ? vmMipsL : 50000.0;
+            int runSteps = (int) Math.min(3600,
+                    Math.max(1, Math.ceil((double) cloudletMi / (cloudletPes * vmMips))));
+            double windowGreenW = Math.max(0.0,
+                    dc.getMeanFutureGreenPowerW(currentClock, runSteps));
+            greenRatio = currentPowerW > 1e-9
+                    ? Math.min(1.0, windowGreenW / currentPowerW)
+                    : (windowGreenW > 0.0 ? 1.0 : 0.0);
+        }
+
         double miPerKg = Math.max(1e3, settings.getMiPerKgFactor());
         double effFactor = greenRatio * greenFactor + (1.0 - greenRatio) * brownFactor;
         double marginalKg = ((double) cloudletMi / miPerKg) * effFactor;

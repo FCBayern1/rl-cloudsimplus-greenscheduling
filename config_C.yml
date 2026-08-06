@@ -32809,6 +32809,8 @@ experiment_v2026_spread_oracle:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 0
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7012
     - 7036
@@ -32834,6 +32836,8 @@ experiment_v2026_spread_oracle:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 1000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7095
     - 7091
@@ -32859,6 +32863,8 @@ experiment_v2026_spread_oracle:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 2000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7096
     vm_pe_mips: 40000
@@ -32929,6 +32935,8 @@ experiment_v2026_spread_oracle:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 3000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7101
     - 7103
@@ -33006,6 +33014,7 @@ experiment_v2026_spread_oracle:
   global_throughput_mi_coef: 0.0
   green_oracle_mode: godeye
   forecast_mode: full
+  per_action_window_carbon: true
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -33154,6 +33163,8 @@ experiment_v2026_spread_noforecast:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 0
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7012
     - 7036
@@ -33179,6 +33190,8 @@ experiment_v2026_spread_noforecast:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 1000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7095
     - 7091
@@ -33204,6 +33217,8 @@ experiment_v2026_spread_noforecast:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 2000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7096
     vm_pe_mips: 40000
@@ -33274,6 +33289,8 @@ experiment_v2026_spread_noforecast:
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
     time_zone_offset_rows: 3000
+    short_term_rows: 150
+    long_term_rows: 1000
     turbine_ids:
     - 7101
     - 7103
@@ -33351,6 +33368,7 @@ experiment_v2026_spread_noforecast:
   global_throughput_mi_coef: 0.0
   green_oracle_mode: godeye
   forecast_mode: none
+  per_action_window_carbon: true
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
