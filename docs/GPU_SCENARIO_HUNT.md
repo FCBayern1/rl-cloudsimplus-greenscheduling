@@ -4,6 +4,32 @@
 
 ---
 
+## ⭐⭐⭐ 新任务(2026-08-07):量"碳 headroom",不是"绿电捕获"
+
+**背景(为什么之前都白找)**:反相 8DC 的 RL 判死了——episodes=10 下 **godeye(完美预报)0.0227 比 noforecast 0.0200 还高 +13.7%**(预报成了纯优化税)。dc8_light 也 ≈0。根因不是去相关度不够,是**绿电太富余、没烧棕**:你上一轮量的"贪心捕获 0.23"是**绿电缺口**,但绿电够喂轻负载时,少抓绿电也不烧棕 → 碳不动。**去相关度是必要非充分,每次都漏了"稀缺"这一条。**
+
+**这一轮换个指标:直接算"碳/棕电 headroom",纯 numpy,用你验过的 CSV↔仿真绿电等式,不碰 rule-gate/npy。**
+
+对每个候选 `(负载 D, 绿电缩放 divisor, 各绿电DC相位 offsets, 作业时长 L)`:
+1. 用等式 `green_i(t)=ΣCSV[WARM+off_i+t]/DIV` 得每个绿电 DC 的绿电时序。
+2. 设一个总需求 D(t)(先用常数或按 trace 的到达率)。
+3. 两种路由,逐步算烧多少棕:
+   - **greedy(=noforecast 上界)**:把 D(t) 派给**当前**最绿 DC → `brown=max(0, D − green_argmax_now)`。
+   - **oracle(=godeye 上界)**:派给**作业运行窗 [t,t+L] 内平均最绿**的 DC → `brown=max(0, D − green_there)`。
+4. `carbon = Σ brown × 碳强度`(碳强度用 config 里各 DC 的 emission factor)。
+5. **carbon headroom = (carbon_greedy − carbon_oracle) / carbon_greedy**。
+
+**目标:找到 headroom 大(>20%)、且 greedy 仍能基本完成(D ≤ 总绿容量的大部分时间,不是靠过载压completion)的 `(D, divisor, offsets, L)`。** 关键是同时满足:
+- **稀缺**:D 大到 greedy 会烧棕(carbon_greedy 明显 >0);
+- **去相关**:oracle 能路到"未来更绿"的 DC,把棕砍下来(需要相位错开 + 作业够长跨越切换);
+- **不过载**:总绿容量 ≥ D 的大部分,否则是 completion 崩,不是碳。
+
+**扫描轴**:divisor(绿电稀缺度)、D(负载)、L(作业时长,让"当前绿电"失效)、offsets(相位)。**报 top 5 组合 + 各自的 carbon headroom + greedy 的棕电占比 + 一句话哪个最可能让 RL 也吃到。**
+
+**判读提醒**:这算的是 **oracle 上界**(解码无关)。本地 5080 会再验 RL 在 argmax 下能不能吃到——但**先得有一个 oracle 碳 headroom 就很大的场景**,否则 RL 更没戏。别报绿电捕获,报**碳/棕**。不训练。
+
+---
+
 ## 🛑 撤销通知(2026-08-06):反相 RL 训练已移回本地 5080
 
 **GPU 别再跑反相训练/smoke 了。** 本地 5080 训练更快也已验证能跑,反相 RL 对照(oracle vs noforecast,含 shuffle 污染 eval)整组在本地跑,`run_dc8_antiphase_smoke.sh` / `run_dc8_antiphase_fv.sh` 你这边**不用执行**了(留着无妨,别启动,免得和本地重复/拆对比组)。
