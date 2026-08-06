@@ -246,3 +246,4 @@ config.yml.bak_*
 /*.tar.gz
 /*.pdf
 /image.png
+data/v2026_gpu/
