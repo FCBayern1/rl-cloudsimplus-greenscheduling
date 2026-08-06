@@ -4,7 +4,32 @@
 
 ---
 
-## ⭐⭐⭐ 新任务(2026-08-07):量"碳 headroom",不是"绿电捕获"
+## ⭐⭐⭐⭐ 开跑任务(2026-08-07):精修碳-headroom 靶子(纯 numpy,拉下来就跑)
+
+**本地已用解析扫描找到正信号**:`drl-manager/scan_carbon_headroom.py`。均匀铺开相位 **spread3k [0,1000,2000,3000] + 长作业 L=700 + D/green=0.5 → oracle 比 greedy 少烧 38.8% 碳**。之前所有场景失败是三条件漏一(反相相位挤成堆 + 作业太短 + 负载太轻)。现在要你把这个靶子**精修 + 压力测试**,确认它不是简化模型的假象。
+
+**启动(两行):**
+```bash
+cd ~/rl-cloudsimplus-greenscheduling && git pull
+cd drl-manager && .venv/bin/python scan_carbon_headroom.py     # 先复现那张表(spread3k L700 ~39%)
+```
+
+**你的任务(改 `scan_carbon_headroom.py`,都是 numpy,不训练、不碰仿真):**
+
+1. **最关键的压力测试——作业长度用分布,不是固定 L。** 现在是"所有作业都 L=700"。真实负载是混合长度。把 `score()` 改成对每个到达抽一个 L ~ 比如 LogNormal 或 mixture(短作业占多数 + 少量长作业),看 **headroom 在真实长度分布下还剩多少**。如果只有"全是长作业"才有 35%、一混短作业就塌 → 这个靶子脆,报回来。**这是决定靶子成不成立的头号问题。**
+2. **finer 相位网格**:在 spread2k–spread3k 之间(offset 间距 700–1200)细扫,找 headroom 最高的那组 offsets。
+3. **D/green 细扫** 0.3/0.4/0.5/0.6/0.7,找"headroom 高 + greedyC 明显>0(有棕烧)+ 不过载"的最佳负载点。
+4. **greedy 会不会被写傻了的对照**:现在 greedy=选当前碳最低 DC。加一个"稍聪明的 reactive"(比如看当前 + 前几步平滑的绿电)当对照,确认 35% 不是靠打败一个傻 baseline。
+
+**回报**:①作业长度混合分布下的 headroom(头号)②最佳 (offsets, D/green, L分布) 组合 + 其碳 headroom ③一句话:这个靶子在真实长度混合下还成不成立。**报碳/棕,不报绿电捕获。**
+
+（下一步本机会据此建 RL config + 长 cloudlet trace 实测 godeye vs noforecast;GPU 若还有余力,可用第 1 节等式建正确 green_ts npy + rule-gate 在真仿真器上验证——但先把上面的解析压力测试做完。）
+
+下面是历史任务,留档。
+
+---
+
+## 历史任务(2026-08-07):量"碳 headroom",不是"绿电捕获"
 
 **背景(为什么之前都白找)**:反相 8DC 的 RL 判死了——episodes=10 下 **godeye(完美预报)0.0227 比 noforecast 0.0200 还高 +13.7%**(预报成了纯优化税)。dc8_light 也 ≈0。根因不是去相关度不够,是**绿电太富余、没烧棕**:你上一轮量的"贪心捕获 0.23"是**绿电缺口**,但绿电够喂轻负载时,少抓绿电也不烧棕 → 碳不动。**去相关度是必要非充分,每次都漏了"稀缺"这一条。**
 
