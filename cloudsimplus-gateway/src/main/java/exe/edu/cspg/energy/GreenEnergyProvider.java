@@ -82,7 +82,18 @@ public class GreenEnergyProvider {
      */
     private double getTimeZoneOffsetSeconds() {
         final double rowSeconds = timeScalingMode != null ? timeScalingMode.getTypicalInterval() : 1.0;
-        return ((double) (timeZoneOffsetRows + simulationWarmupRows)) * rowSeconds;
+        return ((double) (timeZoneOffsetRows + simulationWarmupRows + episodeOffsetRows)) * rowSeconds;
+    }
+
+    /** Per-episode window shift (rows), set at reset when green_episode_offset_range
+     *  is enabled. Shared by all providers in an episode so cross-DC phase structure
+     *  is preserved; it re-bases WHICH slice of the wind year the episode replays.
+     *  Without it every episode replays the same trajectory and a trained policy
+     *  can memorise the future, making forecast observations redundant. */
+    private int episodeOffsetRows = 0;
+
+    public void setEpisodeOffsetRows(int rows) {
+        this.episodeOffsetRows = Math.max(0, rows);
     }
 
     /**

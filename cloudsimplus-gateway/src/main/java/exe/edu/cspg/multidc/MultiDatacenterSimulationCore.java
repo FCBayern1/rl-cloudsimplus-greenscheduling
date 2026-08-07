@@ -116,6 +116,7 @@ public class MultiDatacenterSimulationCore {
     private double epGlobalCarbonSignalSum = 0.0;        // Σ signal, total carbon emission sum at each timestep in kg
     private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
     private int epDeadlineForcedCount = 0;               // Fix A: # cloudlets force-routed at deadline backstop
+    private int episodeIndex = -1;                       // incremented at each reset; drives the green episode-offset schedule
     private double epDeferUrgencyCostSum = 0.0;          // Fix B: Σ urgency-scaled deferral cost (≤0)
     private double lastGlobalCarbonSignal = 0.0;         // last step signal
     private double lastGlobalCarbonPenaltyNorm = 0.0;    // last step Ĉ
@@ -153,8 +154,19 @@ public class MultiDatacenterSimulationCore {
      * Reset and initialize the simulation environment.
      * Creates all datacenters, loads workload, and initializes brokers.
      */
+    /** Deterministic per-episode green-window offset: (1009*k) mod range.
+     *  1009 is prime, so for any range not divisible by 1009 the schedule cycles
+     *  through all residues before repeating; k=0 maps to offset 0 (the historical
+     *  fixed window). Deterministic-in-k means both training arms and every
+     *  evaluation run see the identical window sequence. */
+    static int episodeOffsetFor(int episodeIndex, int range) {
+        if (range <= 0 || episodeIndex < 0) return 0;
+        return (int) ((1009L * episodeIndex) % range);
+    }
+
     public void resetSimulation() {
         LOGGER.info("Resetting multi-datacenter simulation environment...");
+        episodeIndex++;
 
         // Print cloudlet execution summary from previous episode (skip first reset).
         //
@@ -231,6 +243,24 @@ public class MultiDatacenterSimulationCore {
             DatacenterInstance dcInstance = createDatacenterInstance(config);
             datacenterInstances.add(dcInstance);
             LOGGER.info("Created datacenter: {} (ID: {})", config.getDatacenterName(), config.getDatacenterId());
+        }
+
+        // Per-episode green-window shift: without it every episode replays the same
+        // wind trajectory and a trained policy memorises the future, making forecast
+        // observations redundant (godeye == noforecast by construction). One offset
+        // per episode, shared by ALL DCs, preserves the cross-DC phase structure.
+        // Deterministic schedule (1009*k mod range): episode 0 keeps the historical
+        // window, both arms and eval see the identical window sequence.
+        int greenOffsetRange = settings.getGreenEpisodeOffsetRange();
+        if (greenOffsetRange > 0) {
+            int epOffset = episodeOffsetFor(episodeIndex, greenOffsetRange);
+            for (DatacenterInstance dc : datacenterInstances) {
+                for (exe.edu.cspg.energy.GreenEnergyProvider p : dc.getGreenEnergyProviders()) {
+                    p.setEpisodeOffsetRows(epOffset);
+                }
+            }
+            LOGGER.info("Episode {}: green episode offset = {} rows (range {})",
+                    episodeIndex, epOffset, greenOffsetRange);
         }
 
         // === Step 3: Create Global Broker ===

@@ -33015,6 +33015,7 @@ experiment_v2026_spread_oracle:
   green_oracle_mode: godeye
   forecast_mode: full
   per_action_window_carbon: true
+  green_episode_offset_range: 4800
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -33369,6 +33370,7 @@ experiment_v2026_spread_noforecast:
   green_oracle_mode: godeye
   forecast_mode: none
   per_action_window_carbon: true
+  green_episode_offset_range: 4800
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
