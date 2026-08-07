@@ -47,6 +47,11 @@ def main():
                         "defer deadline-backstop (deadline<=0 rows are dropped from the "
                         "deadline map in Java -> unbounded deferral -> starvation risk). "
                         "1200 matches the dc8_light convention.")
+    p.add_argument("--deadline-slack-max", type=int, default=0,
+                   help="if >0, per-job slack ~ U[deadline-slack, this] and the arrival "
+                        "window is coupled (arrival <= sim_duration - L - slack) so every "
+                        "job's LATEST start lies inside the episode - the temporal-gamble "
+                        "design (design_temporal_gamble.py PASS-STABLE cell).")
     p.add_argument("--seed", type=int, default=42)
     a = p.parse_args()
 
@@ -58,8 +63,14 @@ def main():
     sample = rng.choice(dur, size=a.n)
     L = np.clip(np.round(sample / a.time_scale).astype(int), 1, a.max_length_steps)  # steps
     MI = L * a.ref_mips
-    # arrival uniform in [0, sim_duration - L] so every job finishes in-episode
-    hi = np.maximum(1, a.sim_duration - L)
+    if a.deadline_slack_max > 0:
+        slack = rng.integers(a.deadline_slack, a.deadline_slack_max + 1, a.n)
+        # couple the arrival window so the latest start (deadline - L) is in-episode
+        hi = np.maximum(1, a.sim_duration - L - slack)
+    else:
+        slack = np.full(a.n, a.deadline_slack)
+        # arrival uniform in [0, sim_duration - L] so every job finishes in-episode
+        hi = np.maximum(1, a.sim_duration - L)
     arrival = (rng.random(a.n) * hi).astype(int)
 
     order = np.argsort(arrival)
@@ -68,7 +79,7 @@ def main():
         length = int(MI[i]); pes = 1
         fs = max(100, length // 1000); os_ = max(50, fs // 2)
         # deadline: absolute sim-time, feasible by construction (covers own runtime)
-        ddl = int(arrival[i]) + int(L[i]) + a.deadline_slack
+        ddl = int(arrival[i]) + int(L[i]) + int(slack[i])
         rows.append([cid, int(arrival[i]), length, pes, fs, os_, ddl])
 
     outp = Path("../cloudsimplus-gateway/src/main/resources") / a.out
