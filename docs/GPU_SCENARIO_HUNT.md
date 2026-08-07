@@ -1,4 +1,29 @@
-# GPU 机器任务简报:找一个"预报真正有用"的调度场景
+# GPU 机器任务简报
+
+## ⭐⭐⭐⭐⭐ 当前任务(2026-08-07 深夜):auditor × anti 最小实验(纯 eval,不训练)
+
+**目的**:论文的 runtime auditor 在摘要/方法里是卖点,但零实验支撑(评审必杀点)。它的设计靶点是 anti(反转)污染,主表却只测了 Blend/Shuffle。补一个 6 格对照,今晚就能出:
+
+**{Vanilla, EU-CRD} × anti 污染 × {auditor 关, gate, repair}**,argmax,`--episodes 10`。
+
+**判据**:gate 能否拉回 anti 下的完成率/碳损伤;repair 能否更进一步。正面 → 摘要说法落地;中性/负面 → 论文按降规格处理(也要如实报)。
+
+### 步骤
+
+0. **接线探针(先做,10 分钟)**:trust_sentinel.py 里有两个类——`TrustSentinel`(σ² 门控)和 `ForecastResidualMonitor`(χ 相关性审计器,257 行起,gate 阈值默认 0.2、repair −0.5、W=600)。都用 `TRUST_GATE_MODE` 环境变量,经 `global_scheduler._sentinel` 进 evaluate.py(808 行注释、954 行取用)。**先跑 1 个短 eval(TRUST_GATE_MODE=log)确认实际实例化的是哪个类、χ 有没有被记录**——如果接进来的是 σ² 版而不是 χ 版,立刻报回,别硬跑。
+1. **拿 checkpoint(从 5080 scp,两个目录)**:
+   - `drl-manager/logs/creg_van_local_s3/multidc_gtrxl_training/PPO_multidc_env_861eb_00000_0_2026-07-15_20-51-08/checkpoint_000010`
+   - `drl-manager/logs/creg_eucrd_local_s3/multidc_gtrxl_training/PPO_multidc_env_014b9_00000_0_2026-07-15_14-42-21/checkpoint_000010`
+   实验名从各自 `logs/<dir>/experiment_config.yml` 的 experiment_name 读,别猜。
+2. **6 格 eval**(两臂 × {unset, TRUST_GATE_MODE=gate, TRUST_GATE_MODE=repair}),统一 `FORECAST_PERTURB_MODE=anti DECODE_TOPK=0 --episodes 10 --seed 3`,阈值用默认(0.2 / −0.5),别调。
+3. **顺带补 2 格 clean 对照**(两臂 × auditor 关,clean)——同 ckpt 的基线锚点。
+4. **回报**:8 行表(臂 × 条件 × carbon/completion/green)+ gate/repair 各自触发了多少步(log 里有计数)。
+
+**纪律**:不训练、不改阈值、不改仓库逻辑;eval 你这台验证过能跑(反相那次)。
+
+---
+
+# (旧)找一个"预报真正有用"的调度场景
 
 给在 **GPU 机器**(RTX 3060 那台,tailscale)上运行的 Claude Code agent。本机(RTX 5080)跑训练,你和本机**分工不重叠**。读完这份再动手。
 
