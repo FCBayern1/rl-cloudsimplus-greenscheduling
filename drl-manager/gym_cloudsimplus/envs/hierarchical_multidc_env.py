@@ -296,7 +296,15 @@ class HierarchicalMultiDCEnv(gym.Env):
                 continue
             dc_id = self.dc_ids[idx]
             dc_assignments[dc_id] = [int(t) for t in tids]
-            dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0))
+            # Closed-book support: mirror the Java per-episode green-window shift
+            # ((1009*k) mod green_episode_offset_range, k = reset count). Java adds
+            # the episode offset inside its tz-offset conversion; adding it to the
+            # provider's per-DC tz offsets reproduces the identical row mapping, so
+            # the TimeCAP history buffers read the SAME wind slice the simulator
+            # replays. Without this the provider forecasts a different day and the
+            # timecap arm silently measures garbage (the npy-desync bug class).
+            dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0)) \
+                + int(getattr(self, "_green_episode_offset_rows", 0))
             for t in tids:
                 t = int(t)
                 csv_path = csv_dir / f"Turbine_{t}_{csv_year}.csv"
@@ -905,11 +913,28 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.episode_reward = 0.0
         self.done = False
 
+        # Closed-book green windows: keep the Python-side episode counter in
+        # lockstep with Java's (env.reset() -> resetSimulation() is 1:1) and
+        # apply the same deterministic schedule (1009*k mod range).
+        self._episode_counter = getattr(self, "_episode_counter", -1) + 1
+        _off_range = int(self.config.get("green_episode_offset_range", 0) or 0)
+        _new_off = (1009 * self._episode_counter) % _off_range if _off_range > 0 else 0
+
         # Lazy-build the TimeCAP provider on the first reset — keeps __init__
         # cheap so Ray's EnvRunner actor registers before its first health probe.
-        if self._timecap_pending_build:
+        # Under closed-book windows the provider is REBUILT whenever the episode
+        # offset changes: its per-DC tz offsets bake in the window shift, keeping
+        # its CSV row mapping identical to the simulator's (see
+        # _build_timecap_provider). Rebuild cost is one checkpoint load.
+        if self._timecap_pending_build or (
+            self.timecap_provider is not None
+            and _new_off != getattr(self, "_green_episode_offset_rows", 0)
+        ):
+            self._green_episode_offset_rows = _new_off
             self.timecap_provider = self._build_timecap_provider(self.config)
             self._timecap_pending_build = False
+        else:
+            self._green_episode_offset_rows = _new_off
 
         # Reset TimeCAP rolling buffers BEFORE we parse the first observation
         # (because _convert_global_observation will push the first row).
