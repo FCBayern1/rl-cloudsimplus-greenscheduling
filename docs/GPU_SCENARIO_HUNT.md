@@ -8,16 +8,26 @@
 
 **判据**:gate 能否拉回 anti 下的完成率/碳损伤;repair 能否更进一步。正面 → 摘要说法落地;中性/负面 → 论文按降规格处理(也要如实报)。
 
-### 步骤
+### 步骤(2026-08-08 修订:接线探针的发现全部采纳,谢谢——`TRUST_GATE_SOURCE=resid` 是我简报里漏的,你的三条硬失败分析全对)
 
-0. **接线探针(先做,10 分钟)**:trust_sentinel.py 里有两个类——`TrustSentinel`(σ² 门控)和 `ForecastResidualMonitor`(χ 相关性审计器,257 行起,gate 阈值默认 0.2、repair −0.5、W=600)。都用 `TRUST_GATE_MODE` 环境变量,经 `global_scheduler._sentinel` 进 evaluate.py(808 行注释、954 行取用)。**先跑 1 个短 eval(TRUST_GATE_MODE=log)确认实际实例化的是哪个类、χ 有没有被记录**——如果接进来的是 σ² 版而不是 χ 版,立刻报回,别硬跑。
-1. **拿 checkpoint(从 5080 scp,两个目录)**:
-   - `drl-manager/logs/creg_van_local_s3/multidc_gtrxl_training/PPO_multidc_env_861eb_00000_0_2026-07-15_20-51-08/checkpoint_000010`
-   - `drl-manager/logs/creg_eucrd_local_s3/multidc_gtrxl_training/PPO_multidc_env_014b9_00000_0_2026-07-15_14-42-21/checkpoint_000010`
-   实验名从各自 `logs/<dir>/experiment_config.yml` 的 experiment_name 读,别猜。
-2. **6 格 eval**(两臂 × {unset, TRUST_GATE_MODE=gate, TRUST_GATE_MODE=repair}),统一 `FORECAST_PERTURB_MODE=anti DECODE_TOPK=0 --episodes 10 --seed 3`,阈值用默认(0.2 / −0.5),别调。
-3. **顺带补 2 格 clean 对照**(两臂 × auditor 关,clean)——同 ckpt 的基线锚点。
-4. **回报**:8 行表(臂 × 条件 × carbon/completion/green)+ gate/repair 各自触发了多少步(log 里有计数)。
+**裁定**:加必需环境变量 = 修正调用方式,**不算**改仓库逻辑,放心用。
+
+0. **(b) 本地实测探针(已批准,先做)**:用你本机的 `dc8ap_oracle_s1/.../checkpoint_000010` 跑短 eval,`TRUST_GATE_SOURCE=resid TRUST_GATE_MODE=log TRUST_GATE_LOG=/tmp/chi_probe.csv`,确认实例化的是 `ForecastResidualMonitor` 且 χ 有记录。
+1. **拿 checkpoint(tailscale 不通,改走 git 分支)**:
+   ```bash
+   git fetch origin ckpt-transfer
+   git checkout origin/ckpt-transfer -- ckpt_cregime_s3_pair.tar.gz
+   tar xzf ckpt_cregime_s3_pair.tar.gz -C drl-manager/logs/
+   git rm --cached ckpt_cregime_s3_pair.tar.gz 2>/dev/null; rm ckpt_cregime_s3_pair.tar.gz
+   ```
+   包内含两臂 ck10 + 各自 experiment_config.yml(实验名从后者读,别猜)。
+2. **6 格 eval**,统一前缀 `TRUST_GATE_SOURCE=resid FORECAST_PERTURB_MODE=anti DECODE_TOPK=0`,三个条件:
+   - auditor 关:不设 TRUST_GATE_MODE;
+   - gate:`TRUST_GATE_MODE=gate TRUST_GATE_THRESH=0.2`;
+   - repair:`TRUST_GATE_MODE=repair`(repair 阈值走类内默认 −0.5,如需显式设按类的参数名来);
+   `--episodes 10 --seed 3`。
+3. **补 2 格 clean 对照**(两臂 × auditor 关,`FORECAST_PERTURB_MODE=none`)。
+4. **回报**:8 行表(臂 × 条件 × carbon/completion/green)+ gate/repair 触发计数 + 你 docstring 里挖到的那句 Phase-1 结论("σ² 无法区分污染帧,错在与现实的相关性")原文出处——它要进论文。
 
 **纪律**:不训练、不改阈值、不改仓库逻辑;eval 你这台验证过能跑(反相那次)。
 
