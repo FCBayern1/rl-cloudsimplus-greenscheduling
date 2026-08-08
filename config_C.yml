@@ -33477,7 +33477,7 @@ experiment_v2026_gamble_oracle:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/v2026_gamble_n2000.csv
-  compressed_power_divisor: 3000.0
+  compressed_power_divisor: 1600.0
   crd:
     baseline:
       green_weight: 0.6
@@ -33832,7 +33832,7 @@ experiment_v2026_gamble_noforecast:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/v2026_gamble_n2000.csv
-  compressed_power_divisor: 3000.0
+  compressed_power_divisor: 1600.0
   crd:
     baseline:
       green_weight: 0.6
