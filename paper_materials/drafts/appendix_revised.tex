@@ -1,0 +1,209 @@
+% ============================================================
+% APPENDIX — revised 2026-08-08
+% Changes vs previous version:
+%  - NEW: Per-Seed Results (app:perseed; values pending Isambard access, ?? marked)
+%  - NEW: Runtime Auditor Details (app:auditor; results table pending local run)
+%  - NEW: Corruption operators paragraph (blend eps=1.0, neutral constants, shuffle def)
+%  - NEW: risk-baseline hyperparameters; reward coefficients now actually listed
+%  - FIX: app:reward head ("this division" dangled) and tail (old contradictory
+%         sentence removed; decomposition dissects r^G alone)
+%  - FIX: algorithm lambda -> lambda_Q (matches Sec 3.5 and framework figure)
+%  - FIX: "marked dagger in Table 1" claim (those seeds are excluded, not marked)
+%  - FIX: overhead prose (dual-number: learner ~+25%, wall <1%) + Wall column
+%  - REMOVED: "anomaly gate (z=1.0)" (no such parameter in the shipped config)
+%  - Symbol: urgency window W -> W_u (collision with auditor window W)
+%  - Style: semicolons split, "we" removed, datacentre spelling unified
+% ============================================================
+\appendix
+\section{Testbed Details}
+\label{app:testbed}
+
+\textbf{Datacentres.} The testbed simulates five datacentres in CloudSim Plus, spanning the realistic range of grid carbon intensity from a hydro-dominated Nordic grid to a coal-heavy APAC grid. Each datacentre runs a fixed fleet of hosts and a three-tier VM pool (small, medium, large), for an aggregate capacity of 30 hosts and 525 VMs. Table~\ref{tab:testbed} lists the per-datacentre configuration.
+
+\begin{table}[ht]
+\caption{Datacentre configuration. Carbon intensity is the emission factor applied to brown (grid) energy in kg\,CO$_2$/kWh; green energy is charged at its 0.01 kg/kWh embodied intensity. Wind columns give the SDWPF turbine identifiers whose measured 2021 traces supply the site.}
+\label{tab:testbed}
+\centering
+\small
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+Datacentre & Hosts & VMs (S/M/L) & Carbon intensity & Wind turbines \\
+\midrule
+Nordic  & 10 & 100/50/25 & 0.08 & \#12, \#36 \\
+Germany & 8  & 80/40/20  & 0.35 & \#95, \#91 \\
+US-East & 5  & 50/25/12  & 0.55 & \#96 \\
+US-West & 4  & 40/20/10  & 0.75 & none \\
+APAC    & 3  & 30/15/8   & 0.92 & none \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\textbf{Green supply.} On-site wind power uses measured 10-minute SCADA traces from the SDWPF dataset (year 2021), one or two physical turbines per green site as listed in Table~\ref{tab:testbed}. Because the simulation compresses wall-clock time, turbine output is scaled by a fixed divisor of 1500 so that aggregate green supply and aggregate demand are of comparable magnitude. The divisor is a testbed calibration constant, identical across all methods and conditions. The two brown-only datacentres make spatial routing decisions consequential, since work placed there is charged at the two highest carbon intensities regardless of timing.
+
+\textbf{Workload.} Each episode replays a fixed trace of 8{,}000 jobs arriving over the first 5{,}973 simulated seconds of a 7{,}200-second episode. Job lengths span 0.6M to 2.4M MI at the 10th and 90th percentiles (median 1.5M MI, 12.2G MI in total) and request one to four cores. Every job carries a deadline (median 9{,}346\,s from episode start). Deadlines may extend beyond the episode horizon. Within the episode, a deadline backstop forces execution of any job whose slack is exhausted, so completion discipline is part of the environment contract rather than of any individual method.
+
+\textbf{Forecast channel.} Green-power forecasts are produced by a fine-tuned TimeCAP model (input window 96 steps) queried every 6 environment steps on CPU. The same frozen forecaster serves all methods and all corruption conditions, so corruption is applied to the transport of the forecast, never to the forecaster itself. The scheduler observes, per datacentre, current green power, forecast green power, queue and utilisation state, and per-job features including remaining slack.
+
+\textbf{Corruption operators.} Both corruptions act on the forecast features after the forecaster and before the policy. Blend replaces every forecast feature by its uninformative neutral value (0.5 for the mean and peak-timing features, 0 for the trend) at full strength ($\varepsilon{=}1.0$), removing information without misdirecting it. Shuffle reverses the per-datacentre assignment of the forecast vector, so each datacentre receives another site's coherent, internally consistent forecast. Corruption is injected at evaluation only, never during training.
+
+\textbf{Agents and actions.} A global routing agent assigns each arriving job to a datacentre or defers it (score-based pairwise scoring over job and datacentre embeddings, GTrXL backbone). Per-datacentre local agents assign queued jobs to VM tiers. Deferral re-enters the job in the global queue, so commitments to a datacentre are made at routing time.
+
+\section{Training Details}
+\label{app:training}
+
+\textbf{Optimisation.} All methods train PPO for 600k environment steps with shared parameters across local agents, batch size 8{,}000, minibatch 2{,}048, 5 SGD epochs per batch, learning rate $3\times10^{-4}$, entropy coefficient 0.01, and gradient clipping at global norm 0.5. The policy backbone is a two-layer GTrXL ($d_{\text{model}}=96$, 4 heads, feed-forward width 192, memory length 16, dropout 0.1) with a separate critic trunk. These settings are identical for Vanilla PPO, all robust-training baselines, and EU-CRD. Baselines differ only in their objective term, EU-CRD only in the advantage reweighting and its auxiliary ensemble loss.
+
+\textbf{Risk-sensitive baselines.} The four robust-training baselines share the recipe above and add their risk term with the following parameters: CVaR-PPO $\alpha{=}0.2$, $\lambda_{\text{risk}}{=}0.5$; mean-variance $\lambda_{\text{risk}}{=}1.0$; risk-sensitive utility $\beta{=}1.0$, $w_{\max}{=}5.0$; distributional CVaR $\alpha{=}0.1$, $\lambda_{\text{risk}}{=}0.7$. Parameters follow the cited works' recommended ranges and were not tuned per corruption condition.
+
+\textbf{EU-CRD hyperparameters.} The critic ensemble uses $K=5$ heads (hidden width 128) with frozen randomised priors (prior scale $\lambda=3.0$) and per-sample bootstrap masks ($p=0.7$). The ensemble loss is weighted $\lambda_Q{=}0.5$ and trained every iteration. The gate temperature follows the linear schedule $\tau_t=\tau_0\bar\sigma^2$ with $\tau_0=1.5$ and EMA rate 0.05. Responsibility shares are scale-normalised by a running EMA (decay 0.99) and floored at $\rho_{\min}=0.05$. Reweighting activates after a warmup of 450 learner calls. The counterfactual reference action is the policy-self action (Section~3). No hyperparameter was tuned per corruption condition. A single configuration produces every EU-CRD number in the paper.
+
+\textbf{Hardware and runtime.} Local runs use a single NVIDIA RTX 5080 workstation, and multi-seed campaigns run on the Isambard-AI cluster (NVIDIA GH200, aarch64). One 600k-step training takes roughly 5 to 6 hours on the workstation. Evaluation replays 10 episodes per checkpoint and condition. Scheduling overhead is reported in the main text and is identical across learned methods, as EU-CRD adds no inference-time computation.
+
+\section{EU-CRD Algorithm}\label{app:algorithm}
+\begin{algorithm}[t]
+\caption{EU-CRD training (one PPO iteration)}
+\label{alg:eucrd}
+\begin{algorithmic}[1]
+\REQUIRE hierarchical policy $\pi_\theta=(\pi_G,\pi_L)$; critic ensemble $\{Q_{\theta_k}\}_{k=1}^{K}$ with frozen random priors; running scales $s_k$; gate temperature $\tau_0$; floor $\rho_{\min}$; warmup $N_w$; ensemble weight $\lambda_Q$
+\STATE Collect rollouts $\{(s_t,a_t,r_t,\hat{\mathbf{y}}_t,g_t)\}$ with $\pi_\theta$; compute GAE advantages $\hat{A}_t$
+\FOR{each forecast-exposed (global) transition $t$}
+  \STATE \textbf{Forecast responsibility:} replace forecast $\hat g$ by realisation $g$ with demand held fixed; compute $R_{\text{forecast}}(t)$ \hfill (Eq.~\ref{eq:rfcst})
+  \STATE \textbf{Routing responsibility:} draw policy-self reference $\tilde a_t\!\sim\!\pi_G(\cdot\mid s_t)$; $\Delta Q(t)\!=\!\mu(s_t,a_t)\!-\!\mu(s_t,\tilde a_t)$, $\;\sigma^2_t\!=\!\mathrm{Var}_k Q_{\theta_k}$
+  \STATE Epistemic gate $c_t\!=\!\exp(-\sigma^2_t/\tau_t)$, $\tau_t\!=\!\tau_0\bar\sigma^2_t$;\quad $R_{\text{global}}(t)\!=\!c_t\Delta Q(t)+(1\!-\!c_t)\Delta r(t)$ \hfill (Eq.~\ref{eq:blend})
+  \STATE Normalise $(R_{\text{forecast}},R_{\text{global}})$ to shares $\rho_k(t)$, scaled by $s_k$ and floored at $\rho_{\min}$; update $s_k$ (EMA) \hfill (Eq.~\ref{eq:rho})
+\ENDFOR
+\STATE \textbf{Mean-preserving reweight (router only):} if call $>N_w$ then $\tilde A_t\!\leftarrow\!(\rho_{\text{global}}(t)/\bar\rho)\,\hat A_t$ with $\rho$ detached, else $\tilde A_t\!\leftarrow\!\hat A_t$ \hfill (Eq.~\ref{eq:reweight})
+\STATE \emph{Quarantine:} the forecaster share $\rho_{\text{forecast}}$ is never converted into a policy gradient
+\STATE Update $\pi_G$ on the clipped PPO surrogate with $\tilde A_t$; update $\pi_L$ on standard $\hat A_t$ (forecast-independent)
+\STATE Update the critic ensemble on the bootstrapped TD loss; total objective $\mathcal{L}=\mathcal{L}_{\text{PPO}}+\lambda_Q\mathcal{L}_Q$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Per-Seed Results}
+\label{app:perseed}
+
+Table~\ref{tab:perseed} reports the per-seed carbon underlying the medians of Table~\ref{tab:main}, with the matched-seed difference in the final column. All four seed pairs are non-negative under Shuffle (the sign is consistent, one-sided sign test $p{=}0.0625$ at $n{=}4$), which is why the main text characterises the effect as never worse and up to 23\% better rather than as a uniform margin.
+
+% TODO(data): fill from the final-wave per-seed argmax summary (Isambard; not in
+% the local backup). Placeholder ?? until access is renewed.
+\begin{table}[ht]
+\caption{Per-seed carbon per completed work (deterministic decoding). $\Delta$ = Vanilla $-$ EU-CRD on the same seed, positive favouring EU-CRD. Seeds excluded from a condition's iso-eligible median (completion below 99.5\%) are marked $^{\dagger}$.}
+\label{tab:perseed}
+\centering
+\small
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+Condition / seed & s1 & s2 & s3 & s4 \\
+\midrule
+Clean, Vanilla   & ?? & ?? & ?? & ?? \\
+Clean, EU-CRD    & ?? & ?? & ?? & ?? \\
+Shuffle, Vanilla & ?? & ?? & ?? & ?? \\
+Shuffle, EU-CRD  & ?? & ?? & ?? & ?? \\
+Shuffle, $\Delta$ (\%) & ?? & ?? & ?? & ?? \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\section{Results under Sampling-Based Decoding}
+\label{app:stoch}
+
+The main text reports deterministic (argmax) decoding, the deployment form. This appendix repeats the comparison under sampling-based decoding, where actions are drawn from the policy distribution. Absolute carbon is not comparable across decodes, so each table is internally consistent only.
+
+\begin{table}[ht]
+\caption{Carbon per completed work under sampling-based decoding, clean forecasts. All runs complete at least 99.6\% of the workload, so no cell is completion-deflated. Vanilla and EU-CRD are medians over three seeds; baselines use one seed.}
+\label{tab:stoch-clean}
+\centering
+\small
+\begin{tabular*}{0.7\linewidth}{@{\extracolsep{\fill}}lc@{}}
+\toprule
+Method & Clean c/c \\
+\midrule
+\textbf{EU-CRD (ours)} & \textbf{0.379} \\
+Vanilla PPO            & 0.397 \\
+CVaR-PPO               & 0.443 \\
+Risk-sensitive         & 0.451 \\
+No-Forecast PPO        & 0.464 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Two observations. First, the forecast is unambiguously valuable at this decode. Access to the TimeCAP forecast lowers Vanilla PPO from the no-forecast 0.464 to 0.397, a 14\% margin that deterministic decoding compresses to about 5\% because the routing mode is already decided by current green power. The forecast shifts probability mass rather than the mode. Second, EU-CRD attains the lowest clean carbon of any learned method, 5\% below Vanilla, so the responsibility decomposition improves rather than taxes the policy when the decode exposes distributional differences.
+
+Under shuffled forecasts at this decode, every forecast-using method converges to a similar level (Vanilla 0.480, EU-CRD 0.483, risk objectives 0.50 to 0.51, medians and singles respectively). The containment advantage that EU-CRD shows in the main text is therefore specific to deterministic decoding, which is also the deployment form. This boundary is reported explicitly rather than claimed away. Neutralised forecasts (Blend) at this decode cost Vanilla 13\% (0.397 to 0.454) and EU-CRD 13\% (0.379 to 0.428), confirming that at the distribution level both policies genuinely consume forecast information. The risk-reshaping baselines complete the workload under sampling (their completion collapse in the main text is an interaction between their learned distributions and greedy mode selection) but occupy the worst carbon tier throughout.
+
+\section{Failure-Mode Analysis}
+\label{app:failure}
+
+\textbf{One seed in four over-defers under greedy decoding, in both arms.} Vanilla PPO and EU-CRD each produce one seed (of four) whose greedy decode over-commits to deferral on clean forecasts, so the basin belongs to the aligned reward on this regime rather than to the decomposition. The EU-CRD instance is analysed here, the only one observable in training. It completes 91 to 96\% of the workload on clean forecasts and is excluded from the iso-eligible medians of Table~\ref{tab:main}. Three facts locate the failure precisely. The seed's training-time completion is 99.7\% and its sampling-decode completion is 100\%, so the learned distribution is healthy and the failure lives entirely in mode selection. The failure reproduced under a clean re-run on an exclusive machine, ruling out infrastructure interference. And the internal diagnostics of the failing seed are indistinguishable from healthy seeds in every channel (gate $c_t$, responsibility shares, counterfactual gap) except one: the critic-ensemble disagreement $\sigma^2$ doubles mid-training (7.2 against a healthy-band 3.2) before any conventional metric moves, then recovers. The method's own epistemic signal is thus the only training-time precursor of the failure, a useful property in itself: the quantity EU-CRD already computes for credit blending doubles as an early-warning channel.
+
+One candidate mechanism was also ruled out quantitatively. The mean-preserving reweighting multiplies advantages by $w=\rho/\bar\rho$, and an unbounded amplification of deferral credit was a plausible driver. A probe over trained checkpoints instead measures $\max w \approx 1.15$ (the routing share averages 0.87, bounding amplification by construction), while the dispersion that matters for credit redistribution is substantial ($\sigma(w)\approx0.33$, with per-transition shares spanning 0.20 to 1.00). The reweighting is active but bounded. The over-deferral basin is a decode-level fragility, not a credit-amplification runaway. Consistent with this, corrupting the forecast by reassignment restores full completion on the failing seed, because the corrupted signal breaks the learned deferral pattern.
+
+\textbf{Risk-reshaping baselines collapse completion.} All four risk-sensitive objectives lose completion discipline on the aligned reward (Table~\ref{tab:main}), down to 18\% of the workload, and one collapsed policy (mean-variance) produces byte-identical trajectories under neutralised and reassigned forecasts, confirming that its degenerate mode ignores the forecast channel altogether. Their completion recovers under sampling-based decoding (Appendix~\ref{app:stoch}), which again identifies greedy mode selection as the fragile step. Unlike EU-CRD, however, their carbon remains in the worst tier at both decodes.
+
+\section{Training Diagnostics}
+\label{app:mechanism}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1\linewidth]{./figs/crd_mechanism.png}
+    \caption{EU-CRD training diagnostics on clean forecasts. The gate $c_t$ stays mid-range, so both credit sources contribute throughout. The routing share has a stable batch mean near $0.87$ but a wide within-batch spread ($p_{10}$--$p_{90}$ covering $0.2$ to $1.0$, reweight strength $\sigma(w)\approx0.33$): credit is actively redistributed across transitions, not uniformly scaled. The temperature tracks the running disagreement, and the counterfactual gap stays centred near zero.}
+    \label{fig:mechanism}
+\end{figure}
+
+Figure~\ref{fig:mechanism} reports the EU-CRD training diagnostics on clean forecasts, referenced from Section~\ref{sec:experiments}.
+
+\section{Runtime Auditor Details}
+\label{app:auditor}
+
+The auditor of Section~3.6 uses the class defaults throughout: gate threshold $\theta{=}0.2$ on the correlation averaged over green-bearing datacentres, per-datacentre repair threshold $-0.5$, window $W{=}600$ decisions, and a warmup of 120 samples during which the auditor trusts by default. Both statistics are computed on the raw incoming forecast, never on repaired features, so a repair cannot feed back into the trust estimate and the auditor cannot oscillate. The window length trades noise against latency. A short window flags healthy forecasts on spurious dips, while a long one lets corrupted decisions accumulate before the auditor reacts.
+
+% TODO(data): insert the gate/repair evaluation table under inverted forecasts
+% ({Vanilla, EU-CRD} x {off, gate, repair} x anti, matched seed) — local run in
+% progress, lands in auditor_local.txt.
+
+\section{Deployment Overhead}
+\label{app:overhead}
+
+\begin{table}[t]
+\caption{Deployment overhead. Global and local decision latency measure the time to route one batch or drain one queue, ratios are relative to Round-Robin, and Wall is the end-to-end wall clock of one full evaluation episode (not measured for the two single-seed risk baselines). All learned methods share the GTrXL backbone and therefore incur the same inference cost by construction, so the differences between them fall entirely within training.}
+\label{tab:overhead}
+\centering
+\small
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lccccc@{}}
+\toprule
+Method & Global dec. & Local dec. & Peak RSS & Wall & Latency \\
+       & mean/p99 ($\mu$s) & mean/p99 ($\mu$s) & (MB) & (s) & vs.\ RR \\
+\midrule
+Round-Robin      & 29/34      & 3/14    & 1066 & 273 & 1.0$\times$ \\
+Vanilla PPO      & 2044/20165 & 467/600 & 1323 & 318 & 70.4$\times$ \\
+Risk-sensitive   & 2089/21113 & 467/600 & 1323 & --  & 71.9$\times$ \\
+CVaR-PPO         & 2080/20977 & 466/603 & 1324 & --  & 71.6$\times$ \\
+\textbf{EU-CRD}  & 2069/20967 & 475/611 & 1329 & 319 & 71.2$\times$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Two points stand out. First, the learned methods are indistinguishable at deployment. Every reinforcement learning policy routes a batch in about 2.1\,ms and drains a queue in about 0.47\,ms, within a few percent of one another and of Vanilla PPO, because they share one backbone while the counterfactual decomposition, the critic ensemble, and the responsibility reweighting in EU-CRD all act on the training signal alone and leave the deployed policy a plain forward pass. The runtime auditor adds only a rolling correlation per datacentre, which is negligible against the network evaluation, and inference uses no GPU, so the scheduler runs on commodity hardware. EU-CRD is therefore no more expensive to deploy than the Vanilla PPO that it improves upon.
+
+Second, the learned policies cost about $70\times$ a trivial heuristic per decision, yet the absolute figure of roughly two milliseconds to route a batch is immaterial on the scheduling timescale, where a routing window spans seconds of simulated time. Training is where the ensemble is paid for. In profiling runs the EU-CRD learner update costs roughly a quarter more than Vanilla's per iteration, while the end-to-end wall clock differs by well under one percent (Table~\ref{tab:overhead}) because the environment simulation, not the learner, dominates it. The decomposition thus buys its robustness during training and provides it at no cost during deployment.
+
+\section{Reward Design}
+\label{app:reward}
+
+The two reward channels mirror the hierarchical division of Section~3.2. The global reward carries the carbon objective and is additively decomposable over the routing slots,
+\begin{equation}
+r^{G}_t=\sum_{i\in\text{routed}}
+\big(-w_c\,\hat{m}_i+w_p\,\hat{P}_i\big)
+-\sum_{i\in\text{deferred}}\big(c_0+w_u\,\nu_i\big),
+\label{eq:reward}
+\end{equation}
+where $\hat{m}_i$ is the normalised marginal carbon of placing job $i$ at its chosen DC given the current green headroom, and $\hat{P}_i=\exp(-k\,o_i)$ a congestion proxy for on-time completion with $o_i=\max\{0,(Q_d+\mathrm{pe}_i-a_d)/\Gamma_d\}$ the fraction by which admitting job $i$ (of PE demand $\mathrm{pe}_i$) would push the chosen DC $d$ past its available capacity $a_d$, relative to total capacity $\Gamma_d$, and $k$ setting the sharpness. The last term uses $\nu_i=\min\{1,\max\{0,\, 1-(d_i-t)/W_u\}\}$, an urgency ramp that grows as the deadline $d_i$ approaches. Deferral is thus never free. The base cost $c_0$ prices the option of waiting, and the urgency term makes procrastination on near-deadline work expensive. The local reward is a standard quality-of-service signal with no carbon term,
+\begin{equation}
+\begin{split}
+r^{L}_t={} & \lambda_1\log(1{+}n_t)-\lambda_2\log(1{+}\bar{W}_t) \\
+& -\lambda_3\,\operatorname{std}_v\rho_{v,t}-\lambda_4\frac{Q_t}{R_t}
+-\lambda_5\,\mathds{1}[\text{invalid}],
+\end{split}
+\label{eq:localreward}
+\end{equation}
+which rewards the $n_t$ completions in the step and penalises the mean wait $\bar{W}_t$ of finished jobs, the imbalance $\operatorname{std}_v\rho_{v,t}$ of utilisation across active VMs, the backlog ratio $Q_t/R_t$ of queued to received jobs, and invalid actions. Carbon and the forecast both enter only through $r^{G}_t$, so the local reward is forecast-independent. The coefficients, identical across all methods, are $w_c{=}1.0$, $w_p{=}2.0$, $k{=}6.0$, $c_0{=}0.5$, $w_u{=}2.0$, $W_u{=}3{,}600$\,s (with $\hat m_i$ normalised by 0.05\,kg), and $\lambda_{1\ldots5}=0.3,\,0.05,\,0.02,\,0.05,\,0.2$. The decomposition of Section~3.3 dissects the credit carried by $r^{G}_t$ alone. The local channel passes through untouched.
