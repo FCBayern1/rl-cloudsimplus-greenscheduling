@@ -221,6 +221,14 @@ public class SimulationSettings {
      *  regardless of forecast observability. Default false: short-job
      *  experiments keep the historical (equivalent) behaviour. */
     private final boolean perActionWindowCarbon;
+    /** 2026-08-09: which green series feeds the window-carbon reward.
+     *  "actual" (default) = true future green over the run window — an oracle
+     *  reward that leaks future information to EVERY arm during training,
+     *  including no-forecast ablations (the v2026-gamble lesson: the blind arm
+     *  learned oracle-grade timing from reward supervision alone).
+     *  "persistence" = current green held flat over the window, so an arm's
+     *  learning signal contains no information its observations do not. */
+    private final String windowCarbonSource;
     /** 2026-08-07: >0 enables the per-episode green-window shift (rows). Each reset
      *  applies offset (1009*episodeIndex mod range) to ALL green providers, so every
      *  episode replays a different slice of the wind year while cross-DC phases stay
@@ -471,6 +479,7 @@ public class SimulationSettings {
         this.perActionOverflowSharpness = getDoubleParam(params, "per_action_overflow_sharpness", 3.0);
         this.perActionMargNormalizer    = getDoubleParam(params, "per_action_marg_normalizer", 0.05);
         this.perActionWindowCarbon      = getBoolParam(params, "per_action_window_carbon", false);
+        this.windowCarbonSource         = getStringParam(params, "window_carbon_source", "actual").trim().toLowerCase();
         this.greenEpisodeOffsetRange    = getIntParam(params, "green_episode_offset_range", 0);
 
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();

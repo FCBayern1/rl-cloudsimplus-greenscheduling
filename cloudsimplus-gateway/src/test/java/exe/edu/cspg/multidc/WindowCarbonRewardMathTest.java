@@ -90,4 +90,45 @@ public class WindowCarbonRewardMathTest {
         assertTrue(effFactor(rB_win, gF, bF) < effFactor(rA_win, gF, bF),
                 "window reward must prefer the window-green DC (B)");
     }
+
+    /** Mirrors the window_carbon_source="persistence" branch (2026-08-09):
+     *  the window green is the CURRENT level held flat, i.e. exactly the
+     *  instantaneous value, never the future mean. */
+    static double persistenceWindowW(double[] rowsKw, int start, double divisor) {
+        return meanFuturePowerW(rowsKw, start, 1, divisor);
+    }
+
+    @Test
+    public void persistenceSourceIsCurrentLevelNotFutureMean() {
+        // ramping profile: current 1 kW, future window mean 5 kW
+        double[] kw = {1.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0};
+        double actual = meanFuturePowerW(kw, 0, 10, 1.0);
+        double persist = persistenceWindowW(kw, 0, 1.0);
+        assertEquals(1.0 * 1000, persist, 1e-9);
+        assertTrue(actual > persist * 4,
+                "on a green ramp the two sources must diverge (else no leak existed)");
+    }
+
+    @Test
+    public void persistenceSourceClosesTheFutureLeak() {
+        // The v2026-gamble leak: with source=actual a NO-FORECAST arm's reward
+        // still ranks "wait for the coming peak" above "run now", teaching
+        // timing it cannot observe. Under persistence both options score by
+        // the SAME current level, so the reward carries no future information.
+        // rows in kW; ×1000 => 0.5 W trough now, 8 W peak later, demand 8 W
+        double[] troughThenPeak = {0.0005, 0.0005, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008};
+        double demandW = 8.0, gF = 0.01, bF = 0.5;
+        // actual source: starting later (row 2) scores far greener than now
+        double rNowActual   = Math.min(1.0, meanFuturePowerW(troughThenPeak, 0, 8, 1.0) / demandW);
+        double rLaterActual = Math.min(1.0, meanFuturePowerW(troughThenPeak, 2, 8, 1.0) / demandW);
+        assertTrue(effFactor(rLaterActual, gF, bF) < effFactor(rNowActual, gF, bF),
+                "actual source rewards waiting = future info in the signal");
+        // persistence source: at EVERY decision time the reward equals what the
+        // instantaneous (observable) green implies -- no future enters the signal.
+        for (int t = 0; t < troughThenPeak.length; t++) {
+            assertEquals(meanFuturePowerW(troughThenPeak, t, 1, 1.0),
+                    persistenceWindowW(troughThenPeak, t, 1.0), 1e-12,
+                    "persistence reward at t must equal the observable current level");
+        }
+    }
 }

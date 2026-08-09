@@ -806,8 +806,17 @@ public class MultiDatacenterSimulationCore {
             double vmMips = (vmMipsL != null && vmMipsL > 0) ? vmMipsL : 50000.0;
             int runSteps = (int) Math.min(3600,
                     Math.max(1, Math.ceil((double) cloudletMi / (cloudletPes * vmMips))));
-            double windowGreenW = Math.max(0.0,
-                    dc.getMeanFutureGreenPowerW(currentClock, runSteps));
+            // window_carbon_source selects the green series behind the window
+            // reward: "actual" reads the true future (an oracle training signal
+            // shared by every arm), "persistence" holds the current level flat
+            // so no-forecast arms learn from information they can also observe.
+            double windowGreenW;
+            if ("persistence".equals(settings.getWindowCarbonSource())) {
+                windowGreenW = Math.max(0.0, dc.getCurrentGreenPowerW(currentClock));
+            } else {
+                windowGreenW = Math.max(0.0,
+                        dc.getMeanFutureGreenPowerW(currentClock, runSteps));
+            }
             greenRatio = currentPowerW > 1e-9
                     ? Math.min(1.0, windowGreenW / currentPowerW)
                     : (windowGreenW > 0.0 ? 1.0 : 0.0);
