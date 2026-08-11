@@ -40,7 +40,12 @@ run_arm () {   # arm seed
   echo "[main ${A}_s${SEED}] train exit rc=$? $(date '+%m-%d %H:%M')" >>"$OUT"
   pkill -9 -f "exe[.]edu[.]cspg[.]MainMultiDC" 2>/dev/null; pkill -9 -f "ray::[A-Za-z]" 2>/dev/null; sleep 3
   local RUN=$(ls -d "$OD"/multidc_gtrxl_training/PPO_*/ 2>/dev/null | head -1)
-  for CK in $(ls -d ${RUN}checkpoint_* 2>/dev/null | sort -V | tail -3); do
+  # FINAL checkpoint only. The paired analysis in the paper deliberately uses the
+  # last checkpoint of every run with no selection, because validation-based
+  # selection drops pairs asymmetrically. Sweeping three checkpoints would only
+  # serve the cross-method medians, and at 2.6 h per eval cell on this box it
+  # would triple the campaign for a quantity the pairing does not use.
+  for CK in $(ls -d ${RUN}checkpoint_* 2>/dev/null | sort -V | tail -1); do
     local ckn=$(basename "$CK" | sed 's/checkpoint_0*/ck/')
     for MODE in none blend shuffle; do
       local tag=$([ "$MODE" = none ] && echo clean || echo $MODE)

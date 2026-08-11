@@ -2,7 +2,9 @@
 
 ## 一句话
 跑 `local_eval_rt/run_mainarm_seeds_gpu.sh`,给论文主表补两对匹配种子(s5、s6),
-结果落 `local_eval_rt/mainarm_seeds_gpu.txt`,逐格追加。约 36 小时串行。
+结果落 `local_eval_rt/mainarm_seeds_gpu.txt`,逐格追加。
+**时间(按 GPU 机实测):训练约 13h/次 × 4,eval 约 2.6h/格 × 12,合计约 3.5 天。**
+只评最后一个 checkpoint——配对分析本就不做选点,评三个只服务于中位数。
 
 ## 步骤
 ```bash
@@ -20,7 +22,7 @@ blend 两列的中位数只有 n=2-3,配对检验只有 n=2。补两对之后配
 - Vanilla:`experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecapV3`
 - EU-CRD :`experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_eucrd_knSV3b`
 
-顺序是 van s5 → knSb s5 → van s6 → knSb s6,**第一对跑完(约 18 小时)就有一对
+顺序是 van s5 → knSb s5 → van s6 → knSb s6,**第一对跑完(约 34 小时)就有一对
 可用的配对数据**,不必等全部结束。
 
 ## 三条纪律(踩过的坑)
