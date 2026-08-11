@@ -52,11 +52,20 @@ def main():
                         "window is coupled (arrival <= sim_duration - L - slack) so every "
                         "job's LATEST start lies inside the episode - the temporal-gamble "
                         "design (design_temporal_gamble.py PASS-STABLE cell).")
+    p.add_argument("--min-duration-sec", type=float, default=0.0,
+                   help="drop source LP jobs shorter than this before sampling. The v3 "
+                        "lever for making job length comparable to the green-peak duration, "
+                        "so that WHICH peak a job fits becomes the binding question "
+                        "(scan_voi_v3.py Lmin axis).")
     p.add_argument("--seed", type=int, default=42)
     a = p.parse_args()
 
     rng = np.random.default_rng(a.seed)
     dur = load_lp_durations_sec(a.parquet)
+    if a.min_duration_sec > 0:
+        n_before = len(dur)
+        dur = dur[dur >= a.min_duration_sec]
+        print(f"min-duration filter {a.min_duration_sec:.0f}s: {n_before} -> {len(dur)} source jobs")
     print(f"source LP durations (sec): n={len(dur)} p50={np.percentile(dur,50):.0f} "
           f"p90={np.percentile(dur,90):.0f} p99={np.percentile(dur,99):.0f}")
 
