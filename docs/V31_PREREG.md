@@ -12,7 +12,13 @@ preflight 15/15 PASS,两臂 diff = {forecast_mode})。
 ## 2. 协议(锁定)
 
 - 训练:600k steps,6 workers,种子 {1, 2};两臂同机同种子(配对内不跨机)。
-- 冒烟门:先 100k(约 1/6 训练量)判 P1,不过则不烧全量。
+- 冒烟门(**只判 P1,分级省算力**):100k oracle s1 → 探针符号正才买 s2 的算力 →
+  两种子都正 = 正式 P1 通过(run_v31_smoke.sh 自动串联)。任一种子非正 →
+  temporal gate,不调权重。**P2/P3 不在冒烟门**:P3 的 iso-completion 合同对 100k
+  欠训 checkpoint 无意义,P2 的盲臂 defer 率也要等盲臂在 600k 阶段重训后才可比
+  (V3.1 配方对两臂都是新的,旧盲臂 checkpoint 不再是对照)。
+- 600k 全量 = 2 臂 × 2 种子 ≈ 60h 本地串行;若 GPU 机 08-15 后空出,
+  可迁移但**配对必须同机**(两臂同种子不许跨机)。
 - 评测:argmax(DECODE_TOPK=0),10 局,`--local drain`(工单3 落地后强制;
   checkpoint 为 fixed-drain 时 evaluator 拒绝 --local rllib)。
 - 筛选:只用 wall-clock 超时(全 defer 使仿真 ~20x 慢);完成率永不作筛选条件。

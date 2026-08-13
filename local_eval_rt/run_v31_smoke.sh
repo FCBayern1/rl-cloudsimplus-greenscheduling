@@ -31,15 +31,40 @@ cd $REPO/cloudsimplus-gateway
   -Dv31.mu=$MU -Dv31.sigma=$SIGMA >>"$OUT" 2>&1 || { echo "[smoke] truth-table FAILED with real mu/sigma" >>"$OUT"; exit 1; }
 echo "[smoke] gates passed, training starts $(date '+%m-%d %H:%M')" >>"$OUT"
 cd $REPO/drl-manager
-.venv/bin/python entrypoint_rlmodule_gtrxl.py --config $REPO/config_C.yml \
-  --experiment $ORACLE --total-timesteps 100000 --num-workers 6 --seed 1 \
-  --output-dir $REPO/drl-manager/logs/v31_smoke_oracle_s1 > $R/v31_smoke_train.log 2>&1
-echo "[smoke] train exit rc=$? $(date '+%m-%d %H:%M')" >>"$OUT"
-pkill -9 -f "exe[.]edu[.]cspg[.]MainMultiDC" 2>/dev/null; pkill -9 -f "ray::[A-Za-z]" 2>/dev/null; sleep 5
-CK=$(ls -d $REPO/drl-manager/logs/v31_smoke_oracle_s1/multidc_gtrxl_training/PPO_*/checkpoint_* 2>/dev/null | sort -V | tail -1)
-if [ -n "$CK" ]; then
-  echo "----- P1 probe $(basename $CK) -----" >>"$OUT"
+
+# P1 is pre-registered as BOTH seeds positive. Staged to fail fast: seed 1
+# first; only a positive temporal delta buys seed 2's compute. P2/P3 are NOT
+# smoke criteria - they belong to the 600k stage (PREREG paragraph 2/3).
+smoke_seed () {  # seed -> writes probe json, echoes delta (empty on failure)
+  local S="$1"
+  .venv/bin/python entrypoint_rlmodule_gtrxl.py --config $REPO/config_C.yml \
+    --experiment $ORACLE --total-timesteps 100000 --num-workers 6 --seed $S \
+    --output-dir $REPO/drl-manager/logs/v31_smoke_oracle_s${S} > $R/v31_smoke_train_s${S}.log 2>&1
+  echo "[smoke s${S}] train exit rc=$? $(date '+%m-%d %H:%M')" >>"$OUT"
+  pkill -9 -f "exe[.]edu[.]cspg[.]MainMultiDC" 2>/dev/null; pkill -9 -f "ray::[A-Za-z]" 2>/dev/null; sleep 5
+  local CK=$(ls -d $REPO/drl-manager/logs/v31_smoke_oracle_s${S}/multidc_gtrxl_training/PPO_*/checkpoint_* 2>/dev/null | sort -V | tail -1)
+  [ -z "$CK" ] && { echo "[smoke s${S}] no checkpoint" >>"$OUT"; return 1; }
+  echo "----- P1 probe s${S} $(basename $CK) -----" >>"$OUT"
   .venv/bin/python probe_forecast_sensitivity.py --checkpoint "$CK" --trials 40 \
-    --json-out $R/probe/v31_smoke.json 2>/dev/null | sed -n '/channel/,$p' >>"$OUT"
+    --json-out $R/probe/v31_smoke_s${S}.json 2>/dev/null | sed -n '/channel/,$p' >>"$OUT"
+}
+delta_of () { .venv/bin/python -c "import json;print(json.load(open('$R/probe/v31_smoke_s$1.json'))['temporal']['delta'])" 2>/dev/null; }
+
+smoke_seed 1
+D1=$(delta_of 1)
+if [ -z "$D1" ]; then
+  echo "V31 SMOKE ABORT: s1 probe missing $(date '+%m-%d %H:%M')" >>"$OUT"; exit 1
+fi
+if .venv/bin/python -c "exit(0 if float('$D1')>0 else 1)"; then
+  echo "[smoke] s1 delta=$D1 POSITIVE -> chaining seed 2 for the formal two-seed P1" >>"$OUT"
+  smoke_seed 2
+  D2=$(delta_of 2)
+  if [ -n "$D2" ] && .venv/bin/python -c "exit(0 if float('$D2')>0 else 1)"; then
+    echo "V31 SMOKE P1 PASS (s1=$D1, s2=$D2) -> proceed to 600k full wave (PREREG)" >>"$OUT"
+  else
+    echo "V31 SMOKE P1 FAIL at s2 (s1=$D1, s2=${D2:-missing}) -> temporal gate, do NOT tune weights" >>"$OUT"
+  fi
+else
+  echo "V31 SMOKE P1 FAIL at s1 (delta=$D1) -> temporal gate, do NOT tune weights" >>"$OUT"
 fi
 echo "V31 SMOKE DONE $(date '+%m-%d %H:%M')" >>"$OUT"
