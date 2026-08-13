@@ -229,6 +229,26 @@ public class SimulationSettings {
      *  "persistence" = current green held flat over the window, so an arm's
      *  learning signal contains no information its observations do not. */
     private final String windowCarbonSource;
+    /** 2026-08-13 (V3.1 reward surgery, all default to legacy behaviour):
+     *  per_action_completion_mode — "bonus" (legacy +w·p) | "no_offset" (−w·(1−p),
+     *  removes the constant +w that routes got but defer did not; ordering
+     *  between DCs unchanged). */
+    private final String perActionCompletionMode;
+    /** defer_cost_mode — "flat" (legacy: −base −w·U charged at EVERY sighting) |
+     *  "incremental_urgency" (telescoping −w·[U(now)−U(last)], settled at every
+     *  sighting incl. the final route so a job cannot escape its last waiting
+     *  segment; base cost forced 0; U(s)=clip(1−s/W,0,1)²). */
+    private final String deferCostMode;
+    /** per_action_carbon_norm — "fixed" (legacy kg/normalizer) | "scale_only"
+     *  (kg/σ, physical zero kept) | "centered_zscore" (clip((kg−μ)/σ,±5); the
+     *  +w·μ/σ constant on routes is a DELIBERATE carbon-threshold design:
+     *  below-mean-carbon routes beat defer). μ/σ come from the offline
+     *  calibration artifact (calibrate_reward_norm.py), shared by every arm —
+     *  never from online statistics, which would give workers/arms different
+     *  reward functions. */
+    private final String perActionCarbonNorm;
+    private final double perActionCarbonMu;
+    private final double perActionCarbonSigma;
     /** 2026-08-07: >0 enables the per-episode green-window shift (rows). Each reset
      *  applies offset (1009*episodeIndex mod range) to ALL green providers, so every
      *  episode replays a different slice of the wind year while cross-DC phases stay
@@ -480,6 +500,11 @@ public class SimulationSettings {
         this.perActionMargNormalizer    = getDoubleParam(params, "per_action_marg_normalizer", 0.05);
         this.perActionWindowCarbon      = getBoolParam(params, "per_action_window_carbon", false);
         this.windowCarbonSource         = getStringParam(params, "window_carbon_source", "actual").trim().toLowerCase();
+        this.perActionCompletionMode    = getStringParam(params, "per_action_completion_mode", "bonus").trim().toLowerCase();
+        this.deferCostMode              = getStringParam(params, "defer_cost_mode", "flat").trim().toLowerCase();
+        this.perActionCarbonNorm        = getStringParam(params, "per_action_carbon_norm", "fixed").trim().toLowerCase();
+        this.perActionCarbonMu          = getDoubleParam(params, "per_action_carbon_mu", 0.0);
+        this.perActionCarbonSigma       = getDoubleParam(params, "per_action_carbon_sigma", 1.0);
         this.greenEpisodeOffsetRange    = getIntParam(params, "green_episode_offset_range", 0);
 
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();

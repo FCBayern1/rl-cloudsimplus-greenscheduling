@@ -1,0 +1,30 @@
+{
+  "checkpoint": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/v3_oracle_s1/multidc_gtrxl_training/PPO_multidc_env_7086f_00000_0_2026-08-11_10-31-32/checkpoint_000009",
+  "trials": 40,
+  "summary": {
+    "control": {
+      "tv": 0.807270884513855,
+      "flip": 0.925,
+      "mass": 0.7161961793899536
+    },
+    "forecast": {
+      "tv": 0.4786267876625061,
+      "flip": 0.7529296875,
+      "mass": 0.3755052387714386
+    },
+    "null": {
+      "tv": 0.0007410597754642367,
+      "flip": 0.0005859375,
+      "mass": -0.00034281605621799827
+    }
+  },
+  "forecast_over_control": 0.5925208383236799,
+  "temporal": {
+    "n_options": 9,
+    "defer_index": 8,
+    "p_defer_arriving": 0.002992769004777074,
+    "p_defer_leaving": 0.015178553760051727,
+    "delta": -0.012185784755274653,
+    "tv": 0.7006734609603882
+  }
+}

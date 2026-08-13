@@ -761,6 +761,7 @@ def run_rllib_evaluation(
     py4j_port: Optional[int] = None,
     force_full_episode: bool = False,
     stochastic: bool = False,
+    local_override: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     使用 RLlib 训练好的模型进行评估（Global + Local 都用 RL）。
@@ -878,6 +879,22 @@ def run_rllib_evaluation(
             num_vms=max_vms,
             max_hosts=max_hosts,
         )
+
+    # De-confound mode (2026-08-13): rllib GLOBAL + scripted LOCAL. Each arm's
+    # checkpoint carries a local policy co-learned with that arm's own routing
+    # distribution, so `--local rllib` cross-arm comparisons mix the global
+    # policy under test with an arm-specific local (docs/V3_FORECAST_DIAGNOSIS.md
+    # §2b). Passing e.g. `--local drain` here swaps every DC's local for the
+    # scripted scheduler while keeping the rllib global untouched. No-op when
+    # local_override is None/'rllib', so pre-registered `--local rllib` runs
+    # (P3 chain) are byte-identical.
+    if local_override and local_override != 'rllib':
+        from src.baselines.local_schedulers import LOCAL_SCHEDULERS as _LOCAL_LS
+        _OverrideCls = _LOCAL_LS[local_override]
+        local_schedulers = {dc_id: _OverrideCls(max_vms) for dc_id in range(num_dcs)}
+        if verbose:
+            print(f"Local override ACTIVE: checkpoint local policy replaced by "
+                  f"'{local_override}' for all {num_dcs} DCs")
 
     all_results = []
 
@@ -1115,6 +1132,7 @@ if __name__ == "__main__":
             use_new_api=args.new_api,
             py4j_port=args.py4j_port,
             stochastic=args.stochastic,
+            local_override=args.local_sched,
         )
     elif args.compare:
         # 比较多个组合

@@ -102,6 +102,19 @@ public class MultiDatacenterSimulationCore {
     // CSV-encoded in the step stats; only read by the learner when per_slot_credit is enabled.
     private double[] stepPerSlotReward = new double[0];
     private int stepRoutingActionCount = 0;
+
+    // === V3.1 reward surgery (2026-08-13) ===
+    // Incremental-urgency ledger: cloudletId -> last charged U value. Settled at
+    // every sighting (defer AND the final route, so the last waiting segment
+    // cannot escape), entry removed on route. The core is rebuilt per episode
+    // (gateway reset), so no explicit clearing is needed.
+    private final Map<Long, Double> deferUrgencyLedger = new HashMap<>();
+    // Carbon-normalisation instrumentation (raw vs normalized vs clip rate),
+    // episode-cumulative; getters via class-level @Getter. Behaviour-neutral.
+    private double epCarbonRawKgSum = 0.0;
+    private double epCarbonNormSum = 0.0;
+    private long epCarbonNormClipCount = 0;
+    private long epCarbonNormSampleCount = 0;
     private int    stepRoutedCount = 0;            // number of successful routings this step
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
@@ -592,8 +605,10 @@ public class MultiDatacenterSimulationCore {
                     if (forced >= 0 && globalBroker.routeCloudletToDatacenter(cloudlet, forced)) {
                         routedCount++;
                         deadlineForcedCount++;
+                        double settlement = settleOnRouteIfIncremental(cloudlet);
+                        stepPerSlotReward[i] = settlement;
                         try {
-                            stepPerSlotReward[i] = accumulatePerActionReward(cloudlet, forced);
+                            stepPerSlotReward[i] = settlement + accumulatePerActionReward(cloudlet, forced);
                         } catch (Throwable t) {
                             LOGGER.error("forced-route accumulatePerActionReward failed for cloudlet={} dc={}: {}",
                                     cloudlet.getId(), forced, t.getMessage(), t);
@@ -610,14 +625,26 @@ public class MultiDatacenterSimulationCore {
                 //             is available, while defer still beats brown-routing when it isn't.
                 //   urgency : Fix B — ramps 0 (far from deadline) → 1 (at deadline) over
                 //             deferUrgencyWindowSec, so near-deadline work is much costlier to defer.
-                double wBase = settings.getDeferBaseCost();
-                double cost = -wBase;
-                double wUrg = settings.getDeferUrgencyWeight();
-                if (wUrg > 0.0 && ddl != null) {
-                    double window = Math.max(1.0, settings.getDeferUrgencyWindowSec());
-                    double urgency = Math.max(0.0,
-                            Math.min(1.0, 1.0 - (ddl - currentClock) / window));
-                    cost += -wUrg * urgency;
+                double cost;
+                if ("incremental_urgency".equals(settings.getDeferCostMode())) {
+                    // V3.1: telescoping settlement −w·[U(now) − U(last)]. Base cost
+                    // is forced 0 (fresh work waits for free); the total charge over
+                    // a job's whole waiting life is −w·[U(final) − U(first)] no
+                    // matter how many times it re-enters the batch. First sighting
+                    // only records the baseline. Ledger entry survives (job stays
+                    // deferred); it is cleared when the job is finally routed.
+                    cost = settleUrgencyIncrement(cloudlet, ddl);
+                } else {
+                    // legacy "flat": charged in full at EVERY sighting
+                    double wBase = settings.getDeferBaseCost();
+                    cost = -wBase;
+                    double wUrg = settings.getDeferUrgencyWeight();
+                    if (wUrg > 0.0 && ddl != null) {
+                        double window = Math.max(1.0, settings.getDeferUrgencyWindowSec());
+                        double urgency = Math.max(0.0,
+                                Math.min(1.0, 1.0 - (ddl - currentClock) / window));
+                        cost += -wUrg * urgency;
+                    }
                 }
                 stepPerSlotReward[i] = cost;          // Tier-1: deferred slot's reward = its defer cost
                 if (cost != 0.0) {
@@ -632,8 +659,10 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
+                double settlement = settleOnRouteIfIncremental(cloudlet);
+                stepPerSlotReward[i] = settlement;
                 try {
-                    stepPerSlotReward[i] = accumulatePerActionReward(cloudlet, targetDcIndex);
+                    stepPerSlotReward[i] = settlement + accumulatePerActionReward(cloudlet, targetDcIndex);
                 } catch (Throwable t) {
                     LOGGER.error("accumulatePerActionReward failed for cloudlet={} dc={}: {}",
                             cloudlet.getId(), targetDcIndex, t.getMessage(), t);
@@ -673,6 +702,48 @@ public class MultiDatacenterSimulationCore {
             }
         }
         return bestWithCap >= 0 ? bestWithCap : bestAny;
+    }
+
+    /**
+     * V3.1 incremental-urgency settlement for one sighting of a cloudlet.
+     * Charges −w·[U(now) − U(lastCharged)] and advances the ledger. The FIRST
+     * sighting only records the baseline (charge 0) — fresh work defers free,
+     * matching flat mode where a fresh route also pays no urgency. Returns 0
+     * when urgency is disabled or the cloudlet has no deadline.
+     */
+    private double settleUrgencyIncrement(Cloudlet cloudlet, Long ddl) {
+        double wUrg = settings.getDeferUrgencyWeight();
+        if (wUrg <= 0.0 || ddl == null) {
+            return 0.0;
+        }
+        double uNow = PerActionRewardMath.urgency(
+                ddl - currentClock, settings.getDeferUrgencyWindowSec());
+        Double uLast = deferUrgencyLedger.put(cloudlet.getId(), uNow);
+        if (uLast == null) {
+            return 0.0;
+        }
+        return PerActionRewardMath.urgencySettlement(wUrg, uNow, uLast);
+    }
+
+    /**
+     * Route-side settlement hook: in incremental_urgency mode a routed cloudlet
+     * settles its final waiting segment (anti-escape — without this, a job that
+     * waited long and is then routed would never pay for the last stretch) and
+     * leaves the ledger. No-op in flat mode. Accounting mirrors the defer
+     * branch (stepPerActionRewardSum + epDeferUrgencyCostSum).
+     */
+    private double settleOnRouteIfIncremental(Cloudlet cloudlet) {
+        if (!"incremental_urgency".equals(settings.getDeferCostMode())) {
+            return 0.0;
+        }
+        double settlement = settleUrgencyIncrement(
+                cloudlet, cloudletDeadlineById.get(cloudlet.getId()));
+        deferUrgencyLedger.remove(cloudlet.getId());
+        if (settlement != 0.0) {
+            stepPerActionRewardSum += settlement;
+            epDeferUrgencyCostSum += settlement;
+        }
+        return settlement;
     }
 
     /**
@@ -752,9 +823,26 @@ public class MultiDatacenterSimulationCore {
         double wCompletion   = settings.getPerActionCompletionWeight();
         double margNormalize = Math.max(1e-6, settings.getPerActionMargNormalizer());
 
-        double margNorm = actual.marginalKg / margNormalize;  // ~[0, 1] for typical cloudlets
+        // V3.1: both terms route through PerActionRewardMath so unit tests hit
+        // the production formulas. Defaults ("fixed"/"bonus") reproduce the
+        // legacy arithmetic operation-for-operation.
+        String carbonNormMode = settings.getPerActionCarbonNorm();
+        double margNorm = PerActionRewardMath.normalizeCarbon(
+                carbonNormMode, actual.marginalKg, margNormalize,
+                settings.getPerActionCarbonMu(), settings.getPerActionCarbonSigma());
         double rAbsolute = -wCarbon * margNorm
-                         + wCompletion * actual.probComplete;
+                         + PerActionRewardMath.completionTerm(
+                                 settings.getPerActionCompletionMode(),
+                                 wCompletion, actual.probComplete);
+
+        // Instrumentation (behaviour-neutral): raw vs normalized carbon + clip rate.
+        epCarbonRawKgSum += actual.marginalKg;
+        epCarbonNormSum += margNorm;
+        epCarbonNormSampleCount++;
+        if ("centered_zscore".equals(carbonNormMode) && PerActionRewardMath.zscoreWouldClip(
+                actual.marginalKg, settings.getPerActionCarbonMu(), settings.getPerActionCarbonSigma())) {
+            epCarbonNormClipCount++;
+        }
 
         stepPerActionRewardSum += rAbsolute;
         stepMarginalCarbonKg   += actual.marginalKg;

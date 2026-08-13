@@ -1,0 +1,151 @@
+{
+  "artifact": "per_action_carbon_norm calibration",
+  "date": "2026-08-13",
+  "experiment": "experiment_v3_1_oracle",
+  "units": "kg per routing action (marginalKg as in computeDcCostFeatures)",
+  "reference_policy": "all candidate (task, green-DC) pairs, uniform decision times over offset range + horizon (policy-free)",
+  "seed": 20260813,
+  "samples_decision_times": 2000,
+  "trace_file": "v3b_n1200.csv",
+  "trace_sha": "4d7bab1a190b",
+  "wind_files": [
+    "Turbine_9012_2021.csv",
+    "Turbine_9036_2021.csv",
+    "Turbine_9091_2021.csv",
+    "Turbine_9095_2021.csv",
+    "Turbine_9096_2021.csv",
+    "Turbine_9101_2021.csv",
+    "Turbine_9103_2021.csv"
+  ],
+  "wind_sha": {
+    "Turbine_9012_2021.csv": "0fc780a4f8b5",
+    "Turbine_9036_2021.csv": "0b0bd648cc28",
+    "Turbine_9091_2021.csv": "9c458eeea024",
+    "Turbine_9095_2021.csv": "f7e7f3dcc32d",
+    "Turbine_9096_2021.csv": "956ac804ed8e",
+    "Turbine_9101_2021.csv": "348d8ecf2984",
+    "Turbine_9103_2021.csv": "fda05b3f058d"
+  },
+  "config_keys": {
+    "compressed_power_divisor": 5103.4,
+    "mi_per_kg_factor": null,
+    "green_episode_offset_range": 4800,
+    "window_carbon_source": "persistence"
+  },
+  "demand_model": {
+    "watt_per_host_full": 300.0,
+    "util_levels": {
+      "low_util": 0.3,
+      "mid_util": 0.6,
+      "high_util": 0.9
+    },
+    "note": "demandW unobservable offline; swept. RECOMMENDED level = mid_util. Validate vs epCarbonRawKgSum after the 100k smoke (PREREG \u00a77)."
+  },
+  "recommended": {
+    "per_action_carbon_mu": 2.671637621678896,
+    "per_action_carbon_sigma": 1.7541253942404824
+  },
+  "per_level": {
+    "low_util": {
+      "mu": 2.308476930356711,
+      "sigma": 1.7439163868309142,
+      "quantiles": {
+        "1": 0.03622285714285714,
+        "5": 0.3728233813383791,
+        "25": 1.0274946304704429,
+        "50": 1.648028496408557,
+        "75": 3.2636512834580866,
+        "95": 6.244377137930455,
+        "99": 6.2857142857142865
+      },
+      "clip_rate_at_pm5sigma": 0.0,
+      "n": 8000
+    },
+    "mid_util": {
+      "mu": 2.671637621678896,
+      "sigma": 1.7541253942404824,
+      "quantiles": {
+        "1": 0.6451617998085312,
+        "5": 0.8441789793515807,
+        "25": 1.2037977447807906,
+        "50": 1.9709871567526414,
+        "75": 3.9182657460852433,
+        "95": 6.265045711822371,
+        "99": 6.2857142857142865
+      },
+      "clip_rate_at_pm5sigma": 0.0,
+      "n": 8000
+    },
+    "high_util": {
+      "mu": 2.7935296525478353,
+      "sigma": 1.792930360009406,
+      "quantiles": {
+        "1": 0.7760714823316669,
+        "5": 0.9312232853167918,
+        "25": 1.2571428571428571,
+        "50": 2.0705520319786808,
+        "75": 4.181199390450065,
+        "95": 6.271935236453008,
+        "99": 6.2857142857142865
+      },
+      "clip_rate_at_pm5sigma": 0.0,
+      "n": 8000
+    }
+  },
+  "per_dc": {
+    "low_util": {
+      "DC_Nordic": {
+        "mean": 2.3423348419015,
+        "std": 1.6988525605640103
+      },
+      "DC_Germany": {
+        "mean": 2.323410407213368,
+        "std": 1.6885365454334453
+      },
+      "DC_US_East": {
+        "mean": 2.6336928456975395,
+        "std": 1.7459905739419521
+      },
+      "DC_Nordic2": {
+        "mean": 1.9344696266144366,
+        "std": 1.7698085950710785
+      }
+    },
+    "mid_util": {
+      "DC_Nordic": {
+        "mean": 2.689824278093607,
+        "std": 1.7483277390859329
+      },
+      "DC_Germany": {
+        "mean": 2.680362060749541,
+        "std": 1.7411324609442576
+      },
+      "DC_US_East": {
+        "mean": 2.835503279991627,
+        "std": 1.8117471700442251
+      },
+      "DC_Nordic2": {
+        "mean": 2.480860867880808,
+        "std": 1.695154583756382
+      }
+    },
+    "high_util": {
+      "DC_Nordic": {
+        "mean": 2.805654090157643,
+        "std": 1.793070124557984
+      },
+      "DC_Germany": {
+        "mean": 2.799345945261599,
+        "std": 1.787922056090187
+      },
+      "DC_US_East": {
+        "mean": 2.902773424756323,
+        "std": 1.8432985102717248
+      },
+      "DC_Nordic2": {
+        "mean": 2.6663451500157764,
+        "std": 1.73798475956171
+      }
+    }
+  }
+}
