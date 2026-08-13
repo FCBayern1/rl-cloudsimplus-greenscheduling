@@ -56,6 +56,13 @@ def _global_data():
         "upcoming_cloudlets_count":         42,
         "batch_cloudlet_pes":               [2, 4, 8, 1],
         "batch_cloudlet_mi":                [200_000, 800_000, 1_600_000, 100_000],
+        "batch_cloudlet_wait_age":          [0.0, 7200.0, 9000.0, 30.0],
+        "batch_cloudlet_time_to_deadline":  [-100.0, 0.0, 18_000.0, 300.0],
+        "batch_cloudlet_deadline_present":  [1, 1, 0, 1],
+        "batch_cloudlet_is_deferred":       [1, 0, 0, 1],
+        "batch_cloudlet_defer_count":       [2, 0, 0, 7],
+        "global_deferred_count":            2,
+        "global_deferred_mi":               300_000,
         "upcoming_cloudlets_pes_distribution": [10, 6, 2],
         "load_imbalance":                   1.23,
         "recent_completed_cloudlets":       7,
@@ -126,6 +133,13 @@ def _build_legacy_mock():
         "upcoming_cloudlets_count":         "getUpcomingCloudletsCount",
         "batch_cloudlet_pes":               "getBatchCloudletPes",
         "batch_cloudlet_mi":                "getBatchCloudletMi",
+        "batch_cloudlet_wait_age":          "getBatchCloudletWaitAge",
+        "batch_cloudlet_time_to_deadline":  "getBatchCloudletTimeToDeadline",
+        "batch_cloudlet_deadline_present":  "getBatchCloudletDeadlinePresent",
+        "batch_cloudlet_is_deferred":       "getBatchCloudletIsDeferred",
+        "batch_cloudlet_defer_count":       "getBatchCloudletDeferCount",
+        "global_deferred_count":            "getGlobalDeferredCount",
+        "global_deferred_mi":               "getGlobalDeferredMi",
         "upcoming_cloudlets_pes_distribution": "getUpcomingCloudletsPesDistribution",
         "load_imbalance":                   "getLoadImbalance",
         "recent_completed_cloudlets":       "getRecentCompletedCloudlets",
@@ -229,6 +243,25 @@ def test_global_obs_flat_parity(env):
         np.testing.assert_array_equal(
             flat_out[k], legacy_out[k], err_msg=f"global obs key {k!r} mismatch"
         )
+
+
+def test_v31_global_obs_flat_parity(env):
+    """The gated defer-state schema must agree across both transport paths."""
+    env.obs_v31_features = True
+    flat_out = env._convert_global_observation_from_flat(_build_flat_map())
+    legacy_out = env._convert_global_observation(
+        _build_legacy_mock().getGlobalObservation())
+
+    for key in (
+        "batch_cloudlet_wait_age",
+        "batch_cloudlet_time_to_deadline",
+        "batch_cloudlet_deadline_present",
+        "batch_cloudlet_is_deferred",
+        "batch_cloudlet_defer_count",
+        "global_deferred_count",
+        "global_deferred_mi",
+    ):
+        np.testing.assert_array_equal(flat_out[key], legacy_out[key], err_msg=key)
 
 
 def test_local_obs_flat_parity(env):

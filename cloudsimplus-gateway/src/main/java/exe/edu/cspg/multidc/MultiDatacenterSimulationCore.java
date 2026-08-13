@@ -142,6 +142,12 @@ public class MultiDatacenterSimulationCore {
     private final Map<Integer, Double> epLocalInvalidSum = new HashMap<>();
     private final Map<Integer, Double> epLocalCompletionSum = new HashMap<>();
 
+    // Local dispatch-rate instrumentation (episode-cumulative, per DC).
+    // These are deliberately monitoring-only and never enter observations.
+    private final Map<Integer, Long> epLocalDispatchRequested = new HashMap<>();
+    private final Map<Integer, Long> epLocalDispatchPlaced = new HashMap<>();
+    private final Map<Integer, Long> epLocalWaitingAfterDispatch = new HashMap<>();
+
     /**
      * Initialise the multi-datacenter simulation core.
      *
@@ -230,6 +236,9 @@ public class MultiDatacenterSimulationCore {
         epLocalQueueSum.clear();
         epLocalInvalidSum.clear();
         epLocalCompletionSum.clear();
+        epLocalDispatchRequested.clear();
+        epLocalDispatchPlaced.clear();
+        epLocalWaitingAfterDispatch.clear();
 
         // Reset running-max carbon normalisation for EPISODE mode
         if ("EPISODE".equals(settings.getCarbonNormalizationMode())) {
@@ -651,7 +660,9 @@ public class MultiDatacenterSimulationCore {
                     stepPerActionRewardSum += cost;
                     epDeferUrgencyCostSum += cost;   // now = total deferral cost (base + urgency)
                 }
-                globalBroker.requeueCloudletToTail(cloudlet);
+                // This is the sole explicit-DEFER requeue path. It also covers a
+                // failed deadline-forced attempt that fell through above.
+                globalBroker.deferCloudletToTail(cloudlet);
                 deferredCount++;
                 continue;
             }
@@ -1010,6 +1021,10 @@ public class MultiDatacenterSimulationCore {
             }
             // Any dispatch count is a valid action (0 = legitimate hold).
             results.put(dcId, true);
+            epLocalDispatchRequested.merge(dcId, (long) dispatchCount, Long::sum);
+            epLocalDispatchPlaced.merge(dcId, (long) placed, Long::sum);
+            epLocalWaitingAfterDispatch.merge(
+                    dcId, (long) localBroker.getWaitingCloudletCount(), Long::sum);
         }
         return results;
     }
@@ -1375,12 +1390,27 @@ public class MultiDatacenterSimulationCore {
         int batchSize = settings.getGlobalRoutingBatchSize();
         int[] batchCloudletPes = new int[batchSize];
         long[] batchCloudletMi = new long[batchSize];
+        double[] batchCloudletWaitAge = new double[batchSize];
+        double[] batchCloudletTimeToDeadline = new double[batchSize];
+        int[] batchCloudletDeadlinePresent = new int[batchSize];
+        int[] batchCloudletIsDeferred = new int[batchSize];
+        int[] batchCloudletDeferCount = new int[batchSize];
 
         // Fill arrays with actual cloudlet data (0 if no cloudlet at that position)
         for (int i = 0; i < batchCloudlets.size(); i++) {
             Cloudlet cloudlet = batchCloudlets.get(i);
             batchCloudletPes[i] = (int) cloudlet.getPesNumber();
             batchCloudletMi[i] = cloudlet.getLength();
+            batchCloudletWaitAge[i] = Math.max(0.0, currentClock - cloudlet.getSubmissionDelay());
+            Long deadline = cloudletDeadlineById.get(cloudlet.getId());
+            if (deadline != null) {
+                batchCloudletDeadlinePresent[i] = 1;
+                // Deliberately retain negative values: an overdue, still-waiting
+                // task is distinct from a task with no deadline.
+                batchCloudletTimeToDeadline[i] = deadline - currentClock;
+            }
+            batchCloudletIsDeferred[i] = globalBroker.isCloudletDeferred(cloudlet) ? 1 : 0;
+            batchCloudletDeferCount[i] = globalBroker.getCloudletDeferCount(cloudlet);
         }
         // Remaining positions stay as 0 (default array values)
 
@@ -1419,6 +1449,13 @@ public class MultiDatacenterSimulationCore {
                 upcomingCount,
                 batchCloudletPes,      // Array of PEs for batch
                 batchCloudletMi,       // Array of MI for batch
+                batchCloudletWaitAge,
+                batchCloudletTimeToDeadline,
+                batchCloudletDeadlinePresent,
+                batchCloudletIsDeferred,
+                batchCloudletDeferCount,
+                globalBroker.getGlobalDeferredCount(),
+                globalBroker.getGlobalDeferredMi(),
                 upcomingPesDistribution,
                 loadImbalance,
                 recentCompleted,
@@ -2278,6 +2315,9 @@ public class MultiDatacenterSimulationCore {
             dcMetrics.put("local_reward_queue_sum", epLocalQueueSum.getOrDefault(dcId, 0.0));
             dcMetrics.put("local_reward_invalid_sum", epLocalInvalidSum.getOrDefault(dcId, 0.0));
             dcMetrics.put("local_reward_completion_sum", epLocalCompletionSum.getOrDefault(dcId, 0.0));
+            dcMetrics.put("local_dispatch_requested", epLocalDispatchRequested.getOrDefault(dcId, 0L));
+            dcMetrics.put("local_dispatch_placed", epLocalDispatchPlaced.getOrDefault(dcId, 0L));
+            dcMetrics.put("local_waiting_after_dispatch", epLocalWaitingAfterDispatch.getOrDefault(dcId, 0L));
 
             // Calculate mean completion time from finished cloudlets
             LoadBalancingBroker localBroker = dc.getLocalBroker();

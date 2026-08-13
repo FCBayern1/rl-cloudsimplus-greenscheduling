@@ -123,6 +123,29 @@ public class GlobalObservationState {
      */
     private final long[] batchCloudletMi;
 
+    /** Seconds elapsed since each batch cloudlet arrived. */
+    private final double[] batchCloudletWaitAge;
+
+    /** Seconds until each batch cloudlet's absolute deadline (may be negative). */
+    private final double[] batchCloudletTimeToDeadline;
+
+    /** 1 when the batch cloudlet has a deadline, otherwise 0. */
+    private final int[] batchCloudletDeadlinePresent;
+
+    /** 1 when the batch cloudlet is currently explicitly deferred, otherwise 0. */
+    private final int[] batchCloudletIsDeferred;
+
+    /** Number of explicit DEFER actions previously applied to each batch cloudlet. */
+    private final int[] batchCloudletDeferCount;
+
+    /** Number of explicitly deferred cloudlets currently in the global queue. */
+    @Getter
+    private final int globalDeferredCount;
+
+    /** Total MI of explicitly deferred cloudlets currently in the global queue. */
+    @Getter
+    private final long globalDeferredMi;
+
     /**
      * Distribution of PEs requirements in upcoming cloudlets.
      * Format: [small (1-2 PEs), medium (3-4 PEs), large (5+ PEs)]
@@ -177,6 +200,13 @@ public class GlobalObservationState {
      * @param upcomingCloudletsCount Number of arriving cloudlets
      * @param batchCloudletPes Array of PEs required by each cloudlet in the batch
      * @param batchCloudletMi Array of MI for each cloudlet in the batch
+     * @param batchCloudletWaitAge Seconds since arrival for each batch cloudlet
+     * @param batchCloudletTimeToDeadline Seconds until deadline for each batch cloudlet
+     * @param batchCloudletDeadlinePresent Deadline-present mask for each batch cloudlet
+     * @param batchCloudletIsDeferred Explicitly-deferred mask for each batch cloudlet
+     * @param batchCloudletDeferCount Explicit defer count for each batch cloudlet
+     * @param globalDeferredCount Number of explicitly deferred cloudlets in the global queue
+     * @param globalDeferredMi Total MI of explicitly deferred cloudlets in the global queue
      * @param upcomingCloudletsPesDistribution Distribution of PEs in upcoming cloudlets [small, medium, large]
      * @param loadImbalance Load imbalance metric across DCs
      * @param recentCompletedCloudlets Cloudlets completed recently
@@ -199,6 +229,13 @@ public class GlobalObservationState {
             int upcomingCloudletsCount,
             int[] batchCloudletPes,
             long[] batchCloudletMi,
+            double[] batchCloudletWaitAge,
+            double[] batchCloudletTimeToDeadline,
+            int[] batchCloudletDeadlinePresent,
+            int[] batchCloudletIsDeferred,
+            int[] batchCloudletDeferCount,
+            int globalDeferredCount,
+            long globalDeferredMi,
             int[] upcomingCloudletsPesDistribution,
             double loadImbalance,
             int recentCompletedCloudlets,
@@ -223,6 +260,11 @@ public class GlobalObservationState {
         Objects.requireNonNull(dcRamUtilizations, "dcRamUtilizations");
         Objects.requireNonNull(batchCloudletPes, "batchCloudletPes");
         Objects.requireNonNull(batchCloudletMi, "batchCloudletMi");
+        Objects.requireNonNull(batchCloudletWaitAge, "batchCloudletWaitAge");
+        Objects.requireNonNull(batchCloudletTimeToDeadline, "batchCloudletTimeToDeadline");
+        Objects.requireNonNull(batchCloudletDeadlinePresent, "batchCloudletDeadlinePresent");
+        Objects.requireNonNull(batchCloudletIsDeferred, "batchCloudletIsDeferred");
+        Objects.requireNonNull(batchCloudletDeferCount, "batchCloudletDeferCount");
         Objects.requireNonNull(upcomingCloudletsPesDistribution, "upcomingCloudletsPesDistribution");
 
         if (dcCurrentGreenPowerW.length != numDatacenters
@@ -239,8 +281,14 @@ public class GlobalObservationState {
                 || dcRamUtilizations.length != numDatacenters) {
             throw new IllegalArgumentException("All per-datacenter arrays must have length == numDatacenters");
         }
-        if (batchCloudletPes.length != batchCloudletMi.length) {
-            throw new IllegalArgumentException("batchCloudletPes and batchCloudletMi must have the same length");
+        int batchLength = batchCloudletPes.length;
+        if (batchCloudletMi.length != batchLength
+                || batchCloudletWaitAge.length != batchLength
+                || batchCloudletTimeToDeadline.length != batchLength
+                || batchCloudletDeadlinePresent.length != batchLength
+                || batchCloudletIsDeferred.length != batchLength
+                || batchCloudletDeferCount.length != batchLength) {
+            throw new IllegalArgumentException("All per-batch arrays must have the same length");
         }
         if (upcomingCloudletsPesDistribution.length != 3) {
             throw new IllegalArgumentException("upcomingCloudletsPesDistribution must have length 3 [small, medium, large]");
@@ -267,6 +315,17 @@ public class GlobalObservationState {
         this.upcomingCloudletsCount = upcomingCloudletsCount;
         this.batchCloudletPes = Arrays.copyOf(batchCloudletPes, batchCloudletPes.length);
         this.batchCloudletMi = Arrays.copyOf(batchCloudletMi, batchCloudletMi.length);
+        this.batchCloudletWaitAge = Arrays.copyOf(batchCloudletWaitAge, batchCloudletWaitAge.length);
+        this.batchCloudletTimeToDeadline = Arrays.copyOf(
+                batchCloudletTimeToDeadline, batchCloudletTimeToDeadline.length);
+        this.batchCloudletDeadlinePresent = Arrays.copyOf(
+                batchCloudletDeadlinePresent, batchCloudletDeadlinePresent.length);
+        this.batchCloudletIsDeferred = Arrays.copyOf(
+                batchCloudletIsDeferred, batchCloudletIsDeferred.length);
+        this.batchCloudletDeferCount = Arrays.copyOf(
+                batchCloudletDeferCount, batchCloudletDeferCount.length);
+        this.globalDeferredCount = globalDeferredCount;
+        this.globalDeferredMi = globalDeferredMi;
         this.upcomingCloudletsPesDistribution = Arrays.copyOf(
                 upcomingCloudletsPesDistribution,
                 upcomingCloudletsPesDistribution.length
@@ -336,6 +395,26 @@ public class GlobalObservationState {
 
     public long[] getBatchCloudletMi() {
         return Arrays.copyOf(batchCloudletMi, batchCloudletMi.length);
+    }
+
+    public double[] getBatchCloudletWaitAge() {
+        return Arrays.copyOf(batchCloudletWaitAge, batchCloudletWaitAge.length);
+    }
+
+    public double[] getBatchCloudletTimeToDeadline() {
+        return Arrays.copyOf(batchCloudletTimeToDeadline, batchCloudletTimeToDeadline.length);
+    }
+
+    public int[] getBatchCloudletDeadlinePresent() {
+        return Arrays.copyOf(batchCloudletDeadlinePresent, batchCloudletDeadlinePresent.length);
+    }
+
+    public int[] getBatchCloudletIsDeferred() {
+        return Arrays.copyOf(batchCloudletIsDeferred, batchCloudletIsDeferred.length);
+    }
+
+    public int[] getBatchCloudletDeferCount() {
+        return Arrays.copyOf(batchCloudletDeferCount, batchCloudletDeferCount.length);
     }
 
     public int[] getUpcomingCloudletsPesDistribution() {
@@ -490,6 +569,13 @@ public class GlobalObservationState {
                 0,                           // upcomingCloudletsCount
                 new int[batchSize],          // batchCloudletPes
                 new long[batchSize],         // batchCloudletMi
+                new double[batchSize],       // batchCloudletWaitAge
+                new double[batchSize],       // batchCloudletTimeToDeadline
+                new int[batchSize],          // batchCloudletDeadlinePresent
+                new int[batchSize],          // batchCloudletIsDeferred
+                new int[batchSize],          // batchCloudletDeferCount
+                0,                           // globalDeferredCount
+                0L,                          // globalDeferredMi
                 new int[3],                  // upcomingCloudletsPesDistribution
                 0.0,                         // loadImbalance
                 0,                           // recentCompletedCloudlets

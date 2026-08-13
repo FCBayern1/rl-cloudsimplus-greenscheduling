@@ -2,8 +2,10 @@ package exe.edu.cspg.multidc;
 import exe.edu.cspg.singledc.LoadBalancingBroker;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import lombok.Getter;
 import org.cloudsimplus.brokers.DatacenterBrokerSimple;
@@ -42,6 +44,12 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     // === Statistics ===
     @Getter
     private int totalCloudletsRouted = 0;
+
+    // === Explicit-DEFER ledger (V3.1 observation features) ===
+    // Only the global DEFER action may add an entry. Generic routing-failure
+    // requeues deliberately do not touch this ledger.
+    private final Map<Long, Integer> deferCountByCloudletId = new HashMap<>();
+    private final Map<Long, Long> deferredMiByCloudletId = new HashMap<>();
 
     /**
      * Create a GlobalBroker with all cloudlets and datacenter instances.
@@ -198,6 +206,51 @@ public class GlobalBroker extends DatacenterBrokerSimple {
     }
 
     /**
+     * Requeue after an explicit global DEFER action and advance its lifecycle
+     * metadata. Repeated deferrals increment the per-cloudlet counter without
+     * double-counting the cloudlet in the global deferred aggregates.
+     */
+    public void deferCloudletToTail(Cloudlet cloudlet) {
+        if (cloudlet == null) return;
+        long cloudletId = cloudlet.getId();
+        deferCountByCloudletId.merge(cloudletId, 1, Integer::sum);
+        deferredMiByCloudletId.putIfAbsent(cloudletId, Math.max(0L, cloudlet.getLength()));
+        globalWaitingQueue.addLast(cloudlet);
+    }
+
+    /** Return whether this cloudlet is currently held by an explicit DEFER action. */
+    public boolean isCloudletDeferred(Cloudlet cloudlet) {
+        return cloudlet != null && deferredMiByCloudletId.containsKey(cloudlet.getId());
+    }
+
+    /** Return how many explicit DEFER actions have been applied to this cloudlet. */
+    public int getCloudletDeferCount(Cloudlet cloudlet) {
+        return cloudlet == null ? 0 : deferCountByCloudletId.getOrDefault(cloudlet.getId(), 0);
+    }
+
+    /** Number of cloudlets currently held by an explicit DEFER action. */
+    public int getGlobalDeferredCount() {
+        return deferredMiByCloudletId.size();
+    }
+
+    /** Total MI of cloudlets currently held by an explicit DEFER action. */
+    public long getGlobalDeferredMi() {
+        long total = 0L;
+        for (long mi : deferredMiByCloudletId.values()) {
+            total += mi;
+        }
+        return total;
+    }
+
+    /** Package-private lifecycle hook used by the successful routing path. */
+    void clearDeferredLifecycle(Cloudlet cloudlet) {
+        if (cloudlet == null) return;
+        long cloudletId = cloudlet.getId();
+        deferredMiByCloudletId.remove(cloudletId);
+        deferCountByCloudletId.remove(cloudletId);
+    }
+
+    /**
      * Peek at the next cloudlet in the waiting queue without removing it.
      *
      * @return Next cloudlet or null if queue is empty
@@ -289,6 +342,10 @@ public class GlobalBroker extends DatacenterBrokerSimple {
         boolean success = localBroker.receiveCloudlet(cloudlet);
 
         if (success) {
+            // A successful route (normal or deadline-forced) ends the deferred
+            // lifecycle. Failed routing leaves the ledger untouched because the
+            // job is still waiting for a later decision.
+            clearDeferredLifecycle(cloudlet);
             totalCloudletsRouted++;
             targetDC.incrementCloudletsReceived();
             logger.debug("{}: Cloudlet {} routed to {} (Local queue: {})",
@@ -405,6 +462,8 @@ public class GlobalBroker extends DatacenterBrokerSimple {
         totalCloudletsRouted = 0;
         nextCloudletIndex = 0;
         globalWaitingQueue.clear();
+        deferCountByCloudletId.clear();
+        deferredMiByCloudletId.clear();
         datacenterInstances.forEach(DatacenterInstance::resetStatistics);
         logger.info("GlobalBroker statistics and waiting queue reset");
     }

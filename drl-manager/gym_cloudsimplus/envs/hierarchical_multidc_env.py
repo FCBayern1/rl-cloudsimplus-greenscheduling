@@ -155,6 +155,46 @@ class HierarchicalMultiDCEnv(gym.Env):
         # green ratio) for the M2.3 baseline scheduler without extra Py4J calls.
         self._last_global_obs_for_crd: Dict[str, Any] = {}
 
+        # V3.1 defer-state observations. Java always maintains the factual
+        # lifecycle ledger, while this gate alone controls the Python policy
+        # schema so default-off runs and legacy checkpoints remain identical.
+        self.obs_v31_features = bool(config.get("obs_v31_features", False))
+        self._obs_v31_wait_age_scale = max(
+            1.0,
+            float(config.get(
+                "obs_v31_wait_age_scale_sec",
+                float(config.get("max_episode_length", 7200))
+                * float(config.get("simulation_timestep", 1.0)),
+            )),
+        )
+        self._obs_v31_deadline_scale = max(
+            1.0,
+            float(config.get(
+                "obs_v31_deadline_scale_sec",
+                config.get("defer_urgency_window_sec", 3600.0),
+            )),
+        )
+        self._obs_v31_defer_count_scale = max(
+            1.0,
+            # Counts above this are behaviorally all "many re-encounters";
+            # scaling by the 7200-step episode would squash the typical 1..10
+            # range into numerical noise.
+            float(config.get("obs_v31_defer_count_scale", 32.0)),
+        )
+        self._obs_v31_global_count_scale = max(
+            # V3/V3.1 traces contain 1200--2000 jobs. Keep that regime visible
+            # while allowing larger scenarios to override the scale explicitly.
+            1.0, float(config.get("obs_v31_global_deferred_count_scale", 2000.0))
+        )
+        self._obs_v31_global_mi_scale = max(
+            1.0,
+            float(config.get(
+                "obs_v31_global_deferred_mi_scale",
+                self._obs_v31_global_count_scale
+                * float(config.get("obs_cloudlet_mi_high", 2000000)),
+            )),
+        )
+
         # Define observation and action spaces
         self._setup_observation_spaces()
         self._setup_action_spaces()
@@ -546,7 +586,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         Define observation spaces for global and local agents.
         """
         # Global observation space (aggregated DC-level metrics)
-        self.global_observation_space = spaces.Dict({
+        global_spaces = {
             # Green energy metrics (W - Watts)
             # NOTE (2026-06-23): high was 5e6 W (5 MW) but actual green/demand are
             # ~tens–thousands of W in these regimes, so the input-scale normalization
@@ -644,7 +684,30 @@ class HierarchicalMultiDCEnv(gym.Env):
                 shape=(1,),
                 dtype=np.int32
             ),
-        })
+        }
+
+        if self.obs_v31_features:
+            batch_shape = (self.global_routing_batch_size,)
+            global_spaces.update({
+                # All continuous values below are normalized in the converter
+                # and explicitly clipped to these declared bounds.
+                "batch_cloudlet_wait_age": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_time_to_deadline": spaces.Box(
+                    low=-1.0, high=4.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_deadline_present": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_is_deferred": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_defer_count": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "global_deferred_count": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "global_deferred_mi": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+            })
+
+        self.global_observation_space = spaces.Dict(global_spaces)
 
         # Local observation spaces (per datacenter)
         # Track per-DC sizes but expose a shared max-sized space for SB3 compatibility
@@ -1264,6 +1327,54 @@ class HierarchicalMultiDCEnv(gym.Env):
             result[:len(arr)] = arr
             return result
 
+    def _append_v31_global_features(
+        self,
+        obs: Dict[str, Any],
+        *,
+        wait_age,
+        time_to_deadline,
+        deadline_present,
+        is_deferred,
+        defer_count,
+        global_deferred_count,
+        global_deferred_mi,
+    ) -> None:
+        """Normalize and clip V3.1 defer-state facts into the policy schema."""
+        if not self.obs_v31_features:
+            return
+
+        batch_size = self.global_routing_batch_size
+
+        def _batch(values) -> np.ndarray:
+            return self._pad_batch_array(
+                np.asarray(values, dtype=np.float64), batch_size, dtype=np.float64)
+
+        wait = np.nan_to_num(_batch(wait_age), nan=0.0, posinf=np.inf, neginf=0.0)
+        ttd = np.nan_to_num(
+            _batch(time_to_deadline), nan=0.0, posinf=np.inf, neginf=-np.inf)
+        present = _batch(deadline_present)
+        deferred = _batch(is_deferred)
+        counts = np.nan_to_num(_batch(defer_count), nan=0.0, posinf=np.inf, neginf=0.0)
+
+        obs.update({
+            "batch_cloudlet_wait_age": np.clip(
+                wait / self._obs_v31_wait_age_scale, 0.0, 1.0).astype(np.float32),
+            "batch_cloudlet_time_to_deadline": np.clip(
+                ttd / self._obs_v31_deadline_scale, -1.0, 4.0).astype(np.float32),
+            "batch_cloudlet_deadline_present": np.clip(
+                present, 0.0, 1.0).astype(np.float32),
+            "batch_cloudlet_is_deferred": np.clip(
+                deferred, 0.0, 1.0).astype(np.float32),
+            "batch_cloudlet_defer_count": np.clip(
+                counts / self._obs_v31_defer_count_scale, 0.0, 1.0).astype(np.float32),
+            "global_deferred_count": np.array([
+                np.clip(float(global_deferred_count) / self._obs_v31_global_count_scale, 0.0, 1.0)
+            ], dtype=np.float32),
+            "global_deferred_mi": np.array([
+                np.clip(float(global_deferred_mi) / self._obs_v31_global_mi_scale, 0.0, 1.0)
+            ], dtype=np.float32),
+        })
+
     def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
         """
         Convert Java GlobalObservationState to Python dict.
@@ -1303,6 +1414,18 @@ class HierarchicalMultiDCEnv(gym.Env):
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
             "recent_completed": np.array([min(int(global_obs_java.getRecentCompletedCloudlets()), 99999)], dtype=np.int32),
         }
+
+        if self.obs_v31_features:
+            self._append_v31_global_features(
+                obs,
+                wait_age=global_obs_java.getBatchCloudletWaitAge(),
+                time_to_deadline=global_obs_java.getBatchCloudletTimeToDeadline(),
+                deadline_present=global_obs_java.getBatchCloudletDeadlinePresent(),
+                is_deferred=global_obs_java.getBatchCloudletIsDeferred(),
+                defer_count=global_obs_java.getBatchCloudletDeferCount(),
+                global_deferred_count=global_obs_java.getGlobalDeferredCount(),
+                global_deferred_mi=global_obs_java.getGlobalDeferredMi(),
+            )
 
         # ── Future-trend features ────────────────────────────────────────
         if self.timecap_provider is None:
@@ -1653,6 +1776,18 @@ class HierarchicalMultiDCEnv(gym.Env):
             "recent_completed":          np.array(
                 [min(int(flat["g.recent_completed_cloudlets"]), 99999)], dtype=np.int32),
         }
+
+        if self.obs_v31_features:
+            self._append_v31_global_features(
+                obs,
+                wait_age=flat["g.batch_cloudlet_wait_age"],
+                time_to_deadline=flat["g.batch_cloudlet_time_to_deadline"],
+                deadline_present=flat["g.batch_cloudlet_deadline_present"],
+                is_deferred=flat["g.batch_cloudlet_is_deferred"],
+                defer_count=flat["g.batch_cloudlet_defer_count"],
+                global_deferred_count=flat["g.global_deferred_count"],
+                global_deferred_mi=flat["g.global_deferred_mi"],
+            )
 
         # Future-trend features: same overlay rules as the legacy path.
         if self.timecap_provider is None:

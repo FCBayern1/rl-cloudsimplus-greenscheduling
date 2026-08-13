@@ -133,3 +133,20 @@ def test_global_agent_reward_sum_includes_per_action_term():
         "on_episode_end must include global_term_per_action_sum in the "
         "monitor.csv row dict."
     )
+
+
+def test_monitor_exports_v31_local_dispatch_instrumentation():
+    """Both callback APIs must keep headers aligned with the per-DC row loops."""
+    init_csv = inspect.getsource(LOG.GreenEnergyLoggerCallback._init_csv)
+    init_csv_v2 = inspect.getsource(LOG.GreenEnergyLoggerCallback._init_csv_v2)
+    on_end = inspect.getsource(LOG.GreenEnergyLoggerCallback.on_episode_end)
+
+    metrics = {
+        "local_dispatch_requested": "per_dc_dispatch_requested",
+        "local_dispatch_placed": "per_dc_dispatch_placed",
+        "local_waiting_after_dispatch": "per_dc_waiting_after_dispatch",
+    }
+    for metric, row_variable in metrics.items():
+        assert f"{metric}_dc_" in init_csv
+        assert f"{metric}_dc_" in init_csv_v2
+        assert row_variable in on_end

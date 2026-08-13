@@ -563,6 +563,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         per_dc_local_queue_sum = {}
         per_dc_local_invalid_sum = {}
         per_dc_local_completion_sum = {}
+        per_dc_dispatch_requested = {}
+        per_dc_dispatch_placed = {}
+        per_dc_waiting_after_dispatch = {}
 
         if dc_energy_metrics:
             for dc_id_str, dc_metrics_raw in dc_energy_metrics.items():
@@ -592,6 +595,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 per_dc_local_queue_sum[dc_id] = dc_metrics.get('local_reward_queue_sum', 0.0)
                 per_dc_local_invalid_sum[dc_id] = dc_metrics.get('local_reward_invalid_sum', 0.0)
                 per_dc_local_completion_sum[dc_id] = dc_metrics.get('local_reward_completion_sum', 0.0)
+                per_dc_dispatch_requested[dc_id] = dc_metrics.get('local_dispatch_requested', 0)
+                per_dc_dispatch_placed[dc_id] = dc_metrics.get('local_dispatch_placed', 0)
+                per_dc_waiting_after_dispatch[dc_id] = dc_metrics.get('local_waiting_after_dispatch', 0)
 
                 # Store for CSV output
                 per_dc_mean_completion_times[dc_id] = dc_mean_completion_time
@@ -607,6 +613,9 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     f"dc_{dc_id}/total_energy_wh": dc_green + dc_brown,
                     f"dc_{dc_id}/cloudlets_finished": dc_cloudlets_finished,
                     f"dc_{dc_id}/mean_completion_time": dc_mean_completion_time,
+                    f"dc_{dc_id}/local_dispatch_requested": per_dc_dispatch_requested[dc_id],
+                    f"dc_{dc_id}/local_dispatch_placed": per_dc_dispatch_placed[dc_id],
+                    f"dc_{dc_id}/local_waiting_after_dispatch": per_dc_waiting_after_dispatch[dc_id],
                 }
 
                 # Try new API (metrics_logger)
@@ -796,6 +805,14 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 row.append(per_dc_local_invalid_sum.get(dc_id, 0.0))
             for dc_id in range(num_dcs):
                 row.append(per_dc_local_completion_sum.get(dc_id, 0.0))
+
+            # Add per-DC dispatch-rate instrumentation (episode cumulative).
+            for dc_id in range(num_dcs):
+                row.append(per_dc_dispatch_requested.get(dc_id, 0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_dispatch_placed.get(dc_id, 0))
+            for dc_id in range(num_dcs):
+                row.append(per_dc_waiting_after_dispatch.get(dc_id, 0))
 
             # Add per-DC mean completion times (mean_completion_time_dc_0, ..., mean_completion_time_dc_9)
             for dc_id in range(num_dcs):
@@ -1052,6 +1069,12 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             for dc_id in range(num_dcs):
                 headers.append(f'local_completion_sum_dc_{dc_id}')
             for dc_id in range(num_dcs):
+                headers.append(f'local_dispatch_requested_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_dispatch_placed_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_waiting_after_dispatch_dc_{dc_id}')
+            for dc_id in range(num_dcs):
                 headers.append(f'mean_completion_time_dc_{dc_id}')
             for dc_id in range(num_dcs):
                 headers.append(f'cloudlets_finished_dc_{dc_id}')
@@ -1167,6 +1190,14 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 headers.append(f'local_invalid_sum_dc_{dc_id}')
             for dc_id in range(num_dcs):
                 headers.append(f'local_completion_sum_dc_{dc_id}')
+
+            # Add per-DC dispatch-rate instrumentation headers.
+            for dc_id in range(num_dcs):
+                headers.append(f'local_dispatch_requested_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_dispatch_placed_dc_{dc_id}')
+            for dc_id in range(num_dcs):
+                headers.append(f'local_waiting_after_dispatch_dc_{dc_id}')
 
             # Add per-DC mean completion time headers
             for dc_id in range(num_dcs):
