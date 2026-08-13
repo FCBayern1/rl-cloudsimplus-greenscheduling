@@ -42,6 +42,23 @@ from .hierarchical_multidc_env import HierarchicalMultiDCEnv
 logger = logging.getLogger(__name__)
 
 
+def _validate_fixed_local_scheduler(config: Dict[str, Any]) -> str:
+    """Validate the optional deterministic local scheduler before Java starts."""
+    mode = str(config.get("fixed_local_scheduler", "none")).strip().lower()
+    if mode not in ("none", "drain"):
+        raise ValueError(
+            f"fixed_local_scheduler={mode!r}; expected 'none' or 'drain'"
+        )
+    local_mode = str(config.get("local_dispatch_mode", "vm_placement")).strip()
+    if mode == "drain" and local_mode != "dispatch_rate":
+        raise ValueError(
+            "fixed_local_scheduler='drain' requires "
+            "local_dispatch_mode='dispatch_rate'; in vm_placement mode the "
+            "largest action is a VM index, not deterministic drain"
+        )
+    return mode
+
+
 class HierarchicalMultiDCParallelEnv(ParallelEnv):
     """
     PettingZoo ParallelEnv wrapper for hierarchical multi-datacenter MARL.
@@ -73,6 +90,10 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         super().__init__()
 
         self.render_mode = render_mode
+
+        # V3.1 de-confounding gate. Validate before constructing the base env so
+        # a bad vm_placement+drain config fails without launching Java.
+        self.fixed_local_scheduler = _validate_fixed_local_scheduler(config)
 
         # Store full config dict so the wrapper can read live-updated entries
         # (e.g. Lagrangian λ).  The inner "lagrangian" dict is shared-by-reference
@@ -470,6 +491,7 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         # Convert flat agent actions to hierarchical format
         hierarchical_actions = self._flat_to_hierarchical_actions(actions)
+        hierarchical_actions = self._apply_fixed_local_scheduler(hierarchical_actions)
 
         logger.debug(
             f"Step with actions: global={len(hierarchical_actions['global'])} cloudlets, "
@@ -556,6 +578,39 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         )
 
         return observations, rewards, terminations, truncations, infos
+
+    def _apply_fixed_local_scheduler(
+        self, hierarchical_actions: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Replace all learned local actions with maximum legal dispatch.
+
+        The maximum is derived from each DC's live action mask. It is never
+        hard-coded to max_dispatch_per_step, so future masks that restrict the
+        legal release count remain authoritative.
+        """
+        mode = getattr(self, "fixed_local_scheduler", None)
+        if mode is None:
+            config = getattr(self, "config", None)
+            if not isinstance(config, dict):
+                config = getattr(self.base_env, "config", {})
+            mode = _validate_fixed_local_scheduler(config)
+        if mode != "drain":
+            return hierarchical_actions
+
+        overridden = dict(hierarchical_actions)
+        local_actions = {}
+        for dc_index in range(self.num_datacenters):
+            mask = np.asarray(
+                self.base_env.get_local_action_masks(dc_index), dtype=bool
+            ).reshape(-1)
+            legal = np.flatnonzero(mask)
+            if legal.size == 0:
+                raise RuntimeError(
+                    f"fixed local drain found no legal action for DC index {dc_index}"
+                )
+            local_actions[dc_index] = int(legal[-1])
+        overridden["local"] = local_actions
+        return overridden
 
     def _crd_aux_space(self) -> spaces.Dict:
         """

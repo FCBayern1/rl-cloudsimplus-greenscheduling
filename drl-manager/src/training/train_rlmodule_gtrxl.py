@@ -42,6 +42,9 @@ from gym_cloudsimplus.envs import (
     HierarchicalMultiDCParallelEnvSimple,
     HierarchicalMultiDCParallelEnvAblation,
 )
+from gym_cloudsimplus.envs.hierarchical_multidc_pettingzoo import (
+    _validate_fixed_local_scheduler,
+)
 from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 from src.callbacks.lagrangian_callback import LagrangianCallback
 from src.training.wandb_integration import (
@@ -86,6 +89,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def select_policies_to_train(policies, fixed_local_scheduler: str):
+    """Keep local modules for inference/API shape, but freeze them in drain mode."""
+    if str(fixed_local_scheduler).strip().lower() == "drain":
+        return ["global_policy"]
+    # Preserve the historical conversion and iteration behavior when disabled.
+    return list(policies)
 
 
 class TqdmProgressReporter(CLIReporter):
@@ -162,6 +173,9 @@ def env_creator(config: Dict[str, Any]):
     env_config = config.copy()
     if "py4j_port" in env_config:
         del env_config["py4j_port"]
+
+    # Validate before any wrapper variant constructs its base env/Java gateway.
+    _validate_fixed_local_scheduler(env_config)
 
     env_id = env_config.get("env_id", "")
     use_ablation = "Ablation" in env_id or env_id == "HierarchicalMultiDCAblation-v0"
@@ -690,6 +704,15 @@ def create_rlmodule_config(
         per_module_overrides["global_policy"] = PPOConfig.overrides(**global_overrides)
         logger.info("Global policy overrides: %s", global_overrides)
 
+    policies_to_train = select_policies_to_train(
+        policies, env_config.get("fixed_local_scheduler", "none")
+    )
+    if policies_to_train == ["global_policy"]:
+        logger.info(
+            "fixed_local_scheduler=drain: freezing local RL modules; "
+            "training global_policy only"
+        )
+
     config = (
         PPOConfig()
         .api_stack(
@@ -706,7 +729,7 @@ def create_rlmodule_config(
         .multi_agent(
             policies=policies,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies),
+            policies_to_train=policies_to_train,
             algorithm_config_overrides_per_module=per_module_overrides or None,
         )
         .env_runners(

@@ -8,6 +8,7 @@ Usage:
     python -m src.baselines.evaluate --global random --local random --experiment experiment_multi_dc_10
 """
 import argparse
+import pickle
 import sys
 import csv
 import logging
@@ -314,6 +315,57 @@ def _infer_use_new_api_from_checkpoint(checkpoint_path: str) -> bool:
     except Exception:
         pass
     return False
+
+
+def _checkpoint_env_config(checkpoint_path: str) -> Dict[str, Any]:
+    """Read RLlib's saved env_config without constructing an Algorithm or env.
+
+    Checkpoints are trusted local training artifacts. Legacy/unreadable layouts
+    return an empty mapping so existing evaluation behavior remains unchanged.
+    """
+    try:
+        cp = Path(checkpoint_path)
+        if not (cp / "class_and_ctor_args.pkl").is_file() and cp.is_dir():
+            children = [
+                child for child in sorted(cp.glob("checkpoint_*"))
+                if (child / "class_and_ctor_args.pkl").is_file()
+            ]
+            if len(children) == 1:
+                cp = children[0]
+        with (cp / "class_and_ctor_args.pkl").open("rb") as handle:
+            payload = pickle.load(handle)
+        ctor = payload.get("ctor_args_and_kwargs", ()) if isinstance(payload, dict) else ()
+        args = ctor[0] if isinstance(ctor, tuple) and len(ctor) >= 1 else ()
+        algo_config = args[0] if isinstance(args, tuple) and args else None
+        if hasattr(algo_config, "to_dict"):
+            algo_config = algo_config.to_dict()
+        if isinstance(algo_config, dict):
+            env_config = algo_config.get("env_config", {})
+            return dict(env_config) if isinstance(env_config, dict) else {}
+    except Exception as exc:
+        logger.debug("Could not inspect checkpoint env_config at %s: %s", checkpoint_path, exc)
+    return {}
+
+
+def assert_fixed_drain_evaluation_compatible(
+    checkpoint_path: str, local_scheduler_name: Optional[str], config: Optional[dict] = None
+) -> None:
+    """Reject an untrained checkpoint-local policy for fixed-drain training."""
+    if (local_scheduler_name or "rllib") != "rllib":
+        return
+    checkpoint_config = _checkpoint_env_config(checkpoint_path)
+    checkpoint_mode = str(
+        checkpoint_config.get("fixed_local_scheduler", "none")
+    ).strip().lower()
+    requested_mode = str(
+        (config or {}).get("fixed_local_scheduler", "none")
+    ).strip().lower()
+    if checkpoint_mode == "drain" or requested_mode == "drain":
+        raise ValueError(
+            "This checkpoint was trained with fixed_local_scheduler='drain', "
+            "so its local RL module was retained for API compatibility but was "
+            "not trained. Evaluate it with --local drain; --local rllib is invalid."
+        )
 
 
 def _summarize_decision_latency(samples_ns: List[int], prefix: str) -> Dict[str, float]:
@@ -787,6 +839,9 @@ def run_rllib_evaluation(
     from src.baselines.local_schedulers import create_rllib_schedulers, RLlibLocalScheduler
 
     np.random.seed(seed)
+    assert_fixed_drain_evaluation_compatible(
+        checkpoint_path, local_override or "rllib", config
+    )
 
     if verbose:
         print(f"\n{'='*60}")
