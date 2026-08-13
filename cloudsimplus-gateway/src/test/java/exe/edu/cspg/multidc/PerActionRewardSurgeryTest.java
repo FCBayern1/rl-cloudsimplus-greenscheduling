@@ -38,10 +38,19 @@ public class PerActionRewardSurgeryTest {
     private static final double W_URGENCY = 2.0;
     private static final double WINDOW = 3600.0;
     private static final double GAMMA = 0.999;
-    private static final double MARG_GREEN = 0.3;
-    private static final double MARG_BROWN = 16.5;
-    private static final double MU = 8.4;
-    private static final double SIGMA = 8.1;
+    // Overridable via -Dv31.* so the SAME truth table re-runs with the real
+    // calibration-artifact values before the cert combo is locked:
+    //   ./gradlew test --tests "*.PerActionRewardSurgeryTest" \
+    //       -Dv31.mu=3.524 -Dv31.sigma=2.512 -Dv31.margGreen=... -Dv31.margBrown=...
+    // Defaults keep the synthetic structural gate unchanged.
+    private static final double MARG_GREEN =
+            Double.parseDouble(System.getProperty("v31.margGreen", "0.3"));
+    private static final double MARG_BROWN =
+            Double.parseDouble(System.getProperty("v31.margBrown", "16.5"));
+    private static final double MU =
+            Double.parseDouble(System.getProperty("v31.mu", "8.4"));
+    private static final double SIGMA =
+            Double.parseDouble(System.getProperty("v31.sigma", "8.1"));
     private static final double NORMALIZER = 0.05; // legacy fixed normalizer
 
     private static double u(double slack) {

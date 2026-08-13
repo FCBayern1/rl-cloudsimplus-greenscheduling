@@ -9,7 +9,7 @@ arms different reward functions.
 
 What is sampled
 ---------------
-marginalKg for ALL candidate (task, green-DC) pairs — not the pairs a policy
+marginalKg for ALL candidate (task, DC) pairs — green AND brown DCs — not the pairs a policy
 actually picks, so the distribution is not skewed by any policy's choices —
 at decision times drawn across the whole closed-book offset range. The formula
 mirrors MultiDatacenterSimulationCore.computeDcCostFeatures under
@@ -78,12 +78,14 @@ def main():
 
     # green power series per green DC (W, compressed scale — same as
     # getCurrentPowerW), plus per-DC host counts for the demand model
+    # ALL datacenters are routing candidates — brown-only DCs (no turbines)
+    # contribute marginalKg = (MI/miPerKg)·brown_f at greenRatio=0. Sampling
+    # only green DCs (the first-draft bug) under-covered the right tail of the
+    # distribution the normaliser will actually see.
     dcs, wind_files = [], []
     for d in cfg["datacenters"]:
-        if not d.get("turbine_ids"):
-            continue
         tot = None
-        for t in d["turbine_ids"]:
+        for t in d.get("turbine_ids") or []:
             p = GATE / f"windProduction/simplified/Turbine_{t}_2021.csv"
             wind_files.append(p)
             v = np.array([float(r["power_kw"]) for r in csv.DictReader(open(p))])
@@ -91,7 +93,7 @@ def main():
         hosts = sum(v for k, v in d.items() if k.startswith("host_count_") and isinstance(v, int))
         dcs.append({
             "name": d["name"],
-            "green_w": tot * 1000.0 / divisor,
+            "green_w": (tot * 1000.0 / divisor) if tot is not None else None,
             "hosts": max(1, hosts),
             "green_f": float(d["green_carbon_factor"]),
             "brown_f": float(d["brown_carbon_factor"]),
@@ -99,7 +101,7 @@ def main():
 
     offset_range = int(cfg.get("green_episode_offset_range", 0)) or 1
     horizon = 7200
-    n_rows = min(len(d["green_w"]) for d in dcs)
+    n_rows = min(len(d["green_w"]) for d in dcs if d["green_w"] is not None)
     times = rng.integers(0, offset_range + horizon, size=args.samples) % n_rows
     task_idx = rng.integers(0, len(mi), size=args.samples)
 
@@ -109,9 +111,10 @@ def main():
         kg = []
         by_dc = {d["name"]: [] for d in dcs}
         for t, j in zip(times, task_idx):
-            for d in dcs:                       # ALL candidate green DCs per decision
+            for d in dcs:                       # ALL candidate DCs (green AND brown)
                 demand_w = d["hosts"] * WATT_PER_HOST_FULL * util
-                ratio = min(1.0, d["green_w"][t] / max(1e-9, demand_w))
+                green_now = d["green_w"][t] if d["green_w"] is not None else 0.0
+                ratio = min(1.0, green_now / max(1e-9, demand_w))
                 m = (mi[j] / mi_per_kg) * (ratio * d["green_f"] + (1 - ratio) * d["brown_f"])
                 kg.append(m)
                 by_dc[d["name"]].append(m)
@@ -131,7 +134,7 @@ def main():
         "date": "2026-08-13",
         "experiment": args.experiment,
         "units": "kg per routing action (marginalKg as in computeDcCostFeatures)",
-        "reference_policy": "all candidate (task, green-DC) pairs, uniform decision "
+        "reference_policy": "all candidate (task, DC) pairs incl. brown DCs, uniform decision "
                             "times over offset range + horizon (policy-free)",
         "seed": args.seed,
         "samples_decision_times": args.samples,

@@ -68,6 +68,10 @@ application {
 }
 
 test {
+    // Forward -Dv31.* to the test JVM (truth-table re-run with real mu/sigma)
+    System.properties.each { k, v ->
+        if (k.toString().startsWith('v31.')) { systemProperty k.toString(), v }
+    }
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
