@@ -60,12 +60,9 @@ G2=FAIL
 if [ -n "$D" ] && .venv/bin/python -c "exit(0 if float('$D')>=0.05 else 1)"; then G2=PASS; fi
 echo "V32 GATE2 $G2 (delta=$D, threshold=+0.05) $(date '+%H:%M')" >>"$OUT"
 
-# 4. reference wave s2 pair (600k each, new jars, pair-consistent)
-train experiment_v3_1_oracle    2 600000 v31_oracle_s2
-train experiment_v3_1_noforecast 2 600000 v31_nofc_s2
-echo "[pipe] reference wave all trained $(date '+%m-%d %H:%M')" >>"$OUT"
-
-# 5. V3.2 Gate 3 (only if Gate 2 passed): 300k both seeds
+# 4. V3.2 Gate 3 FIRST (only if Gate 2 passed) - verdict ~21:00 tonight
+#    so the human 600k decision can happen before midnight; the reference
+#    s2 pair fills the rest of the night either way.
 if [ "$G2" = "PASS" ]; then
   train experiment_v3_2_oracle 1 300000 v32_g3_s1
   probe v32_g3_s1 v32_g3_s1
@@ -81,6 +78,11 @@ if [ "$G2" = "PASS" ]; then
 else
   echo "[pipe] Gate2 FAIL -> skipping Gate3 per prereg (no weight tuning, no extension)" >>"$OUT"
 fi
+
+# 5. reference wave s2 pair (600k each, new jars, pair-consistent)
+train experiment_v3_1_oracle    2 600000 v31_oracle_s2
+train experiment_v3_1_noforecast 2 600000 v31_nofc_s2
+echo "[pipe] reference wave all trained $(date '+%m-%d %H:%M')" >>"$OUT"
 
 # 6. reference-wave probes (sign curve on oracle arms) + final-ck evals
 for A in v31_oracle_s1 v31_oracle_s2; do
