@@ -37823,7 +37823,7 @@ experiment_v3_2_oracle:
   # --- V3.2 switches (docs/V32_PREREG.md; artifact v3 = calib/experiment_v3_1_oracle_carbon_norm.json)
   obs_v32_job_forecast: true             # job-aligned forecast features + persistence blind fill
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)
-  obs_v32_forecast_bin_count: 16
+  obs_v32_forecast_bin_count: 20   # scan_v32_horizon.py: 93.8% teacher-gain capture, 98.8% decision agreement
   per_action_spatial_center: candidate_mean
   per_action_spatial_weight: 1.0
   per_action_spatial_sigma: 1.146        # candidate-difference spread (mid_util)
@@ -38198,7 +38198,7 @@ experiment_v3_2_noforecast:
   # --- V3.2 switches (docs/V32_PREREG.md; artifact v3 = calib/experiment_v3_1_oracle_carbon_norm.json)
   obs_v32_job_forecast: true             # job-aligned forecast features + persistence blind fill
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)
-  obs_v32_forecast_bin_count: 16
+  obs_v32_forecast_bin_count: 20   # scan_v32_horizon.py: 93.8% teacher-gain capture, 98.8% decision agreement
   per_action_spatial_center: candidate_mean
   per_action_spatial_weight: 1.0
   per_action_spatial_sigma: 1.146        # candidate-difference spread (mid_util)

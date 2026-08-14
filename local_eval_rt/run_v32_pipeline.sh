@@ -69,10 +69,38 @@ print(jt['delta'] if jt else d['temporal']['delta'])" 2>/dev/null; }
 # 3. V3.2 Gate 2 smoke (oracle s1 100k) -- prereg threshold +0.05, frozen
 train experiment_v3_2_oracle 1 100000 v32_smoke_s1
 probe v32_smoke_s1 v32_smoke_s1
-D=$(delta v32_smoke_s1)
-G2=FAIL
-if [ -n "$D" ] && .venv/bin/python -c "exit(0 if float('$D')>=0.05 else 1)"; then G2=PASS; fi
-echo "V32 GATE2 $G2 (delta=$D, threshold=+0.05) $(date '+%H:%M')" >>"$OUT"
+# Gate 2 is MULTI-CONDITION (eighth review): one synthetic delta is not a
+# verdict. All of: job-aligned delta >= 0.05, P(defer) monotone in
+# forecast_gain and in slack, forecast channel >= 10x null (judgeability, A2).
+# The real-rollout sign check is reported when Codex's rollout aggregator has
+# produced a file; it is listed as NOT-AVAILABLE rather than silently skipped.
+G2=$(PROBE_JSON=$R/probe/v32_smoke_s1.json .venv/bin/python - <<'PYG' 2>/dev/null
+import json, os
+d = json.load(open(os.environ["PROBE_JSON"]))
+jt = d.get("job_temporal") or {}
+mo = d.get("monotone") or {}
+s = d.get("summary") or {}
+delta = jt.get("delta")
+mg, ms = mo.get("monotone_frac_gain"), mo.get("monotone_frac_slack")
+fc, nu = s.get("forecast", {}).get("tv"), s.get("null", {}).get("tv")
+conds = {
+    "delta>=0.05": (delta is not None and delta >= 0.05, delta),
+    "monotone_gain>=0.75": (mg is not None and mg >= 0.75, mg),
+    "monotone_slack>=0.75": (ms is not None and ms >= 0.75, ms),
+    "forecast>=10x_null": (fc is not None and nu is not None and fc >= 10 * nu,
+                           None if fc is None else round(fc / max(nu, 1e-12), 1)),
+}
+for k, (ok, v) in conds.items():
+    print(f"  cond {k}: {'PASS' if ok else 'FAIL'} (value={v})")
+print("PASS" if all(ok for ok, _ in conds.values()) else "FAIL")
+PYG
+)
+echo "$G2" >>"$OUT"
+G2=$(echo "$G2" | tail -1)
+ROLL=$R/probe/v32_smoke_s1_rollout.json
+if [ -f "$ROLL" ]; then echo "  cond rollout-sign: file present, see $ROLL" >>"$OUT";
+else echo "  cond rollout-sign: NOT AVAILABLE (rollout aggregator pending)" >>"$OUT"; fi
+echo "V32 GATE2 $G2 $(date '+%H:%M')" >>"$OUT"
 
 # 4. V3.2 Gate 3 FIRST (only if Gate 2 passed) - verdict ~21:00 tonight
 #    so the human 600k decision can happen before midnight; the reference

@@ -458,6 +458,45 @@ def main() -> None:
         print(f"{'P(defer)|not worth':>34}{job_temporal['p_defer_not_worth']:>10.4f}")
         print(f"{'job_temporal_delta (want>>0)':>34}{jd:>+10.4f}")
 
+    # --- Gate-2 monotonicity conditions (pre-registered) ----------------------
+    # A single synthetic delta is not enough (eighth review): P(defer) must also
+    # rise with forecast_gain and fall as the deadline tightens. Both sweeps hold
+    # every other input fixed and vary ONE job-aligned quantity.
+    monotone = None
+    if job_temporal is not None:
+        rngm = np.random.default_rng(args.seed + 4000)
+        gains = [0.0, 0.2, 0.4, 0.6, 0.8]
+        ttds = [0.1, 0.3, 0.6, 1.0, 2.0]        # normalized time-to-deadline
+        pg, pt = [], []
+        for _ in range(max(8, args.trials // 4)):
+            base = maybe_add_v32_features(
+                maybe_add_v31_features(base_observation(rngm), module, rngm), module, rngm)
+            row_g, row_t = [], []
+            for g in gains:
+                o = dict(base)
+                o["batch_cloudlet_forecast_gain"] = np.full(BATCH_SLOTS, g, dtype=np.float32)
+                o["batch_cloudlet_best_future_carbon"] = np.maximum(
+                    0.0, base["batch_cloudlet_best_now_carbon"] - g).astype(np.float32)
+                row_g.append(action_probs(module, o)[:, -1].mean())
+            for x in ttds:
+                o = dict(base)
+                o["batch_cloudlet_time_to_deadline"] = np.full(BATCH_SLOTS, x, dtype=np.float32)
+                row_t.append(action_probs(module, o)[:, -1].mean())
+            pg.append(row_g); pt.append(row_t)
+        pg = np.mean(pg, axis=0); pt = np.mean(pt, axis=0)
+        # Spearman-free monotonicity: fraction of adjacent pairs in the wanted
+        # direction (both should INCREASE: more gain -> more hold; more slack ->
+        # more hold, i.e. tighter deadline -> less hold).
+        mg = float(np.mean(np.diff(pg) > 0))
+        mt = float(np.mean(np.diff(pt) > 0))
+        monotone = {"gain_levels": gains, "p_defer_by_gain": pg.tolist(),
+                    "monotone_frac_gain": mg,
+                    "ttd_levels": ttds, "p_defer_by_ttd": pt.tolist(),
+                    "monotone_frac_slack": mt}
+        print(f"\nGate-2 monotonicity:")
+        print(f"{'P(defer) by forecast_gain':>34} {np.array2string(pg, precision=4)}  mono={mg:.0%}")
+        print(f"{'P(defer) by time_to_deadline':>34} {np.array2string(pt, precision=4)}  mono={mt:.0%}")
+
     raw = None
     if args.raw_logits:
         # Direct-edge check (docs/V32_FORECAST_REVIVAL_PLAN.md §6.1): only the
@@ -492,6 +531,7 @@ def main() -> None:
              "summary": summary, "forecast_over_control": frac,
              "raw_logits": raw,
              "job_temporal": job_temporal,
+             "monotone": monotone,
              "temporal": {"n_options": int(n_opt), "defer_index": int(defer_idx),
                           "p_defer_arriving": d_arr, "p_defer_leaving": d_lev,
                           "delta": d_arr - d_lev, "tv": tv_t}}, indent=2))

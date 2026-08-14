@@ -14,6 +14,16 @@
 > ④接线双白名单修复 + fail-fast + 集成测试(config 说 true 而模型没建 gate 的静默丢弃
 > 已不可能复现)。
 
+> **修订 A4(08-14 16:50,仍在任何 v3_2 训练样本之前;第八轮复审)**:
+> ①**horizon 改由离线覆盖率证据冻结**(`drl-manager/scan_v32_horizon.py`,8 个闭卷 offset
+> × 全 trace):120s 只覆盖教师可达收益的 **19.8%**、决策一致率 60.5%;3000/3600s 达
+> 92.7–93.8% 覆盖、98.6–98.8% 一致(两者数值全同,slack p95=2918s 封顶)。
+> **冻结 horizon=3600 / bins=20**(20 bins 比 16 多 1.1pp 覆盖)。
+> ②**Gate 2 升级为多条件**(单一合成 Δ 不构成判决):`job_temporal.delta ≥ 0.05` ∧
+> P(defer) 对 forecast_gain 单调(≥75% 相邻对) ∧ 对 time_to_deadline 单调(≥75%) ∧
+> forecast TV ≥ 10×null。真实 rollout 同号在聚合器就绪后加入,当前显式标注
+> NOT-AVAILABLE 而非静默跳过。阈值与语义均在训练前锁定。
+
 ## 实验对
 
 `experiment_v3_2_oracle` vs `experiment_v3_2_noforecast`(待建:v3_1 模板 + V3.2 开关全开
