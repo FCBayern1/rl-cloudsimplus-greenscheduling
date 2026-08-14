@@ -37066,13 +37066,13 @@ experiment_v3_1_oracle:
   # certification combo is locked only after the four verdicts land (P3 /
   # track0 / drainfix / sp-s2 pairing) and the truth-table JUnit passes for
   # the chosen combo. Candidates in comments.
-  per_action_completion_mode: bonus      # candidate: no_offset
-  defer_cost_mode: flat                  # candidate: incremental_urgency
-  per_action_carbon_norm: fixed          # candidate: centered_zscore
-  per_action_carbon_mu: 0.0              # from calibrate_reward_norm.py artifact
-  per_action_carbon_sigma: 1.0           # from calibrate_reward_norm.py artifact
-  fixed_local_scheduler: none            # candidate: drain (工单3, Codex)
-  obs_v31_features: false                # candidate: true (工单2, Codex)
+  per_action_completion_mode: no_offset  # LOCKED 08-14 (PREREG §6)
+  defer_cost_mode: incremental_urgency   # LOCKED 08-14
+  per_action_carbon_norm: centered_zscore # LOCKED 08-14
+  per_action_carbon_mu: 3.524            # calib artifact v2 (all-DC, mid_util)
+  per_action_carbon_sigma: 2.512         # calib artifact v2
+  fixed_local_scheduler: drain           # LOCKED 08-14 (drainfix 实证追认)
+  obs_v31_features: true                 # LOCKED 08-14 (两臂对称)
 
 experiment_v3_1_noforecast:
   carbon_mi_floor: 1.0e7
@@ -37433,10 +37433,10 @@ experiment_v3_1_noforecast:
   # certification combo is locked only after the four verdicts land (P3 /
   # track0 / drainfix / sp-s2 pairing) and the truth-table JUnit passes for
   # the chosen combo. Candidates in comments.
-  per_action_completion_mode: bonus      # candidate: no_offset
-  defer_cost_mode: flat                  # candidate: incremental_urgency
-  per_action_carbon_norm: fixed          # candidate: centered_zscore
-  per_action_carbon_mu: 0.0              # from calibrate_reward_norm.py artifact
-  per_action_carbon_sigma: 1.0           # from calibrate_reward_norm.py artifact
-  fixed_local_scheduler: none            # candidate: drain (工单3, Codex)
-  obs_v31_features: false                # candidate: true (工单2, Codex)
+  per_action_completion_mode: no_offset  # LOCKED 08-14 (PREREG §6)
+  defer_cost_mode: incremental_urgency   # LOCKED 08-14
+  per_action_carbon_norm: centered_zscore # LOCKED 08-14
+  per_action_carbon_mu: 3.524            # calib artifact v2 (all-DC, mid_util)
+  per_action_carbon_sigma: 2.512         # calib artifact v2
+  fixed_local_scheduler: drain           # LOCKED 08-14 (drainfix 实证追认)
+  obs_v31_features: true                 # LOCKED 08-14 (两臂对称)

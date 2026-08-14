@@ -81,6 +81,33 @@ def base_observation(rng: np.random.Generator) -> dict:
     }
 
 
+def maybe_add_v31_features(obs: dict, module, rng: np.random.Generator) -> dict:
+    """Add the V3.1 defer-state observation keys when (and only when) the
+    loaded module was trained with obs_v31_features=true.
+
+    Detection is by the module's own observation space, so old checkpoints keep
+    the exact observation dict they were probed with before (regression-safe).
+    Values are plausible mid-episode states in the normalized/clipped units the
+    env declares (wait_age [0,1], time_to_deadline [-1,4], flags/counts [0,1]).
+    They are HELD CONSTANT across the two observations a trial compares, so the
+    channel sweeps remain single-variable.
+    """
+    space = getattr(module, "observation_space", None) or getattr(
+        getattr(module, "config", None), "observation_space", None)
+    keys = set(space.spaces.keys()) if hasattr(space, "spaces") else set()
+    if "batch_cloudlet_wait_age" not in keys:
+        return obs
+    obs["batch_cloudlet_wait_age"] = rng.uniform(0.0, 0.3, BATCH_SLOTS).astype(np.float32)
+    obs["batch_cloudlet_time_to_deadline"] = rng.uniform(0.2, 1.5, BATCH_SLOTS).astype(np.float32)
+    obs["batch_cloudlet_deadline_present"] = np.ones(BATCH_SLOTS, dtype=np.float32)
+    obs["batch_cloudlet_is_deferred"] = (rng.uniform(0, 1, BATCH_SLOTS) < 0.1).astype(np.float32)
+    obs["batch_cloudlet_defer_count"] = (obs["batch_cloudlet_is_deferred"]
+                                         * rng.uniform(0.0, 0.2, BATCH_SLOTS)).astype(np.float32)
+    obs["global_deferred_count"] = np.array([0.05], dtype=np.float32)
+    obs["global_deferred_mi"] = np.array([0.05], dtype=np.float32)
+    return obs
+
+
 def set_channel(obs: dict, channel: str, good_dc: int) -> dict:
     """Rewrite one channel so that `good_dc` is unambiguously the best green DC.
 
@@ -195,7 +222,7 @@ def main() -> None:
 
     results = {c: {"tv": [], "flip": [], "mass": []} for c in ("forecast", "control", "null")}
     for _ in range(args.trials):
-        obs = base_observation(rng)
+        obs = maybe_add_v31_features(base_observation(rng), module, rng)
         a, b = rng.choice(GREEN_DCS, size=2, replace=False)
         for channel in results:
             pa = action_probs(module, set_channel(obs, channel, int(a)))
@@ -229,11 +256,11 @@ def main() -> None:
 
     # --- temporal lever: does the forecast move the DEFER option? --------------
     rng = np.random.default_rng(args.seed + 1000)
-    n_opt = action_probs(module, base_observation(rng)).shape[1]
+    n_opt = action_probs(module, maybe_add_v31_features(base_observation(rng), module, rng)).shape[1]
     defer_idx = n_opt - 1                     # defer is appended after the N DCs
     arriving, leaving, tvs = [], [], []
     for _ in range(args.trials):
-        obs = base_observation(rng)
+        obs = maybe_add_v31_features(base_observation(rng), module, rng)
         pa = action_probs(module, set_temporal(obs, "arriving"))
         pl = action_probs(module, set_temporal(obs, "leaving"))
         arriving.append(pa[:, defer_idx].mean())

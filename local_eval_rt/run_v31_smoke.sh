@@ -20,9 +20,13 @@ ORACLE=experiment_v3_1_oracle
 BLIND=experiment_v3_1_noforecast
 MU=3.524; SIGMA=2.512   # calib/experiment_v3_1_oracle_carbon_norm.json (mid_util)
 
-if pgrep -f "baselines[.]evaluate|entrypoint_rlmodule|oracle_hold_until_green|run_v3_" >/dev/null 2>&1; then
-  echo "[smoke] REFUSING: machine busy" | tee -a "$OUT"; exit 1
-fi
+# Bounded wait (<=60 min) for the tail of the verdict queue, then hard refuse.
+WAITED=0
+while pgrep -f "baselines[.]evaluate|entrypoint_rlmodule|oracle_hold_until_green|run_v3_track0b[.]sh|run_v3_drainfix[.]sh" >/dev/null 2>&1; do
+  [ $WAITED -ge 3600 ] && { echo "[smoke] REFUSING: machine still busy after 60min" >>"$OUT"; exit 1; }
+  sleep 60; WAITED=$((WAITED+60))
+done
+echo "[smoke] machine clear after ${WAITED}s wait $(date '+%m-%d %H:%M')" >>"$OUT"
 cd $REPO/drl-manager
 .venv/bin/python preflight_scenario.py $ORACLE $BLIND --v31-cert >>"$OUT" 2>&1 || { echo "[smoke] preflight FAILED" >>"$OUT"; exit 1; }
 cd $REPO/cloudsimplus-gateway
