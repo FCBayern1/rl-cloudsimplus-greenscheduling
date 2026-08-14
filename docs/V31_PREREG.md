@@ -59,16 +59,17 @@ preflight 15/15 PASS,两臂 diff = {forecast_mode})。
 
 ## 6. 开关决定(明早判决后填,其余节不动)
 
-| 开关 | 候选 | 决定 | 依据 |
+| 开关 | 候选 | 决定(08-14 上午锁定) | 依据 |
 |---|---|---|---|
-| per_action_completion_mode | no_offset | 待填 | 真值表 |
-| defer_cost_mode | incremental_urgency | 待填 | 真值表 |
-| per_action_carbon_norm | centered_zscore(μ/σ=标定件) | 待填 | 真值表(注意:scale_only+no_offset 结构性不过第①行,JUnit 已钉死) |
-| fixed_local_scheduler | drain | **drain(无条件,已定)** | 结构清理;不由 drainfix 决定 |
-| obs_v31_features | true | 待填(工单2 落地即开;两臂对称) | 表示能力(槽位无 slack 则策略无法表示 defer 规则) |
+| per_action_completion_mode | no_offset | **no_offset** | 真值表(真实 μ/σ)四行全过 |
+| defer_cost_mode | incremental_urgency | **incremental_urgency** | 同上;telescope 测试绿 |
+| per_action_carbon_norm | centered_zscore | **centered_zscore, μ=3.524 σ=2.512**(全 DC 标定件 v2) | 真值表;且 scale_only 结构性不过第①行(JUnit 钉死) |
+| fixed_local_scheduler | drain | **drain** | 无条件决定;drainfix 反转判决(盲臂完成率 +2.1~5.0pp)实证追认混杂足以翻案 |
+| obs_v31_features | true | **true(两臂对称)** | drain 后 global 必须自见 backlog/age/slack;工单2 已合入 |
 
-判决输入:track0(考场杠杆 ≥15%/<10%)、drainfix(旧判决 local 混杂复核)、
-P3+sp_s2(sp 臂跨种子复现性)、真值表 JUnit(用标定 μ/σ 重跑)。
+判决输入实录(08-14):drainfix=反转(§2c);sp 配对=采样层跨种子复现轻微有害、
+argmax 层种子分化;track0/track0b=DC 级仪器二元、**考场杠杆判决悬置,待 slack-aware
+oracle**(诊断 §7.4)——考场门不阻塞配方开关,只阻塞 600k 全量的场景选择。
 
 ## 7. 已声明的局限(锁定)
 
