@@ -274,7 +274,16 @@ def load_module(ckpt: pathlib.Path):
     path = ckpt / "learner_group" / "learner" / "rl_module" / "global_policy"
     if not path.exists():
         sys.exit(f"no global_policy module under {ckpt}")
-    return RLModule.from_checkpoint(path)
+    module = RLModule.from_checkpoint(path)
+    # Dropout hygiene (2026-08-14, seventh-review): gtrxl configs carry
+    # dropout=0.1 and torch modules default to train mode - every earlier
+    # probe forward sampled dropout masks (explains the run-to-run jitter in
+    # third-decimal readings). Gate thresholds need deterministic forwards.
+    try:
+        module.eval()
+    except Exception:
+        pass
+    return module
 
 
 def action_logits_raw(module, obs: dict) -> np.ndarray:
@@ -412,6 +421,43 @@ def main() -> None:
     print(f"{'difference (want >> 0)':>34}{d_arr - d_lev:>+10.4f}")
     print(f"{'TV of the whole distribution':>34}{tv_t:>10.4f}\n")
 
+    # --- V3.2 job-aligned temporal lever -------------------------------------
+    # The factorized gate is DESIGNED to ignore dc_future_* (decoupling test
+    # asserts zero gradient), so the dc_*-based temporal sweep above reads ~0 on
+    # a perfectly working V3.2 model. The decision channel for the gate is the
+    # job-aligned features; sweep THOSE between "worth waiting" and "not worth
+    # waiting" for a V3.2 module. (Seventh-review catch: without this, Gate 2
+    # would auto-fail a healthy model.)
+    job_temporal = None
+    if "batch_cloudlet_forecast_gain" in set(getattr(module, "cloudlet_keys", []) or []):
+        rngj = np.random.default_rng(args.seed + 3000)
+        gains_hi, gains_lo, tvj = [], [], []
+        for _ in range(args.trials):
+            base = maybe_add_v32_features(
+                maybe_add_v31_features(base_observation(rngj), module, rngj), module, rngj)
+            worth = dict(base)
+            worth["batch_cloudlet_forecast_gain"] = np.full(BATCH_SLOTS, 0.6, dtype=np.float32)
+            worth["batch_cloudlet_time_to_best_green"] = np.full(BATCH_SLOTS, 0.1, dtype=np.float32)
+            worth["batch_cloudlet_best_future_carbon"] = np.maximum(
+                0.0, base["batch_cloudlet_best_now_carbon"] - 0.6).astype(np.float32)
+            not_worth = dict(base)
+            not_worth["batch_cloudlet_forecast_gain"] = np.zeros(BATCH_SLOTS, dtype=np.float32)
+            not_worth["batch_cloudlet_time_to_best_green"] = np.ones(BATCH_SLOTS, dtype=np.float32)
+            not_worth["batch_cloudlet_best_future_carbon"] = base[
+                "batch_cloudlet_best_now_carbon"].copy()
+            pw = action_probs(module, worth)
+            pn = action_probs(module, not_worth)
+            gains_hi.append(pw[:, -1].mean()); gains_lo.append(pn[:, -1].mean())
+            tvj.append(0.5 * np.abs(pw - pn).sum(axis=1).mean())
+        jd = float(np.mean(gains_hi) - np.mean(gains_lo))
+        job_temporal = {"p_defer_worth_waiting": float(np.mean(gains_hi)),
+                        "p_defer_not_worth": float(np.mean(gains_lo)),
+                        "delta": jd, "tv": float(np.mean(tvj))}
+        print(f"\njob-aligned temporal lever (V3.2 decision channel):")
+        print(f"{'P(defer)|worth waiting':>34}{job_temporal['p_defer_worth_waiting']:>10.4f}")
+        print(f"{'P(defer)|not worth':>34}{job_temporal['p_defer_not_worth']:>10.4f}")
+        print(f"{'job_temporal_delta (want>>0)':>34}{jd:>+10.4f}")
+
     raw = None
     if args.raw_logits:
         # Direct-edge check (docs/V32_FORECAST_REVIVAL_PLAN.md §6.1): only the
@@ -419,7 +465,8 @@ def main() -> None:
         # that moves orders of magnitude less than the route columns proves the
         # temporal head has no direct forecast edge (and vice versa for V3.2).
         rng2 = np.random.default_rng(args.seed + 2000)
-        obs0 = maybe_add_v31_features(base_observation(rng2), module, rng2)
+        obs0 = maybe_add_v32_features(
+            maybe_add_v31_features(base_observation(rng2), module, rng2), module, rng2)
         za = action_logits_raw(module, set_temporal(dict(obs0), "arriving"))
         zl = action_logits_raw(module, set_temporal(dict(obs0), "leaving"))
         d_defer = float(np.abs(za[:, -1] - zl[:, -1]).max())
@@ -444,6 +491,7 @@ def main() -> None:
              ),
              "summary": summary, "forecast_over_control": frac,
              "raw_logits": raw,
+             "job_temporal": job_temporal,
              "temporal": {"n_options": int(n_opt), "defer_index": int(defer_idx),
                           "p_defer_arriving": d_arr, "p_defer_leaving": d_lev,
                           "delta": d_arr - d_lev, "tv": tv_t}}, indent=2))

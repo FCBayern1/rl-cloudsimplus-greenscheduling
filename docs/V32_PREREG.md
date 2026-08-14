@@ -4,6 +4,16 @@
 协议纪律(argmax、10 局、`--local drain`、超时筛、iso-completion ≥99.5%、
 噪声底 13%、坑单⑫化石测试豁免)。V3.1 的修订 A1/A2(可判性=forecast ≥ 10×null)继承。
 
+> **修订 A3(08-14 16:40,发生在任何 v3_2 训练/判决之前;第七轮复审,Codex)**:
+> ①Gate 2 的温度差改由**作业对齐通道**测量(`job_temporal_delta`:forecast_gain 0.6/
+> time_to_best 0.1 vs gain 0/time 1.0)——factorized gate 对 `dc_future_*` 零梯度是
+> **设计目标**(解耦测试断言),旧通道会把健康模型判死。判据语义与阈值(≥+0.05)不变。
+> ②预报 horizon 训前冻结:3600 步(=urgency 窗,覆盖 p95 slack 2918s;发现的默认 120 步
+> 对 1029s 峰周期是瞎的),bins=16,两臂对称。③探针加 module.eval()(dropout 0.1 此前
+> 在探针前向中处于激活态——历史读数第三位抖动的来源;旧 checkpoint 读数语义不变,已回归)。
+> ④接线双白名单修复 + fail-fast + 集成测试(config 说 true 而模型没建 gate 的静默丢弃
+> 已不可能复现)。
+
 ## 实验对
 
 `experiment_v3_2_oracle` vs `experiment_v3_2_noforecast`(待建:v3_1 模板 + V3.2 开关全开

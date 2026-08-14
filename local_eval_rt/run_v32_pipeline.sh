@@ -40,7 +40,13 @@ train () {  # exp seed steps outdir
   .venv/bin/python entrypoint_rlmodule_gtrxl.py --config $REPO/config_C.yml \
     --experiment "$1" --total-timesteps $3 --num-workers 6 --seed $2 \
     --output-dir logs/$4 > $R/$4_train.log 2>&1
-  echo "[pipe] train $4 exit rc=$? $(date '+%m-%d %H:%M')" >>"$OUT"
+  local rc=$?
+  echo "[pipe] train $4 exit rc=$rc $(date '+%m-%d %H:%M')" >>"$OUT"
+  if [ $rc -ne 0 ]; then
+    echo "[pipe] ABORT: training $4 failed - stopping the whole chain" >>"$OUT"
+    pkill -9 -f "exe[.]edu[.]cspg[.]MainMultiDC" 2>/dev/null
+    exit 1
+  fi
   pkill -9 -f "exe[.]edu[.]cspg[.]MainMultiDC" 2>/dev/null; pkill -9 -f "ray::[A-Za-z]" 2>/dev/null; sleep 5
 }
 probe () {  # outdir jsonname
@@ -50,7 +56,15 @@ probe () {  # outdir jsonname
   .venv/bin/python probe_forecast_sensitivity.py --checkpoint "$PWD/$CK" --trials 40 \
     --raw-logits --json-out $R/probe/$2.json 2>>"$OUT" | grep -E "difference|fraction|raw defer|route logits|ratio" >>"$OUT"
 }
-delta () { .venv/bin/python -c "import json;d=json.load(open('$R/probe/$1.json'));print(d['temporal']['delta'])" 2>/dev/null; }
+# Gate-2 delta reads the JOB-ALIGNED channel (the factorized gate ignores
+# dc_future_* BY DESIGN - seventh-review catch: the dc_* sweep would auto-fail
+# a healthy V3.2 model). Falls back to the dc_* temporal delta for non-v32
+# checkpoints (reference-wave probes).
+delta () { .venv/bin/python -c "
+import json
+d = json.load(open('$R/probe/$1.json'))
+jt = d.get('job_temporal')
+print(jt['delta'] if jt else d['temporal']['delta'])" 2>/dev/null; }
 
 # 3. V3.2 Gate 2 smoke (oracle s1 100k) -- prereg threshold +0.05, frozen
 train experiment_v3_2_oracle 1 100000 v32_smoke_s1

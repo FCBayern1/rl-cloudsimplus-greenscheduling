@@ -323,6 +323,12 @@ def _merged_gtrxl_model_settings(
         m["nhead"] = g["num_heads"]
     if "num_layers" in g:
         m["num_layers"] = g["num_layers"]
+    # V3.2: second layer of the same silent-drop trap — this merge helper is
+    # ALSO a per-key whitelist. Both layers must pass the gate flag through.
+    if "factorized_temporal_gate" in g:
+        m["factorized_temporal_gate"] = g["factorized_temporal_gate"]
+    if "temporal_gate_hidden" in g:
+        m["temporal_gate_hidden"] = g["temporal_gate_hidden"]
     if "dim_feedforward" in g:
         m["dim_feedforward"] = g["dim_feedforward"]
     if "d_ff" in g:
@@ -418,7 +424,20 @@ def create_rlmodule_config(
         # value-loss gradients don't perturb actor weights.  See
         # rlmodule_gtrxl_models.GTrXLScoreBasedGlobalRLModule.setup.
         "critic_separate_trunk": bool(gm.get("critic_separate_trunk", False)),
+        # V3.2 factorized temporal gate (2026-08-14). NOTE: this dict is a
+        # WHITELIST — a key missing here is silently dropped between config.yml
+        # and the module, which is exactly what nearly invalidated the first
+        # Gate-2 smoke (config said true, module never built the gate).
+        "factorized_temporal_gate": bool(gm.get("factorized_temporal_gate", False)),
+        "temporal_gate_hidden": int(gm.get("temporal_gate_hidden", 64)),
     }
+    # Fail-fast wiring assertion: if the experiment asked for the gate, the
+    # assembled model_config must carry it. Guards against the silent-drop
+    # class of bug for THIS key permanently.
+    if bool((env_config.get("gtrxl") or {}).get("factorized_temporal_gate", False))             and not gtrxl_config["factorized_temporal_gate"]:
+        raise ValueError(
+            "factorized_temporal_gate requested in experiment gtrxl block but "
+            "lost in gtrxl_config assembly - wiring bug")
 
     logger.info(f"GTrXL Config: {gtrxl_config}")
 
