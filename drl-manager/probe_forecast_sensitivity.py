@@ -277,6 +277,22 @@ def load_module(ckpt: pathlib.Path):
     return RLModule.from_checkpoint(path)
 
 
+def action_logits_raw(module, obs: dict) -> np.ndarray:
+    """Raw per-slot action logits (BATCH_SLOTS, n_options), no softmax."""
+    from ray.rllib.core.columns import Columns
+    batch = {Columns.OBS: {k: torch.as_tensor(np.asarray(v)[None, ...])
+                           for k, v in obs.items()}}
+    state = module.get_initial_state()
+    if state:
+        batch[Columns.STATE_IN] = {
+            k: torch.as_tensor(np.asarray(v))[None, ...] for k, v in state.items()
+        }
+    with torch.no_grad():
+        out = module.forward_inference(batch)
+    logits = out[Columns.ACTION_DIST_INPUTS].detach().cpu().numpy().reshape(-1)
+    return logits.reshape(BATCH_SLOTS, logits.size // BATCH_SLOTS)
+
+
 def action_probs(module, obs: dict) -> np.ndarray:
     """Per-slot categorical distribution, shape (BATCH_SLOTS, n_options).
 
@@ -310,6 +326,10 @@ def main() -> None:
     ap.add_argument("--trials", type=int, default=40)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--raw-logits", action="store_true",
+                    help="also report max|delta| of RAW defer vs route logits "
+                         "between the two temporal regimes (direct-edge check, "
+                         "Gate 1: legacy modules must show defer ~invariant)")
     ap.add_argument(
         "--forecast-baseline",
         choices=("auto", "forecast", "persistence"),
@@ -392,6 +412,27 @@ def main() -> None:
     print(f"{'difference (want >> 0)':>34}{d_arr - d_lev:>+10.4f}")
     print(f"{'TV of the whole distribution':>34}{tv_t:>10.4f}\n")
 
+    raw = None
+    if args.raw_logits:
+        # Direct-edge check (docs/V32_FORECAST_REVIVAL_PLAN.md §6.1): only the
+        # forecast keys differ between the two observations, so a defer column
+        # that moves orders of magnitude less than the route columns proves the
+        # temporal head has no direct forecast edge (and vice versa for V3.2).
+        rng2 = np.random.default_rng(args.seed + 2000)
+        obs0 = maybe_add_v31_features(base_observation(rng2), module, rng2)
+        za = action_logits_raw(module, set_temporal(dict(obs0), "arriving"))
+        zl = action_logits_raw(module, set_temporal(dict(obs0), "leaving"))
+        d_defer = float(np.abs(za[:, -1] - zl[:, -1]).max())
+        d_route = float(np.abs(za[:, :-1] - zl[:, :-1]).max())
+        ratio = d_route / max(d_defer, 1e-12)
+        raw = {"max_abs_delta_raw_defer_logit": d_defer,
+               "max_abs_delta_raw_route_logits": d_route,
+               "route_over_defer_ratio": ratio}
+        print(f"\nraw-logit direct-edge check (temporal perturbation only):")
+        print(f"{'max|d raw defer logit|':>34}{d_defer:>12.3e}")
+        print(f"{'max|d raw route logits|':>34}{d_route:>12.3e}")
+        print(f"{'route/defer response ratio':>34}{ratio:>12.1f}")
+
     if args.json_out:
         pathlib.Path(args.json_out).write_text(json.dumps(
             {"checkpoint": args.checkpoint, "trials": args.trials,
@@ -402,6 +443,7 @@ def main() -> None:
                  if baseline_type == "persistence" else "forecast_channel_sensitivity"
              ),
              "summary": summary, "forecast_over_control": frac,
+             "raw_logits": raw,
              "temporal": {"n_options": int(n_opt), "defer_index": int(defer_idx),
                           "p_defer_arriving": d_arr, "p_defer_leaving": d_lev,
                           "delta": d_arr - d_lev, "tv": tv_t}}, indent=2))

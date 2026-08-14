@@ -90,7 +90,12 @@ def main():
     v31_keys = ("per_action_completion_mode", "defer_cost_mode",
                 "per_action_carbon_norm", "per_action_carbon_mu",
                 "per_action_carbon_sigma", "fixed_local_scheduler",
-                "obs_v31_features")
+                "obs_v31_features",
+                # V3.2 switches — same rule: recipe, not treatment
+                "obs_v32_job_forecast", "obs_v32_forecast_bin_count",
+                "obs_v32_forecast_horizon_steps",
+                "per_action_spatial_center", "per_action_spatial_weight",
+                "per_action_spatial_sigma")
     asym = [k for k in v31_keys if O.get(k) != N.get(k)]
     chk("v3.1 switches symmetric", not asym, f"asymmetric={asym or 'none'}")
 
@@ -128,6 +133,20 @@ def main():
         sl = dl - arr - L
         print(f"[info ] obs_v31 trace stats: init-slack p99={np.percentile(sl,99):.0f}s "
               f"max={sl.max():.0f}s; wait_age can reach ~7200s; slack can go negative")
+
+    # --v32-cert: V3.2 certification invariants (superset of --v31-cert).
+    if "--v32-cert" in sys.argv:
+        sys.argv.append("--v31-cert")  # inherit all v31 gates
+        chk("cert: v32 job forecast on",
+            O.get("obs_v32_job_forecast") is True and N.get("obs_v32_job_forecast") is True,
+            f"oracle={O.get('obs_v32_job_forecast')} blind={N.get('obs_v32_job_forecast')}")
+        chk("cert: spatial term calibrated",
+            O.get("per_action_spatial_center") == "candidate_mean"
+            and float(O.get("per_action_spatial_sigma", 1.0)) != 1.0,
+            f"center={O.get('per_action_spatial_center')} sigma={O.get('per_action_spatial_sigma')}"
+            " (sigma=1.0 means the sigma_spatial artifact was never applied)")
+        # the gate flag lives in the model config block, not env config — the
+        # runner asserts it separately; here we pin the observation halves.
 
     # --v31-cert: certification invariants (only for the FINAL cert configs).
     if "--v31-cert" in sys.argv:
