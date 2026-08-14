@@ -19,6 +19,14 @@ OUT=$R/v31_smoke.txt
 ORACLE=experiment_v3_1_oracle
 BLIND=experiment_v3_1_noforecast
 MU=3.524; SIGMA=2.512   # calib/experiment_v3_1_oracle_carbon_norm.json (mid_util)
+# Truth-table marg points MUST come from the same artifact as mu/sigma —
+# mixing synthetic margs with real mu/sigma is exactly what aborted the
+# 09:39 launch (synthetic brown 16.5 sat 5 sigma out on the real scale).
+# margGreen = artifact q1 (best green route); margBrown = median job on a
+# 0.55-factor trough DC (4.26 kg * 0.55). Note for the record: this brown
+# route prices POSITIVE (+0.24) under the pooled z-score - the wait incentive
+# for median jobs is thinner than the synthetic gate suggested.
+MG=0.71; MB=2.34
 
 # Bounded wait (<=60 min) for the tail of the verdict queue, then hard refuse.
 WAITED=0
@@ -32,7 +40,7 @@ cd $REPO/drl-manager
 cd $REPO/cloudsimplus-gateway
 ./gradlew installDist -q >>"$OUT" 2>&1 || { echo "[smoke] installDist FAILED" >>"$OUT"; exit 1; }
 ./gradlew test --tests "exe.edu.cspg.multidc.PerActionRewardSurgeryTest" -q \
-  -Dv31.mu=$MU -Dv31.sigma=$SIGMA >>"$OUT" 2>&1 || { echo "[smoke] truth-table FAILED with real mu/sigma" >>"$OUT"; exit 1; }
+  -Dv31.mu=$MU -Dv31.sigma=$SIGMA -Dv31.margGreen=$MG -Dv31.margBrown=$MB >>"$OUT" 2>&1 || { echo "[smoke] truth-table FAILED with real mu/sigma" >>"$OUT"; exit 1; }
 echo "[smoke] gates passed, training starts $(date '+%m-%d %H:%M')" >>"$OUT"
 cd $REPO/drl-manager
 
