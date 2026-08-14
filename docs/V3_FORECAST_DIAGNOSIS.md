@@ -632,7 +632,20 @@ wrapper 调底层 `step()` 前把 local actions 覆盖为最大合法 dispatch;`
    `可等时间 = deadline − now − 预计执行`;`预计省碳 = 预计能耗 × (当前碳强 −
    slack 窗内最低预测碳强)`;省碳 > 等待代价 且 slack 足够 且 backlog 未超限 → defer,
    否则 route。**只有这个仪器在同 offset、完成率 ≥99.5% 下仍省不到 10%,
-   才有资格说"考场本身没有预报价值"。**在此之前,考场判决悬置。
+   才有资格说"考场本身没有预报价值"。**
+
+   **✅ 判决(08-14 10:39,`oracle_slack_planner.py` θ=0.7,drain local,同 seed/offset):**
+
+   | 臂 | carbon_kg | 完成率 | green% |
+   |---|---|---|---|
+   | no-defer 基线 | 0.4040 | 100% | 39.4 |
+   | **slack-aware(godeye)** | **0.3186** | **100%** | 44.3 |
+
+   **Δ碳 = −21.1% @ 双方 100% 完成 —— 考场门 PASS(≥15%)。**
+   v3 的时间杠杆物理上存在且够大;七连 null 的责任**全部落回算法/信用分配侧**,
+   考场无罪。这同时给了论文一个可写的 oracle-gap:完美用预报值 21%,
+   RL 目前兑现 0% —— V3.1/gate/蒸馏就是在追这 21 个点。
+   (θ=0.5 敏感性格在跑;仪器为 godeye 作弊型,21% 是可达下界而非理论上界。)
 5. **动作空间稀释**。全局动作是 factored `{0..8}^128`
    (`global_routing_batch_size=128`),一次 episode 的碳要摊到 128×T 个动作头上。
    对照 HPE SustainDC 的 LS 智能体是 `Discrete(3)`。
