@@ -141,6 +141,13 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.experiment)
+    # Standalone-env boot keys (the 10:24 crash): common carries a FIXED
+    # py4j_port, which makes the env try to CONNECT instead of auto-launching
+    # a fresh gateway on a free port. Same recipe as oracle_hold_until_green.
+    cfg.pop("py4j_port", None)
+    cfg.setdefault("gateway_log_dir", "/tmp/oracle_gateway")
+    cfg.setdefault("output_dir", "/tmp/oracle_gateway")
+    Path("/tmp/oracle_gateway").mkdir(parents=True, exist_ok=True)
     if not cfg.get("obs_v31_features"):
         sys.exit("needs obs_v31_features=true (per-slot deadline features)")
     green = load_green_series(cfg)

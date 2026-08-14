@@ -92,10 +92,22 @@ def maybe_add_v31_features(obs: dict, module, rng: np.random.Generator) -> dict:
     They are HELD CONSTANT across the two observations a trial compares, so the
     channel sweeps remain single-variable.
     """
+    # Key detection must UNION every source: the declared observation_space on
+    # this module class is the wrapped Dict ['action_mask','observation'] (not
+    # the flat feature keys - that non-empty decoy defeated an if-empty
+    # fallback on 08-14), while the flat feature names live in the module's
+    # own key lists.
+    keys = set()
     space = getattr(module, "observation_space", None) or getattr(
         getattr(module, "config", None), "observation_space", None)
-    keys = set(space.spaces.keys()) if hasattr(space, "spaces") else set()
-    if "batch_cloudlet_wait_age" not in keys:
+    if hasattr(space, "spaces"):
+        keys |= set(space.spaces.keys())
+        inner = space.spaces.get("observation")
+        if hasattr(inner, "spaces"):
+            keys |= set(inner.spaces.keys())
+    for attr in ("cloudlet_keys", "per_dc_keys", "context_keys"):
+        keys |= set(getattr(module, attr, []) or [])
+    if "batch_cloudlet_wait_age" not in keys and "batch_cloudlet_deadline_present" not in keys:
         return obs
     obs["batch_cloudlet_wait_age"] = rng.uniform(0.0, 0.3, BATCH_SLOTS).astype(np.float32)
     obs["batch_cloudlet_time_to_deadline"] = rng.uniform(0.2, 1.5, BATCH_SLOTS).astype(np.float32)
