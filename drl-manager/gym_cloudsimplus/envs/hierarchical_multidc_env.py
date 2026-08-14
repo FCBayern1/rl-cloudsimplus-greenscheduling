@@ -195,6 +195,99 @@ class HierarchicalMultiDCEnv(gym.Env):
             )),
         )
 
+        # V3.2 job-aligned forecast observations.  This is deliberately a
+        # sibling gate to obs_v31_features: when disabled, neither the schema
+        # nor the legacy forecast_mode="none" zero-fill changes.  When enabled,
+        # the temporal head receives per-cloudlet features derived from that
+        # arm's own information set (full=godeye/TimeCAP, none=persistence).
+        self.obs_v32_job_forecast = bool(
+            config.get("obs_v32_job_forecast", False)
+        )
+        if self.obs_v32_job_forecast and not self.obs_v31_features:
+            raise ValueError(
+                "obs_v32_job_forecast=true requires obs_v31_features=true "
+                "because per-cloudlet forecast windows are truncated by deadline slack"
+            )
+        self._v32_forecast_mode = str(
+            config.get("forecast_mode", "full")
+        ).strip().lower()
+        if self.obs_v32_job_forecast and self._v32_forecast_mode not in ("full", "none"):
+            raise ValueError(
+                "obs_v32_job_forecast=true supports forecast_mode 'full' or 'none'; "
+                f"got {self._v32_forecast_mode!r}"
+            )
+        self._v32_forecast_bin_count = int(
+            config.get("obs_v32_forecast_bin_count", 16)
+        )
+        if self.obs_v32_job_forecast and not 12 <= self._v32_forecast_bin_count <= 20:
+            raise ValueError(
+                "obs_v32_forecast_bin_count must be in [12, 20] for the "
+                f"pre-registered V3.2 representation; got {self._v32_forecast_bin_count}"
+            )
+        self._v32_forecast_horizon_steps = int(
+            config.get("obs_v32_forecast_horizon_steps", 120)
+        )
+        if self.obs_v32_job_forecast and (
+            self._v32_forecast_horizon_steps < self._v32_forecast_bin_count
+        ):
+            raise ValueError(
+                "obs_v32_forecast_horizon_steps must be >= "
+                "obs_v32_forecast_bin_count"
+            )
+        if self._v32_forecast_bin_count > 0:
+            self._v32_forecast_offsets_steps = np.rint(np.linspace(
+                1,
+                max(1, self._v32_forecast_horizon_steps),
+                self._v32_forecast_bin_count,
+            )).astype(np.int32)
+        else:
+            self._v32_forecast_offsets_steps = np.zeros(0, dtype=np.int32)
+        self._v32_sim_timestep_sec = max(
+            1e-6, float(config.get("simulation_timestep", 1.0))
+        )
+        self._v32_mi_per_kg = max(
+            1e3, float(config.get("mi_per_kg_factor", 3.5e6))
+        )
+        self._v32_vm_mips = max(
+            1.0,
+            float(config.get(
+                "obs_v32_vm_mips",
+                min(
+                    [
+                        float(dc.get("vm_pe_mips", 50000.0))
+                        for dc in self.dc_configs
+                        if float(dc.get("vm_pe_mips", 50000.0)) > 0.0
+                    ]
+                    or [50000.0]
+                ),
+            )),
+        )
+        self._v32_deadline_margin_sec = max(
+            0.0, float(config.get("obs_v32_deadline_margin_sec", 0.0))
+        )
+        self._v32_green_factors = np.asarray(
+            [float(dc.get("green_carbon_factor", 0.01)) for dc in self.dc_configs],
+            dtype=np.float64,
+        )
+        self._v32_brown_factors = np.asarray(
+            [float(dc.get("brown_carbon_factor", 0.55)) for dc in self.dc_configs],
+            dtype=np.float64,
+        )
+        theoretical_carbon_high = (
+            float(config.get("obs_cloudlet_mi_high", 2000000))
+            / self._v32_mi_per_kg
+            * max(1e-9, float(np.max(np.maximum(
+                self._v32_green_factors, self._v32_brown_factors
+            ))))
+        )
+        self._v32_job_carbon_high = max(
+            1e-9,
+            float(config.get(
+                "obs_v32_job_carbon_high", theoretical_carbon_high
+            )),
+        )
+        self._last_v32_job_forecast_debug: Dict[str, Any] = {}
+
         # Define observation and action spaces
         self._setup_observation_spaces()
         self._setup_action_spaces()
@@ -705,6 +798,22 @@ class HierarchicalMultiDCEnv(gym.Env):
                     low=0.0, high=1.0, shape=(1,), dtype=np.float32),
                 "global_deferred_mi": spaces.Box(
                     low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+            })
+
+        if self.obs_v32_job_forecast:
+            batch_shape = (self.global_routing_batch_size,)
+            global_spaces.update({
+                # All four are clipped explicitly by
+                # _append_v32_job_forecast_features. best_* are normalized by
+                # the configured/theoretical per-cloudlet carbon upper bound.
+                "batch_cloudlet_forecast_gain": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_time_to_best_green": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_best_now_carbon": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
+                "batch_cloudlet_best_future_carbon": spaces.Box(
+                    low=0.0, high=1.0, shape=batch_shape, dtype=np.float32),
             })
 
         self.global_observation_space = spaces.Dict(global_spaces)
@@ -1375,6 +1484,298 @@ class HierarchicalMultiDCEnv(gym.Env):
             ], dtype=np.float32),
         })
 
+    def _v32_apply_blind_persistence(self, obs: Dict[str, Any]) -> None:
+        """Replace future summaries with a current-state persistence baseline.
+
+        The old no-forecast contract used an all-zero sentinel.  V3.2 instead
+        pre-registers a physical no-information baseline: future normalized
+        green equals the current normalized green level, trend is flat, and
+        peak timing is unknown/central.  This method is only called when the
+        V3.2 observation gate is enabled; legacy runs retain byte-identical
+        zero-fill behavior.
+        """
+        green_high = max(1e-9, float(self.config.get("obs_green_power_high", 3000.0)))
+        current = np.asarray(
+            obs.get("dc_current_green_power_w", np.zeros(self.num_datacenters)),
+            dtype=np.float64,
+        ).reshape(-1)
+        current_norm = np.clip(current / green_high, 0.0, 1.0).astype(np.float32)
+        obs["dc_future_short_mean"] = current_norm.copy()
+        obs["dc_future_short_trend"] = np.zeros(
+            self.num_datacenters, dtype=np.float32)
+        obs["dc_future_long_mean"] = current_norm.copy()
+        obs["dc_future_long_peak_timing"] = np.full(
+            self.num_datacenters, 0.5, dtype=np.float32)
+
+    def _v32_forecast_green_bins(self, obs: Dict[str, Any]) -> np.ndarray:
+        """Return this arm's per-DC future green-power bins in simulator Watts.
+
+        Full/godeye reads the simulator's own future series through one
+        read-only gateway call.  Full/TimeCAP reads the provider's cached raw
+        forecast.  Blind never calls either source: it repeats current green
+        power (persistence), preserving the information-set boundary.
+        """
+        current = np.asarray(
+            obs.get("dc_current_green_power_w", np.zeros(self.num_datacenters)),
+            dtype=np.float64,
+        ).reshape(self.num_datacenters)
+        if self._v32_forecast_mode == "none":
+            return np.repeat(
+                current[:, None], self._v32_forecast_bin_count, axis=1)
+
+        offsets = self._v32_forecast_offsets_steps
+        if self.timecap_provider is not None:
+            raw_per_dc = self.timecap_provider.get_raw_forecast_per_dc(
+                horizon=self._v32_forecast_horizon_steps,
+                normalize=False,
+            )
+            if raw_per_dc is None:
+                raise RuntimeError(
+                    "V3.2 TimeCAP job forecast requested before a raw forecast "
+                    "was available"
+                )
+            out = np.zeros(
+                (self.num_datacenters, self._v32_forecast_bin_count),
+                dtype=np.float64,
+            )
+            divisor = max(1e-9, float(
+                self.config.get("compressed_power_divisor", 1.0)
+            ))
+            compressed = any(
+                str(dc.get("time_scaling_mode", "")).upper() == "COMPRESSED"
+                for dc in self.dc_configs
+            )
+            for dc_index, dc_id in enumerate(self.dc_ids):
+                arr = raw_per_dc.get(dc_id)
+                if arr is None or len(arr) == 0:
+                    continue
+                arr = np.asarray(arr, dtype=np.float64).reshape(-1)
+                # TimeCAP index 0 predicts the next simulator step; offsets are
+                # one-based for the same reason.
+                idx = np.clip(offsets - 1, 0, len(arr) - 1)
+                out[dc_index] = arr[idx]
+            if compressed:
+                out /= divisor
+            return np.maximum(out, 0.0)
+
+        if self.java_env is None or not hasattr(
+            self.java_env, "getFuturePerDcGreenPowerW"
+        ):
+            raise RuntimeError(
+                "V3.2 godeye job forecast requires gateway method "
+                "getFuturePerDcGreenPowerW"
+            )
+        horizon_seconds = [
+            max(1, int(round(float(step) * self._v32_sim_timestep_sec)))
+            for step in offsets
+        ]
+        java_rows = self.java_env.getFuturePerDcGreenPowerW(horizon_seconds)
+        out = np.asarray(
+            [[float(value) for value in row] for row in java_rows],
+            dtype=np.float64,
+        )
+        expected = (self.num_datacenters, self._v32_forecast_bin_count)
+        if out.shape != expected:
+            raise RuntimeError(
+                f"gateway V3.2 forecast bins have shape {out.shape}, expected {expected}"
+            )
+        return np.maximum(out, 0.0)
+
+    @staticmethod
+    def _v32_effective_carbon_factor(
+        green_power_w: np.ndarray,
+        demand_power_w: np.ndarray,
+        green_factor: np.ndarray,
+        brown_factor: np.ndarray,
+    ) -> np.ndarray:
+        """Mirror computeDcCostFeatures using persistence demand."""
+        green = np.maximum(np.asarray(green_power_w, dtype=np.float64), 0.0)
+        demand = np.maximum(np.asarray(demand_power_w, dtype=np.float64), 0.0)
+        ratio = np.where(
+            demand > 1e-9,
+            np.minimum(1.0, green / np.maximum(demand, 1e-9)),
+            np.where(green > 0.0, 1.0, 0.0),
+        )
+        return ratio * green_factor + (1.0 - ratio) * brown_factor
+
+    def _append_v32_job_forecast_features(
+        self,
+        obs: Dict[str, Any],
+        *,
+        time_to_deadline,
+        deadline_present,
+        forecast_green_bins: Optional[np.ndarray] = None,
+    ) -> None:
+        """Append bounded per-cloudlet forecast-value features for V3.2.
+
+        Future demand is held at its current per-DC value (persistence demand),
+        and current/future candidate costs share the exact same effective-factor
+        equation.  A real job may inspect only bins inside
+        ``deadline-now-estimated_runtime-margin``.  Padding and jobs without a
+        deadline receive the neutral no-op tuple.
+        """
+        if not self.obs_v32_job_forecast:
+            return
+
+        batch = self.global_routing_batch_size
+        mi = self._pad_batch_array(
+            np.asarray(obs.get("batch_cloudlet_mi", []), dtype=np.float64),
+            batch,
+            dtype=np.float64,
+        )
+        pes = self._pad_batch_array(
+            np.asarray(obs.get("batch_cloudlet_pes", []), dtype=np.float64),
+            batch,
+            dtype=np.float64,
+        )
+        ttd = self._pad_batch_array(
+            np.asarray(time_to_deadline, dtype=np.float64),
+            batch,
+            dtype=np.float64,
+        )
+        present = self._pad_batch_array(
+            np.asarray(deadline_present, dtype=np.float64),
+            batch,
+            dtype=np.float64,
+        )
+        current_green = np.asarray(
+            obs["dc_current_green_power_w"], dtype=np.float64).reshape(-1)
+        demand = np.asarray(
+            obs["dc_current_power_w"], dtype=np.float64).reshape(-1)
+        available_pes = np.asarray(
+            obs["dc_available_pes"], dtype=np.float64).reshape(-1)
+        if forecast_green_bins is None:
+            forecast_green_bins = self._v32_forecast_green_bins(obs)
+        forecast_green_bins = np.asarray(forecast_green_bins, dtype=np.float64)
+        expected = (self.num_datacenters, self._v32_forecast_bin_count)
+        if forecast_green_bins.shape != expected:
+            raise ValueError(
+                f"forecast_green_bins shape {forecast_green_bins.shape}, expected {expected}"
+            )
+
+        current_factor = self._v32_effective_carbon_factor(
+            current_green,
+            demand,
+            self._v32_green_factors,
+            self._v32_brown_factors,
+        )
+        future_factor = self._v32_effective_carbon_factor(
+            forecast_green_bins,
+            demand[:, None],
+            self._v32_green_factors[:, None],
+            self._v32_brown_factors[:, None],
+        )
+        offsets_sec = (
+            self._v32_forecast_offsets_steps.astype(np.float64)
+            * self._v32_sim_timestep_sec
+        )
+
+        gain = np.zeros(batch, dtype=np.float64)
+        relative_time = np.ones(batch, dtype=np.float64)
+        best_now = np.zeros(batch, dtype=np.float64)
+        best_future = np.zeros(batch, dtype=np.float64)
+        raw_gain = np.zeros(batch, dtype=np.float64)
+        raw_now = np.zeros(batch, dtype=np.float64)
+        raw_future = np.zeros(batch, dtype=np.float64)
+        slack_sec = np.zeros(batch, dtype=np.float64)
+
+        for i in range(batch):
+            if not np.isfinite(mi[i]) or mi[i] <= 0.0:
+                continue
+            feasible = np.flatnonzero(available_pes >= max(1.0, pes[i]))
+            if feasible.size == 0:
+                feasible = np.arange(self.num_datacenters)
+            scale = max(0.0, mi[i]) / self._v32_mi_per_kg
+            now_cost = scale * current_factor[feasible]
+            now = float(np.min(now_cost))
+            runtime_sec = max(0.0, mi[i]) / self._v32_vm_mips
+            budget = (
+                ttd[i] - runtime_sec - self._v32_deadline_margin_sec
+                if present[i] > 0.5 and np.isfinite(ttd[i])
+                else 0.0
+            )
+            budget = max(0.0, float(budget))
+            slack_sec[i] = budget
+            future = now
+            best_offset = 0.0
+            eligible_bins = np.flatnonzero(offsets_sec <= budget)
+            if eligible_bins.size:
+                candidate = scale * future_factor[
+                    feasible[:, None], eligible_bins[None, :]
+                ]
+                flat_index = int(np.argmin(candidate))
+                dc_pos, bin_pos = np.unravel_index(flat_index, candidate.shape)
+                candidate_cost = float(candidate[dc_pos, bin_pos])
+                if candidate_cost < future:
+                    future = candidate_cost
+                    best_offset = float(offsets_sec[eligible_bins[bin_pos]])
+
+            improvement = max(0.0, now - future)
+            raw_now[i] = now
+            raw_future[i] = future
+            raw_gain[i] = improvement
+            best_now[i] = np.clip(now / self._v32_job_carbon_high, 0.0, 1.0)
+            best_future[i] = np.clip(
+                future / self._v32_job_carbon_high, 0.0, 1.0)
+            gain[i] = np.clip(
+                improvement / self._v32_job_carbon_high, 0.0, 1.0)
+            if improvement > 1e-12 and budget > 1e-12:
+                relative_time[i] = np.clip(best_offset / budget, 0.0, 1.0)
+
+        if self._v32_forecast_mode == "none":
+            # Pre-registered blind tuple.  best_now remains physically useful;
+            # persistence states that waiting offers no incremental benefit.
+            gain.fill(0.0)
+            relative_time.fill(1.0)
+            best_future[:] = best_now
+            raw_gain.fill(0.0)
+            raw_future[:] = raw_now
+
+        obs.update({
+            "batch_cloudlet_forecast_gain": gain.astype(np.float32),
+            "batch_cloudlet_time_to_best_green": relative_time.astype(np.float32),
+            "batch_cloudlet_best_now_carbon": best_now.astype(np.float32),
+            "batch_cloudlet_best_future_carbon": best_future.astype(np.float32),
+        })
+        self._last_v32_job_forecast_debug = {
+            "baseline_type": (
+                "persistence" if self._v32_forecast_mode == "none" else self.green_oracle_mode
+            ),
+            "raw_gain_kg": raw_gain,
+            "raw_best_now_kg": raw_now,
+            "raw_best_future_kg": raw_future,
+            "slack_sec": slack_sec,
+            "forecast_offsets_sec": offsets_sec.copy(),
+            "carbon_high_kg": self._v32_job_carbon_high,
+            "demand_assumption": "per_dc_current_power_persistence",
+        }
+
+    def _finalize_forecast_observation(
+        self,
+        obs: Dict[str, Any],
+        *,
+        time_to_deadline,
+        deadline_present,
+    ) -> None:
+        """Apply the arm's blind semantics, then append gated V3.2 features."""
+        if self._v32_forecast_mode == "none":
+            if self.obs_v32_job_forecast:
+                self._v32_apply_blind_persistence(obs)
+            else:
+                # Exact historical behavior when the V3.2 gate is disabled.
+                for key in (
+                    "dc_future_short_mean",
+                    "dc_future_short_trend",
+                    "dc_future_long_mean",
+                    "dc_future_long_peak_timing",
+                ):
+                    obs[key] = np.zeros(self.num_datacenters, dtype=np.float32)
+        self._append_v32_job_forecast_features(
+            obs,
+            time_to_deadline=time_to_deadline,
+            deadline_present=deadline_present,
+        )
+
     def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
         """
         Convert Java GlobalObservationState to Python dict.
@@ -1415,12 +1816,20 @@ class HierarchicalMultiDCEnv(gym.Env):
             "recent_completed": np.array([min(int(global_obs_java.getRecentCompletedCloudlets()), 99999)], dtype=np.int32),
         }
 
+        raw_time_to_deadline = np.zeros(
+            self.global_routing_batch_size, dtype=np.float64)
+        raw_deadline_present = np.zeros(
+            self.global_routing_batch_size, dtype=np.float64)
         if self.obs_v31_features:
+            raw_time_to_deadline = np.asarray(
+                global_obs_java.getBatchCloudletTimeToDeadline(), dtype=np.float64)
+            raw_deadline_present = np.asarray(
+                global_obs_java.getBatchCloudletDeadlinePresent(), dtype=np.float64)
             self._append_v31_global_features(
                 obs,
                 wait_age=global_obs_java.getBatchCloudletWaitAge(),
-                time_to_deadline=global_obs_java.getBatchCloudletTimeToDeadline(),
-                deadline_present=global_obs_java.getBatchCloudletDeadlinePresent(),
+                time_to_deadline=raw_time_to_deadline,
+                deadline_present=raw_deadline_present,
                 is_deferred=global_obs_java.getBatchCloudletIsDeferred(),
                 defer_count=global_obs_java.getBatchCloudletDeferCount(),
                 global_deferred_count=global_obs_java.getGlobalDeferredCount(),
@@ -1470,15 +1879,11 @@ class HierarchicalMultiDCEnv(gym.Env):
             obs["dc_future_long_mean"]        = long_mean
             obs["dc_future_long_peak_timing"] = long_peak_timing
 
-        # No-forecast ablation (deferrable track): the regular env does not honor
-        # the ablation env's forecast_mode, so explicitly zero the future-trend
-        # features here when forecast_mode=="none". Both the global router and the
-        # local dispatch agent (via _inject_local_forecast) then see no prediction;
-        # green_now (current observable state) is intentionally kept.
-        if str(self.config.get("forecast_mode", "full")).strip() == "none":
-            for _k in ("dc_future_short_mean", "dc_future_short_trend",
-                       "dc_future_long_mean", "dc_future_long_peak_timing"):
-                obs[_k] = np.zeros(self.num_datacenters, dtype=np.float32)
+        self._finalize_forecast_observation(
+            obs,
+            time_to_deadline=raw_time_to_deadline,
+            deadline_present=raw_deadline_present,
+        )
 
         return obs
 
@@ -1777,12 +2182,20 @@ class HierarchicalMultiDCEnv(gym.Env):
                 [min(int(flat["g.recent_completed_cloudlets"]), 99999)], dtype=np.int32),
         }
 
+        raw_time_to_deadline = np.zeros(
+            self.global_routing_batch_size, dtype=np.float64)
+        raw_deadline_present = np.zeros(
+            self.global_routing_batch_size, dtype=np.float64)
         if self.obs_v31_features:
+            raw_time_to_deadline = np.asarray(
+                flat["g.batch_cloudlet_time_to_deadline"], dtype=np.float64)
+            raw_deadline_present = np.asarray(
+                flat["g.batch_cloudlet_deadline_present"], dtype=np.float64)
             self._append_v31_global_features(
                 obs,
                 wait_age=flat["g.batch_cloudlet_wait_age"],
-                time_to_deadline=flat["g.batch_cloudlet_time_to_deadline"],
-                deadline_present=flat["g.batch_cloudlet_deadline_present"],
+                time_to_deadline=raw_time_to_deadline,
+                deadline_present=raw_deadline_present,
                 is_deferred=flat["g.batch_cloudlet_is_deferred"],
                 defer_count=flat["g.batch_cloudlet_defer_count"],
                 global_deferred_count=flat["g.global_deferred_count"],
@@ -1812,6 +2225,17 @@ class HierarchicalMultiDCEnv(gym.Env):
             obs["dc_future_short_trend"]      = short_trend
             obs["dc_future_long_mean"]        = long_mean
             obs["dc_future_long_peak_timing"] = long_peak_timing
+
+        # The historical flat path omitted forecast_mode="none" zero-fill.
+        # Preserve that exact (albeit surprising) behavior while the V3.2 gate
+        # is off: default-off must remain checkpoint/experiment compatible.
+        # V3.2 closes the leak explicitly and makes both paths persistence-based.
+        if self.obs_v32_job_forecast:
+            self._finalize_forecast_observation(
+                obs,
+                time_to_deadline=raw_time_to_deadline,
+                deadline_present=raw_deadline_present,
+            )
 
         return obs
 

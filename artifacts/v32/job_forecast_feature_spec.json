@@ -1,0 +1,37 @@
+{
+  "artifact": "V3.2 job-aligned forecast feature contract",
+  "status": "pre-registered implementation constants; not a fitted artifact",
+  "forecast_bin_count": 16,
+  "forecast_horizon_steps": 120,
+  "forecast_offsets": "round(linspace(1, forecast_horizon_steps, forecast_bin_count))",
+  "information_sets": {
+    "full_godeye": "simulator future green-power trajectory with episode/time-zone offsets",
+    "full_timecap": "TimeCAP raw predicted green-power trajectory",
+    "none": "current green power repeated over every future bin (persistence)"
+  },
+  "future_demand_assumption": "per-DC current power held constant over the forecast horizon",
+  "carbon_equation": "C=(cloudlet_mi/mi_per_kg_factor)*(greenRatio*greenFactor+(1-greenRatio)*brownFactor)",
+  "green_ratio": "min(1, forecastGreenW/persistenceDemandW); if demand=0 use 1 iff green>0",
+  "wait_budget": "max(0, time_to_deadline - cloudlet_mi/obs_v32_vm_mips - obs_v32_deadline_margin_sec)",
+  "normalization": {
+    "best_now_carbon": "clip(raw_kg/obs_v32_job_carbon_high, 0, 1)",
+    "best_future_carbon": "clip(raw_kg/obs_v32_job_carbon_high, 0, 1)",
+    "forecast_gain": "clip((best_now_kg-best_future_kg)/obs_v32_job_carbon_high, 0, 1)",
+    "time_to_best_green": "best_future_offset/wait_budget when gain>0, else 1"
+  },
+  "default_carbon_high": "(obs_cloudlet_mi_high/mi_per_kg_factor)*max(all configured green/brown factors)",
+  "blind_neutral_values": {
+    "dc_future_short_mean": "clip(dc_current_green_power_w/obs_green_power_high, 0, 1)",
+    "dc_future_short_trend": 0.0,
+    "dc_future_long_mean": "clip(dc_current_green_power_w/obs_green_power_high, 0, 1)",
+    "dc_future_long_peak_timing": 0.5,
+    "batch_cloudlet_forecast_gain": 0.0,
+    "batch_cloudlet_time_to_best_green": 1.0,
+    "batch_cloudlet_best_future_carbon": "batch_cloudlet_best_now_carbon"
+  },
+  "bounds": {
+    "all_four_batch_cloudlet_features": [0.0, 1.0],
+    "policy": "explicit clip; declared bound covers 100% of emitted values and therefore exceeds observed p99"
+  },
+  "legacy_contract": "obs_v32_job_forecast=false preserves each old conversion path byte-for-byte, including the historical flat-path forecast pass-through; V3.2 enabled makes both paths persistence-based"
+}

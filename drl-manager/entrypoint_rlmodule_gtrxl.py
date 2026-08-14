@@ -335,7 +335,8 @@ def main():
             global_model_config=global_model_config,
             local_model_config=local_model_config,
             training_config=training_config,
-            output_dir=str(output_dir)
+            output_dir=str(output_dir),
+            seed=seed,
         )
         logger.info("Training completed successfully!")
     except KeyboardInterrupt:

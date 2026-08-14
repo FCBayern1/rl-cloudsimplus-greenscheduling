@@ -454,6 +454,46 @@ public class HierarchicalMultiDCGateway {
         return out;
     }
 
+    /**
+     * Read-only V3.2 forecast accessor: total future green power per DC (W).
+     *
+     * <p>The caller supplies positive offsets in simulator seconds. Each DC row
+     * sums all of its turbine providers and therefore uses the exact same
+     * timezone, warm-up, per-episode offset, cyclic wrapping, and COMPRESSED
+     * power scaling as the simulator's current-green observation. DCs without
+     * green providers return an all-zero row.
+     *
+     * <p>A nested {@link List} is used instead of primitive two-dimensional
+     * arrays so Py4J auto-conversion is deterministic in both directions.
+     */
+    public List<List<Double>> getFuturePerDcGreenPowerW(List<Integer> horizonSeconds) {
+        List<List<Double>> out = new ArrayList<>();
+        if (simulationCore == null || horizonSeconds == null) return out;
+
+        int[] horizons = new int[horizonSeconds.size()];
+        for (int h = 0; h < horizons.length; h++) {
+            Integer value = horizonSeconds.get(h);
+            horizons[h] = Math.max(1, value == null ? 1 : value);
+        }
+
+        double clock = simulationCore.getCurrentClock();
+        for (DatacenterInstance dc : simulationCore.getDatacenterInstances()) {
+            double[] total = new double[horizons.length];
+            for (exe.edu.cspg.energy.GreenEnergyProvider provider
+                    : dc.getGreenEnergyProviders()) {
+                double[] predicted = provider.getFuturePowerPredictions(clock, horizons);
+                int n = Math.min(total.length, predicted.length);
+                for (int h = 0; h < n; h++) {
+                    total[h] += Math.max(0.0, predicted[h]);
+                }
+            }
+            List<Double> row = new ArrayList<>(total.length);
+            for (double value : total) row.add(value);
+            out.add(row);
+        }
+        return out;
+    }
+
     /** Timestep duration in hours (matches the value used in the carbon formula). */
     public double getCurrentTimestepHours() {
         if (simulationCore == null) return 0.0;

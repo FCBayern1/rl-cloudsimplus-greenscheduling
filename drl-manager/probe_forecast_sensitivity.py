@@ -52,6 +52,60 @@ FORECAST_KEYS = ("dc_future_short_mean", "dc_future_short_trend",
                  "dc_future_long_mean", "dc_future_long_peak_timing")
 
 
+def checkpoint_env_config(checkpoint: pathlib.Path) -> dict:
+    """Read the nearest Tune trial env_config without loading Ray."""
+    for parent in (checkpoint, *checkpoint.parents):
+        params = parent / "params.json"
+        if not params.is_file():
+            continue
+        try:
+            payload = json.loads(params.read_text())
+            env_cfg = payload.get("env_config", payload.get("config", {}).get("env_config", {}))
+            return env_cfg if isinstance(env_cfg, dict) else {}
+        except (OSError, ValueError, TypeError):
+            continue
+    return {}
+
+
+def checkpoint_forecast_baseline(checkpoint: pathlib.Path) -> str:
+    """Infer the arm's pre-registered forecast baseline from checkpoint config."""
+    mode = str(checkpoint_env_config(checkpoint).get(
+        "forecast_mode", "full")).strip().lower()
+    return "persistence" if mode == "none" else "forecast"
+
+
+def apply_forecast_baseline(
+    obs: dict, baseline_type: str, *, green_power_high: float = 3000.0
+) -> dict:
+    """Return an obs whose forecast block matches the arm's own null semantics.
+
+    V3.2 blind checkpoints are trained on persistence, not an all-zero sentinel.
+    A response when we deliberately move them away from persistence is therefore
+    a sensitivity measurement, not evidence that future information leaked.
+    """
+    o = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in obs.items()}
+    if baseline_type == "forecast":
+        return o
+    if baseline_type != "persistence":
+        raise ValueError(f"unknown forecast baseline {baseline_type!r}")
+    current_norm = np.clip(
+        np.asarray(o["dc_current_green_power_w"], dtype=np.float32)
+        / max(1e-9, float(green_power_high)),
+        0.0,
+        1.0,
+    )
+    o["dc_future_short_mean"] = current_norm.copy()
+    o["dc_future_short_trend"] = np.zeros(N_DC, dtype=np.float32)
+    o["dc_future_long_mean"] = current_norm.copy()
+    o["dc_future_long_peak_timing"] = np.full(N_DC, 0.5, dtype=np.float32)
+    if "batch_cloudlet_forecast_gain" in o:
+        o["batch_cloudlet_forecast_gain"] = np.zeros(BATCH_SLOTS, dtype=np.float32)
+        o["batch_cloudlet_time_to_best_green"] = np.ones(BATCH_SLOTS, dtype=np.float32)
+        o["batch_cloudlet_best_future_carbon"] = np.asarray(
+            o["batch_cloudlet_best_now_carbon"], dtype=np.float32).copy()
+    return o
+
+
 def base_observation(rng: np.random.Generator) -> dict:
     """One plausible mid-episode global observation.
 
@@ -118,6 +172,35 @@ def maybe_add_v31_features(obs: dict, module, rng: np.random.Generator) -> dict:
     obs["global_deferred_count"] = np.array([0.05], dtype=np.float32)
     obs["global_deferred_mi"] = np.array([0.05], dtype=np.float32)
     return obs
+
+
+def maybe_add_v32_features(obs: dict, module, rng: np.random.Generator) -> dict:
+    """Match a V3.2 module's schema without changing single-channel sweeps."""
+    keys = set(getattr(module, "cloudlet_keys", []) or [])
+    if "batch_cloudlet_forecast_gain" not in keys:
+        return obs
+    best_now = rng.uniform(0.05, 0.8, BATCH_SLOTS).astype(np.float32)
+    gain = rng.uniform(0.0, 0.25, BATCH_SLOTS).astype(np.float32)
+    obs["batch_cloudlet_forecast_gain"] = gain
+    obs["batch_cloudlet_time_to_best_green"] = rng.uniform(
+        0.05, 1.0, BATCH_SLOTS).astype(np.float32)
+    obs["batch_cloudlet_best_now_carbon"] = best_now
+    obs["batch_cloudlet_best_future_carbon"] = np.maximum(
+        0.0, best_now - gain).astype(np.float32)
+    return obs
+
+
+def prepared_observation(
+    rng: np.random.Generator,
+    module,
+    baseline_type: str,
+    *,
+    green_power_high: float = 3000.0,
+) -> dict:
+    obs = maybe_add_v31_features(base_observation(rng), module, rng)
+    obs = maybe_add_v32_features(obs, module, rng)
+    return apply_forecast_baseline(
+        obs, baseline_type, green_power_high=green_power_high)
 
 
 def set_channel(obs: dict, channel: str, good_dc: int) -> dict:
@@ -227,14 +310,30 @@ def main() -> None:
     ap.add_argument("--trials", type=int, default=40)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument(
+        "--forecast-baseline",
+        choices=("auto", "forecast", "persistence"),
+        default="auto",
+        help="null semantics for this arm; auto reads checkpoint params.json",
+    )
     args = ap.parse_args()
 
-    module = load_module(pathlib.Path(args.checkpoint))
+    checkpoint = pathlib.Path(args.checkpoint)
+    module = load_module(checkpoint)
+    checkpoint_config = checkpoint_env_config(checkpoint)
+    baseline_type = (
+        checkpoint_forecast_baseline(checkpoint)
+        if args.forecast_baseline == "auto"
+        else args.forecast_baseline
+    )
+    green_power_high = float(checkpoint_config.get(
+        "obs_green_power_high", 3000.0))
     rng = np.random.default_rng(args.seed)
 
     results = {c: {"tv": [], "flip": [], "mass": []} for c in ("forecast", "control", "null")}
     for _ in range(args.trials):
-        obs = maybe_add_v31_features(base_observation(rng), module, rng)
+        obs = prepared_observation(
+            rng, module, baseline_type, green_power_high=green_power_high)
         a, b = rng.choice(GREEN_DCS, size=2, replace=False)
         for channel in results:
             pa = action_probs(module, set_channel(obs, channel, int(a)))
@@ -248,6 +347,10 @@ def main() -> None:
             )
 
     print(f"\ncheckpoint : {args.checkpoint}")
+    print(f"baseline   : {baseline_type}"
+          + (" (blind null; perturbation means departure from persistence, not leakage)"
+             if baseline_type == "persistence" else " (forecast arm)"))
+    print(f"green high : {green_power_high:g} W (checkpoint observation contract)")
     print(f"trials     : {args.trials}  (each moves the 'good' DC between two green DCs)\n")
     print(f"{'channel':>10}{'TV distance':>14}{'argmax flips':>15}{'mass follows':>15}")
     print("-" * 54)
@@ -268,11 +371,15 @@ def main() -> None:
 
     # --- temporal lever: does the forecast move the DEFER option? --------------
     rng = np.random.default_rng(args.seed + 1000)
-    n_opt = action_probs(module, maybe_add_v31_features(base_observation(rng), module, rng)).shape[1]
+    n_opt = action_probs(module, prepared_observation(
+        rng, module, baseline_type,
+        green_power_high=green_power_high,
+    )).shape[1]
     defer_idx = n_opt - 1                     # defer is appended after the N DCs
     arriving, leaving, tvs = [], [], []
     for _ in range(args.trials):
-        obs = maybe_add_v31_features(base_observation(rng), module, rng)
+        obs = prepared_observation(
+            rng, module, baseline_type, green_power_high=green_power_high)
         pa = action_probs(module, set_temporal(obs, "arriving"))
         pl = action_probs(module, set_temporal(obs, "leaving"))
         arriving.append(pa[:, defer_idx].mean())
@@ -288,6 +395,12 @@ def main() -> None:
     if args.json_out:
         pathlib.Path(args.json_out).write_text(json.dumps(
             {"checkpoint": args.checkpoint, "trials": args.trials,
+             "forecast_baseline": baseline_type,
+             "forecast_green_power_high": green_power_high,
+             "perturbation_interpretation": (
+                 "departure_from_persistence_not_leakage"
+                 if baseline_type == "persistence" else "forecast_channel_sensitivity"
+             ),
              "summary": summary, "forecast_over_control": frac,
              "temporal": {"n_options": int(n_opt), "defer_index": int(defer_idx),
                           "p_defer_arriving": d_arr, "p_defer_leaving": d_lev,

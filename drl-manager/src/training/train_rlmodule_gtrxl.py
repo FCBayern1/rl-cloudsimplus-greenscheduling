@@ -351,7 +351,8 @@ def create_rlmodule_config(
     global_model_config: Dict[str, Any],
     local_model_config: Dict[str, Any],
     training_config: Dict[str, Any],
-    output_dir: Optional[str] = None
+    output_dir: Optional[str] = None,
+    seed: Optional[int] = None,
 ):
     """
     Create RLlib PPO configuration with GTrXL RLModule.
@@ -782,7 +783,10 @@ def create_rlmodule_config(
             lambda: GreenEnergyLoggerCallback(log_dir=output_dir),
             lambda: LagrangianCallback(log_dir=output_dir),
         ]))
-        .debugging(log_level="INFO")
+        # This must be the CLI-resolved seed, not merely the driver-side
+        # numpy/torch seed. RLlib serializes this value into result.json and
+        # propagates it to env runners, learners, and action sampling.
+        .debugging(log_level="INFO", seed=seed)
         .framework(framework="torch")
     )
 
@@ -842,7 +846,8 @@ def train_rlmodule_gtrxl(
     global_model_config: Dict[str, Any],
     local_model_config: Dict[str, Any],
     training_config: Dict[str, Any],
-    output_dir: str
+    output_dir: str,
+    seed: Optional[int] = None,
 ):
     _install_batch_debug_hook()
 
@@ -875,7 +880,8 @@ def train_rlmodule_gtrxl(
         global_model_config,
         local_model_config,
         training_config,
-        output_dir=output_dir
+        output_dir=output_dir,
+        seed=seed,
     )
 
     total_timesteps = training_config.get("total_timesteps", 100000)

@@ -264,6 +264,74 @@ def test_v31_global_obs_flat_parity(env):
         np.testing.assert_array_equal(flat_out[key], legacy_out[key], err_msg=key)
 
 
+def test_v32_off_preserves_historical_noforecast_behavior_per_path():
+    """Default-off includes the old flat-path forecast pass-through."""
+    from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
+
+    nofc = HierarchicalMultiDCEnv(config={
+        "spaces_only": True,
+        "multi_datacenter_enabled": True,
+        "global_routing_batch_size": GLOBAL_BATCH_SIZE,
+        "datacenters": [
+            {"datacenter_id": i, "green_energy_enabled": False}
+            for i in range(NUM_DCS)
+        ],
+        "green_oracle_mode": "godeye",
+        "forecast_mode": "none",
+        "use_flat_obs_protocol": True,
+        # V3.2 off is the exact V3/V3.1 legacy contract.
+        "obs_v32_job_forecast": False,
+    })
+    flat_out = nofc._convert_global_observation_from_flat(_build_flat_map())
+    legacy_out = nofc._convert_global_observation(
+        _build_legacy_mock().getGlobalObservation())
+
+    raw_flat = _build_flat_map()
+    for key, flat_key in (
+        ("dc_future_short_mean", "g.dc_future_short_mean"),
+        ("dc_future_short_trend", "g.dc_future_short_trend"),
+        ("dc_future_long_mean", "g.dc_future_long_mean"),
+        ("dc_future_long_peak_timing", "g.dc_future_long_peak_timing"),
+    ):
+        np.testing.assert_array_equal(
+            flat_out[key], np.asarray(raw_flat[flat_key], dtype=np.float32), err_msg=key)
+        np.testing.assert_array_equal(legacy_out[key], np.zeros(NUM_DCS), err_msg=key)
+
+
+def test_v32_blind_persistence_is_identical_on_flat_and_legacy_paths():
+    from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
+
+    nofc = HierarchicalMultiDCEnv(config={
+        "spaces_only": True,
+        "multi_datacenter_enabled": True,
+        "global_routing_batch_size": GLOBAL_BATCH_SIZE,
+        "datacenters": [
+            {"datacenter_id": i, "green_energy_enabled": False}
+            for i in range(NUM_DCS)
+        ],
+        "green_oracle_mode": "godeye",
+        "forecast_mode": "none",
+        "use_flat_obs_protocol": True,
+        "obs_v31_features": True,
+        "obs_v32_job_forecast": True,
+    })
+    flat_out = nofc._convert_global_observation_from_flat(_build_flat_map())
+    legacy_out = nofc._convert_global_observation(
+        _build_legacy_mock().getGlobalObservation())
+
+    for key in (
+        "dc_future_short_mean",
+        "dc_future_short_trend",
+        "dc_future_long_mean",
+        "dc_future_long_peak_timing",
+        "batch_cloudlet_forecast_gain",
+        "batch_cloudlet_time_to_best_green",
+        "batch_cloudlet_best_now_carbon",
+        "batch_cloudlet_best_future_carbon",
+    ):
+        np.testing.assert_array_equal(flat_out[key], legacy_out[key], err_msg=key)
+
+
 def test_local_obs_flat_parity(env):
     """Flat-path local obs (per DC) must equal legacy-path local obs key-for-key."""
     flat = _build_flat_map()

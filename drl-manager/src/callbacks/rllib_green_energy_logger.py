@@ -20,6 +20,13 @@ from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
+from .v32_rollout_instrumentation import (
+    accumulate_v32_rollout_step,
+    finalize_v32_rollout,
+    new_v32_rollout_accumulator,
+    resolution_carbon_kg_by_slot,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -319,6 +326,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         # on_episode_end so every monitor.csv row carries the *last seen*
         # per-policy entropy / policy_loss / vf_loss).
         self.training_csv_file = None
+        self.v32_rollout_file = None
         self._training_csv_init = False
         self.latest_train_stats = {
             'iteration': 0,
@@ -337,6 +345,110 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             logger.info(f"[INIT] Log directory: {self.log_dir}")
         else:
             self.best_episode_file = None
+
+    def on_episode_step(
+        self,
+        *,
+        episode=None,
+        env_runner=None,
+        **kwargs,
+    ) -> None:
+        """Accumulate decision-time V3.2 behavior without simulator I/O.
+
+        New-API SingleAgentEpisode retains the observation that produced the
+        latest action plus RLModule action-distribution inputs.  Reconstructing
+        the temporal log-odds here avoids relying on synthetic probes alone.
+        Older API stacks simply skip this optional instrumentation.
+        """
+        if episode is None:
+            return
+        try:
+            agent_episodes = getattr(episode, "agent_episodes", {}) or {}
+            single = agent_episodes.get("global_agent")
+            if single is None:
+                return
+            # After a completed env step there is one more observation than
+            # actions, hence decision obs=-2 and action/model output=-1.
+            observation = single.get_observations(indices=-2)
+            action = single.get_actions(indices=-1)
+            try:
+                action_dist_inputs = single.get_extra_model_outputs(
+                    "action_dist_inputs", indices=-1)
+            except (KeyError, IndexError):
+                action_dist_inputs = None
+
+            inner = observation.get("observation", observation)
+            num_dcs = len(np.asarray(inner["dc_current_power_w"]).reshape(-1))
+            deadline_scale = 3600.0
+            runner_config = getattr(env_runner, "config", None)
+            env_config = getattr(runner_config, "env_config", {})
+            if isinstance(env_config, dict):
+                deadline_scale = float(env_config.get(
+                    "obs_v31_deadline_scale_sec",
+                    env_config.get("defer_urgency_window_sec", deadline_scale),
+                ))
+            acc = getattr(episode, "_v32_rollout_accumulator", None)
+            if acc is None:
+                acc = new_v32_rollout_accumulator()
+                setattr(episode, "_v32_rollout_accumulator", acc)
+            if isinstance(env_config, dict):
+                acc["forecast_baseline"] = (
+                    "persistence"
+                    if str(env_config.get("forecast_mode", "full")).lower() == "none"
+                    else str(env_config.get("green_oracle_mode", "godeye")).lower()
+                )
+            resolution_carbon = None
+            if isinstance(env_config, dict):
+                dc_configs = list(env_config.get("datacenters", []))
+                resolution_carbon = resolution_carbon_kg_by_slot(
+                    observation,
+                    action,
+                    num_datacenters=num_dcs,
+                    green_carbon_factors=[
+                        dc.get("green_carbon_factor", 0.01) for dc in dc_configs
+                    ],
+                    brown_carbon_factors=[
+                        dc.get("brown_carbon_factor", 0.55) for dc in dc_configs
+                    ],
+                    mi_per_kg_factor=float(env_config.get(
+                        "mi_per_kg_factor", 3.5e6)),
+                )
+            accumulate_v32_rollout_step(
+                acc,
+                observation,
+                action,
+                num_datacenters=num_dcs,
+                deadline_scale_sec=deadline_scale,
+                action_dist_inputs=action_dist_inputs,
+                resolution_carbon_kg_by_slot=resolution_carbon,
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+            logger.debug("V3.2 rollout instrumentation skipped step: %s", exc)
+
+    def _write_v32_rollout_summary(
+        self,
+        episode,
+        *,
+        worker_index: int,
+        global_energy_stats: Dict[str, object],
+    ) -> None:
+        acc = getattr(episode, "_v32_rollout_accumulator", None)
+        if acc is None or int(acc.get("step_count", 0)) <= 0:
+            return
+        forced = int(global_energy_stats.get("deadline_forced_count", 0) or 0)
+        payload = finalize_v32_rollout(acc, forced_route_count=forced)
+        payload.update({
+            "episode": int(self.episode_counter),
+            "worker_index": int(worker_index),
+            "forecast_baseline": str(acc.get("forecast_baseline", "unknown")),
+        })
+        if self.v32_rollout_file is None:
+            log_dir = self.log_dir or "./logs"
+            os.makedirs(log_dir, exist_ok=True)
+            self.v32_rollout_file = os.path.join(
+                log_dir, f"v32_rollout_worker{worker_index}.jsonl")
+        with open(self.v32_rollout_file, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, allow_nan=False) + "\n")
 
     def on_episode_end(
         self,
@@ -547,6 +659,11 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
 
         # Increment episode counter
         self.episode_counter += 1
+        self._write_v32_rollout_summary(
+            episode,
+            worker_index=worker_index,
+            global_energy_stats=global_energy_stats,
+        )
 
         # NOTE: best-episode tracking moved to after Java reward computation below.
 
