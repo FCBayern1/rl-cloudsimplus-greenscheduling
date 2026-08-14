@@ -224,6 +224,73 @@ public class PerActionRewardSurgeryTest {
     }
 
     // ------------------------------------------------------------------
+    // 3b. V3.2 candidate-centered spatial term (two-scale split, §11 Q4)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void spatialTermRanksCandidatesAndIsMeanZero() {
+        double wS = 1.0, sigmaS = 1.0;
+        double[] candidates = {MARG_GREEN, 1.2, MARG_BROWN};   // green .. brown
+        double mean = (candidates[0] + candidates[1] + candidates[2]) / 3.0;
+        double sum = 0.0;
+        Double prev = null;
+        for (double c : candidates) {
+            double term = PerActionRewardMath.spatialCenteredTerm(wS, c, mean, sigmaS);
+            sum += term;
+            if (prev != null) {
+                assertTrue(term < prev, "greener candidate must score strictly higher");
+            }
+            prev = term;
+        }
+        // mean-zero over the candidate set -> no route-vs-defer bias in expectation
+        assertEquals(0.0, sum, 1e-12);
+        // below-mean (green) candidate gets a POSITIVE term
+        assertTrue(PerActionRewardMath.spatialCenteredTerm(wS, MARG_GREEN, mean, sigmaS) > 0);
+    }
+
+    @Test
+    public void truthTableStillHoldsWithSpatialTermEnabled() {
+        // The four rows compare a route against a defer path. Adding the
+        // spatial term must not break them: the chosen route in rows 1/2/4 is
+        // the GREENEST candidate (below candidate mean -> spatial >= 0), and in
+        // row 3 the forced brown route is the ONLY class of candidate (spatial
+        // ~ 0 when all candidates are alike). Recheck rows 1-3 with the term.
+        double wS = 0.5, sigmaS = 1.0;
+        double candMean = (MARG_GREEN + MARG_BROWN) / 2.0;
+        double spGreen = PerActionRewardMath.spatialCenteredTerm(wS, MARG_GREEN, candMean, sigmaS);
+        double spBrown = PerActionRewardMath.spatialCenteredTerm(wS, MARG_BROWN, candMean, sigmaS);
+
+        double routeGreenNow = route("no_offset", "centered_zscore", MARG_GREEN, 1.0) + spGreen;
+        double routeBrownNow = route("no_offset", "centered_zscore", MARG_BROWN, 1.0) + spBrown;
+
+        // row 1: green now still beats defer-60-then-green (defer path's future
+        // route also earns spGreen, discounted)
+        double defer1 = PerActionRewardMath.urgencySettlement(W_URGENCY, u(2940), u(3000))
+                + Math.pow(GAMMA, 60) * (route("no_offset", "centered_zscore", MARG_GREEN, 1.0) + spGreen);
+        assertTrue(routeGreenNow > defer1, "row 1 with spatial term");
+
+        // row 2: waiting for green still beats routing brown now
+        double defer2 = PerActionRewardMath.urgencySettlement(W_URGENCY, u(2700), u(3000))
+                + Math.pow(GAMMA, 300) * (route("no_offset", "centered_zscore", MARG_GREEN, 1.0) + spGreen);
+        assertTrue(defer2 > routeBrownNow, "row 2 with spatial term");
+
+        // row 3: tight deadline, no green in time. The premise means ALL
+        // candidates are brown at both decision times, so the candidate mean
+        // ~= the brown value and the spatial term ~= 0 (the Core computes the
+        // mean from the CURRENT candidate set, not a hypothetical green one).
+        // First-draft bug for the record: reusing the green+brown mean here
+        // contradicted the row's own premise and made the brown route pay the
+        // spatial penalty twice while the defer path discounted it away.
+        double spBrownOnly = PerActionRewardMath.spatialCenteredTerm(
+                wS, MARG_BROWN, MARG_BROWN, sigmaS);
+        assertEquals(0.0, spBrownOnly, 1e-12);
+        double routeBrownNow3 = route("no_offset", "centered_zscore", MARG_BROWN, 1.0) + spBrownOnly;
+        double defer3 = PerActionRewardMath.urgencySettlement(W_URGENCY, u(120), u(600))
+                + Math.pow(GAMMA, 480) * routeBrownNow3;
+        assertTrue(routeBrownNow3 > defer3, "row 3 with spatial term");
+    }
+
+    // ------------------------------------------------------------------
     // 4. Structural negative (documents WHY centered_zscore is load-bearing)
     // ------------------------------------------------------------------
 

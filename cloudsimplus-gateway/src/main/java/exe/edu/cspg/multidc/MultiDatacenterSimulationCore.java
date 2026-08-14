@@ -115,6 +115,10 @@ public class MultiDatacenterSimulationCore {
     private double epCarbonNormSum = 0.0;
     private long epCarbonNormClipCount = 0;
     private long epCarbonNormSampleCount = 0;
+    // V3.2 spatial-term instrumentation (candidate-centered DC ranking)
+    private double epSpatialTermSum = 0.0;
+    private double epSpatialTermAbsMax = 0.0;
+    private long epSpatialSampleCount = 0;
     private int    stepRoutedCount = 0;            // number of successful routings this step
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
@@ -845,6 +849,41 @@ public class MultiDatacenterSimulationCore {
                          + PerActionRewardMath.completionTerm(
                                  settings.getPerActionCompletionMode(),
                                  wCompletion, actual.probComplete);
+
+        // V3.2 two-scale split: a mean-zero candidate-centered spatial term
+        // ranks THIS choice against the other feasible DCs at this instant.
+        // It cannot bias route-vs-defer in expectation (mean-zero over the
+        // candidate set); the worth-running-NOW threshold stays with the
+        // level term above. Restores the DC-vs-DC gradient that the single
+        // global sigma compressed ~70x (docs/V32_FORECAST_REVIVAL_PLAN.md §11 Q4).
+        if ("candidate_mean".equals(settings.getPerActionSpatialCenter())) {
+            double sum = 0.0;
+            int n = 0;
+            int cPes = (int) Math.max(1L, cloudlet.getPesNumber());
+            double sumAll = 0.0;
+            int nAll = 0;
+            for (int d = 0; d < datacenterInstances.size(); d++) {
+                DcCostFeatures f = computeDcCostFeatures(cloudlet, d);
+                if (f == null) continue;
+                sumAll += f.marginalKg;
+                nAll++;
+                DatacenterInstance cand = datacenterInstances.get(d);
+                if (cand != null && cand.getTotalAvailablePes() >= cPes) {
+                    sum += f.marginalKg;
+                    n++;
+                }
+            }
+            // feasible = DCs with free capacity (pickGreenestAvailableDc's
+            // definition); fall back to all candidates when nothing has room.
+            double candidateMean = n > 0 ? sum / n : (nAll > 0 ? sumAll / nAll : actual.marginalKg);
+            double spatial = PerActionRewardMath.spatialCenteredTerm(
+                    settings.getPerActionSpatialWeight(), actual.marginalKg,
+                    candidateMean, settings.getPerActionSpatialSigma());
+            rAbsolute += spatial;
+            epSpatialTermSum += spatial;
+            epSpatialTermAbsMax = Math.max(epSpatialTermAbsMax, Math.abs(spatial));
+            epSpatialSampleCount++;
+        }
 
         // Instrumentation (behaviour-neutral): raw vs normalized carbon + clip rate.
         epCarbonRawKgSum += actual.marginalKg;

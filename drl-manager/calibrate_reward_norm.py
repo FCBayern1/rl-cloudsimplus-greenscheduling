@@ -120,8 +120,15 @@ def main():
                 by_dc[d["name"]].append(m)
         kg = np.array(kg)
         mu, sigma = float(kg.mean()), float(kg.std())
+        # V3.2 sigma_spatial: spread of candidate DIFFERENCES from the
+        # per-decision candidate mean (the quantity the candidate-centered
+        # spatial term divides by), NOT the pooled spread across decisions.
+        n_dc_all = len(dcs)
+        kg_mat = kg.reshape(-1, n_dc_all)
+        centered = kg_mat - kg_mat.mean(axis=1, keepdims=True)
+        sigma_spatial = float(centered.std())
         per_level[level] = {
-            "mu": mu, "sigma": sigma,
+            "mu": mu, "sigma": sigma, "sigma_spatial": sigma_spatial,
             "quantiles": {q: float(np.percentile(kg, q)) for q in (1, 5, 25, 50, 75, 95, 99)},
             "clip_rate_at_pm5sigma": float(np.mean(np.abs((kg - mu) / max(1e-12, sigma)) > 5.0)),
             "n": int(kg.size),
@@ -150,7 +157,8 @@ def main():
                                  "level = mid_util. Validate vs epCarbonRawKgSum "
                                  "after the 100k smoke (PREREG §7)."},
         "recommended": {"per_action_carbon_mu": per_level["mid_util"]["mu"],
-                        "per_action_carbon_sigma": per_level["mid_util"]["sigma"]},
+                        "per_action_carbon_sigma": per_level["mid_util"]["sigma"],
+                        "per_action_spatial_sigma": per_level["mid_util"]["sigma_spatial"]},
         "per_level": per_level,
         "per_dc": per_dc_summary,
     }

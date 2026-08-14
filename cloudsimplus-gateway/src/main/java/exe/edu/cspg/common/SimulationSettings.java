@@ -249,6 +249,16 @@ public class SimulationSettings {
     private final String perActionCarbonNorm;
     private final double perActionCarbonMu;
     private final double perActionCarbonSigma;
+    /** 2026-08-14 (V3.2 two-scale split, default legacy-off):
+     *  per_action_spatial_center — "none" | "candidate_mean". When on, the route
+     *  reward gains −w_s·(C_j − mean over FEASIBLE candidate DCs)/σ_spatial:
+     *  a mean-zero DC-ranking term that cannot bias route-vs-defer, separated
+     *  from the carbon LEVEL term (centered_zscore) which keeps the
+     *  worth-running-now threshold semantics. σ_spatial comes from the offline
+     *  calibration artifact (candidate-difference distribution), shared by all arms. */
+    private final String perActionSpatialCenter;
+    private final double perActionSpatialWeight;
+    private final double perActionSpatialSigma;
     /** 2026-08-07: >0 enables the per-episode green-window shift (rows). Each reset
      *  applies offset (1009*episodeIndex mod range) to ALL green providers, so every
      *  episode replays a different slice of the wind year while cross-DC phases stay
@@ -505,6 +515,9 @@ public class SimulationSettings {
         this.perActionCarbonNorm        = getStringParam(params, "per_action_carbon_norm", "fixed").trim().toLowerCase();
         this.perActionCarbonMu          = getDoubleParam(params, "per_action_carbon_mu", 0.0);
         this.perActionCarbonSigma       = getDoubleParam(params, "per_action_carbon_sigma", 1.0);
+        this.perActionSpatialCenter     = getStringParam(params, "per_action_spatial_center", "none").trim().toLowerCase();
+        this.perActionSpatialWeight     = getDoubleParam(params, "per_action_spatial_weight", 1.0);
+        this.perActionSpatialSigma      = getDoubleParam(params, "per_action_spatial_sigma", 1.0);
         this.greenEpisodeOffsetRange    = getIntParam(params, "green_episode_offset_range", 0);
 
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();

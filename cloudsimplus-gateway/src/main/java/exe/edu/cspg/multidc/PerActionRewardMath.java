@@ -100,6 +100,21 @@ final class PerActionRewardMath {
     }
 
     /**
+     * V3.2 candidate-centered SPATIAL term (docs/V32_FORECAST_REVIVAL_PLAN.md
+     * §4.3 as amended by §11 Q4): {@code −w_s·(C_j − mean_feasible)/σ_spatial}.
+     *
+     * <p>Mean-zero across the feasible candidate set by construction, so it
+     * ranks DCs against each other WITHOUT adding any route-vs-defer bias in
+     * expectation — the temporal threshold semantics stay with the level term
+     * (centered_zscore). This restores the DC-vs-DC gradient that the single
+     * global σ compressed ~70x in V3.1 (control-channel TV 0.003 vs 0.82).
+     */
+    static double spatialCenteredTerm(double wSpatial, double marginalKg,
+                                      double candidateMean, double sigmaSpatial) {
+        return -wSpatial * (marginalKg - candidateMean) / Math.max(1e-12, sigmaSpatial);
+    }
+
+    /**
      * Full per-action ROUTE reward under the given modes:
      * {@code −wC·normalize(kg) + completionTerm(p)}. Used directly by the
      * truth-table tests; {@code accumulatePerActionReward} composes the same
