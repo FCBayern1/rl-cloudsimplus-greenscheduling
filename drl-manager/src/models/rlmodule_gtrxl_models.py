@@ -16,6 +16,7 @@ import warnings
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from gymnasium import spaces
 
 # 2026-05-13 perf: enable TF32 tensor-core path on Ampere/Ada/Blackwell GPUs.
@@ -996,6 +997,30 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         if self.global_defer:
             self.defer_head = nn.Linear(d_model, 1)
 
+        # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
+        # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
+        # forward byte-identically. When ON, the per-slot hold/route decision is
+        # p_hold_i = sigmoid(temporal_gate(q_i)) — computed from the cloudlet
+        # query q alone, so the temporal decision (a) gets a DIRECT edge to any
+        # batch_cloudlet_* forecast feature (the 08-14 raw-logit probe showed the
+        # legacy defer_head is ~3 orders of magnitude less forecast-responsive
+        # than the route head, because forecast only entered via dc_* -> k), and
+        # (b) is no longer squeezed by route logits through a shared softmax
+        # denominator (the structural cause of the old wrong-sign response).
+        self.factorized_temporal_gate = bool(
+            model_config.get("factorized_temporal_gate", False))
+        if self.factorized_temporal_gate:
+            if not self.global_defer:
+                raise ValueError(
+                    "factorized_temporal_gate=true requires global defer "
+                    "(action space num_dcs+1); check global_defer_enabled.")
+            gate_hidden = int(model_config.get("temporal_gate_hidden", 64))
+            self.temporal_gate = nn.Sequential(
+                nn.Linear(d_model, gate_hidden),
+                nn.Tanh(),
+                nn.Linear(gate_hidden, 1),
+            )
+
         # Smaller init on the per-axis encoders so that initial scores are
         # close to uniform (||q||,||k|| ≈ 0.1 instead of ≈ 1.0) — gives PPO a
         # gentle starting policy so the first update doesn't have a
@@ -1332,8 +1357,19 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         # Architecture B: append a per-cloudlet DEFER logit so each slot's choices
         # become [num_dc DC scores | defer] → (B, T, N_batch, num_dcs+1).
         if self.global_defer:
-            defer_logit = self.defer_head(q) / self.score_temperature  # (B,T,N_batch,1)
-            scores = torch.cat([scores, defer_logit], dim=-1)
+            if getattr(self, "factorized_temporal_gate", False):
+                # V3.2: emit NORMALIZED per-slot log-probs so the downstream
+                # categorical recovers exactly P(defer)=sigmoid(g) and
+                # P(dc_j)=(1-sigmoid(g))*softmax(route). Stable identities:
+                # log sigmoid(g) = -softplus(-g); log(1-sigmoid(g)) = -softplus(g).
+                # No clamps needed - softplus is finite for all finite g.
+                gate_logit = self.temporal_gate(q)                    # (B,T,N_b,1)
+                logp_route = F.log_softmax(scores, dim=-1) - F.softplus(gate_logit)
+                logp_defer = -F.softplus(-gate_logit)
+                scores = torch.cat([logp_route, logp_defer], dim=-1)
+            else:
+                defer_logit = self.defer_head(q) / self.score_temperature  # (B,T,N_batch,1)
+                scores = torch.cat([scores, defer_logit], dim=-1)
         T = scores.shape[1]
         if os.environ.get("DEBUG_SHAPES"):
             logger.warning(
