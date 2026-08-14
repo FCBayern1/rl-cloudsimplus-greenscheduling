@@ -30,7 +30,7 @@ MG=0.71; MB=2.34
 
 # Bounded wait (<=60 min) for the tail of the verdict queue, then hard refuse.
 WAITED=0
-while pgrep -f "baselines[.]evaluate|entrypoint_rlmodule|oracle_hold_until_green|run_v3_track0b[.]sh|run_v3_drainfix[.]sh" >/dev/null 2>&1; do
+while pgrep -f "baselines[.]evaluate|entrypoint_rlmodule|oracle_hold_until_green|oracle_slack_planner|run_v3_track0b[.]sh|run_v3_drainfix[.]sh" >/dev/null 2>&1; do
   [ $WAITED -ge 3600 ] && { echo "[smoke] REFUSING: machine still busy after 60min" >>"$OUT"; exit 1; }
   sleep 60; WAITED=$((WAITED+60))
 done

@@ -712,6 +712,13 @@ def create_rlmodule_config(
             "fixed_local_scheduler=drain: freezing local RL modules; "
             "training global_policy only"
         )
+        # 2026-08-14 crash fix (v31 smoke s1, rc=1 after 2min): RLlib's
+        # per-module gradient postprocessing still runs for frozen modules and
+        # clip_gradients() indexes gradients_list[0] on an EMPTY list
+        # (torch_utils.py:150 IndexError). Disabling grad_clip for the frozen
+        # module skips the clip call entirely; the module receives no updates
+        # anyway, so this changes nothing else.
+        per_module_overrides["shared_local_policy"] = PPOConfig.overrides(grad_clip=None)
 
     config = (
         PPOConfig()
