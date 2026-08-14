@@ -4,6 +4,12 @@
 不熟悉这个项目的话,**§0 是必读的**,它说明我们在做什么、v3 为什么存在、什么算成功。
 赶时间的话读 §0 + §1 的三行表就够决定从哪下手。
 
+> **08-14 后续设计入口**：V3.1 首批探针之后发现，score-based actor 的四个 `dc_*`
+> 预测特征只直接进入 spatial route logits，`defer_head(q)` 没有预测 direct edge；预测只能
+> 经 softmax 分母间接改变 `P(defer)`。代码证据、V3.2 factorized temporal gate 方案、
+> local 职责边界和实验阶梯见 `docs/V32_FORECAST_REVIVAL_PLAN.md`。该文档明确区分代码事实、
+> 机制推断和未验证修复，交给后续 agent 复核。
+
 ---
 
 ## 0. 我们在做什么(先读这节)
