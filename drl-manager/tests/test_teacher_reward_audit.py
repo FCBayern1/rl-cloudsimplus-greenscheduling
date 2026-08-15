@@ -165,3 +165,23 @@ class TestSlotAllocator:
         assert a.take_fast() == 1
         assert a.take_fast() == 1
         assert a.take_fast() == 1           # 9 vs 2 -> still DC1
+
+
+class TestEpisodeRecorder:
+    def test_actions_mask_alignment_and_roundtrip(self, tmp_path):
+        import numpy as np
+        from teacher_reward_audit import EpisodeRecorder
+        r = EpisodeRecorder()
+        g = {"dc_current_green_power_w": np.array([5.0, 1.0]),
+             "batch_cloudlet_mi": np.array([100.0, 0.0, 50.0]),
+             "dc_ids": np.array(["a", "b"])}          # non-numeric -> dropped
+        r.record(g, [1, 0, 2], np.array([100.0, 0.0, 50.0]))
+        r.record(g, [2, 0, 2], np.array([100.0, 0.0, 50.0]))
+        out = tmp_path / "ep.npz"
+        r.save(out, {"episode_index": 0})
+        d = np.load(out)
+        assert d["actions"].shape == (2, 3) and d["actions"][0, 0] == 1
+        assert d["real_mask"].tolist() == [[True, False, True]] * 2
+        assert "obs_dc_current_green_power_w" in d.files
+        assert not any(k == "obs_dc_ids" for k in d.files)
+        assert (tmp_path / "ep.json").exists()

@@ -27,6 +27,7 @@ Usage:
 """
 import argparse
 import json
+import pathlib
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -151,9 +152,45 @@ class ReturnAccumulator:
         return r_t
 
 
+class EpisodeRecorder:
+    """V3.2B step-1 dataset writer (decision doc §5.1).
+
+    Logs, per step, every array-valued global-observation key plus the
+    teacher's 129-way per-slot actions and the real-slot mask, then saves one
+    compressed npz per episode. BC later selects its input keys from this
+    superset, so feature choices stay open without regenerating data."""
+
+    def __init__(self):
+        self.obs_steps: List[Dict[str, np.ndarray]] = []
+        self.actions: List[np.ndarray] = []
+        self.real_mask: List[np.ndarray] = []
+
+    def record(self, global_obs: Dict[str, Any], actions: List[int],
+               mi: np.ndarray) -> None:
+        step = {}
+        for k, v in global_obs.items():
+            arr = np.asarray(v)
+            if arr.dtype.kind in "ifub" and arr.size > 0:
+                step[k] = arr.astype(np.float32).ravel()
+        self.obs_steps.append(step)
+        self.actions.append(np.asarray(actions, dtype=np.int16))
+        self.real_mask.append(np.asarray(mi, dtype=np.float64) > 0)
+
+    def save(self, path: pathlib.Path, meta: Dict[str, Any]) -> None:
+        keys = sorted(set().union(*[s.keys() for s in self.obs_steps]))
+        out = {f"obs_{k}": np.stack([s[k] for s in self.obs_steps])
+               for k in keys if all(k in s for s in self.obs_steps)}
+        out["actions"] = np.stack(self.actions)
+        out["real_mask"] = np.stack(self.real_mask)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(path, **out)
+        path.with_suffix(".json").write_text(json.dumps(meta, indent=1))
+
+
 def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                 theta: float, margin: float, backlog_cap: int, seed: int,
-                episode_index: int, gamma: float) -> Dict[str, Any]:
+                episode_index: int, gamma: float,
+                recorder: "EpisodeRecorder" = None) -> Dict[str, Any]:
     """One episode of the slack-aware (or no-defer) policy WITH reward capture.
 
     Same decision rules as oracle_slack_planner.run(); the future-green lookup
@@ -209,6 +246,8 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                 actions.append(defer_idx); defers += 1
             else:
                 actions.append(alloc.take_green()); routes += 1
+        if recorder is not None:
+            recorder.record(g, actions, mi)
         local_actions = {dc: drain_action(env.get_local_action_masks(dc))
                          for dc in range(num_dc)}
         obs, rewards, term, trunc, info = env.step(
@@ -314,6 +353,10 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--gamma", type=float, default=GAMMA_DEFAULT)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--arms", default="both", choices=["both", "teacher", "control"],
+                    help="V3.2B data generation runs teacher-only")
+    ap.add_argument("--dataset-dir", default=None,
+                    help="write per-episode npz+json teacher datasets here")
     ap.add_argument("--max-episode-length", type=int, default=None,
                     help="R0b completion-safe mode: symmetric horizon extension "
                          "so BOTH arms finish the full trace (equal completed "
@@ -342,19 +385,31 @@ def main():
           f"episodes={args.episodes}) ===")
 
     # Two envs, kept alive; reset in lockstep per episode index (§2.4).
-    envs = {"control": HierarchicalMultiDCEnv(dict(cfg)),
-            "teacher": HierarchicalMultiDCEnv(dict(cfg))}
+    arm_names = (["control", "teacher"] if args.arms == "both" else [args.arms])
+    envs = {a: HierarchicalMultiDCEnv(dict(cfg)) for a in arm_names}
     records: List[Dict[str, Any]] = []
     deltas: List[Dict[str, Any]] = []
     try:
         for k in range(args.episodes):
             pair = {}
             for arm, env in envs.items():
+                recorder = (EpisodeRecorder()
+                            if args.dataset_dir and arm == "teacher" else None)
                 rec = run_episode(
                     env, cfg, green,
                     defer_enabled=(arm == "teacher"), theta=args.theta,
                     margin=args.margin, backlog_cap=args.backlog_cap,
-                    seed=args.seed, episode_index=k, gamma=args.gamma)
+                    seed=args.seed, episode_index=k, gamma=args.gamma,
+                    recorder=recorder)
+                if recorder is not None:
+                    recorder.save(
+                        pathlib.Path(args.dataset_dir) / f"teacher_ep{k:03d}.npz",
+                        {**{kk: rec[kk] for kk in
+                            ("episode_index", "green_offset", "seed", "steps",
+                             "defer_slots", "route_slots", "total_carbon_kg",
+                             "completion_rate_mi")},
+                         "theta": args.theta, "margin": args.margin,
+                         "experiment": args.experiment})
                 records.append(rec)
                 pair[arm] = rec
                 print(f"[ep{k} off={rec['green_offset']:>4} {arm:7s}] "
@@ -365,6 +420,8 @@ def main():
                       f"R={rec['global_reward_sum']:.1f} "
                       f"Rdisc={rec['global_discounted_return']:.2f} "
                       f"defer={rec['defer_slots']}")
+            if len(arm_names) < 2:
+                continue
             d = paired_delta(pair["teacher"], pair["control"])
             deltas.append(d)
             print(f"[ep{k} PAIRED] dCarbon={d['d_total_carbon_kg']:+.4f} "
