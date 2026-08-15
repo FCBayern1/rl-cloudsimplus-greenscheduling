@@ -75,3 +75,52 @@ class TestPairedDelta:
         assert d["discounted_sign"] == "teacher_higher"
         d2 = paired_delta(c, t)
         assert d2["discounted_sign"] == "teacher_lower"
+
+
+def _rec(arm, ep, compl, carbon, rsum, rdisc):
+    return {"arm": arm, "episode_index": ep, "green_offset": ep * 1009,
+            "completion_rate_mi": compl, "total_carbon_kg": carbon,
+            "global_reward_sum": rsum, "global_discounted_return": rdisc}
+
+
+def _delta(ep, drsum, drdisc):
+    return {"episode_index": ep, "d_global_reward_sum": drsum,
+            "d_global_discounted_return": drdisc,
+            "discounted_sign": "teacher_higher" if drdisc > 0 else "teacher_lower"}
+
+
+class TestBranchVerdict:
+    def test_L_branch_on_unanimous_teacher_higher(self):
+        from teacher_reward_audit import branch_verdict
+        recs = [r for ep in range(3) for r in (
+            _rec("teacher", ep, 1.0, 0.28, -8000, -400),
+            _rec("control", ep, 1.0, 0.40, -11000, -2000))]
+        deltas = [_delta(ep, 3000.0, 1600.0) for ep in range(3)]
+        v = branch_verdict(recs, deltas)
+        assert v["branch"] == "L"
+
+    def test_R_branch_gamma_flavor(self):
+        from teacher_reward_audit import branch_verdict
+        recs = [r for ep in range(3) for r in (
+            _rec("teacher", ep, 1.0, 0.28, -8000, -2500),
+            _rec("control", ep, 1.0, 0.40, -11000, -2000))]
+        deltas = [_delta(ep, 3000.0, -500.0) for ep in range(3)]
+        v = branch_verdict(recs, deltas)
+        assert v["branch"] == "R" and "gamma" in v["action"]
+
+    def test_STOP_on_routed_only_completion(self):
+        # An arm that ROUTES everything but finishes 90% must invalidate the
+        # comparison — this is exactly the routed_rate-vs-MI confusion.
+        from teacher_reward_audit import branch_verdict
+        recs = [_rec("teacher", 0, 0.90, 0.28, -8000, -400),
+                _rec("control", 0, 1.0, 0.40, -11000, -2000)]
+        v = branch_verdict(recs, [_delta(0, 3000.0, 1600.0)])
+        assert v["branch"] == "STOP"
+
+    def test_WAIT_on_split_signs(self):
+        from teacher_reward_audit import branch_verdict
+        recs = [r for ep in range(2) for r in (
+            _rec("teacher", ep, 1.0, 0.28, -8000, -400),
+            _rec("control", ep, 1.0, 0.40, -11000, -2000))]
+        deltas = [_delta(0, 3000.0, 1600.0), _delta(1, -100.0, -50.0)]
+        assert branch_verdict(recs, deltas)["branch"] == "WAIT"

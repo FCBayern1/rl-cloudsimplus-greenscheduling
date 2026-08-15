@@ -163,7 +163,8 @@ def main():
         finally:
             env.close()
         r = results[name]
-        done_rate = r.get("finished_over_received_rate", r.get("completion_rate", 0))
+        # completion_rate is a routed_rate alias — report the MI contract metric
+        done_rate = r.get("completion_rate_mi", 0.0)
         print(f"{name:12s} carbon_kg={r.get('total_carbon_kg', 0):.4f} "
               f"completion={done_rate} green_ratio={r.get('green_ratio', 0):.4f} "
               f"defers={r.get('_defer_slots', 0)} routes={r.get('_route_slots', 0)}")

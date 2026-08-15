@@ -166,8 +166,16 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
         "defer_slots": defers,
         "route_slots": routes,
         "total_carbon_kg": float(m.get("total_carbon_kg", 0.0) or 0.0),
-        "carbon_per_mi": m.get("carbon_per_mi"),
-        "completion": m.get("finished_over_received_rate", m.get("completion_rate")),
+        # Contract metric: MI-weighted completion (the iso-completion yardstick).
+        # collect_metrics["completion_rate"] is a routed_rate alias and proves
+        # only that jobs were dispatched, NOT that they finished — using it
+        # here overstated the sentinel (2026-08-15 review catch).
+        "completion_rate_mi": float(m.get("completion_rate_mi", 0.0) or 0.0),
+        "finished_rate": m.get("finished_rate"),
+        "routed_rate": m.get("routed_rate"),
+        "total_finished_cloudlets": m.get("total_finished_cloudlets"),
+        "total_received_cloudlets": m.get("total_received_cloudlets"),
+        "carbon_per_completion_mi": m.get("carbon_per_completion_mi"),
         "green_ratio": float(m.get("green_ratio", 0.0) or 0.0),
         "decomposition": decomp,
     }
@@ -182,6 +190,51 @@ def paired_delta(teacher: Dict[str, Any], control: Dict[str, Any]) -> Dict[str, 
     d["discounted_sign"] = ("teacher_higher" if d["d_global_discounted_return"] > 0
                             else "teacher_lower")
     return d
+
+
+COMPLETION_CONTRACT = 0.995   # iso-completion gate on completion_rate_mi
+
+
+def branch_verdict(records: List[Dict[str, Any]],
+                   deltas: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Decision-doc §3 branch table on MI-completion-valid episodes only.
+
+    Validity gate PER EPISODE: both arms completion_rate_mi >= 0.995 and the
+    teacher's carbon lower. Verdict needs every episode valid (an invalid
+    episode means the comparison cannot answer alignment -> STOP per §3 row 5);
+    branch by discounted-sign unanimity/majority.
+    """
+    by_ep: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    for r in records:
+        by_ep.setdefault(r["episode_index"], {})[r["arm"]] = r
+    invalid = []
+    for k, pair in sorted(by_ep.items()):
+        t, c = pair.get("teacher"), pair.get("control")
+        if not t or not c:
+            invalid.append((k, "missing arm"))
+            continue
+        if t["completion_rate_mi"] < COMPLETION_CONTRACT:
+            invalid.append((k, f"teacher completion_rate_mi {t['completion_rate_mi']:.4f}"))
+        if c["completion_rate_mi"] < COMPLETION_CONTRACT:
+            invalid.append((k, f"control completion_rate_mi {c['completion_rate_mi']:.4f}"))
+        if t["total_carbon_kg"] >= c["total_carbon_kg"]:
+            invalid.append((k, "teacher carbon not lower"))
+    if invalid:
+        return {"branch": "STOP", "reason": invalid}
+    n = len(deltas)
+    higher = sum(1 for d in deltas if d["discounted_sign"] == "teacher_higher")
+    undisc_higher = sum(1 for d in deltas if d["d_global_reward_sum"] > 0)
+    if higher == n:
+        return {"branch": "L", "action": "V3.2B distillation",
+                "reason": f"discounted return teacher_higher {higher}/{n}"}
+    if higher == 0:
+        sub = ("gamma_timescale" if undisc_higher == n else
+               "objective_composition" if undisc_higher == 0 else "mixed")
+        return {"branch": "R", "action": f"V3.2C reward fix ({sub})",
+                "reason": f"discounted return teacher_lower {n}/{n}, "
+                          f"undiscounted teacher_higher {undisc_higher}/{n}"}
+    return {"branch": "WAIT", "action": "S2 six-offset arbitration",
+            "reason": f"split signs {higher}/{n}"}
 
 
 def main():
@@ -230,7 +283,9 @@ def main():
                 pair[arm] = rec
                 print(f"[ep{k} off={rec['green_offset']:>4} {arm:7s}] "
                       f"carbon={rec['total_carbon_kg']:.4f} "
-                      f"compl={rec['completion']} "
+                      f"compl_mi={rec['completion_rate_mi']:.4f} "
+                      f"finished={rec['total_finished_cloudlets']}/"
+                      f"{rec['total_received_cloudlets']} "
                       f"R={rec['global_reward_sum']:.1f} "
                       f"Rdisc={rec['global_discounted_return']:.2f} "
                       f"defer={rec['defer_slots']}")
@@ -264,6 +319,11 @@ def main():
 
     signs = [d["d_global_discounted_return"] > 0 for d in deltas]
     print(f"\ndiscounted-return sign count: teacher_higher {sum(signs)}/{len(signs)}")
+    verdict = branch_verdict(records, deltas)
+    print(f"branch verdict: {verdict}")
+    if args.json_out:
+        out["verdict"] = verdict
+        Path(args.json_out).write_text(json.dumps(out, indent=1))
 
 
 if __name__ == "__main__":
