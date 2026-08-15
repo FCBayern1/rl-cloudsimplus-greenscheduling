@@ -141,3 +141,27 @@ class TestPickTargets:
         from teacher_reward_audit import pick_targets
         _, f = pick_targets([10, 50, 30], [4, 0, 1], [0, 0, 0])
         assert f == 0
+
+
+class TestSlotAllocator:
+    def test_burst_spreads_across_free_capacity(self):
+        from teacher_reward_audit import SlotAllocator
+        a = SlotAllocator([50, 30, 10], [2, 1, 4], [0, 0, 0])
+        got = [a.take_green() for _ in range(7)]
+        # greenest first until its promised capacity is gone, then spill
+        assert got[:2] == [0, 0] and got[2] == 1
+        assert got[3:7] == [2, 2, 2, 2]     # NOT seven slots on DC0
+
+    def test_exhausted_ledger_falls_to_least_queue(self):
+        from teacher_reward_audit import SlotAllocator
+        a = SlotAllocator([50, 30], [1, 0], [5, 2])
+        assert a.take_green() == 0
+        assert a.take_green() == 1          # ledger empty -> least queue
+        assert a.take_green() == 1          # queue tracking keeps spreading
+
+    def test_fast_uses_ledger_then_queue(self):
+        from teacher_reward_audit import SlotAllocator
+        a = SlotAllocator([50, 30], [0, 2], [9, 1])
+        assert a.take_fast() == 1
+        assert a.take_fast() == 1
+        assert a.take_fast() == 1           # 9 vs 2 -> still DC1

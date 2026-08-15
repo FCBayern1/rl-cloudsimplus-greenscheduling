@@ -67,6 +67,41 @@ def pick_targets(green_dc, pes_free, queue_sizes):
     else:
         fast_target = int(_np.argmin(queue_sizes))
     return green_target, fast_target
+
+
+class SlotAllocator:
+    """Per-slot burst spreading (R0b follow-up, 2026-08-15 23:15).
+
+    A single per-STEP target sent every routed slot in one step to the SAME
+    DC. The teacher's deferral releases whole bursts at once, so that one DC
+    got a queue deeper than the tail could drain even at horizon 10000 (14/6
+    stragglers at ep0/ep1 while control, whose arrivals are naturally spread,
+    finished 100%). This ledger assigns each slot the greenest DC that still
+    has un-promised capacity this step, then falls back to least queue.
+    Both arms share it."""
+
+    def __init__(self, green_dc, pes_free, queue_sizes):
+        self.green_order = list(np.argsort(-np.asarray(green_dc, dtype=float)))
+        self.ledger = np.asarray(pes_free, dtype=float).copy()
+        self.queue = np.asarray(queue_sizes, dtype=float).copy()
+
+    def take_green(self) -> int:
+        for d in self.green_order:
+            if self.ledger[int(d)] >= 1:
+                self.ledger[int(d)] -= 1
+                return int(d)
+        d = int(np.argmin(self.queue))
+        self.queue[d] += 1
+        return d
+
+    def take_fast(self) -> int:
+        d = int(np.argmax(self.ledger))
+        if self.ledger[d] >= 1:
+            self.ledger[d] -= 1
+            return d
+        d = int(np.argmin(self.queue))
+        self.queue[d] += 1
+        return d
 from src.baselines.evaluate import load_config, collect_metrics  # noqa: E402
 
 GAMMA_DEFAULT = 0.999   # authoritative: v32_g2_s1 params.json global_policy override
@@ -148,32 +183,32 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
         green_dc = _arr(g, "dc_current_green_power_w", num_dc)
         pes_free = _arr(g, "dc_available_pes", num_dc)
         queue_sz = _arr(g, "dc_queue_sizes", num_dc)
-        target, fast_target = pick_targets(green_dc, pes_free, queue_sz)
+        alloc = SlotAllocator(green_dc, pes_free, queue_sz)
         actions: List[int] = []
         for i in range(batch):
             if mi[i] <= 0:
-                actions.append(target)
+                actions.append(0)          # padded slot, value ignored by env
                 continue
             runtime = mi[i] / VM_MIPS
             budget = (ttd[i] - runtime - margin) if present[i] > 0.5 else 0.0
             if not defer_enabled:
                 # Control routes at arrival; a no-slack job still takes the
                 # start-soonest DC (same shared rule as the teacher's).
-                actions.append(fast_target if budget <= 0 else target)
+                actions.append(alloc.take_fast() if budget <= 0 else alloc.take_green())
                 routes += 1
                 continue
             if budget <= 0:
-                actions.append(fast_target); routes += 1
+                actions.append(alloc.take_fast()); routes += 1
                 continue
             if backlog >= backlog_cap:
-                actions.append(target); routes += 1
+                actions.append(alloc.take_green()); routes += 1
                 continue
             horizon = int(min(budget, 3600))
             best_future = green[row:min(row + horizon, len(green))].max(initial=green_now)
             if green_now < theta * best_future:
                 actions.append(defer_idx); defers += 1
             else:
-                actions.append(target); routes += 1
+                actions.append(alloc.take_green()); routes += 1
         local_actions = {dc: drain_action(env.get_local_action_masks(dc))
                          for dc in range(num_dc)}
         obs, rewards, term, trunc, info = env.step(
