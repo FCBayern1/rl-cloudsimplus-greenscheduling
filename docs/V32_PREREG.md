@@ -24,6 +24,34 @@
 > forecast TV ≥ 10×null。真实 rollout 同号在聚合器就绪后加入,当前显式标注
 > NOT-AVAILABLE 而非静默跳过。阈值与语义均在训练前锁定。
 
+> **修订 A5(08-14,仍在任何 v3_2 训练样本之前;Gate-3 E′证据闭环)**:
+> ①真实 rollout 温度差定义为 slack≥900s 内 `gain≥0.05` 与 `gain=0` 作业的真实
+> defer 率之差,判据仅要求与合成探针同号(`>0`),不偷用合成 `0.05` 幅度门槛。
+> ②TD residual 为 learner 侧真实一步
+> `|r_t+γ(1-terminal)V(s_{t+1})−V(s_t)|`,按同一步真实 DEFER/ROUTE 动作数加权;
+> 人工 sequence 边界剔除,两 seed 取较坏比值并要求 defer/route≤3。
+> ③“后段”统一为最后40%保留 checkpoint/iteration;等待 advantage 按
+> 0–60/60–300/300–900/900–1800/1800–3600/>3600s 落盘。
+> ④all-defer=`defer_rate≥95%`;backstop 主导=`forced/(forced+自主等待后route)≥50%`;
+> completion collapse=`后40%局 completion_rate_mi 中位<99.5%`。
+> ⑤等待兑现率只作机制诊断、不新增 Gate-3 门柱:同一作业首次 defer 的 best-now 与
+> 自主 route 时 best-now 比较,同时报告碳改善率和“兑现至少一半预测 gain”的比例;
+> 作业指纹碰撞必须显式计数,不可静默并账。缺任何判据字段均为 WAIT,绝不默认 PASS。
+
+> **修订 A5(08-15 01:20,判决前;100k 冒烟读数作废,判据不变)**:
+> 100k 的 Gate 2 读数**不是对机制的判决**,证据链:①`job_temporal_delta` 在
+> **ck0(未训)= −0.0125 与 ck1(100k)= −0.0124 完全相同**——反号是 gate MLP 的随机
+> 初始化自带,不是学出来的;②权重分析:`temporal_gate` 相对 L2 变化 0.167%,编码器
+> 3.4–6.6%(20–40 倍),`defer_head` 恰为 0(证实 factorized 分支已接管、旧分支死);
+> ③全通道 TV 都在 1e-2 量级(训练成熟臂为 0.8+)。**结论:100k 内 gate 几乎没学习,
+> 该读数测的是初始化。**
+> **新增判可性判据(自校准,替代易被除零污染的 forecast/null)**:temporal 通道的
+> 判决只在 `|delta − delta_ck0| ` 明显非零时成立——**用同一次训练的 ck0 当零点**。
+> 同时保留 job 通道对惰性通道(batch_cloudlet_pes)的 TV 比(本次 40×,说明通道确实活)。
+> **行动**:按 A1 既定先例(记录早于 V3.1 结果)在 **300k** 判 Gate 2,阈值 +0.05 不变。
+> ⚠️观察项:factorized gate 初始 p_hold≈0.48(旧 defer_head 初始延迟率低得多),
+> 起手就 defer 一半——需在 300k 看是否引发 backstop 主导/队列堆积。
+
 ## 实验对
 
 `experiment_v3_2_oracle` vs `experiment_v3_2_noforecast`(待建:v3_1 模板 + V3.2 开关全开

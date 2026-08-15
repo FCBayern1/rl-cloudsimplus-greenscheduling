@@ -43,10 +43,49 @@ import numpy as np
 import torch
 
 REPO = pathlib.Path(__file__).resolve().parent
+# Testbed dimensions. Defaults match v3 (8 DC); configure_dims() overrides them
+# from the loaded module + its checkpoint config so the SAME probe works on the
+# paper's 5-DC C-regime arms (Vanilla / EU-CRD / CCA-PG / risk baselines).
 N_DC = 8
-GREEN_DCS = [0, 1, 2, 5]          # green_energy_enabled in experiment_v3_*
-BATCH_SLOTS = 128                 # global_routing_batch_size
-MI_HIGH = 50_000_000              # obs_cloudlet_mi_high for v3
+GREEN_DCS = [0, 1, 2, 5]
+BATCH_SLOTS = 128
+MI_HIGH = 50_000_000
+GAIN_HIGH = 0.2          # physically reachable forecast_gain for a median job
+
+
+def configure_dims(module, checkpoint: pathlib.Path) -> dict:
+    """Adopt the checkpoint's testbed shape (DC count, batch slots, green DCs)."""
+    global N_DC, GREEN_DCS, BATCH_SLOTS, MI_HIGH
+    n = getattr(module, "num_dcs", None)
+    if isinstance(n, int) and n > 0:
+        N_DC = n
+    b = getattr(module, "num_batch_slots", None)
+    if isinstance(b, int) and b > 0:
+        BATCH_SLOTS = b
+    cfg = checkpoint_env_config(checkpoint)
+    dcs = cfg.get("datacenters") or []
+    greens = [i for i, d in enumerate(dcs) if (d or {}).get("turbine_ids")]
+    GREEN_DCS = greens if len(greens) >= 2 else list(range(min(2, N_DC)))
+    MI_HIGH = int(cfg.get("obs_cloudlet_mi_high") or MI_HIGH)
+    # V3.2 gain scale (2026-08-15): the env normalises forecast_gain by
+    # job_carbon_high = MI_HIGH/mi_per_kg * max(carbon factor) -- a ceiling set
+    # by the LARGEST job at the DIRTIEST factor. A median job's entire carbon is
+    # only ~0.3 of that, and its achievable gain (all-brown now -> all-green
+    # later) is smaller still. Probing at gain=0.6 (the first draft) is 2x a
+    # median job's physical maximum: pure extrapolation, and it produced a
+    # spurious Gate-2 FAIL. Compute the reachable ceiling and sweep inside it.
+    global GAIN_HIGH
+    mi_per_kg = max(1e3, float(cfg.get("mi_per_kg_factor") or 3.5e6))
+    browns = [float(d.get("brown_carbon_factor", 0.5)) for d in dcs] or [0.5]
+    greens = [float(d.get("green_carbon_factor", 0.01)) for d in dcs] or [0.01]
+    carbon_high = float(cfg.get("obs_v32_job_carbon_high") or
+                        (MI_HIGH / mi_per_kg * max(max(browns), max(greens))))
+    med_mi = 0.5 * (max(1, MI_HIGH // 8) + int(MI_HIGH * 0.8))   # base_observation mid
+    GAIN_HIGH = float(np.clip(
+        med_mi / mi_per_kg * (max(browns) - min(greens)) / max(1e-9, carbon_high),
+        1e-4, 1.0))
+    return {"n_dc": N_DC, "batch_slots": BATCH_SLOTS, "green_dcs": GREEN_DCS,
+            "mi_high": MI_HIGH, "gain_high": GAIN_HIGH}
 
 FORECAST_KEYS = ("dc_future_short_mean", "dc_future_short_trend",
                  "dc_future_long_mean", "dc_future_long_peak_timing")
@@ -128,7 +167,8 @@ def base_observation(rng: np.random.Generator) -> dict:
         "dc_ram_utilizations": rng.uniform(0, 1, N_DC).astype(np.float32),
         "upcoming_cloudlets_count": np.array([rng.integers(0, 400)], dtype=np.int32),
         "batch_cloudlet_pes": np.ones(BATCH_SLOTS, dtype=np.int32),
-        "batch_cloudlet_mi": rng.integers(6_000_000, 40_000_000, BATCH_SLOTS).astype(np.int64),
+        "batch_cloudlet_mi": rng.integers(
+            max(1, MI_HIGH // 8), max(2, int(MI_HIGH * 0.8)), BATCH_SLOTS).astype(np.int64),
         "upcoming_pes_distribution": rng.integers(0, 100, 3).astype(np.int32),
         "load_imbalance": np.array([rng.uniform(0, 3)], dtype=np.float32),
         "recent_completed": np.array([rng.integers(0, 500)], dtype=np.int32),
@@ -349,6 +389,10 @@ def main() -> None:
 
     checkpoint = pathlib.Path(args.checkpoint)
     module = load_module(checkpoint)
+    dims = configure_dims(module, checkpoint)
+    print(f"testbed: {dims['n_dc']} DCs (green {dims['green_dcs']}), "
+          f"{dims['batch_slots']} slots, mi_high {dims['mi_high']:,}, "
+          f"reachable gain ceiling {dims['gain_high']:.4f}")
     checkpoint_config = checkpoint_env_config(checkpoint)
     baseline_type = (
         checkpoint_forecast_baseline(checkpoint)
@@ -436,10 +480,11 @@ def main() -> None:
             base = maybe_add_v32_features(
                 maybe_add_v31_features(base_observation(rngj), module, rngj), module, rngj)
             worth = dict(base)
-            worth["batch_cloudlet_forecast_gain"] = np.full(BATCH_SLOTS, 0.6, dtype=np.float32)
+            hi = 0.8 * GAIN_HIGH        # in-distribution "clearly worth waiting"
+            worth["batch_cloudlet_forecast_gain"] = np.full(BATCH_SLOTS, hi, dtype=np.float32)
             worth["batch_cloudlet_time_to_best_green"] = np.full(BATCH_SLOTS, 0.1, dtype=np.float32)
             worth["batch_cloudlet_best_future_carbon"] = np.maximum(
-                0.0, base["batch_cloudlet_best_now_carbon"] - 0.6).astype(np.float32)
+                0.0, base["batch_cloudlet_best_now_carbon"] - hi).astype(np.float32)
             not_worth = dict(base)
             not_worth["batch_cloudlet_forecast_gain"] = np.zeros(BATCH_SLOTS, dtype=np.float32)
             not_worth["batch_cloudlet_time_to_best_green"] = np.ones(BATCH_SLOTS, dtype=np.float32)
@@ -449,14 +494,33 @@ def main() -> None:
             pn = action_probs(module, not_worth)
             gains_hi.append(pw[:, -1].mean()); gains_lo.append(pn[:, -1].mean())
             tvj.append(0.5 * np.abs(pw - pn).sum(axis=1).mean())
+        # NULL CONTROL for the job-aligned channel (2026-08-15): without it,
+        # "delta ~ 0" cannot be told apart from "the whole policy is still
+        # untrained". Sweep an INERT per-cloudlet channel (batch_cloudlet_pes)
+        # over a comparable relative range and measure the same TV.
+        tvn = []
+        for _ in range(max(4, args.trials // 4)):
+            base = maybe_add_v32_features(
+                maybe_add_v31_features(base_observation(rngj), module, rngj), module, rngj)
+            a_ = dict(base); b_ = dict(base)
+            a_["batch_cloudlet_pes"] = np.ones(BATCH_SLOTS, dtype=np.int32)
+            b_["batch_cloudlet_pes"] = np.full(BATCH_SLOTS, 4, dtype=np.int32)
+            tvn.append(0.5 * np.abs(action_probs(module, a_)
+                                    - action_probs(module, b_)).sum(axis=1).mean())
+        null_tv = float(np.mean(tvn))
         jd = float(np.mean(gains_hi) - np.mean(gains_lo))
+        jtv = float(np.mean(tvj))
         job_temporal = {"p_defer_worth_waiting": float(np.mean(gains_hi)),
                         "p_defer_not_worth": float(np.mean(gains_lo)),
-                        "delta": jd, "tv": float(np.mean(tvj))}
+                        "delta": jd, "tv": jtv, "null_tv": null_tv,
+                        "tv_over_null": jtv / max(null_tv, 1e-12),
+                        "judgeable": bool(jtv >= 10 * null_tv and jtv >= 1e-3)}
         print(f"\njob-aligned temporal lever (V3.2 decision channel):")
         print(f"{'P(defer)|worth waiting':>34}{job_temporal['p_defer_worth_waiting']:>10.4f}")
         print(f"{'P(defer)|not worth':>34}{job_temporal['p_defer_not_worth']:>10.4f}")
         print(f"{'job_temporal_delta (want>>0)':>34}{jd:>+10.4f}")
+        print(f"{'channel TV / inert-null TV':>34}{job_temporal['tv_over_null']:>10.1f}"
+              f"   judgeable={job_temporal['judgeable']}")
 
     # --- Gate-2 monotonicity conditions (pre-registered) ----------------------
     # A single synthetic delta is not enough (eighth review): P(defer) must also
@@ -465,7 +529,7 @@ def main() -> None:
     monotone = None
     if job_temporal is not None:
         rngm = np.random.default_rng(args.seed + 4000)
-        gains = [0.0, 0.2, 0.4, 0.6, 0.8]
+        gains = [round(f * GAIN_HIGH, 4) for f in (0.0, 0.25, 0.5, 0.75, 1.0)]
         ttds = [0.1, 0.3, 0.6, 1.0, 2.0]        # normalized time-to-deadline
         pg, pt = [], []
         for _ in range(max(8, args.trials // 4)):
