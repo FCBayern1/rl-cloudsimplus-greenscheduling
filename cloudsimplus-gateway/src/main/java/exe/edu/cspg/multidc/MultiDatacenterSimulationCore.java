@@ -119,6 +119,11 @@ public class MultiDatacenterSimulationCore {
     private double epSpatialTermSum = 0.0;
     private double epSpatialTermAbsMax = 0.0;
     private long epSpatialSampleCount = 0;
+    // R0 teacher-reward audit (2026-08-15): episode sums of the two remaining
+    // per-action route-reward terms, so Python can reconcile the global reward
+    // into carbon-level + completion + spatial + urgency without replaying Java.
+    private double epCarbonLevelTermSum = 0.0;
+    private double epCompletionTermSum = 0.0;
     private int    stepRoutedCount = 0;            // number of successful routings this step
 
     // Episode-level MI completion tracking (for completion_rate_mi shaping)
@@ -845,10 +850,15 @@ public class MultiDatacenterSimulationCore {
         double margNorm = PerActionRewardMath.normalizeCarbon(
                 carbonNormMode, actual.marginalKg, margNormalize,
                 settings.getPerActionCarbonMu(), settings.getPerActionCarbonSigma());
-        double rAbsolute = -wCarbon * margNorm
-                         + PerActionRewardMath.completionTerm(
-                                 settings.getPerActionCompletionMode(),
-                                 wCompletion, actual.probComplete);
+        // Split into named terms for the R0 audit accumulators; the sum below
+        // is the same two-operand addition as before (bit-identical reward).
+        double carbonLevelTerm = -wCarbon * margNorm;
+        double completionTermVal = PerActionRewardMath.completionTerm(
+                settings.getPerActionCompletionMode(),
+                wCompletion, actual.probComplete);
+        double rAbsolute = carbonLevelTerm + completionTermVal;
+        epCarbonLevelTermSum += carbonLevelTerm;
+        epCompletionTermSum += completionTermVal;
 
         // V3.2 two-scale split: a mean-zero candidate-centered spatial term
         // ranks THIS choice against the other feasible DCs at this instant.
@@ -2500,6 +2510,17 @@ public class MultiDatacenterSimulationCore {
         stats.put("deadline_total", deadlineTotal);
         stats.put("deadline_forced_count", epDeadlineForcedCount);
         stats.put("defer_urgency_cost_sum", epDeferUrgencyCostSum);
+        // R0 teacher-reward audit: per-term episode sums of the global
+        // per-action reward (carbon level + completion + spatial; urgency is
+        // defer_urgency_cost_sum above). Export-only, behaviour-neutral.
+        stats.put("ep_carbon_level_term_sum", epCarbonLevelTermSum);
+        stats.put("ep_completion_term_sum", epCompletionTermSum);
+        stats.put("ep_spatial_term_sum", epSpatialTermSum);
+        stats.put("ep_spatial_sample_count", epSpatialSampleCount);
+        stats.put("ep_carbon_raw_kg_sum", epCarbonRawKgSum);
+        stats.put("ep_carbon_norm_sum", epCarbonNormSum);
+        stats.put("ep_carbon_norm_clip_count", epCarbonNormClipCount);
+        stats.put("ep_carbon_norm_sample_count", epCarbonNormSampleCount);
 
         // ---------------------------------------------------------------------
         // SLA / Lagrangian cost signals
