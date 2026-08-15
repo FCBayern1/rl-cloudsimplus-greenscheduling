@@ -133,6 +133,21 @@ def verify_offset(env, episode_index: int, offset_range: int) -> int:
     return actual
 
 
+def effective_budget(ttd_sec: float, runtime_sec: float, margin_sec: float,
+                     horizon_left_sec: float) -> float:
+    """Wait budget bounded by BOTH the job deadline and the episode horizon.
+
+    Horizon-truncation guard (Codex review, 2026-08-16 00:50): the theta=0.6
+    teacher's episodes end at 7295-7584 steps, past the 7200-step training
+    horizon. Without this bound, boundary-phase HOLD labels teach the BC
+    student that work can be parked beyond an end it will never see --
+    truncation escape. In the 10000-step audit world horizon_left is always
+    > runtime+margin at every reached step, so the R0 L-branch verdict is
+    unchanged by construction; the bound only bites near a REAL horizon.
+    """
+    return min(ttd_sec, horizon_left_sec) - runtime_sec - margin_sec
+
+
 class ReturnAccumulator:
     """Global-only reward accounting. Local rewards NEVER enter (§2.2)."""
 
@@ -207,6 +222,8 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
     ttd_scale = max(1.0, float(cfg.get("obs_v31_deadline_scale_sec",
                                        cfg.get("defer_urgency_window_sec", 3600.0))))
     acc = ReturnAccumulator(gamma)
+    horizon_sec = (float(cfg.get("max_episode_length", 7200))
+                   * float(cfg.get("simulation_timestep", 1.0)))
     done, t, defers, routes = False, 0, 0, 0
     while not done:
         g = obs["global"]
@@ -227,7 +244,8 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                 actions.append(0)          # padded slot, value ignored by env
                 continue
             runtime = mi[i] / VM_MIPS
-            budget = (ttd[i] - runtime - margin) if present[i] > 0.5 else 0.0
+            budget = (effective_budget(ttd[i], runtime, margin, horizon_sec - t)
+                      if present[i] > 0.5 else 0.0)
             if not defer_enabled:
                 # Control routes at arrival; a no-slack job still takes the
                 # start-soonest DC (same shared rule as the teacher's).

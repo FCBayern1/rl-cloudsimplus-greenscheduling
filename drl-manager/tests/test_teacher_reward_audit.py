@@ -185,3 +185,22 @@ class TestEpisodeRecorder:
         assert "obs_dc_current_green_power_w" in d.files
         assert not any(k == "obs_dc_ids" for k in d.files)
         assert (tmp_path / "ep.json").exists()
+
+
+class TestEffectiveBudget:
+    def test_deadline_binds_when_horizon_far(self):
+        from teacher_reward_audit import effective_budget
+        assert effective_budget(2000, 400, 120, 9000) == 2000 - 400 - 120
+
+    def test_horizon_binds_near_episode_end(self):
+        # deadline says "plenty of slack" but only 300s of episode remain:
+        # a 400s job must be routed NOW (budget < 0 -> fast path), never held.
+        from teacher_reward_audit import effective_budget
+        assert effective_budget(2000, 400, 120, 300) < 0
+
+    def test_audit_world_untouched(self):
+        # 10000-step audit: worst reached step 7584 -> horizon_left 2416,
+        # far above runtime+margin ceilings; bound must not alter the verdict.
+        from teacher_reward_audit import effective_budget
+        assert (effective_budget(2000, 1400, 120, 2416)
+                == effective_budget(2000, 1400, 120, 99999))
