@@ -279,12 +279,22 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--gamma", type=float, default=GAMMA_DEFAULT)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--max-episode-length", type=int, default=None,
+                    help="R0b completion-safe mode: symmetric horizon extension "
+                         "so BOTH arms finish the full trace (equal completed "
+                         "work); closes the truncation escape for never-routed "
+                         "jobs. NOTE: training's true objective is the "
+                         "truncated one -- report both readings.")
     args = ap.parse_args()
 
     from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
 
     cfg = load_config(args.experiment)
     cfg.pop("py4j_port", None)   # standalone boot: fresh gateway on a free port
+    if args.max_episode_length:
+        cfg["max_episode_length"] = int(args.max_episode_length)
+        print(f"R0b completion-safe: max_episode_length -> {args.max_episode_length} "
+              f"(both arms, symmetric)")
     cfg.setdefault("gateway_log_dir", "/tmp/audit_gateway")
     cfg.setdefault("output_dir", "/tmp/audit_gateway")
     Path("/tmp/audit_gateway").mkdir(parents=True, exist_ok=True)
