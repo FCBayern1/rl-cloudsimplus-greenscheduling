@@ -38,6 +38,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oracle_slack_planner import (  # noqa: E402
     WARMUP_ROWS, VM_MIPS, _arr, drain_action, load_green_series,
 )
+
+
+def pick_targets(green_dc, pes_free, queue_sizes):
+    """Shared route rule for BOTH arms (S1 STOP fix, 2026-08-15).
+
+    green_target: greenest DC that still has free capacity. Old fallback when
+    nothing is free was "greenest overall", which piled every queued job onto
+    one DC and cost ~4 finishes/episode even with ZERO deferral (control arm
+    99.38-99.47% < contract). New fallback: least-backlogged DC.
+    fast_target: where budget<=0 jobs go — most free capacity, else least
+    queue — start-soonest instead of greenest, because a job with no slack
+    left cannot afford to queue behind the green pileup.
+    """
+    import numpy as _np
+    green_dc = _np.asarray(green_dc, dtype=float)
+    pes_free = _np.asarray(pes_free, dtype=float)
+    queue_sizes = _np.asarray(queue_sizes, dtype=float)
+    green_target = None
+    for d in _np.argsort(-green_dc):
+        if pes_free[int(d)] >= 1:
+            green_target = int(d)
+            break
+    if green_target is None:
+        green_target = int(_np.argmin(queue_sizes))
+    if pes_free.max() >= 1:
+        fast_target = int(_np.argmax(pes_free))
+    else:
+        fast_target = int(_np.argmin(queue_sizes))
+    return green_target, fast_target
 from src.baselines.evaluate import load_config, collect_metrics  # noqa: E402
 
 GAMMA_DEFAULT = 0.999   # authoritative: v32_g2_s1 params.json global_policy override
@@ -118,23 +147,25 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                       * float(cfg.get("obs_v31_global_deferred_count_scale", 2000.0)))
         green_dc = _arr(g, "dc_current_green_power_w", num_dc)
         pes_free = _arr(g, "dc_available_pes", num_dc)
-        order = np.argsort(-green_dc)
-        target = int(order[0])
-        for d in order:
-            if pes_free[int(d)] >= 1:
-                target = int(d)
-                break
+        queue_sz = _arr(g, "dc_queue_sizes", num_dc)
+        target, fast_target = pick_targets(green_dc, pes_free, queue_sz)
         actions: List[int] = []
         for i in range(batch):
             if mi[i] <= 0:
                 actions.append(target)
                 continue
-            if not defer_enabled:
-                actions.append(target); routes += 1
-                continue
             runtime = mi[i] / VM_MIPS
             budget = (ttd[i] - runtime - margin) if present[i] > 0.5 else 0.0
-            if budget <= 0 or backlog >= backlog_cap:
+            if not defer_enabled:
+                # Control routes at arrival; a no-slack job still takes the
+                # start-soonest DC (same shared rule as the teacher's).
+                actions.append(fast_target if budget <= 0 else target)
+                routes += 1
+                continue
+            if budget <= 0:
+                actions.append(fast_target); routes += 1
+                continue
+            if backlog >= backlog_cap:
                 actions.append(target); routes += 1
                 continue
             horizon = int(min(budget, 3600))

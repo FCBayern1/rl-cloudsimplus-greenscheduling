@@ -124,3 +124,20 @@ class TestBranchVerdict:
             _rec("control", ep, 1.0, 0.40, -11000, -2000))]
         deltas = [_delta(0, 3000.0, 1600.0), _delta(1, -100.0, -50.0)]
         assert branch_verdict(recs, deltas)["branch"] == "WAIT"
+
+
+class TestPickTargets:
+    def test_greenest_free_dc_wins(self):
+        from teacher_reward_audit import pick_targets
+        g, f = pick_targets([10, 50, 30], [1, 0, 2], [0, 0, 0])
+        assert g == 2      # DC1 greenest but full; DC2 next-greenest with room
+
+    def test_saturated_fallback_is_least_queue_not_greenest(self):
+        from teacher_reward_audit import pick_targets
+        g, f = pick_targets([10, 50, 30], [0, 0, 0], [7, 90, 3])
+        assert g == 2 and f == 2   # NOT DC1 (old bug piled onto greenest)
+
+    def test_fast_target_prefers_free_capacity(self):
+        from teacher_reward_audit import pick_targets
+        _, f = pick_targets([10, 50, 30], [4, 0, 1], [0, 0, 0])
+        assert f == 0
