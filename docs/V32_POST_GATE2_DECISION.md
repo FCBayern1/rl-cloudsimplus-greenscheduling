@@ -210,3 +210,45 @@ fine-tune**。若 V3.2C clean-PPO 仍失败，再在 V3.2C 奖励下 warm-start�
 ②在真实新 API 栈上验证 `episode.agent_episodes`/`get_extra_model_outputs` 路径
 (建议 12k 步 2-iter 真训探针);③产出后把 Gate 2 rollout-sign 从 NOT-AVAILABLE 转正。
 不影响 R0:R0 判据只用 planner 直采的 global reward,不经此 hook。
+
+
+---
+
+## 附录 B:R0 执行记录(Claude)
+
+### S0/S1 第一轮(12:00–12:51)+ 指标修正(13:05)
+
+S0 哨兵与 S1 三 offset 的**回报符号全部 teacher_higher**(折现 +1632/+377/+350,
+未折现 +3223/+41/+430)。但复审抓到 completion 字段用了 `completion_rate` ——
+它是 `routed_rate` 的别名,"100%"只证明全部**被派出**。修正为
+`completion_rate_mi`/`carbon_per_completion_mi` + `branch_verdict()` 代码化分支表
+(含 STOP 门),12 项测试锁死。
+
+### S1 修正版判决(13:48–15:20):**STOP(§3 第 5 行)**
+
+| ep | offset | control 完成(MI) | teacher 完成(MI) | teacher 碳 | dR_disc |
+|---|---|---|---|---|---|
+| 0 | 0 | 99.47% ✗ | **96.97% ✗**(forced=11) | −29.1% | +1632 |
+| 1 | 1009 | 100% ✓ | 97.77% ✗(forced=9) | −22.8% | +377 |
+| 2 | 2018 | 99.38% ✗ | **99.83% ✓**(forced=7) | −23.3% | +350 |
+
+**两臂都过不了 99.5% 合同 → 不准选边。**连带修正:§7.4 slack-aware oracle 的
+"−21/−29% @ 100% 完成"里的 100% 同样是 routed_rate,**oracle-gap 声称降级为
+"碳低 21–29% 但完成率 97–99.8%,iso 前提未证"**,待本轮仪器修好后重验。
+
+### 完成率赤字根因(分解表)
+
+1. control 丢 4 单/局(零延迟也丢):共享路由规则在**全 DC 饱和时兜底"最绿排队"**,
+   把作业堆死在一个队列;
+2. teacher 额外丢:延迟到 budget 耗尽后仍被塞往绿 DC 队列,来不及完成
+   (margin=120s 没有覆盖排队等待);
+3. **spatial 项实现账发现**:teacher 的 `ep_spatial_term_sum` ≈ control 的 2 倍
+   (2008 vs 1077 等)——候选均值中心化只在**期望**上路由/延迟中性,实现层它
+   系统性奖励"等到自己选的 DC 比均值好更多"。这是回报偏好 teacher 的重要组成,
+   V3.2C 若启动必须把这条写进真值表核查项。
+
+### 仪器修复(15:55,两臂同规则,不动奖励)
+
+饱和兜底改"最短队列";budget≤0 的作业(两臂同)改投"最快可开工"DC;
+teacher margin 120→300s(排队等待余量)。`pick_targets()` 纯函数 + 3 测试。
+**S1 v2 已重跑**(margin=300),判据、门柱、γ 均不变。
