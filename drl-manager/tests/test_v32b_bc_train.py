@@ -73,3 +73,44 @@ class TestDeferMetrics:
         m = torch.tensor([[True, False]])           # slot 1 is padding
         acc, prec, rec = defer_metrics(logits, actions, m, S, defer)
         assert rec == 1.0 and acc == 1.0
+
+
+class TestLabelWeights:
+    def _mk(self, defer_counts, actions_row, mask_row):
+        steps = [{"batch_cloudlet_defer_count": np.asarray(defer_counts, dtype=np.float32)}]
+        actions = np.asarray([actions_row], dtype=np.int16)
+        mask = np.asarray([mask_row])
+        return steps, actions, mask
+
+    def test_first_defer_kept_repeats_dropped(self):
+        from v32b_bc_train import build_label_weights
+        # slots: first-defer hold, 5th-hold repeat, route, padding
+        steps, actions, mask = self._mk(
+            [0, 5, 3, 0], [8, 8, 2, 8], [True, True, True, False])
+        w = build_label_weights(steps, actions, mask, defer_idx=8)
+        assert w[0, 0] > 0        # defer_count 0 -> first decision kept
+        assert w[0, 1] == 0.0     # mid-streak hold dropped
+        assert w[0, 2] > 0        # route always kept
+        assert w[0, 3] == 0.0     # padding
+
+    def test_refresher_every_k(self):
+        from v32b_bc_train import build_label_weights
+        steps, actions, mask = self._mk([32, 33], [8, 8], [True, True])
+        w = build_label_weights(steps, actions, mask, defer_idx=8)
+        assert w[0, 0] > 0 and w[0, 1] == 0.0
+
+    def test_class_masses_balanced(self):
+        from v32b_bc_train import build_label_weights
+        # 3 first-defer holds vs 1 route -> hold weights scaled to route mass
+        steps, actions, mask = self._mk(
+            [0, 0, 0, 0], [8, 8, 8, 1], [True] * 4)
+        w = build_label_weights(steps, actions, mask, defer_idx=8)
+        assert abs(w[0, :3].sum() - w[0, 3]) < 1e-6
+
+    def test_empty_mask_defer_metrics_nan_guard(self):
+        import torch
+        from v32b_bc_train import defer_metrics
+        acc, p, r = defer_metrics(torch.zeros(1, 6), torch.zeros(1, 2),
+                                  torch.zeros(1, 2, dtype=torch.bool), 2, 1)
+        import math
+        assert math.isnan(acc)
