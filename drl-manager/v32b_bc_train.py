@@ -64,6 +64,9 @@ def load_dataset(dataset_dir: pathlib.Path):
 
 def build_label_weights(steps, actions, mask, defer_idx,
                         hold_refresh_every: int = 32):
+    # hold_refresh_every=0 disables refreshers entirely: FIRST-defer only.
+    # Exploratory round 1 showed every-32 refreshers still outnumber route
+    # labels 11:1 and the defer baseline stays saturated (0.9788).
     """Label hygiene for the teacher dataset (Codex review, 2026-08-16).
 
     A job that waits N steps emits N HOLD labels but only one ROUTE label -
@@ -85,7 +88,10 @@ def build_label_weights(steps, actions, mask, defer_idx,
         a = actions[i]
         is_hold = (a == defer_idx) & m
         is_route = (a != defer_idx) & m
-        keep_hold = is_hold & ((dc < 0.5) | (np.rint(dc) % hold_refresh_every == 0))
+        if hold_refresh_every > 0:
+            keep_hold = is_hold & ((dc < 0.5) | (np.rint(dc) % hold_refresh_every == 0))
+        else:
+            keep_hold = is_hold & (dc < 0.5)
         W[i][is_route] = 1.0
         W[i][keep_hold] = 1.0
     hold_mass = float(W[(actions == defer_idx)].sum())
@@ -144,6 +150,8 @@ def main():
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--metrics-out", default=None)
+    ap.add_argument("--hold-refresh-every", type=int, default=32,
+                    help="0 = keep only first-defer hold labels")
     args = ap.parse_args()
 
     from ray.rllib.core.rl_module.rl_module import RLModule
@@ -162,7 +170,8 @@ def main():
     keep = mask.any(axis=1)
     steps = [s for s, k in zip(steps, keep) if k]
     actions, mask = actions[keep], mask[keep]
-    weights = build_label_weights(steps, actions, mask, defer_idx)
+    weights = build_label_weights(steps, actions, mask, defer_idx,
+                                  hold_refresh_every=args.hold_refresh_every)
     kept_holds = int((weights > 0)[(actions == defer_idx)].sum())
     kept_routes = int((weights > 0)[(actions != defer_idx)].sum())
     print(f"label hygiene: kept {kept_holds} hold + {kept_routes} route labels "

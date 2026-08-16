@@ -134,7 +134,8 @@ def verify_offset(env, episode_index: int, offset_range: int) -> int:
 
 
 def effective_budget(ttd_sec: float, runtime_sec: float, margin_sec: float,
-                     horizon_left_sec: float) -> float:
+                     horizon_left_sec: float,
+                     horizon_margin_sec: float = None) -> float:
     """Wait budget bounded by BOTH the job deadline and the episode horizon.
 
     Horizon-truncation guard (Codex review, 2026-08-16 00:50): the theta=0.6
@@ -145,7 +146,13 @@ def effective_budget(ttd_sec: float, runtime_sec: float, margin_sec: float,
     > runtime+margin at every reached step, so the R0 L-branch verdict is
     unchanged by construction; the bound only bites near a REAL horizon.
     """
-    return min(ttd_sec, horizon_left_sec) - runtime_sec - margin_sec
+    # Paired-gate follow-up (2026-08-16 13:05): the horizon guard needs a
+    # LARGER allowance than the deadline margin because the deferral burst
+    # adds queue wait the runtime estimate ignores - 7/24 offsets fell below
+    # the paired completion floor with horizon_margin == margin (120s).
+    hm = margin_sec if horizon_margin_sec is None else horizon_margin_sec
+    return min(ttd_sec - runtime_sec - margin_sec,
+               horizon_left_sec - runtime_sec - hm)
 
 
 class ReturnAccumulator:
@@ -204,6 +211,7 @@ class EpisodeRecorder:
 
 def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                 theta: float, margin: float, backlog_cap: int, seed: int,
+                horizon_margin: float = None,
                 episode_index: int, gamma: float,
                 recorder: "EpisodeRecorder" = None) -> Dict[str, Any]:
     """One episode of the slack-aware (or no-defer) policy WITH reward capture.
@@ -244,7 +252,8 @@ def run_episode(env, cfg, green: np.ndarray, *, defer_enabled: bool,
                 actions.append(0)          # padded slot, value ignored by env
                 continue
             runtime = mi[i] / VM_MIPS
-            budget = (effective_budget(ttd[i], runtime, margin, horizon_sec - t)
+            budget = (effective_budget(ttd[i], runtime, margin, horizon_sec - t,
+                                       horizon_margin)
                       if present[i] > 0.5 else 0.0)
             if not defer_enabled:
                 # Control routes at arrival; a no-slack job still takes the
@@ -367,6 +376,8 @@ def main():
                     help="1=S0 sentinel, 3=S1 decision, 6=S2 arbitration")
     ap.add_argument("--theta", type=float, default=0.5)
     ap.add_argument("--margin", type=float, default=120.0)
+    ap.add_argument("--horizon-margin", type=float, default=None,
+                    help="guard allowance near episode end (default: --margin)")
     ap.add_argument("--backlog-cap", type=int, default=400)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--gamma", type=float, default=GAMMA_DEFAULT)
@@ -418,6 +429,7 @@ def main():
                     defer_enabled=(arm == "teacher"), theta=args.theta,
                     margin=args.margin, backlog_cap=args.backlog_cap,
                     seed=args.seed, episode_index=k, gamma=args.gamma,
+                    horizon_margin=args.horizon_margin,
                     recorder=recorder)
                 if recorder is not None:
                     recorder.save(
