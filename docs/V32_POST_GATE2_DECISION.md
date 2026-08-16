@@ -323,3 +323,16 @@ teacher margin 120→300s(排队等待余量)。`pick_targets()` 纯函数 + 3 �
 `min(deadline 预算, 时域剩余) − runtime − margin`,不足即走既有强制尽快开工路径。
 **判决不受影响的构造性证明**:10000 步审计里实际到达的最深步 7584,时域剩余 ≥2416s,
 恒大于 runtime+margin 上界 → 该规则在审计世界从不触发,L 判决语义原样成立。
+
+
+### BC v1(全 defer 塌缩)物理量化 + 对照格仪器修正(08-16 10:40)
+
+**BC v1 物理评测:carbon 0.395 @ 完成率 88.72%**(clean argmax 3 局,drain local)。
+Codex 的塌缩预测被数字证实:比 control(0.4045@100%)碳仅低 2%,完成率掉 11.3pp——
+旧配方蒸馏在物理上完全不可用,作为反例对照存档。
+BCV2(标签卫生)探索层随后开跑,其判决只作探索参考,由 `v32b_gates.py` 六条件门判读。
+
+对照格两个仪器坑(留痕):①anti 格被 timeout 4800s 掐死(CPU 争核拖慢 2.5×);
+②s3 直接用 ck10 无选点依据,STOCH clean 57.21% 完成率疑为 R-wave 晚期 ck 塌缩前科
+(memory 在案)而非解码效应。ANTIBF v2 已排队:先按主表选点规则(clean 最低碳 ∧
+完成 ≥99.5%)对 ck8/9/10 选点,再在选定 ck 上出 anti/stoch 格,timeout 9000。
