@@ -125,3 +125,22 @@ class TestLabelWeights:
                                   torch.zeros(1, 2, dtype=torch.bool), 2, 1)
         import math
         assert math.isnan(acc)
+
+
+class TestWarmStartPath:
+    def test_unset_returns_none(self, monkeypatch):
+        monkeypatch.delenv("V32B_WARM_START_GLOBAL", raising=False)
+        from src.training.train_rlmodule_gtrxl import resolve_warm_start_path
+        assert resolve_warm_start_path() is None
+
+    def test_bad_path_fails_fast(self, monkeypatch):
+        monkeypatch.setenv("V32B_WARM_START_GLOBAL", "/nonexistent/xyz")
+        from src.training.train_rlmodule_gtrxl import resolve_warm_start_path
+        import pytest as _pt
+        with _pt.raises(ValueError, match="not a directory"):
+            resolve_warm_start_path()
+
+    def test_valid_dir_absolutized(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("V32B_WARM_START_GLOBAL", str(tmp_path))
+        from src.training.train_rlmodule_gtrxl import resolve_warm_start_path
+        assert resolve_warm_start_path() == str(tmp_path)

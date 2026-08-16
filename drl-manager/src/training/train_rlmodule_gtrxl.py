@@ -91,6 +91,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def resolve_warm_start_path() -> Optional[str]:
+    """V3.2B fine-tune warm start (decision doc §5 step 3).
+
+    Reads V32B_WARM_START_GLOBAL; when set it must be the certified BC
+    checkpoint's module dir (.../learner_group/learner/rl_module/global_policy)
+    and is fed to RLModuleSpec.load_state_path (absolute, per RLlib contract).
+    Fail-fast on a bad path - silently training from random init would fake a
+    'teacher-unlearning' result. Integration is verified downstream by probing
+    ck0: it must carry the BC signature (job_temporal_delta ~ +0.12).
+    """
+    raw = os.environ.get("V32B_WARM_START_GLOBAL", "").strip()
+    if not raw:
+        return None
+    path = os.path.abspath(raw)
+    if not os.path.isdir(path):
+        raise ValueError(f"V32B_WARM_START_GLOBAL is not a directory: {path}")
+    logger.info("Warm-starting global_policy from %s", path)
+    return path
+
+
 def select_policies_to_train(policies, fixed_local_scheduler: str):
     """Keep local modules for inference/API shape, but freeze them in drain mode."""
     if str(fixed_local_scheduler).strip().lower() == "drain":
@@ -430,6 +450,14 @@ def create_rlmodule_config(
         # Gate-2 smoke (config said true, module never built the gate).
         "factorized_temporal_gate": bool(gm.get("factorized_temporal_gate", False)),
         "temporal_gate_hidden": int(gm.get("temporal_gate_hidden", 64)),
+        # Read-only learner diagnostics convert normalized wait_age back to
+        # seconds.  Supplying the environment's exact scale avoids a hidden
+        # 7200-second assumption in Gate-3 evidence; legacy modules ignore it.
+        "v32_wait_age_scale_sec": float(env_config.get(
+            "obs_v31_wait_age_scale_sec",
+            float(env_config.get("max_episode_length", 7200))
+            * float(env_config.get("simulation_timestep", 1.0)),
+        )),
     }
     # Fail-fast wiring assertion: if the experiment asked for the gate, the
     # assembled model_config must carry it. Guards against the silent-drop
@@ -604,6 +632,7 @@ def create_rlmodule_config(
         unified_local_obs_space = sample_env.observation_space(sample_local_agent)
         unified_local_action_space = sample_env.action_space(sample_local_agent)
 
+        warm_start_path = resolve_warm_start_path()
         rl_module_spec = MultiRLModuleSpec(
             rl_module_specs={
                 "global_policy": RLModuleSpec(
@@ -611,6 +640,7 @@ def create_rlmodule_config(
                     observation_space=global_obs_space,
                     action_space=global_action_space,
                     model_config=gtrxl_config,
+                    load_state_path=warm_start_path,
                 ),
                 "shared_local_policy": RLModuleSpec(
                     module_class=local_module_class,
