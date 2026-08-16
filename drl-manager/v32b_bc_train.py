@@ -173,12 +173,10 @@ def main():
     out = pathlib.Path(args.out)
     if out.exists():
         shutil.rmtree(out)
-    # copy the WHOLE rl_module dir (all policies) so evaluate.py's loader,
-    # which expects local modules beside the global one, works unchanged;
-    # only global_policy's weights are overwritten with the BC result.
-    rl_mod_rel = pathlib.Path("learner_group/learner/rl_module")
-    (out / rl_mod_rel).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src / rl_mod_rel, out / rl_mod_rel)
+    # copy the WHOLE checkpoint (algorithm_state.pkl included): evaluate.py
+    # goes through get_checkpoint_info() and rejects a bare rl_module tree
+    # (2026-08-16 08:48). Only global_policy's weights are then overwritten.
+    shutil.copytree(src, out)
     # RLlib's restore_from_path reads module_state.pt with pickle.load, NOT
     # torch.load - a torch.save archive there crashes every downstream loader
     # (probe + evaluate, 2026-08-16 04:00). Save through RLlib's own protocol.
