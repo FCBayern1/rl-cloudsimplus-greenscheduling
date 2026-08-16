@@ -46,9 +46,14 @@ def load_dataset(dataset_dir: pathlib.Path):
     for f in files:
         d = np.load(f)
         keys = [k for k in d.files if k.startswith("obs_")]
+        # Decompress each key ONCE. NpzFile re-inflates the whole array on
+        # every d[k] access, and a row view pins its freshly-inflated parent
+        # alive - the per-step loop below then holds T copies of every
+        # [T, ...] array (~25GB for one episode; rc=137 on the first run).
+        arrs = {k: d[k] for k in keys}
         T = d["actions"].shape[0]
         for t in range(T):
-            steps.append({k[4:]: d[k][t] for k in keys})
+            steps.append({k[4:]: arrs[k][t] for k in keys})
         acts.append(d["actions"])
         masks.append(d["real_mask"])
     actions = np.concatenate(acts, axis=0)
