@@ -77,7 +77,9 @@ class TestDeferMetrics:
 
 class TestLabelWeights:
     def _mk(self, defer_counts, actions_row, mask_row):
-        steps = [{"batch_cloudlet_defer_count": np.asarray(defer_counts, dtype=np.float32)}]
+        # raw counts; the obs channel stores count/32 (obs_v31_defer_count_scale)
+        steps = [{"batch_cloudlet_defer_count":
+                  np.asarray(defer_counts, dtype=np.float32) / 32.0}]
         actions = np.asarray([actions_row], dtype=np.int16)
         mask = np.asarray([mask_row])
         return steps, actions, mask
@@ -98,6 +100,15 @@ class TestLabelWeights:
         steps, actions, mask = self._mk([32, 33], [8, 8], [True, True])
         w = build_label_weights(steps, actions, mask, defer_idx=8)
         assert w[0, 0] > 0 and w[0, 1] == 0.0
+
+    def test_normalization_regression_lock(self):
+        # counts 5 and 15 are NOT first defers; the broken normalized filter
+        # (dc<0.5 on count/32) kept both - this test pins the fix.
+        from v32b_bc_train import build_label_weights
+        steps, actions, mask = self._mk([5, 15, 0], [8, 8, 8], [True] * 3)
+        w = build_label_weights(steps, actions, mask, defer_idx=8,
+                                hold_refresh_every=0)
+        assert w[0, 0] == 0.0 and w[0, 1] == 0.0 and w[0, 2] > 0
 
     def test_class_masses_balanced(self):
         from v32b_bc_train import build_label_weights

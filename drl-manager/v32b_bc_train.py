@@ -63,10 +63,15 @@ def load_dataset(dataset_dir: pathlib.Path):
 
 
 def build_label_weights(steps, actions, mask, defer_idx,
-                        hold_refresh_every: int = 32):
+                        hold_refresh_every: int = 32,
+                        defer_count_scale: float = 32.0):
     # hold_refresh_every=0 disables refreshers entirely: FIRST-defer only.
-    # Exploratory round 1 showed every-32 refreshers still outnumber route
-    # labels 11:1 and the defer baseline stays saturated (0.9788).
+    # defer_count_scale (2026-08-16 15:50): the observation is NORMALIZED
+    # (count/32, obs_v31_defer_count_scale). Rounds 1-2 filtered on the
+    # normalized value, so `dc<0.5` meant "fewer than 16 defers" and the
+    # round-1 refresher `rint(dc)%32==0` was true for every count<16 -- BOTH
+    # filters were near no-ops (kept 325k/306k of 5.7M holds). All threshold
+    # logic below runs on RAW counts = dc * defer_count_scale.
     """Label hygiene for the teacher dataset (Codex review, 2026-08-16).
 
     A job that waits N steps emits N HOLD labels but only one ROUTE label -
@@ -83,15 +88,17 @@ def build_label_weights(steps, actions, mask, defer_idx,
     """
     W = np.zeros_like(actions, dtype=np.float32)
     for i, s in enumerate(steps):
-        dc = np.asarray(s.get("batch_cloudlet_defer_count", np.zeros(actions.shape[1])))
+        dc_norm = np.asarray(s.get("batch_cloudlet_defer_count", np.zeros(actions.shape[1])))
+        counts = np.rint(dc_norm * defer_count_scale)
         m = mask[i]
         a = actions[i]
         is_hold = (a == defer_idx) & m
         is_route = (a != defer_idx) & m
+        first = counts < 0.5
         if hold_refresh_every > 0:
-            keep_hold = is_hold & ((dc < 0.5) | (np.rint(dc) % hold_refresh_every == 0))
+            keep_hold = is_hold & (first | ((counts > 0) & (counts % hold_refresh_every == 0)))
         else:
-            keep_hold = is_hold & (dc < 0.5)
+            keep_hold = is_hold & first
         W[i][is_route] = 1.0
         W[i][keep_hold] = 1.0
     hold_mass = float(W[(actions == defer_idx)].sum())
@@ -152,6 +159,8 @@ def main():
     ap.add_argument("--metrics-out", default=None)
     ap.add_argument("--hold-refresh-every", type=int, default=32,
                     help="0 = keep only first-defer hold labels")
+    ap.add_argument("--defer-count-scale", type=float, default=32.0,
+                    help="obs_v31_defer_count_scale of the generating env")
     args = ap.parse_args()
 
     from ray.rllib.core.rl_module.rl_module import RLModule
@@ -171,7 +180,8 @@ def main():
     steps = [s for s, k in zip(steps, keep) if k]
     actions, mask = actions[keep], mask[keep]
     weights = build_label_weights(steps, actions, mask, defer_idx,
-                                  hold_refresh_every=args.hold_refresh_every)
+                                  hold_refresh_every=args.hold_refresh_every,
+                                  defer_count_scale=args.defer_count_scale)
     kept_holds = int((weights > 0)[(actions == defer_idx)].sum())
     kept_routes = int((weights > 0)[(actions != defer_idx)].sum())
     print(f"label hygiene: kept {kept_holds} hold + {kept_routes} route labels "
