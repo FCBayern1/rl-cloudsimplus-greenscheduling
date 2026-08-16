@@ -179,7 +179,10 @@ def main():
     rl_mod_rel = pathlib.Path("learner_group/learner/rl_module")
     (out / rl_mod_rel).parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src / rl_mod_rel, out / rl_mod_rel)
-    torch.save(module.state_dict(), out / mod_rel / "module_state.pt")
+    # RLlib's restore_from_path reads module_state.pt with pickle.load, NOT
+    # torch.load - a torch.save archive there crashes every downstream loader
+    # (probe + evaluate, 2026-08-16 04:00). Save through RLlib's own protocol.
+    module.save_to_path(out / mod_rel)
     for parent in (src, *src.parents):
         pj = parent / "params.json"
         if pj.is_file():
