@@ -206,3 +206,26 @@ FT 门:有效 9 对,改善 8/9,但中位仅 −0.6%(defer 每局仅 27 次,幅�
 但该门是**旧聚合规则 + 预算宽 bug**,非 H1c 的逐作业特征门;③按 H1a 门槛
 (≥10% ∧ ≥8/10 同号)不通过——一切以 H1c(逐作业门、修正预算、六臂)为准,
 明晨出。
+
+
+---
+
+## ⭐ H1c 中止 + 特征层根因(08-17 21:40,证据链完整)
+
+run3 头两 offset:oracle 仅 −0.25%,且 **oracle/shuffle/anti 三臂逐位相同**
+(碳 0.3583、defer 70930 全同)→ 离线验证(24 局教师观测)钉死根因:
+
+**`forecast_gain`/`best_future` 是内容盲特征。**
+rel_gain 中位=p90=**0.9818 = 1 − green_factor/brown_factor**——best_future 几乎
+恒能找到"免费"未来槽位。机制:`idle_host_power_down` 使空闲绿 DC 需求=0,
+persistence 需求近似让未来需求也=0,effective-factor 的 `ratio=min(1, green/demand)`
+在 demand→0 时恒饱和为 1 → 未来成本≈纯绿因子≈0。于是:
+- gain ≈ f(现在脏不脏),与预报内容几乎无关;
+- min-over-DCs 对 shuffle(置换)不变;anti 镜像只要保持正数,饱和 ratio 同样吞掉;
+- **V3.2A 全程训练的就是这个近二值特征**——PPO 学不出 gain 映射、探针 delta 幅度
+  受限,特征层是此前未计入的共因。
+
+**修复方向(待 Codex 复审后实施)**:未来需求近似必须至少包含**该作业自身的功耗**
+(ratio 分母 ≥ job 自身 draw;路由过去的作业不可能面对 demand=0 的 DC),
+或以容量比例做 ratio 下限。属于 env 特征语义修改,须预注册修订 + 重生成教师数据
++ 重跑 H1c。H1a 的聚合门读数(−4.4% 中位)不受此影响(它读原始绿电序列,不经此特征)。
