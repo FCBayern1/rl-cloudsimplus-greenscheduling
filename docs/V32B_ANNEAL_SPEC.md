@@ -72,3 +72,37 @@ defer 选项(等价于给策略与老师同一张安全网,同时封死"把活�
 | 3 | 锚 learner 实现 + 单测(锚只动 gate 参数、β 日程、掩码) | 半天人力 |
 | 4 | 退火臂 600k × 2 种子(P0 修复后的配方) | ~5 小时机器/种子对 |
 | 5 | 判决:六条件门 + 分层解码物理 + clean/anti/shuffle | 半天机器 |
+
+
+---
+
+## 修订 R1(08-17,Codex 复审五条边界,全部采纳)
+
+1. **P0-1 无条件批准**,实现约束:分层判据 `p_hold>0.5 → defer,else argmax(route[0:8])`,
+   tie(=0.5)走 route;必测 p_hold=0.2+均匀路由(flat 会 defer、分层必须 route)、
+   0.49/0.51 两侧、padding 隔离、**recurrent state 与原 evaluator 完全一致**
+   (不许绕 connector/GTrXL state 取 logits);stochastic 不改(与分层采样数学等价)。
+2. **P0-2 收敛为最小版单约束**:`c_ep = max(0, 0.995 − completion_rate_mi)`,
+   `c_ep_tolerance = 0`;deadline miss 仅记录不参与 dual(双乘子版本留待以后,
+   本轮不引 vector-constrained PPO);λ 由终局 completion 更新,每步稠密代理沿用
+   pending-risk;preflight 检查训练 0.995 与评测合同一致;训练监控不替代确定性评测。
+3. **教师语义锁定为选项 1:stateless BC teacher**(逐步零状态前向)——与认证探针、
+   BC 训练语义一致;**显式声明:锚住的是 stateless temporal mapping,不是完整
+   BC rollout policy**。损失精确式:
+   `BCEWithLogits(current_gate_logit(current_q.detach()), teacher_p_hold.detach())`;
+   frozen teacher `eval()+no_grad()`;掩码 = real_slot_mask × RLlib LOSS_MASK;
+   单测:anchor 对 trunk/route head/critic 梯度**严格为零**,PPO 对它们梯度仍在。
+4. **β 日程算术更正**:τ=25 时到底需 57.6 iter(≈460k 步),原文 200k 是算错。
+   且 β 绝对值无跨 loss 尺度意义——实施前先在冻结 rollout 批上做**梯度标定**:
+   报告 `||∇gate L_anchor|| / ||∇gate L_PPO||`,再定 β0/βmin;0.5/0.05 只是占位。
+5. **安全网需要新观测通道**:现 action_mask 是 [128] 槽位掩码,不能表达 per-choice;
+   需新增 `batch_cloudlet_defer_allowed[128]`,factorized 分支把不允许槽位的 defer
+   log-prob 置不可选并重归一化 route 分支;两个条件都要(作业级 budget≤0 +
+   全局级 backlog≥cap),公式与老师逐字复用;训练与评测同时生效。
+6. 措辞更正:completion 后段中位 <99% 是**灾难性中止线**,不是合同门;正式合同
+   = 分层确定性评测 ≥99.5%。
+7. **扰动完备性**:clean/anti/shuffle 必须同步变换全部派生作业级特征
+   (gain/time-to-best/best-future),只换 DC 级四通道会留干净预测泄漏。
+
+**批准状态**:P0-1 立即实施;P0-2 按最小版实施;锚与安全网待梯度标定与
+defer_allowed 通道实现后再放行 600k。
