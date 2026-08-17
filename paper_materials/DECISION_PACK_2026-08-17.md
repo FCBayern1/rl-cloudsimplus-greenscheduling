@@ -17,8 +17,8 @@
 
 两个已核事实:
 - 表面上 CCA-PG 全面占优,但它是 **1 个种子对 4 个种子中位**;EU-CRD 的 shuffle
-  跨种子散布 0.207–0.255,CCA 的 0.191 比最好格还低 7.6%——差距在种子噪声量级内,
-  **单种子数据没资格下"CCA 更好"的结论,也没资格下"CCA 不如"的结论**;
+  跨种子散布 0.207–0.255,CCA 的 0.191 比最好格还低 7.6%——**目前无法区分方法增益与种子变化**(1 种子对 4 种子中位,无检验可做),
+  既不能下"CCA 更好"也不能下"CCA 不如"的结论;
 - 探针实测:CCA-PG 预报敏感度 0.399(EU-CRD 0.534)——**"它学会不用预报所以稳"
   这条辩护不成立**,不能写进论文。
 
@@ -50,8 +50,8 @@ seed spread"这句表注。
 > CCA-PG is trained with the identical recipe and evaluated under the identical
 > protocol (single seed, as for the risk baselines). Its shuffle cell (0.191)
 > sits below EU-CRD's per-seed spread (0.207–0.255); with one seed against a
-> four-seed median this difference is within seed noise and we do not read a
-> ranking from it. Unlike EU-CRD, CCA-PG carries no reliability gate and no
+> four-seed median we cannot separate a method effect from seed variation and
+> we do not read a ranking from it. Unlike EU-CRD, CCA-PG carries no reliability gate and no
 > deployment-time auditor, and its low forecast-corruption sensitivity
 > (FI 1.04) is a single-seed observation whose mechanism we did not isolate.
 
@@ -68,11 +68,11 @@ seed spread"这句表注。
 | ablG(拆门,c≡1) | 0.282(s1) | — |
 
 - ablW 两种子都更低,但幅度都 ≤ 噪声底(10–13%)→ 严格结论:**拆掉重加权,
-  shuffle 遏制没有可测的损失**;"ablW 更好"同样不成立;
+  差异未超过预设的实用分辨阈值(噪声底 10–13%),且两个点估计均未显示退化**;"ablW 更好"同样不成立;
 - ablG 一拆门就崩(0.282–0.286,比 Vanilla 0.269 还差)→ 门 = 遏制来源,成立;
 - 架构事实(代码已核):重加权是 CRD 通路作用于梯度的**唯一出口**,ablW 实为
-  "整条通路脱离梯度"≈ vanilla+ensemble critic。**"只留门"的格子在架构上不存在**
-  ——消融矩阵天然只有三格(全量/无门/无通路),这句写出来审稿人就无法要求第四格;
+  "整条通路脱离梯度"≈ vanilla+ensemble critic。"只留门"的格子**在当前参数化中不可识别**——关闭 reweighting 会同时切断
+  gate 的梯度路径,消融矩阵因此只有三格(全量/无门/无通路);
 - ablW 的 anti 条件双种子掉出合同(93.1%/98.6%),但**全量臂的同条件对照格不存在**
   (本地 s3 checkpoint 是塌缩臂,主表臂 ckpt 在 Isambard/GPU)——"重加权买纪律"
   的辩护线**当前无证据支撑**,除非补对照。
@@ -99,14 +99,14 @@ checkpoint,机器可用后 ~1h 评测)。
 > without the reliability gate, acting on the decomposed credit is worse than
 > not decomposing at all. Removing the reweighting instead (the shares are
 > still estimated and logged, but no longer scale the advantage) leaves
-> shuffle containment statistically unchanged on both seeds (0.201/0.224
-> against paired 0.218/0.255, differences within the measured seed-noise
-> floor). The mechanism the corruption robustness rests on is therefore the
+> shuffle containment within our pre-set practical resolution on both seeds
+> (0.201/0.224 against paired 0.218/0.255, neither point estimate showing a
+> degradation; no formal test is possible at this seed count). The mechanism the corruption robustness rests on is therefore the
 > decision of *when to trust* the decomposed credit, not the redistribution
 > itself; the decomposition supplies the signal that decision is made on.
-> A gate-only variant does not exist as a fourth cell: the gate acts on
-> learning solely through the reweighting path, so disabling the latter
-> disables the former.
+> A gate-only fourth cell is not identifiable under this parameterisation:
+> the gate acts on learning solely through the reweighting path, so disabling
+> the latter also severs the former.
 
 ---
 
@@ -114,13 +114,14 @@ checkpoint,机器可用后 ~1h 评测)。
 
 > (H1 ≥10% 版)On a testbed where spatial routing absorbs most of the naive
 > forecast value, we verified that an explicit temporal headroom of X% remains
-> above the strongest no-forecast router, and that the failure of end-to-end
+> above the strongest tested no-forecast router, and that the failure of end-to-end
 > training to capture it is a credit-assignment and distillation-interface
 > problem rather than an information problem.
 >
 > (H1 ~5% 版)We additionally report a negative result: once the no-forecast
-> policy is allowed to learn spatial routing, the residual value of even a
-> perfect forecast on this testbed falls below our measurement noise floor —
+> policy is allowed to learn spatial routing, the residual value of even an
+> oracle-informed heuristic gate on this testbed falls below our measurement
+> noise floor —
 > the deferral lever is largely substituted by spatial flexibility. This
 > motivates testbeds with correlated (non-substitutable) green supply for any
 > claim that forecasts are load-bearing.
