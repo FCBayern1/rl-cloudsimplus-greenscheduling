@@ -148,6 +148,23 @@ def main():
         # the gate flag lives in the model config block, not env config — the
         # runner asserts it separately; here we pin the observation halves.
 
+    # --p02-cert: P0-2 SLA alignment (V32B_ANNEAL_SPEC R1 item 2). The
+    # TRAINING constraint must equal the EVALUATION contract - the 600k FT
+    # arms trained with deadline_miss+0.05 tolerance, lambda stayed 0.0 for
+    # the whole run, and PPO legally traded completion for carbon.
+    if "--p02-cert" in sys.argv:
+        for tag, cfg_ in (("oracle", O), ("blind", N)):
+            chk(f"p02: {tag} sla_mode is completion",
+                cfg_.get("sla_mode") == "completion",
+                f"sla_mode={cfg_.get('sla_mode')}")
+            chk(f"p02: {tag} training target == 99.5% eval contract",
+                abs(float(cfg_.get("sla_target", 0.0)) - 0.995) < 1e-9,
+                f"sla_target={cfg_.get('sla_target')}")
+            lag = cfg_.get("lagrangian") or {}
+            chk(f"p02: {tag} c_ep_tolerance is zero",
+                float(lag.get("c_ep_tolerance", 1.0)) == 0.0,
+                f"c_ep_tolerance={lag.get('c_ep_tolerance')}")
+
     # --v31-cert: certification invariants (only for the FINAL cert configs).
     if "--v31-cert" in sys.argv:
         chk("cert: local drain fixed",
