@@ -322,6 +322,32 @@ class HierarchicalMultiDCEnv(gym.Env):
             )),
         )
         self._last_v32_job_forecast_debug: Dict[str, Any] = {}
+        # V3.2 demand model (Codex ruling 2026-08-17): 'legacy' keeps the
+        # persistence-demand approximation byte-identical; 'job_counterfactual_v1'
+        # prices each candidate as D_cf = D_current + dP(i,d) with
+        # dP = 1[D_current~0]*P_idle + pes_i*(P_peak-P_idle)/N_hostPE, the SAME
+        # D_cf on the now AND future sides. Root cause treated: idle_host_power_down
+        # makes idle-DC demand 0, ratio=min(1,G/D) saturates, best_future ~ 0
+        # always, and forecast_gain collapses to a content-blind ~0.9818 plateau
+        # (= 1 - green_factor/brown_factor).
+        self._v32_demand_model = str(
+            config.get("obs_v32_demand_model", "legacy")).strip().lower()
+        _HOST_POWER = {  # HostProfile.java: (idle W, dynamic W per PE)
+            "rs500a": (51.36, (214.0 - 51.36) / 64.0),
+            "rs700a": (106.21, (430.0 - 106.21) / 128.0),
+        }
+        idle_w, dyn_pp = [], []
+        for dc in self.dc_configs:
+            spec = None
+            for key in dc:
+                if key.startswith("host_count_spec") and int(dc.get(key) or 0) > 0:
+                    spec = ("rs700a" if "rs700a" in key else
+                            "rs500a" if "rs500a" in key else None)
+            iw, dp = _HOST_POWER.get(spec, (51.36, 2.54))
+            idle_w.append(iw)
+            dyn_pp.append(dp)
+        self._v32_host_idle_w = np.asarray(idle_w, dtype=np.float64)
+        self._v32_host_dyn_w_per_pe = np.asarray(dyn_pp, dtype=np.float64)
 
         # Define observation and action spaces
         self._setup_observation_spaces()
@@ -1722,6 +1748,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         raw_future = np.zeros(batch, dtype=np.float64)
         slack_sec = np.zeros(batch, dtype=np.float64)
 
+        cf_mode = self._v32_demand_model == "job_counterfactual_v1"
         for i in range(batch):
             if not np.isfinite(mi[i]) or mi[i] <= 0.0:
                 continue
@@ -1729,9 +1756,29 @@ class HierarchicalMultiDCEnv(gym.Env):
             if feasible.size == 0:
                 feasible = np.arange(self.num_datacenters)
             scale = max(0.0, mi[i]) / self._v32_mi_per_kg
-            now_cost = scale * current_factor[feasible]
+            if cf_mode:
+                # Counterfactual demand of routing THIS job to each DC: waking
+                # an idle host costs its idle draw, plus the job's dynamic
+                # share. The identical D_cf prices both sides of the compare.
+                d_p = (np.where(demand < 1e-9, self._v32_host_idle_w, 0.0)
+                       + max(1.0, pes[i]) * self._v32_host_dyn_w_per_pe)
+                d_cf = demand + d_p
+                ratio_now = np.minimum(1.0, current_green / d_cf)
+                cf_current = (ratio_now * self._v32_green_factors
+                              + (1.0 - ratio_now) * self._v32_brown_factors)
+                ratio_fut = np.minimum(1.0, forecast_green_bins / d_cf[:, None])
+                cf_future = (ratio_fut * self._v32_green_factors[:, None]
+                             + (1.0 - ratio_fut) * self._v32_brown_factors[:, None])
+                now_cost = scale * cf_current[feasible]
+                job_future_factor = cf_future
+                # Java reward-ledger alignment: runtime = MI / (PES x MIPS)
+                runtime_sec = (max(0.0, mi[i])
+                               / (max(1.0, pes[i]) * self._v32_vm_mips))
+            else:
+                now_cost = scale * current_factor[feasible]
+                job_future_factor = future_factor
+                runtime_sec = max(0.0, mi[i]) / self._v32_vm_mips
             now = float(np.min(now_cost))
-            runtime_sec = max(0.0, mi[i]) / self._v32_vm_mips
             budget = (
                 ttd[i] - runtime_sec - self._v32_deadline_margin_sec
                 if present[i] > 0.5 and np.isfinite(ttd[i])
@@ -1743,7 +1790,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             best_offset = 0.0
             eligible_bins = np.flatnonzero(offsets_sec <= budget)
             if eligible_bins.size:
-                candidate = scale * future_factor[
+                candidate = scale * job_future_factor[
                     feasible[:, None], eligible_bins[None, :]
                 ]
                 flat_index = int(np.argmin(candidate))
