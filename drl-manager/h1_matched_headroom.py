@@ -125,6 +125,25 @@ def assemble_actions(mode: str, route: np.ndarray, mi: np.ndarray,
     return acts
 
 
+def pair_verdict(gate_rec: dict, base_rec: dict,
+                 contract: float = 0.995) -> dict:
+    """Validity-gated paired comparison (Codex H1 review, 2026-08-17).
+
+    A pair counts ONLY if both arms' TERMINAL completion meets the 99.5%
+    contract; otherwise it is invalid - neither a win nor a loss (ep1: the
+    oracle-informed arm left 0.73% MI unfinished at drain end, so its raw
+    carbon is deflated and unusable). Reports both raw-carbon delta and
+    carbon-per-completed-MI delta; the latter never substitutes for the SLA."""
+    valid = (gate_rec["completion_rate_mi"] >= contract
+             and base_rec["completion_rate_mi"] >= contract)
+    b, g_ = base_rec["total_carbon_kg"], gate_rec["total_carbon_kg"]
+    d_raw = (g_ - b) / max(1e-9, b)
+    cpm_b = b / max(1e-9, base_rec["completion_rate_mi"])
+    cpm_g = g_ / max(1e-9, gate_rec["completion_rate_mi"])
+    return {"valid": valid, "rel_delta_raw": d_raw,
+            "rel_delta_cpm": (cpm_g - cpm_b) / max(1e-9, cpm_b)}
+
+
 def teacher_defer_flags(g, green, row, batch, num_dc, ttd_scale, cfg,
                         horizon_sec, t):
     """Slack-aware teacher rule per slot (same maths as the R0 audit)."""
@@ -163,9 +182,13 @@ def run_episode(env, cfg, green, mode, blind_head, ft_head, episode_index):
     green_high = float(cfg.get("obs_green_power_high", 3000.0))
     ttd_scale = max(1.0, float(cfg.get("obs_v31_deadline_scale_sec",
                                        cfg.get("defer_urgency_window_sec", 3600.0))))
-    horizon_sec = (float(cfg.get("max_episode_length", 7200))
-                   * float(cfg.get("simulation_timestep", 1.0)))
-    done, t, defers, compl_7200 = False, 0, 0, None
+    # Dual horizon (Codex H1 review): the teacher's wait budget uses the
+    # PRODUCTION decision horizon (7200) - the drain window exists only to
+    # finish already-scheduled work, never to justify holding past the
+    # contract boundary. cfg max_episode_length is the drain horizon.
+    decision_horizon_sec = (float(cfg.get("h1_decision_horizon", 7200))
+                            * float(cfg.get("simulation_timestep", 1.0)))
+    done, t, defers, compl_7200, carbon_7200 = False, 0, 0, None, None
     while not done:
         g = obs["global"]
         row = WARMUP_ROWS + offset + t
@@ -175,7 +198,7 @@ def run_episode(env, cfg, green, mode, blind_head, ft_head, episode_index):
         if mode == "ftgate":
             _, p_ft = ft_head.step(g)
         td = (teacher_defer_flags(g, green, row, batch, num_dc, ttd_scale,
-                                  cfg, horizon_sec, t)
+                                  cfg, decision_horizon_sec, t)
               if mode == "oraclegate" else np.zeros(batch, dtype=bool))
         actions = assemble_actions(mode, route, mi, p_blind, p_ft, td, num_dc)
         defers += sum(1 for i, a in enumerate(actions)
@@ -189,14 +212,17 @@ def run_episode(env, cfg, green, mode, blind_head, ft_head, episode_index):
         if t == 7200:
             ges = info.get("global_energy_stats") or {}
             compl_7200 = float(ges.get("completion_rate_mi", 0.0) or 0.0)
+            carbon_7200 = float(ges.get("total_carbon_emission_kg", 0.0) or 0.0)
     m = collect_metrics(info, num_dc)
     if compl_7200 is None:            # episode finished before 7200
         compl_7200 = float(m.get("completion_rate_mi", 0.0) or 0.0)
+        carbon_7200 = float(m.get("total_carbon_kg", 0.0) or 0.0)
     return {"mode": mode, "episode_index": episode_index, "green_offset": offset,
             "steps": t, "defer_slots": defers,
             "total_carbon_kg": float(m.get("total_carbon_kg", 0.0) or 0.0),
             "completion_rate_mi": float(m.get("completion_rate_mi", 0.0) or 0.0),
-            "completion_at_7200": compl_7200}
+            "completion_at_7200": compl_7200,
+            "carbon_at_7200": carbon_7200}
 
 
 def main():
@@ -246,18 +272,30 @@ def main():
 
     # paired analysis vs immediate
     base = {r["episode_index"]: r for r in records if r["mode"] == "immediate"}
+    labels = {"oraclegate": "oracle-informed-heuristic"}
     verdicts = {}
     for a in arms:
         if a == "immediate":
             continue
-        ds = [(r["total_carbon_kg"] - base[r["episode_index"]]["total_carbon_kg"])
-              / max(1e-9, base[r["episode_index"]]["total_carbon_kg"])
+        pv = [dict(pair_verdict(r, base[r["episode_index"]]),
+                   episode_index=r["episode_index"])
               for r in records if r["mode"] == a and r["episode_index"] in base]
-        neg = sum(1 for d in ds if d < 0)
-        verdicts[a] = {"per_offset_rel_delta": ds, "improve_signs": f"{neg}/{len(ds)}",
-                       "median_rel_delta": float(np.median(ds)) if ds else None}
-        print(f"[H1 VERDICT {a}] median {verdicts[a]['median_rel_delta']:+.4f} "
-              f"improves {neg}/{len(ds)}", flush=True)
+        valid = [v for v in pv if v["valid"]]
+        neg = sum(1 for v in valid if v["rel_delta_raw"] < 0)
+        verdicts[a] = {
+            "label": labels.get(a, a), "pairs": pv,
+            "valid_pairs": len(valid), "invalid_pairs": len(pv) - len(valid),
+            "improve_signs_valid": f"{neg}/{len(valid)}",
+            "median_rel_delta_valid": (float(np.median(
+                [v["rel_delta_raw"] for v in valid])) if valid else None),
+            "median_rel_delta_cpm_valid": (float(np.median(
+                [v["rel_delta_cpm"] for v in valid])) if valid else None),
+        }
+        v = verdicts[a]
+        print(f"[H1 VERDICT {v['label']}] valid {v['valid_pairs']} "
+              f"invalid {v['invalid_pairs']} | valid-pair median "
+              f"{v['median_rel_delta_valid'] if v['median_rel_delta_valid'] is not None else float('nan'):+.4f} "
+              f"improves {v['improve_signs_valid']}", flush=True)
     if args.json_out:
         pathlib.Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.json_out).write_text(

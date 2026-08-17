@@ -71,3 +71,29 @@ class TestAssembleActions:
             a = assemble_actions(m, self.ROUTE, self.MI, np.zeros(3),
                                  np.zeros(3), np.zeros(3, bool), 8)
             assert a[0] == 3 and a[2] == 5
+
+
+class TestPairVerdict:
+    def _r(self, carbon, compl):
+        return {"total_carbon_kg": carbon, "completion_rate_mi": compl}
+
+    def test_valid_pair_both_in_contract(self):
+        from h1_matched_headroom import pair_verdict
+        v = pair_verdict(self._r(0.2951, 1.0), self._r(0.3592, 1.0))
+        assert v["valid"] and abs(v["rel_delta_raw"] - (-0.1784)) < 1e-3
+
+    def test_ep1_case_is_invalid_not_a_loss(self):
+        # the actual ep1 numbers: oracle arm 99.27% terminal -> pair invalid
+        from h1_matched_headroom import pair_verdict
+        v = pair_verdict(self._r(0.2861, 0.9927), self._r(0.2611, 1.0))
+        assert not v["valid"]
+
+    def test_base_below_contract_also_invalidates(self):
+        from h1_matched_headroom import pair_verdict
+        assert not pair_verdict(self._r(0.28, 1.0), self._r(0.26, 0.99))["valid"]
+
+    def test_cpm_reported_but_separate(self):
+        from h1_matched_headroom import pair_verdict
+        v = pair_verdict(self._r(0.30, 0.995), self._r(0.30, 1.0))
+        assert v["rel_delta_cpm"] > 0     # per-completed-MI penalises the gap
+        assert abs(v["rel_delta_raw"]) < 1e-9
