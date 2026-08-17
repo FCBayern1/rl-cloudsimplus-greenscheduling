@@ -54,3 +54,13 @@ class TestCodexMandatedCases:
 
     def test_high_confidence_defer_kept(self):
         assert _decode([(0.95, [8, 1, 1, 1, 1, 1, 1, 1])])[0] == 8
+
+
+class TestForceRoute:
+    def test_never_defers_even_high_p_hold(self):
+        from src.models.rlmodule_gtrxl_models import force_route_logits
+        logits = torch.tensor(np.concatenate([
+            _slot_logits(0.95, [1] * 8), _slot_logits(0.1, [1, 9] + [1] * 6),
+        ]), dtype=torch.float32).unsqueeze(0)
+        out = force_route_logits(logits, 2, 9).reshape(2, 9).argmax(-1).tolist()
+        assert out[0] != 8 and out[1] == 1   # route argmax preserved
