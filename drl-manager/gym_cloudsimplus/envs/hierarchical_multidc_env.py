@@ -55,6 +55,41 @@ def _write_debug_log(hypothesis_id: str, location: str, message: str, data: Dict
 # endregion
 
 
+def perturb_future_bins(bins, mode: str, capacity_w) -> "np.ndarray":
+    """Apply FORECAST_PERTURB semantics to the V3.2 future-green WATT bins.
+
+    Closes the derived-feature leak (V32B_ANNEAL_SPEC R1 item 7): the dc-level
+    channels are perturbed downstream, but gain/time-to-best/best-future are
+    computed from these bins, which previously always carried the clean truth.
+
+    shuffle: reverse the DC axis (same coherent-wrong semantics as the
+             normalized channels).
+    anti:    A-prime per-DC static capacity mirror (Codex 2026-08-17):
+             clip(H_d - G, 0, H_d), H_d = sum of the DC's turbine max power in
+             simulator watts (calib/v3_anti_capacity.json). H_d = 0 stays 0 -
+             a uniform ceiling would fabricate green on turbine-less DCs.
+             Equals the normalized channels' 1 - G/H_d mirror exactly and is
+             an involution on [0, H_d].
+    """
+    bins = np.asarray(bins, dtype=np.float64)
+    mode = (mode or "none").strip().lower()
+    if mode == "shuffle":
+        return bins[::-1].copy()
+    if mode == "anti":
+        cap = np.asarray(capacity_w if capacity_w is not None else [],
+                         dtype=np.float64).reshape(-1)
+        if cap.size != bins.shape[0]:
+            raise RuntimeError(
+                f"anti bins perturbation needs a per-DC capacity vector of "
+                f"length {bins.shape[0]}, got {cap.size} "
+                f"(set v32_perturb_capacity_w from calib/v3_anti_capacity.json)")
+        out = np.clip(cap[:, None] - bins, 0.0,
+                      np.maximum(cap[:, None], 0.0))
+        out[cap <= 0.0, :] = 0.0
+        return out
+    return bins
+
+
 class HierarchicalMultiDCEnv(gym.Env):
     """
     Hierarchical Multi-Datacenter Load Balancing Environment.
@@ -1556,7 +1591,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 out[dc_index] = arr[idx]
             if compressed:
                 out /= divisor
-            return np.maximum(out, 0.0)
+            return self._v32_maybe_perturb_bins(np.maximum(out, 0.0))
 
         if self.java_env is None or not hasattr(
             self.java_env, "getFuturePerDcGreenPowerW"
@@ -1579,7 +1614,15 @@ class HierarchicalMultiDCEnv(gym.Env):
             raise RuntimeError(
                 f"gateway V3.2 forecast bins have shape {out.shape}, expected {expected}"
             )
-        return np.maximum(out, 0.0)
+        return self._v32_maybe_perturb_bins(np.maximum(out, 0.0))
+
+    def _v32_maybe_perturb_bins(self, bins):
+        import os as _os
+        mode = str(_os.environ.get("FORECAST_PERTURB_MODE", "none"))
+        if mode.strip().lower() in ("shuffle", "anti"):
+            return perturb_future_bins(
+                bins, mode, self.config.get("v32_perturb_capacity_w"))
+        return bins
 
     @staticmethod
     def _v32_effective_carbon_factor(

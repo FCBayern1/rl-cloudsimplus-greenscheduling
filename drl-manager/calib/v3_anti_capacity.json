@@ -1,0 +1,15 @@
+{
+ "experiment": "experiment_v3_2_oracle",
+ "definition": "H_d = sum(max power_kw per turbine)*1000/compressed_power_divisor; same CSVs and divisor as the simulator green series, so the ceiling is in simulator watts (A-prime, Codex 2026-08-17)",
+ "compressed_power_divisor": 5103.4,
+ "capacity_w_per_dc": [
+  595.930164204256,
+  545.330563937767,
+  210.99659050828862,
+  0.0,
+  0.0,
+  504.6184896343614,
+  0.0,
+  0.0
+ ]
+}
