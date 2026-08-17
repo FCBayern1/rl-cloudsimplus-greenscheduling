@@ -109,6 +109,7 @@ def run_episode(env, cfg, arm, blind_head, episode_index):
         done, t, defers = False, 0, 0
         compl_7200, carbon_7200 = None, None
         gain_checksum = 0.0
+        defer_checksum = 0.0          # order-sensitive action fingerprint
         while not done:
             g = obs["global"]
             mi = _arr(g, "batch_cloudlet_mi", batch)
@@ -119,8 +120,10 @@ def run_episode(env, cfg, arm, blind_head, episode_index):
                     else feature_gate_flags(g, batch, ttd_scale, t))
             actions = [int(num_dc) if (hold[i] and mi[i] > 0) else int(route[i])
                        for i in range(batch)]
-            defers += int(sum(1 for i in range(batch)
-                              if hold[i] and mi[i] > 0))
+            step_defers = int(sum(1 for i in range(batch)
+                                  if hold[i] and mi[i] > 0))
+            defers += step_defers
+            defer_checksum += float((t + 1) * step_defers)
             local_actions = {dc: drain_action(env.get_local_action_masks(dc))
                              for dc in range(num_dc)}
             obs, _, term, trunc, info = env.step(
@@ -138,6 +141,7 @@ def run_episode(env, cfg, arm, blind_head, episode_index):
         return {"mode": arm, "episode_index": episode_index,
                 "green_offset": offset, "steps": t, "defer_slots": defers,
                 "gain_checksum": round(gain_checksum, 6),
+                "defer_checksum": round(defer_checksum, 3),
                 "total_carbon_kg": float(m.get("total_carbon_kg", 0.0) or 0.0),
                 "completion_rate_mi": float(m.get("completion_rate_mi", 0.0) or 0.0),
                 "completion_at_7200": compl_7200, "carbon_at_7200": carbon_7200}
