@@ -34,7 +34,7 @@ class TestBlindify:
         obs = {"dc_current_green_power_w": np.array([100.0]),
                "dc_future_short_mean": np.array([0.9])}
         blindify(obs, 3000.0)
-        assert obs["dc_future_short_mean"][0] == np.float32(0.9)
+        assert abs(obs["dc_future_short_mean"][0] - 0.9) < 1e-9
 
 
 class TestAssembleActions:
