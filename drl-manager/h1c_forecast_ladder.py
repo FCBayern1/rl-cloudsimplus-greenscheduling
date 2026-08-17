@@ -65,6 +65,7 @@ def feature_gate_flags(g: Dict[str, np.ndarray], batch: int, ttd_scale: float,
     the only difference between arms.
     """
     mi = _arr(g, "batch_cloudlet_mi", batch)
+    pes = _arr(g, "batch_cloudlet_pes", batch)
     ttd = _arr(g, "batch_cloudlet_time_to_deadline", batch) * ttd_scale
     present = _arr(g, "batch_cloudlet_deadline_present", batch)
     best_now = _arr(g, "batch_cloudlet_best_now_carbon", batch)
@@ -77,7 +78,7 @@ def feature_gate_flags(g: Dict[str, np.ndarray], batch: int, ttd_scale: float,
     for i in range(batch):
         if mi[i] <= 0 or present[i] <= 0.5:
             continue
-        runtime = mi[i] / VM_MIPS
+        runtime = mi[i] / (max(1.0, pes[i]) * VM_MIPS)   # Java ledger units
         budget = min(ttd[i], horizon_left) - runtime - MARGIN_S
         if budget <= 0:
             continue
@@ -107,9 +108,12 @@ def run_episode(env, cfg, arm, blind_head, episode_index):
                                            cfg.get("defer_urgency_window_sec", 3600.0))))
         done, t, defers = False, 0, 0
         compl_7200, carbon_7200 = None, None
+        gain_checksum = 0.0
         while not done:
             g = obs["global"]
             mi = _arr(g, "batch_cloudlet_mi", batch)
+            gain_checksum += float(np.sum(
+                _arr(g, "batch_cloudlet_forecast_gain", batch)))
             route, _ = blind_head.step(blindify(g, green_high))
             hold = (np.zeros(batch, dtype=bool) if arm == "immediate"
                     else feature_gate_flags(g, batch, ttd_scale, t))
@@ -133,6 +137,7 @@ def run_episode(env, cfg, arm, blind_head, episode_index):
             carbon_7200 = float(m.get("total_carbon_kg", 0.0) or 0.0)
         return {"mode": arm, "episode_index": episode_index,
                 "green_offset": offset, "steps": t, "defer_slots": defers,
+                "gain_checksum": round(gain_checksum, 6),
                 "total_carbon_kg": float(m.get("total_carbon_kg", 0.0) or 0.0),
                 "completion_rate_mi": float(m.get("completion_rate_mi", 0.0) or 0.0),
                 "completion_at_7200": compl_7200, "carbon_at_7200": carbon_7200}
@@ -159,6 +164,8 @@ def main():
     ap.add_argument("--episodes", type=int, default=10)
     ap.add_argument("--arms", default=",".join(ARMS))
     ap.add_argument("--drain-horizon", type=int, default=10000)
+    ap.add_argument("--demand-model", default="job_counterfactual_v1",
+                    help="obs_v32_demand_model for ALL arms (legacy|job_counterfactual_v1)")
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args()
 
@@ -173,6 +180,7 @@ def main():
         c.setdefault("gateway_log_dir", "/tmp/h1c_gateway")
         c.setdefault("output_dir", "/tmp/h1c_gateway")
         c["max_episode_length"] = int(args.drain_horizon)
+        c["obs_v32_demand_model"] = args.demand_model
         return c
 
     pathlib.Path("/tmp/h1c_gateway").mkdir(parents=True, exist_ok=True)
