@@ -850,6 +850,29 @@ class GTrXLGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
         return ["value_head", "_last_value"]
 
 
+def hierarchical_deterministic_logits(logits, num_slots: int, num_options: int):
+    """P0-1 decode fix (V32B_ANNEAL_SPEC §0, Codex-approved 2026-08-17).
+
+    The factorized gate emits per-slot 9-way NORMALIZED log-probs, but the
+    evaluator's flat argmax then picks DEFER whenever p_hold > (1-p)*max_j q_j
+    - an effective threshold of ~1/9 under diffuse routing (blind s2: 21,593
+    consecutive all-defer steps). This transform rewrites ONLY the defer logit
+    per slot so that flat argmax reproduces the hierarchical rule
+        defer  iff p_hold > 0.5      (tie -> route, per spec)
+        else   argmax(route[0:num_dc])
+    Route logits stay untouched (their argmax is unchanged); recurrent state
+    and connectors are untouched - the change lives purely in the emitted
+    ACTION_DIST_INPUTS of the deterministic path.
+    """
+    B = logits.shape[0]
+    z = logits.reshape(B, num_slots, num_options)
+    p_hold = z[..., -1].exp()
+    big = z.abs().amax(dim=-1) + 100.0
+    new_defer = torch.where(p_hold > 0.5, big, -big)
+    z = torch.cat([z[..., :-1], new_defer.unsqueeze(-1)], dim=-1)
+    return z.reshape(B, num_slots * num_options)
+
+
 class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
     """
     Score-based Global RLModule for hierarchical multi-DC scheduling.
@@ -1439,6 +1462,14 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         logits, _, state_out = self._forward_pass(batch)
         logits = logits[:, -1, :]
+        # P0-1: env-gated hierarchical deterministic decode. Inference-only -
+        # exploration/train paths untouched, so training and stochastic
+        # evaluation are bit-identical with the flag unset.
+        if (getattr(self, "factorized_temporal_gate", False)
+                and os.environ.get("V32_HIER_DECODE", "") == "1"):
+            n_slots = int(getattr(self, "num_batch_slots", 128))
+            n_opt = logits.shape[-1] // n_slots
+            logits = hierarchical_deterministic_logits(logits, n_slots, n_opt)
         return {
             Columns.ACTION_DIST_INPUTS: logits.unsqueeze(1),
             Columns.STATE_OUT: state_out,
