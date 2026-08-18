@@ -38976,7 +38976,7 @@ experiment_sqt2_oracle:
   carbon_normalization_fixed_max: 2.0e-05
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
-  cloudlet_trace_file: traces/v3b_n1200.csv
+  cloudlet_trace_file: traces/sqt2_n1200_t60.csv
   compressed_power_divisor: 5103.4
   crd:
     baseline:
@@ -39348,7 +39348,7 @@ experiment_sqt2_oracle:
   # --- V3.2 switches (docs/V32_PREREG.md; artifact v3 = calib/experiment_v3_1_oracle_carbon_norm.json)
   obs_v32_job_forecast: true
   obs_v32_demand_model: job_counterfactual_v1             # job-aligned forecast features + persistence blind fill
-  preflight_temporal_profile: sqt2_trough_v1
+  preflight_temporal_profile: sqt2_trough_v2
   defer_deadline_force_mode: latest_start
   defer_deadline_slack_sec: 120.0
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)
@@ -39364,7 +39364,7 @@ experiment_sqt2_noforecast:
   carbon_normalization_fixed_max: 2.0e-05
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
-  cloudlet_trace_file: traces/v3b_n1200.csv
+  cloudlet_trace_file: traces/sqt2_n1200_t60.csv
   compressed_power_divisor: 5103.4
   crd:
     baseline:
@@ -39729,7 +39729,7 @@ experiment_sqt2_noforecast:
   # --- V3.2 switches (docs/V32_PREREG.md; artifact v3 = calib/experiment_v3_1_oracle_carbon_norm.json)
   obs_v32_job_forecast: true
   obs_v32_demand_model: job_counterfactual_v1             # job-aligned forecast features + persistence blind fill
-  preflight_temporal_profile: sqt2_trough_v1
+  preflight_temporal_profile: sqt2_trough_v2
   defer_deadline_force_mode: latest_start
   defer_deadline_slack_sec: 120.0
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)

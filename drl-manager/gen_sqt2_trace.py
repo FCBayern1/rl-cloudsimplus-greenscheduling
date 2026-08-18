@@ -10,6 +10,7 @@ generated for {30,40,50}% and selection between them may use ONLY exposure
 statistics and control completion - never carbon.
 """
 import csv
+import pathlib
 import random
 from pathlib import Path
 
@@ -44,10 +45,18 @@ def generate(frac_tight: float, seed: int = SEED):
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(out_rows)
+    # artifact: tight cloudlet IDs (the preflight identifies the class from
+    # this file, never by re-deriving thresholds)
+    import json
+    art = {"trace": name, "seed": seed, "frac_tight": frac_tight,
+           "tight_slack_range": [TIGHT_LO, TIGHT_HI],
+           "tight_cloudlet_ids": sorted(rows[i]["cloudlet_id"] for i in tight)}
+    pathlib.Path(f"calib/sqt2_trace_t{int(frac_tight*100)}.json").write_text(
+        json.dumps(art, indent=1))
     return name, tight
 
 
 if __name__ == "__main__":
-    for frac in (0.30, 0.40, 0.50):
+    for frac in (0.30, 0.40, 0.50, 0.60):
         name, tight = generate(frac)
         print(f"{name}: {len(tight)}/1200 tight jobs")

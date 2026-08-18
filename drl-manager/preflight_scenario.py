@@ -104,7 +104,7 @@ def main():
     fails = []
     profile_o = str(O.get("preflight_temporal_profile") or "").strip()
     profile_n = str(N.get("preflight_temporal_profile") or "").strip()
-    sqt2 = (profile_o == "sqt2_trough_v1") or ("--sqt2-cert" in sys.argv)
+    sqt2 = profile_o.startswith("sqt2_trough_") or ("--sqt2-cert" in sys.argv)
 
     def na(name, msg):
         print(f"[ N/A ] {name:30s} {msg}")
@@ -156,9 +156,9 @@ def main():
         # v3-lever premises (job-spans-peak commitment) do not map to the
         # SQT2 wait-across-trough lever; marked N/A per Codex adjudication,
         # replaced by the sqt2_trough_v1 block below. NOT deleted globally.
-        na("job longer than a peak", "sqt2_trough_v1: commitment = wait span, not job span")
-        na("job shorter than a cycle", "sqt2_trough_v1")
-        na("slack near one cycle", "sqt2_trough_v1")
+        na("job longer than a peak", f"{profile_o}: commitment = wait span, not job span")
+        na("job shorter than a cycle", profile_o)
+        na("slack near one cycle", profile_o)
     else:
         chk("job longer than a peak", med > pk, f"L median={med:.0f} vs peak={pk:.0f} ({med/pk:.2f}x)")
         chk("job shorter than a cycle", med < 0.6 * cycle,
@@ -174,7 +174,7 @@ def main():
     chk("deadlines land in-episode", bool((dl - L < 7200).all()), f"max latest start={int((dl-L).max())}")
     sh = N["datacenters"][0].get("short_term_rows", 0)
     if sqt2:
-        na("short horizon covers peak", "sqt2_trough_v1: v32 bins horizon is the decision channel")
+        na("short horizon covers peak", f"{profile_o}: v32 bins horizon is the decision channel")
     else:
         chk("short horizon covers peak", sh >= pk, f"short_term_rows={sh} vs peak={pk:.0f}")
     # V3.1: window_carbon_source REMOVED from the whitelist — allowing it to
@@ -185,30 +185,61 @@ def main():
 
     if sqt2:
         import json as _json
-        chk("sqt2: profile symmetric", profile_o == profile_n,
-            f"oracle={profile_o!r} blind={profile_n!r}")
+        chk("sqt2: profile symmetric", profile_o == profile_n == "sqt2_trough_v2",
+            f"oracle={profile_o!r} blind={profile_n!r} (v2 required)")
+        for key in ("defer_deadline_force_mode", "defer_deadline_slack_sec",
+                    "obs_v32_demand_model"):
+            chk(f"sqt2: {key} symmetric", O.get(key) == N.get(key),
+                f"oracle={O.get(key)} blind={N.get(key)}")
+        chk("sqt2: latest-start backstop on",
+            O.get("defer_deadline_force_mode") == "latest_start"
+            and float(O.get("defer_deadline_slack_sec", 0)) == 120.0,
+            f"mode={O.get('defer_deadline_force_mode')} slack={O.get('defer_deadline_slack_sec')}")
         art = _json.loads((Path(__file__).resolve().parent
                            / "calib/sqt2_schedule.json").read_text())
+        trace_name = Path(N["cloudlet_trace_file"]).name
+        tag = trace_name.replace("sqt2_n1200_", "").replace(".csv", "")
+        tr_art = _json.loads((Path(__file__).resolve().parent
+                              / f"calib/sqt2_trace_{tag}.json").read_text())
+        tight_ids = set(tr_art["tight_cloudlet_ids"])
+        tight_flags = [r["cloudlet_id"] in tight_ids for r in tr]
         short_max = art["off_short"][1]
         long_min, long_max = art["off_long"]
         on_min = art["on_range"][0]
-        slack_p50 = float(np.median(slack))
-        slack_p95 = float(np.percentile(slack, 95))
         horizon = int(N.get("obs_v32_forecast_horizon_steps", 0))
         bins = int(N.get("obs_v32_forecast_bin_count", 1))
-        chk("sqt2: structural separation",
-            short_max <= slack_p50 < long_min,
-            f"short_max={short_max} <= slack_p50={slack_p50:.0f} < long_min={long_min}")
+        # class-conditional structure on the EXECUTABLE wait budget
+        # B = deadline - arrival - runtime - 120 (== latest-start backstop)
+        B = dl - arr - L - 120.0
+        Bt = B[np.asarray(tight_flags)]
+        Bl = B[~np.asarray(tight_flags)]
+        chk("sqt2v2: tight budget positive", float(np.percentile(Bt, 5)) > 0,
+            f"B_p05(tight)={np.percentile(Bt, 5):.0f} > 0")
+        chk("sqt2v2: tight cannot outwait short troughs",
+            float(np.percentile(Bt, 95)) < short_max,
+            f"B_p95(tight)={np.percentile(Bt, 95):.0f} < short_max={short_max}")
+        chk("sqt2v2: loose budget between classes",
+            short_max <= float(np.median(Bl)) < long_min,
+            f"short_max={short_max} <= B_p50(loose)={np.median(Bl):.0f} < long_min={long_min}")
         anchors = [(1009 * k) % int(N["green_episode_offset_range"])
-                   for k in range(10)]
-        exp = sqt2_trough_exposure(arr, L, dl, MI, art["troughs"], anchors)
-        chk("sqt2: decision exposure (MAIN)",
+                   for k in (0, 20, 40, 59, 79, 99, 119, 138, 158, 178)]
+        exp = sqt2_trough_exposure(arr, L, dl, MI, art["troughs"], anchors,
+                                   kwargs_tight=tight_flags)
+        chk("sqt2v2: decision exposure (MAIN)",
             0.35 <= exp["worthy_share"] <= 0.65,
-            f"trough-arrival MI shares worthy={exp['worthy_share']:.2f} / "
-            f"not-worth={exp['notworth_share']:.2f} "
+            f"worthy={exp['worthy_share']:.2f} not-worth={exp['notworth_share']:.2f} "
             f"(trough-arrival MI frac={exp['trough_arrival_mi_frac']:.2f})")
+        chk("sqt2v2: P(worthy|tight) in band",
+            0.25 <= exp["p_worthy_given_tight"] <= 0.75,
+            f"P(worthy|tight)={exp['p_worthy_given_tight']:.2f}")
+        cells = {k: round(v / 1e9, 1) for k, v in exp["cell_mi"].items()}
+        print(f"[info ] sqt2v2 exposure cells (GMI): {cells}")
+        chk("sqt2v2: distinct trough coverage",
+            exp["distinct_troughs_hit"] >= 8,
+            f"{exp['distinct_troughs_hit']} distinct troughs across anchors")
         chk("sqt2: cashability", int(L.max()) <= on_min,
             f"runtime_max={int(L.max())} <= ON_min={on_min}")
+        slack_p95 = float(np.percentile(slack, 95))
         chk("sqt2: horizon covers waitable+slack",
             horizon >= max(short_max, slack_p95),
             f"horizon={horizon} >= max(short_max={short_max}, slack_p95={slack_p95:.0f})")
