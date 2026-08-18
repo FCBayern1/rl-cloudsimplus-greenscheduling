@@ -50,7 +50,7 @@ def peak_stats(blk):
 
 
 def sqt2_trough_exposure(arrivals, runtimes, deadlines, mi, troughs,
-                         offsets, margin=120.0, warmup=13):
+                         offsets, margin=120.0, warmup=13, kwargs_tight=None):
     """SQT2 decision-exposure (Codex adjudication 2026-08-18): among jobs that
     ARRIVE INSIDE a trough (the population that actually faces the wait
     decision), classify wait-worthy vs not-worth using the REMAINING trough
@@ -60,24 +60,35 @@ def sqt2_trough_exposure(arrivals, runtimes, deadlines, mi, troughs,
     Also returns the all-jobs split (ON arrivals counted not-worth) as a
     reported secondary view."""
     iv = [(t["start"], t["start"] + t["dur"]) for t in troughs]
-    worthy_mi = notworth_mi = on_mi = 0.0
+    tight_flags = kwargs_tight if kwargs_tight is not None else [False] * len(mi)
+    cell = {("tight", True): 0.0, ("tight", False): 0.0,
+            ("loose", True): 0.0, ("loose", False): 0.0}
+    on_mi = 0.0
+    hit_troughs = set()
     for off in offsets:
-        for a, rt, dl, m in zip(arrivals, runtimes, deadlines, mi):
+        for a, rt, dl, m, tg in zip(arrivals, runtimes, deadlines, mi, tight_flags):
             row = warmup + off + int(a)
             hit = next(((s, e) for (s, e) in iv if s <= row < e), None)
             if hit is None:
                 on_mi += m
                 continue
+            hit_troughs.add(hit[0])
             residual = hit[1] - row
-            budget = dl - a - rt - margin
-            if budget > 0 and residual <= budget:
-                worthy_mi += m
-            else:
-                notworth_mi += m
+            budget = dl - a - rt - margin      # == latest-start backstop budget
+            worthy = budget > 0 and residual <= budget
+            cell[("tight" if tg else "loose", worthy)] += m
+    worthy_mi = cell[("tight", True)] + cell[("loose", True)]
+    notworth_mi = cell[("tight", False)] + cell[("loose", False)]
     trough_tot = worthy_mi + notworth_mi
+    tight_tot = cell[("tight", True)] + cell[("tight", False)]
     return {"worthy_share": worthy_mi / trough_tot if trough_tot else 0.0,
             "notworth_share": notworth_mi / trough_tot if trough_tot else 0.0,
-            "trough_arrival_mi_frac": trough_tot / max(1e-9, trough_tot + on_mi)}
+            "trough_arrival_mi_frac": trough_tot / max(1e-9, trough_tot + on_mi),
+            "p_worthy_given_tight": (cell[("tight", True)] / tight_tot
+                                     if tight_tot else float("nan")),
+            "cell_mi": {f"{c}_{'worthy' if w else 'notworth'}": v
+                        for (c, w), v in cell.items()},
+            "distinct_troughs_hit": len(hit_troughs)}
 
 
 def main():
