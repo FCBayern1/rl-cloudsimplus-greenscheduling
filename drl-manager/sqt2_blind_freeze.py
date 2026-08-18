@@ -41,6 +41,13 @@ def arm_spec(arm: str):
     return arm, 0.5
 
 
+def nowait_contract_ok(rec: dict, contract: float = CONTRACT) -> bool:
+    """Codex base-certification clause: the shielded spatial base must meet
+    the DUAL contract at every anchor before any candidate may run."""
+    return (rec["completion_at_7200"] >= contract
+            and rec["completion_rate_mi"] >= contract)
+
+
 def freeze_by_carbon(records, accuracies=None, contract: float = CONTRACT):
     """Pure freeze rule: dual-SLA filter, then min median terminal carbon.
 
@@ -120,7 +127,17 @@ def main():
                       f"c@7200={rec['completion_at_7200']:.4f} "
                       f"term={rec['completion_rate_mi']:.4f} "
                       f"defer={rec['defer_slots']} "
+                      f"spill={rec.get('spill_slots', 0)} "
                       f"forced={rec['deadline_forced_count']}", flush=True)
+                if arm == "nowait" and not nowait_contract_ok(rec):
+                    print(f"[BFRZ ABORT] shielded base below dual contract "
+                          f"at ep{k} (c@7200={rec['completion_at_7200']:.4f} "
+                          f"term={rec['completion_rate_mi']:.4f}) - base NOT "
+                          f"certified, no candidate race", flush=True)
+                    pathlib.Path(args.records_out).write_text(json.dumps(
+                        {"records": records,
+                         "verdict": "BASE_CERT_FAIL"}, indent=1))
+                    return
         finally:
             try:
                 env.close()

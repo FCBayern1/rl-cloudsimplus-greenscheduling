@@ -61,3 +61,11 @@ class TestFreezeByCarbon:
         acc = {"hazard@0.40": {"acc": 0.77}, "hazard@0.50": {"acc": 0.78}}
         _, winner = freeze_by_carbon(records, accuracies=acc)
         assert winner == "hazard@0.50"
+
+
+class TestNowaitContract:
+    def test_dual_contract_gate(self):
+        from sqt2_blind_freeze import nowait_contract_ok
+        assert nowait_contract_ok(rec("nowait", 0.1, c7200=0.996, term=0.999))
+        assert not nowait_contract_ok(rec("nowait", 0.1, c7200=0.9921))
+        assert not nowait_contract_ok(rec("nowait", 0.1, term=0.99))
