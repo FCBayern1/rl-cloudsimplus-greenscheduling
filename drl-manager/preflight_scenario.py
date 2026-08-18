@@ -188,7 +188,8 @@ def main():
         chk("sqt2: profile symmetric", profile_o == profile_n == "sqt2_trough_v2",
             f"oracle={profile_o!r} blind={profile_n!r} (v2 required)")
         for key in ("defer_deadline_force_mode", "defer_deadline_slack_sec",
-                    "obs_v32_demand_model", "obs_v32_deadline_margin_sec"):
+                    "obs_v32_demand_model", "obs_v32_deadline_margin_sec",
+                    "cloudlet_cpu_utilization"):
             chk(f"sqt2: {key} symmetric", O.get(key) == N.get(key),
                 f"oracle={O.get(key)} blind={N.get(key)}")
         chk("sqt2: latest-start backstop on",
@@ -198,6 +199,10 @@ def main():
         chk("sqt2: obs margin == backstop slack (SQT2.2-Clean)",
             float(O.get("obs_v32_deadline_margin_sec", 0)) == 120.0,
             f"obs_v32_deadline_margin_sec={O.get('obs_v32_deadline_margin_sec')}")
+        chk("sqt2: full CPU utilization (physics == registered maths)",
+            float(O.get("cloudlet_cpu_utilization", 0.5)) == 1.0,
+            f"cloudlet_cpu_utilization={O.get('cloudlet_cpu_utilization')}"
+            " (0.5 stretches runtimes ~2.5x and voids every budget check)")
         trace_name = Path(N["cloudlet_trace_file"]).name
         prefix = trace_name.split("_n1200_")[0]        # sqt2 | sqt2ho
         sched_art = "calib/sqt2ho_schedule.json" if prefix == "sqt2ho" else "calib/sqt2_schedule.json"

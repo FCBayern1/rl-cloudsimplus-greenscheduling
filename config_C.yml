@@ -38977,6 +38977,7 @@ experiment_sqt2_oracle:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/sqt2_n1200_t60.csv
+  cloudlet_cpu_utilization: 1.0                           # SQT2.2-Clean: execution physics obeys runtime=MI/(PES*MIPS) (legacy default 0.5)
   compressed_power_divisor: 5103.4
   crd:
     baseline:
@@ -39366,6 +39367,7 @@ experiment_sqt2_noforecast:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/sqt2_n1200_t60.csv
+  cloudlet_cpu_utilization: 1.0                           # SQT2.2-Clean: execution physics obeys runtime=MI/(PES*MIPS) (legacy default 0.5)
   compressed_power_divisor: 5103.4
   crd:
     baseline:
@@ -39745,6 +39747,7 @@ experiment_sqt2ho_oracle:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/sqt2ho_n1200_t60.csv
+  cloudlet_cpu_utilization: 1.0                           # SQT2.2-Clean: execution physics obeys runtime=MI/(PES*MIPS) (legacy default 0.5)
   compressed_power_divisor: 5103.4
   crd:
     baseline:
@@ -40131,6 +40134,7 @@ experiment_sqt2ho_noforecast:
   carbon_normalization_mode: FIXED
   carbon_penalty_mode: TOTAL
   cloudlet_trace_file: traces/sqt2ho_n1200_t60.csv
+  cloudlet_cpu_utilization: 1.0                           # SQT2.2-Clean: execution physics obeys runtime=MI/(PES*MIPS) (legacy default 0.5)
   compressed_power_divisor: 5103.4
   crd:
     baseline:

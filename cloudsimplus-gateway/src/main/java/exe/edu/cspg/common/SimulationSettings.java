@@ -89,6 +89,10 @@ public class SimulationSettings {
     // The legacy fixed-lead rule (now + slack >= deadline) fires ~600 s early
     // for tight-slack jobs and would erase the U[200,900] class entirely.
     private final String deferDeadlineForceMode;
+    // SQT2.2-Clean physics alignment (Codex ruling, 2026-08-18): per-cloudlet
+    // CPU utilization. Default 0.5 preserves byte-level legacy/v3 semantics;
+    // SQT2 experiments set 1.0 so execution obeys runtime = MI/(PES*MIPS).
+    private final double cloudletCpuUtilization;
     // Fix B (urgency deferral cost): deferring a cloudlet is no longer free. The global
     // per-action reward gets −deferUrgencyWeight·urgency for each deferred cloudlet, where
     // urgency = clamp(1 − (deadline − now)/deferUrgencyWindowSec, 0, 1). Fresh work (far
@@ -430,6 +434,7 @@ public class SimulationSettings {
         this.deferDeadlineForceEnabled = getBoolParam(params, "defer_deadline_force_enabled", true);
         this.deferDeadlineSlackSec = getDoubleParam(params, "defer_deadline_slack_sec", 600.0);
         this.deferDeadlineForceMode = getStringParam(params, "defer_deadline_force_mode", "legacy").trim();
+        this.cloudletCpuUtilization = getDoubleParam(params, "cloudlet_cpu_utilization", 0.5);
         this.deferUrgencyWeight = getDoubleParam(params, "defer_urgency_weight", 0.0);
         this.deferUrgencyWindowSec = getDoubleParam(params, "defer_urgency_window_sec", 3600.0);
         this.deferBaseCost = getDoubleParam(params, "defer_base_cost", 0.0);

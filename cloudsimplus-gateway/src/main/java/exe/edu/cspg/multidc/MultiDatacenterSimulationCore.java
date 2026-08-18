@@ -343,9 +343,12 @@ public class MultiDatacenterSimulationCore {
             }
         }
 
-        // Convert descriptors to Cloudlet objects
+        // Convert descriptors to Cloudlet objects (CPU utilization from
+        // settings: 0.5 legacy default, 1.0 in SQT2 so execution matches the
+        // registered runtime = MI/(PES*MIPS) maths)
+        final double cpuUtil = settings.getCloudletCpuUtilization();
         return descriptors.stream()
-                .map(CloudletDescriptor::toCloudlet)
+                .map(d -> d.toCloudlet(cpuUtil))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }

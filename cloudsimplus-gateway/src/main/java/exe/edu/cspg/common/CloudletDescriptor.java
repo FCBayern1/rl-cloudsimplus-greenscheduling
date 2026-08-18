@@ -120,12 +120,18 @@ public class CloudletDescriptor {
     }
 
     public Cloudlet toCloudlet() {
+        // Legacy default: 0.5 CPU utilization, byte-level semantics preserved
+        // for every pre-SQT2 scenario (Codex ruling, 2026-08-18).
+        return toCloudlet(0.5);
+    }
+
+    public Cloudlet toCloudlet(double cpuUtilization) {
         // Use UtilizationModelDynamic for realistic resource usage
         // Lower RAM/BW requests to reduce resource contention on VMs
         Cloudlet cloudlet = new CloudletSimple(cloudletId, mi, numberOfCores)
                 .setFileSize(DataCloudTags.DEFAULT_MTU)
                 .setOutputSize(DataCloudTags.DEFAULT_MTU)
-                .setUtilizationModelCpu(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.5))
+                .setUtilizationModelCpu(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(cpuUtilization))
                 .setUtilizationModelRam(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.15))
                 .setUtilizationModelBw(new org.cloudsimplus.utilizationmodels.UtilizationModelDynamic(0.1));
         cloudlet.setSubmissionDelay(submissionDelay);
