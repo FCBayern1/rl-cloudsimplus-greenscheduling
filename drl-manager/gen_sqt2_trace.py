@@ -14,8 +14,10 @@ import pathlib
 import random
 from pathlib import Path
 
-SRC = Path("../cloudsimplus-gateway/src/main/resources/traces/v3b_n1200.csv")
-OUT = Path("../cloudsimplus-gateway/src/main/resources/traces")
+_REPO = Path(__file__).resolve().parent.parent
+SRC = _REPO / "cloudsimplus-gateway/src/main/resources/traces/v3b_n1200.csv"
+OUT = _REPO / "cloudsimplus-gateway/src/main/resources/traces"
+CALIB = Path(__file__).resolve().parent / "calib"
 SEED = 20260818
 TIGHT_LO, TIGHT_HI = 200, 900
 MIPS = 40000.0
@@ -51,7 +53,8 @@ def generate(frac_tight: float, seed: int = SEED, prefix: str = "sqt2"):
     art = {"trace": name, "seed": seed, "frac_tight": frac_tight,
            "tight_slack_range": [TIGHT_LO, TIGHT_HI],
            "tight_cloudlet_ids": sorted(rows[i]["cloudlet_id"] for i in tight)}
-    pathlib.Path(f"calib/{prefix}_trace_t{int(frac_tight*100)}.json").write_text(
+    CALIB.mkdir(exist_ok=True)
+    (CALIB / f"{prefix}_trace_t{int(frac_tight*100)}.json").write_text(
         json.dumps(art, indent=1))
     return name, tight
 

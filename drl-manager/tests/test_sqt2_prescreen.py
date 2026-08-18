@@ -170,3 +170,67 @@ class TestTroughIndex:
         assert ti.query(100) == (True, 0.0, 50.0)
         assert ti.query(149) == (True, 49.0, 1.0)
         assert ti.query(150) == (False, 0.0, 0.0)
+
+
+class TestDualValidity:
+    def _rec(self, c7200, term, carbon=0.1):
+        return {"completion_at_7200": c7200, "completion_rate_mi": term,
+                "total_carbon_kg": carbon, "carbon_at_7200": carbon * 0.97}
+
+    def test_valid_requires_all_four_contracts(self):
+        from sqt2_prescreen import pair_verdict_dual
+        good = self._rec(0.999, 1.0)
+        v = pair_verdict_dual(self._rec(0.999, 1.0, 0.09), good)
+        assert v["valid"] and v["valid_7200"] and v["valid_terminal"]
+        # clairvoyant parks work past 7200: terminal fine, @7200 fails
+        v = pair_verdict_dual(self._rec(0.97, 1.0, 0.09), good)
+        assert not v["valid"] and v["valid_terminal"] and not v["valid_7200"]
+        v = pair_verdict_dual(self._rec(0.999, 0.99, 0.09), good)
+        assert not v["valid"] and not v["valid_terminal"]
+        v = pair_verdict_dual(self._rec(0.999, 1.0, 0.09), self._rec(0.98, 1.0))
+        assert not v["valid_7200"]
+
+    def test_carbon_primary_stays_terminal_and_7200_reported(self):
+        from sqt2_prescreen import pair_verdict_dual
+        v = pair_verdict_dual(self._rec(1.0, 1.0, 0.09), self._rec(1.0, 1.0, 0.10))
+        assert v["rel_delta_raw"] == pytest.approx(-0.1)
+        assert v["rel_delta_c7200"] == pytest.approx(-0.1)
+
+
+class TestFrozenGateV2:
+    def _write(self, tmp_path, extra):
+        art = {"q_star": 0.5, "comparator": "hazard",
+               "accuracies": {"naive": {"acc": 0.5}}}
+        art.update(extra)
+        (tmp_path / "calib").mkdir(exist_ok=True)
+        (tmp_path / "calib/sqt2_hazard_freeze.json").write_text(
+            json.dumps(art))
+
+    def test_v2_preferred_over_accuracy_freeze(self, tmp_path):
+        self._write(tmp_path, {"comparator_v2": "hazard@0.40",
+                               "q_star_carbon": 0.40})
+        assert load_frozen_gate(tmp_path) == (0.40, "hazard")
+
+    def test_v2_naive_winner(self, tmp_path):
+        self._write(tmp_path, {"comparator_v2": "naive"})
+        assert load_frozen_gate(tmp_path) == (0.5, "naive")
+
+    def test_v2_null_refuses_formal_run(self, tmp_path):
+        self._write(tmp_path, {"comparator_v2": None})
+        with pytest.raises(RuntimeError):
+            load_frozen_gate(tmp_path)
+
+
+class TestPesLedger:
+    def test_wide_job_charges_full_width(self):
+        a = PowerAwareAllocator([600, 600], [0, 0], [4, 1], [0, 0], [0.5, 0.5])
+        assert a.take(4) == 0                     # dc1 has only 1 PE free
+        assert a.ledger[0] == 0.0                 # charged 4, not 1
+        # dc0 exhausted for another wide job; dc1 can't fit it either
+        d = a.take(4)
+        assert d in (0, 1)                        # overflow queue path
+        assert a.ledger[1] == 1.0                 # never over-charged
+
+    def test_trough_fallback_also_respects_width(self):
+        a = PowerAwareAllocator([0, 0], [0, 0], [2, 8], [0, 0], [0.25, 0.7])
+        assert a.take(4) == 1                     # low-brown dc0 lacks 4 PEs

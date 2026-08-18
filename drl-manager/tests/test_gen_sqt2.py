@@ -57,9 +57,8 @@ class TestHeldOutVariant:
 class TestTracePrefix:
     def test_prefix_and_seed_change_trace(self, tmp_path, monkeypatch):
         import gen_sqt2_trace as g
-        monkeypatch.setattr(g, "SRC", g.SRC.resolve())
         monkeypatch.setattr(g, "OUT", tmp_path)
-        monkeypatch.chdir(tmp_path); (tmp_path / "calib").mkdir()
+        monkeypatch.setattr(g, "CALIB", tmp_path / "calib")
         name, tight = g.generate(0.60, seed=20260819, prefix="sqt2ho")
         assert name == "sqt2ho_n1200_t60.csv"
         assert (tmp_path / "calib/sqt2ho_trace_t60.json").exists()

@@ -193,3 +193,45 @@ t50 的混合 p50=1292 已跌破 short_max=1500,但这是双峰的**预期形态
 (tight p50=553 提供 not-worth,loose p50=2066 提供 worthy)。
 提议改为**分类检查**:short_max ≤ slack_p50(loose) < long_min ∧
 slack_p95(tight) < short_max(紧类连短槽都等不起的构造性保证)。
+
+---
+
+## SQT2.2-Clean(Codex 四层清洗裁定,2026-08-18 中午,全部落地)
+
+**裁定要旨**:考场物理层成立(同步深槽堵空间逃逸、双峰槽长废槽龄背诵、双峰 slack 破
+"紧跑松等"、53.3% trough MI 落在 worthy/not-worth 混合桶 = 只有未来信息能消除的歧义),
+**场景分布冻结不再调**;第一轮粗筛(v0)作废为诊断记录(3+2 个 nowait 格,全零路由暴露
+SlotAllocator 深槽退化到 DC0)。四层清洗:
+
+1. **空间底座**:主底座 = 冻结 V3.2 blind PPO route-only
+   (`logs/v32_nofc600_s1/.../checkpoint_000010`,defer logit 剔除,argmax 解码,
+   所有时间臂共享同一空间策略);哨兵 = PowerAwareAllocator(绿 headroom 净扣
+   作业反事实增量 2.541 W/PE;深槽回退按棕碳因子+每步 PE 台账+队列分散)。
+   正式结论必须在 PPO 底座上成立,哨兵只跑 nowait/clairvoyant 方向核对。
+2. **hazard 冻结**:候选 q∈{0.25,0.40,0.50,0.60} 在校准数据离线冻结
+   (`sqt2_hazard_calibrate.py`,决策集=179 offsets × 槽内 B_eff>0 到达,n=82472):
+   naive 0.504 / q=.25 0.732 / **q=.50 0.773**(峰)/ q=.60 0.757 →
+   **q*=0.50,comparator=hazard**(`calib/sqt2_hazard_freeze.json`)。
+   最佳盲分类正确率 77% = 信息缺口实测(与 53.3% 混合桶互证)。
+3. **7200 时域锁死**:B_eff = min(deadline−now−runtime−120, 7200−now−runtime−120)
+   (复用 `teacher_reward_audit.effective_budget`);t≥7200 禁 defer;
+   completion@7200 与 terminal 双报;`obs_v32_deadline_margin_sec: 120` 四臂配平
+   (特征=老师=Java backstop 同一等待预算,preflight 对称键+定值检查已加)。
+4. **判决协议**:nowait 10/10 completion@7200 ≥99.5%(违约即 ABORT,无回退);
+   clairvoyant vs nowait 中位 ≤−8% ∧ vs 冻结 comparator 中位 ≤−5% ∧
+   两组同号 ≥8/10 ∧ 有效配对 ≥8;deadline_forced/backlog_max/defer_slots 必报
+   (防撞护栏刷分)。
+
+**数据分裂**:cal = 95xx/seed 20260818(选 t60、冻 hazard、协议 shakedown);
+**held-out = 96xx/seed 20260819**(schedule+trace 双新种子,一次性正式判决)。
+held-out 预注册种子一把过:绿比 0.620、48短/10长槽、全认证 GREEN
+(worthy=0.50,P(worthy|tight)=0.29,20 槽实例),零参数购物。
+spec 欠账关闭:green_executable_MI 正式公式落地 `sqt2_capacity_audit.py`,
+最差锚窗比 cal 3.03× / ho 2.91× ≥ 1.2(`calib/*_capacity_audit.json`)。
+
+**通过后仍需两关再训 PPO**(裁定第四节,未实现,过粗筛才建):
+表示能力(20 bins 特征对 clairvoyant 动作复现 ≥95%,clean/shuffle/anti 必须
+改变特征与动作)+ 奖励一致性(折现/未折现回报都偏好 clairvoyant)。
+
+**状态**:cal shakedown 运行中(ppo×4臂 + greedy×2臂 × 10 锚,~8h);
+通过则 held-out 一次性判决。

@@ -75,7 +75,8 @@ def main():
     ap.add_argument("--seed", type=int, default=20260818)   # pre-registered
     ap.add_argument("--divisor", type=float, required=True,
                     help="compressed_power_divisor of the target experiment")
-    ap.add_argument("--out", default="../cloudsimplus-gateway/src/main/resources/windProduction/simplified")
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent
+                    / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
     ap.add_argument("--year", type=int, default=2021)
     ap.add_argument("--variant", choices=sorted(VARIANTS), default="cal")
     args = ap.parse_args()
@@ -107,7 +108,7 @@ def main():
            "short_time_s": sum(t["dur"] for t in short),
            "long_time_s": sum(t["dur"] for t in long_),
            "troughs": troughs}
-    art_path = Path(VARIANTS[args.variant][1])
+    art_path = Path(__file__).resolve().parent / VARIANTS[args.variant][1]
     art_path.parent.mkdir(exist_ok=True)
     art_path.write_text(json.dumps(art, indent=1))
     print(f"green ratio {green_ratio:.3f} (target 0.55-0.65) | "

@@ -112,19 +112,20 @@ class PowerAwareAllocator:
         self.brown = np.asarray(brown_factor, dtype=float)
 
     def take(self, pes: float = 1.0) -> int:
-        dp = max(1.0, pes) * W_PER_PE_DYN
-        cand = np.where((self.ledger >= 1) & (self.head >= dp))[0]
+        need = max(1.0, pes)          # PE ledger charged at the job's width
+        dp = need * W_PER_PE_DYN
+        cand = np.where((self.ledger >= need) & (self.head >= dp))[0]
         if cand.size:
             d = int(cand[np.argmax(self.head[cand])])
             self.head[d] -= dp
-            self.ledger[d] -= 1
+            self.ledger[d] -= need
             self.queue[d] += 1
             return d
-        cand = np.where(self.ledger >= 1)[0]
+        cand = np.where(self.ledger >= need)[0]
         if cand.size:
             score = self.brown[cand] * 1000.0 + self.queue[cand]
             d = int(cand[np.argmin(score)])
-            self.ledger[d] -= 1
+            self.ledger[d] -= need
             self.queue[d] += 1
             return d
         d = int(np.argmin(self.queue))
@@ -133,8 +134,21 @@ class PowerAwareAllocator:
 
 
 def load_frozen_gate(repo: pathlib.Path):
-    """(q_star, comparator) frozen by the calibration script - never a CLI."""
+    """(q_star, comparator) frozen by the calibration scripts - never a CLI.
+
+    Prefers the carbon/SLA freeze (comparator_v2 / q_star_carbon, Codex
+    P0-2) when sqt2_blind_freeze.py has run; falls back to the offline
+    accuracy freeze otherwise. comparator_v2 == null (no candidate met the
+    dual SLA) is an escalation state: refuse to run a formal verdict."""
     art = json.loads((repo / "calib/sqt2_hazard_freeze.json").read_text())
+    if "comparator_v2" in art:
+        comp = art["comparator_v2"]
+        if comp is None:
+            raise RuntimeError("comparator_v2 is null (no blind candidate met "
+                               "the dual SLA) - Codex ruling needed before "
+                               "any formal prescreen run")
+        q = float(art.get("q_star_carbon", art["q_star"]))
+        return q, ("hazard" if comp.startswith("hazard") else "naive")
     return float(art["q_star"]), str(art["comparator"])
 
 
@@ -233,17 +247,41 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
             "completion_at_7200": compl_7200, "carbon_at_7200": carbon_7200}
 
 
+def pair_verdict_dual(gate_rec: dict, base_rec: dict,
+                      contract: float = CONTRACT) -> dict:
+    """Dual-horizon validity (Codex P0-1, 2026-08-18 afternoon).
+
+    A pair is valid ONLY if BOTH arms meet the completion contract at BOTH
+    accounts: completion@7200 (the training-horizon SLA - a clairvoyant
+    that parks work past the decision horizon must not count as a win) AND
+    terminal completion (the drain account - tail energy cannot vanish).
+    Carbon primary stays terminal (pair_verdict); carbon@7200 is reported."""
+    v = pair_verdict(gate_rec, base_rec, contract)
+    v["valid_terminal"] = v["valid"]
+    v["valid_7200"] = (gate_rec["completion_at_7200"] >= contract
+                       and base_rec["completion_at_7200"] >= contract)
+    v["valid"] = bool(v["valid_terminal"] and v["valid_7200"])
+    b7, g7 = base_rec["carbon_at_7200"], gate_rec["carbon_at_7200"]
+    v["rel_delta_c7200"] = (g7 - b7) / max(1e-9, b7)
+    return v
+
+
 def paired_stats(gate_recs: List[dict], base_recs: Dict[int, dict]):
     """Validity-gated pairs + sign counts vs an arbitrary reference arm."""
-    pv = [dict(pair_verdict(r, base_recs[r["episode_index"]]),
+    pv = [dict(pair_verdict_dual(r, base_recs[r["episode_index"]]),
                episode_index=r["episode_index"]) for r in gate_recs]
     valid = [v for v in pv if v["valid"]]
     neg = sum(1 for v in valid if v["rel_delta_raw"] < 0)
     return {"valid_pairs": len(valid), "invalid_pairs": len(pv) - len(valid),
+            "invalid_7200": sum(1 for v in pv if not v["valid_7200"]),
+            "invalid_terminal": sum(1 for v in pv if not v["valid_terminal"]),
             "neg_signs": neg,
             "median_rel_delta": (float(np.median([v["rel_delta_raw"]
                                                   for v in valid]))
-                                 if valid else None)}
+                                 if valid else None),
+            "median_rel_delta_c7200": (float(np.median([v["rel_delta_c7200"]
+                                                        for v in valid]))
+                                       if valid else None)}
 
 
 def final_verdict(vs_nowait: dict, vs_comp: dict, comparator: str) -> dict:
