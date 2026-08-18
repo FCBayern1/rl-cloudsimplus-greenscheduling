@@ -115,6 +115,20 @@ final class PerActionRewardMath {
     }
 
     /**
+     * SQT2.2 latest-start deadline backstop (Codex adjudication 2026-08-18):
+     * force-route a deferred job iff {@code now + runtime + slack >= deadline}
+     * with {@code runtime = lengthMi / (pes * mipsPerPe)} — the reward-ledger
+     * runtime unit. Unlike the legacy fixed-lead rule this leaves tight-slack
+     * jobs their genuine wait window instead of firing ~slackSec early.
+     */
+    static boolean deadlineForceLatestStart(double nowSec, double deadlineSec,
+                                            double lengthMi, long pes,
+                                            double mipsPerPe, double slackSec) {
+        double runtime = lengthMi / (Math.max(1L, pes) * Math.max(1.0, mipsPerPe));
+        return nowSec + runtime + slackSec >= deadlineSec;
+    }
+
+    /**
      * Full per-action ROUTE reward under the given modes:
      * {@code −wC·normalize(kg) + completionTerm(p)}. Used directly by the
      * truth-table tests; {@code accumulatePerActionReward} composes the same

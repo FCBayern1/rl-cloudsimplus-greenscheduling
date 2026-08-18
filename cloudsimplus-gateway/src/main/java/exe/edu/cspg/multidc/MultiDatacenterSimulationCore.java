@@ -617,8 +617,25 @@ public class MultiDatacenterSimulationCore {
                 // deferDeadlineSlackSec of now can no longer safely wait — force-route it to
                 // the greenest available DC instead of deferring again. Without this, the
                 // deterministic policy defers work indefinitely → starvation collapse.
-                if (settings.isDeferDeadlineForceEnabled() && ddl != null
-                        && currentClock + settings.getDeferDeadlineSlackSec() >= ddl) {
+                boolean backstopFires = false;
+                if (settings.isDeferDeadlineForceEnabled() && ddl != null) {
+                    if ("latest_start".equals(settings.getDeferDeadlineForceMode())) {
+                        double refMips = 1.0;
+                        for (DatacenterInstance inst : datacenterInstances) {
+                            if (inst != null && inst.getConfig() != null) {
+                                double m = inst.getConfig().getVmPeMips();
+                                refMips = refMips <= 1.0 ? m : Math.min(refMips, m);
+                            }
+                        }
+                        backstopFires = PerActionRewardMath.deadlineForceLatestStart(
+                                currentClock, ddl, cloudlet.getLength(),
+                                cloudlet.getPesNumber(), refMips,
+                                settings.getDeferDeadlineSlackSec());
+                    } else {   // legacy fixed-lead, byte-identical
+                        backstopFires = currentClock + settings.getDeferDeadlineSlackSec() >= ddl;
+                    }
+                }
+                if (backstopFires) {
                     int forced = pickGreenestAvailableDc(cloudlet);
                     if (forced >= 0 && globalBroker.routeCloudletToDatacenter(cloudlet, forced)) {
                         routedCount++;

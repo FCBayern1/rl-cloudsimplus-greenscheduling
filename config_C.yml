@@ -39349,6 +39349,8 @@ experiment_sqt2_oracle:
   obs_v32_job_forecast: true
   obs_v32_demand_model: job_counterfactual_v1             # job-aligned forecast features + persistence blind fill
   preflight_temporal_profile: sqt2_trough_v1
+  defer_deadline_force_mode: latest_start
+  defer_deadline_slack_sec: 120.0
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)
   obs_v32_forecast_bin_count: 20   # scan_v32_horizon.py: 93.8% teacher-gain capture, 98.8% decision agreement
   per_action_spatial_center: candidate_mean
@@ -39728,6 +39730,8 @@ experiment_sqt2_noforecast:
   obs_v32_job_forecast: true
   obs_v32_demand_model: job_counterfactual_v1             # job-aligned forecast features + persistence blind fill
   preflight_temporal_profile: sqt2_trough_v1
+  defer_deadline_force_mode: latest_start
+  defer_deadline_slack_sec: 120.0
   obs_v32_forecast_horizon_steps: 3600   # = urgency window; covers p95 slack 2918s (default 120 is blind: peak cycle is 1029s)
   obs_v32_forecast_bin_count: 20   # scan_v32_horizon.py: 93.8% teacher-gain capture, 98.8% decision agreement
   per_action_spatial_center: candidate_mean

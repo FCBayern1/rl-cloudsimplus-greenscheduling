@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Math-only regression tests for the per-action reward formulas.
@@ -176,4 +177,40 @@ public class PerActionRewardMathTest {
         double r = absoluteReward(0.05, 0.5, 0.0, 0.0, 0.05);
         assertEquals(0.0, r, 1e-12);
     }
+
+    // ---- SQT2.2 latest-start backstop (Codex adjudication 2026-08-18) ----
+
+    @Test
+    void latestStartForcesExactlyAtBoundary() {
+        // runtime = 40e6 MI / (1 pes * 40000 MIPS) = 1000 s; slack 120
+        // deadline 3120, now 2000: 2000+1000+120 == 3120 -> force
+        assertTrue(PerActionRewardMath.deadlineForceLatestStart(
+                2000, 3120, 40_000_000, 1, 40000, 120));
+        // one second earlier -> no force (tight job keeps its wait window)
+        assertFalse(PerActionRewardMath.deadlineForceLatestStart(
+                1999, 3120, 40_000_000, 1, 40000, 120));
+    }
+
+    @Test
+    void latestStartUsesPesInRuntime() {
+        // 4 pes -> runtime 250 s: at now=2000 deadline 2380, 2000+250+120=2370 < 2380 -> wait ok
+        assertFalse(PerActionRewardMath.deadlineForceLatestStart(
+                2000, 2380, 40_000_000, 4, 40000, 120));
+        // 1 pes -> runtime 1000 s: same instant is far past latest start -> force
+        assertTrue(PerActionRewardMath.deadlineForceLatestStart(
+                2000, 2380, 40_000_000, 1, 40000, 120));
+    }
+
+    @Test
+    void latestStartTightSlackJobNotForcedOnArrival() {
+        // the legacy 600 s lead would fire immediately for slack 300; the
+        // latest-start rule leaves the genuine 300-120=180 s wait window
+        double arrival = 0, runtime = 372 * 40000.0 * 1;   // MI for 372 s job
+        double deadline = arrival + 372 + 300;             // slack 300
+        assertFalse(PerActionRewardMath.deadlineForceLatestStart(
+                arrival, deadline, runtime, 1, 40000, 120));
+        assertTrue(PerActionRewardMath.deadlineForceLatestStart(
+                arrival + 181, deadline, runtime, 1, 40000, 120));
+    }
+
 }

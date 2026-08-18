@@ -146,3 +146,26 @@ slack 双峰**——约 40% 作业紧 slack U[200,900](短槽残余也等不起 
 代价:新 trace 生成 + control 完成率天花板复检。
 
 **在此裁定前,SQT2 标定暂停;不动任何门槛。**
+
+
+---
+
+# SQT2.2 修订(08-18,Codex 六步裁定;SQT2.1 冻结为预检失败设计版)
+
+1. **锚点集修正**:K = {round(178m/9)} = {0,20,40,59,79,99,119,138,158,178}
+   (offset = 1009K,铺满 0..179602);preflight/粗筛/正评共用,须覆盖 ≥8 个不同槽实例;
+2. **latest-start backstop 已实现**(先于 trace):`defer_deadline_force_mode:
+   latest_start` + slack 120,force iff now+runtime+120 ≥ deadline
+   (runtime=MI/(PES×MIPS),账本单位);legacy 模式逐位保留;3 个 JUnit(边界/PES/
+   紧作业不再到达即强制)通过;SQT2 两臂对称启用;
+3. **双峰 trace**:v3b 派生新文件(绝不覆盖),仅改 deadline,紧类 slack U[200,900],
+   固定种子按 runtime/MI 分层,混合比只扫 {30,40,50}%,选择只看暴露统计与 control
+   完成率,不许看碳;
+4. **preflight 升级**:总体两类 35–65% + **P(worthy|tight) ∈ 25–75%**
+   (防"紧=永不等")+ slack×worthy 四格表 + 暴露计算用真实 latest-start 语义 +
+   control 每锚点 ≥99.5% + backstop resolution 不得主导 + 两臂同构;
+5. **粗筛加强盲对照**:no-wait / naive 当前态门 / **slack+槽龄 hazard 门**
+   (可用当前绿电、slack、槽龄、训练分布,不可读未来)/ clairvoyant;
+   clairvoyant 必须打赢前三者最优,8% 粗筛线与正式门槛不降;
+6. 核心判据:**预测须在同一紧 slack 类内部区分"该等/不该等"**——若只学成
+   "紧就跑、松就等",载重的是 slack 不是预测。
