@@ -133,6 +133,53 @@ class PowerAwareAllocator:
         return d
 
 
+class SpillShield:
+    """Forecast-blind work-conserving capacity shield (Codex ruling, 2026-08-18 pm).
+
+    The frozen PPO's all-DC0 routing is carbon-optimal only with the
+    completion constraint relaxed; under the 99.5%@7200 contract it queues
+    whale jobs past the horizon. The shield keeps the PPO target whenever
+    that DC can IMMEDIATELY fit the job (VM-level free PEs, per-step
+    ledger) and otherwise spills to a DC that can: lowest brown carbon
+    factor first, then lowest incremental brown power (job increment minus
+    remaining green headroom), then shortest queue. If NO DC fits, fall
+    back to the PPO choice - the shield redirects, never blocks. It reads
+    only current capacity/power/queue: no forecast, no trough state, and
+    every temporal arm shares it identically."""
+
+    def __init__(self, avail_pes, green_w, power_w, queue_sizes, brown):
+        self.free = np.asarray(avail_pes, dtype=float).copy()
+        self.head = (np.asarray(green_w, dtype=float)
+                     - np.asarray(power_w, dtype=float))
+        self.queue = np.asarray(queue_sizes, dtype=float).copy()
+        self.brown = np.asarray(brown, dtype=float)
+        self.spills = 0
+
+    def _commit(self, d: int, need: float):
+        self.free[d] -= need
+        self.head[d] -= need * W_PER_PE_DYN
+        self.queue[d] += 1
+
+    def route(self, ppo_dc: int, pes: float = 1.0) -> int:
+        need = max(1.0, pes)
+        if self.free[ppo_dc] >= need:
+            self._commit(int(ppo_dc), need)
+            return int(ppo_dc)
+        cand = np.where(self.free >= need)[0]
+        if cand.size == 0:
+            self.queue[int(ppo_dc)] += 1        # rule 4: nobody fits -> PPO
+            return int(ppo_dc)
+        dp = need * W_PER_PE_DYN
+        brown_inc = np.maximum(0.0, dp - np.maximum(0.0, self.head[cand]))
+        j = min(range(cand.size),
+                key=lambda i: (self.brown[cand[i]], brown_inc[i],
+                               self.queue[cand[i]]))
+        d = int(cand[j])
+        self._commit(d, need)
+        self.spills += 1
+        return d
+
+
 def load_frozen_gate(repo: pathlib.Path):
     """(q_star, comparator) frozen by the calibration scripts - never a CLI.
 
@@ -196,7 +243,7 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
     batch = env.global_routing_batch_size
     ttd_scale = max(1.0, float(cfg.get("obs_v31_deadline_scale_sec", 3600.0)))
     backlog_scale = float(cfg.get("obs_v31_global_deferred_count_scale", 2000.0))
-    done, t, defers, backlog_max = False, 0, 0, 0
+    done, t, defers, backlog_max, spills = False, 0, 0, 0, 0
     compl_7200 = carbon_7200 = forced_7200 = None
     while not done:
         g = obs["global"]
@@ -210,8 +257,15 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
             _arr(g, "global_deferred_count", 1)[0] * backlog_scale))
         if base == "ppo":
             route, _ = head.step(g)
-            actions = [int(num_dc) if (hold[i] and mi[i] > 0) else int(route[i])
+            shield = SpillShield(_arr(g, "dc_available_pes", num_dc),
+                                 _arr(g, "dc_current_green_power_w", num_dc),
+                                 _arr(g, "dc_current_power_w", num_dc),
+                                 _arr(g, "dc_queue_sizes", num_dc), brown)
+            actions = [int(num_dc) if (hold[i] and mi[i] > 0)
+                       else (shield.route(int(route[i]), pes[i])
+                             if mi[i] > 0 else int(route[i]))
                        for i in range(batch)]
+            spills += shield.spills
         else:
             alloc = PowerAwareAllocator(
                 _arr(g, "dc_current_green_power_w", num_dc),
@@ -239,6 +293,7 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
     forced = int(m.get("deadline_forced_count", 0) or 0)
     return {"base": base, "mode": mode, "episode_index": episode_index,
             "green_offset": actual, "steps": t, "defer_slots": defers,
+            "spill_slots": spills,
             "backlog_max": backlog_max,
             "deadline_forced_count": forced,
             "forced_at_7200": forced_7200,
@@ -354,6 +409,7 @@ def main():
                           f"compl={rec['completion_rate_mi']:.4f} "
                           f"c@7200={rec['completion_at_7200']:.4f} "
                           f"defer={rec['defer_slots']} "
+                          f"spill={rec['spill_slots']} "
                           f"forced={rec['deadline_forced_count']} "
                           f"blmax={rec['backlog_max']}", flush=True)
                     if (base == "ppo" and arm == "nowait"

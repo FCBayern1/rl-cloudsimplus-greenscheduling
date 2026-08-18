@@ -234,3 +234,40 @@ class TestPesLedger:
     def test_trough_fallback_also_respects_width(self):
         a = PowerAwareAllocator([0, 0], [0, 0], [2, 8], [0, 0], [0.25, 0.7])
         assert a.take(4) == 1                     # low-brown dc0 lacks 4 PEs
+
+
+class TestSpillShield:
+    def _mk(self, free, green=None, power=None, queue=None, brown=None):
+        from sqt2_prescreen import SpillShield
+        n = len(free)
+        return SpillShield(free, green or [0] * n, power or [0] * n,
+                           queue or [0] * n, brown or [0.5] * n)
+
+    def test_keeps_ppo_choice_when_it_fits(self):
+        s = self._mk([4, 4])
+        assert s.route(0) == 0 and s.spills == 0
+
+    def test_spills_to_min_brown_when_target_full(self):
+        s = self._mk([0, 4, 4], brown=[0.55, 0.7, 0.25])
+        assert s.route(0) == 2 and s.spills == 1
+
+    def test_green_headroom_breaks_brown_tie(self):
+        s = self._mk([0, 4, 4], green=[0, 0, 600], brown=[0.55, 0.25, 0.25])
+        assert s.route(0) == 2          # same brown, dc2 has headroom
+
+    def test_queue_breaks_remaining_tie(self):
+        s = self._mk([0, 4, 4], queue=[0, 7, 2], brown=[0.55, 0.25, 0.25])
+        assert s.route(0) == 2
+
+    def test_all_full_falls_back_to_ppo_choice(self):
+        s = self._mk([0, 0, 0])
+        assert s.route(0) == 0 and s.spills == 0
+
+    def test_per_step_ledger_saturates_target(self):
+        s = self._mk([2, 8], brown=[0.55, 0.25])
+        assert s.route(0) == 0 and s.route(0) == 0   # fills dc0's 2 PEs
+        assert s.route(0) == 1 and s.spills == 1     # third spills
+
+    def test_wide_job_respects_width(self):
+        s = self._mk([3, 8], brown=[0.55, 0.25])
+        assert s.route(0, pes=4) == 1                # 3 < 4 -> spill
