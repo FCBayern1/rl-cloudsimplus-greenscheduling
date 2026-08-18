@@ -49,6 +49,37 @@ def peak_stats(blk):
     return float(np.median(runs)), len(runs), 7200.0 / max(1, len(runs)), len(tot)
 
 
+def sqt2_trough_exposure(arrivals, runtimes, deadlines, mi, troughs,
+                         offsets, margin=120.0, warmup=13):
+    """SQT2 decision-exposure (Codex adjudication 2026-08-18): among jobs that
+    ARRIVE INSIDE a trough (the population that actually faces the wait
+    decision), classify wait-worthy vs not-worth using the REMAINING trough
+    length at arrival (residual-to-ON), never the total trough length:
+        worthy iff (trough_end - arrival_row) <= deadline-arrival-runtime-margin
+    MI-weighted shares aggregated over the pre-registered anchor offsets.
+    Also returns the all-jobs split (ON arrivals counted not-worth) as a
+    reported secondary view."""
+    iv = [(t["start"], t["start"] + t["dur"]) for t in troughs]
+    worthy_mi = notworth_mi = on_mi = 0.0
+    for off in offsets:
+        for a, rt, dl, m in zip(arrivals, runtimes, deadlines, mi):
+            row = warmup + off + int(a)
+            hit = next(((s, e) for (s, e) in iv if s <= row < e), None)
+            if hit is None:
+                on_mi += m
+                continue
+            residual = hit[1] - row
+            budget = dl - a - rt - margin
+            if budget > 0 and residual <= budget:
+                worthy_mi += m
+            else:
+                notworth_mi += m
+    trough_tot = worthy_mi + notworth_mi
+    return {"worthy_share": worthy_mi / trough_tot if trough_tot else 0.0,
+            "notworth_share": notworth_mi / trough_tot if trough_tot else 0.0,
+            "trough_arrival_mi_frac": trough_tot / max(1e-9, trough_tot + on_mi)}
+
+
 def main():
     o_name, n_name = sys.argv[1], sys.argv[2]
     O, N = load(o_name), load(n_name)
@@ -60,6 +91,12 @@ def main():
     pk, npk, cycle, wrows = peak_stats(N)
 
     fails = []
+    profile_o = str(O.get("preflight_temporal_profile") or "").strip()
+    profile_n = str(N.get("preflight_temporal_profile") or "").strip()
+    sqt2 = (profile_o == "sqt2_trough_v1") or ("--sqt2-cert" in sys.argv)
+
+    def na(name, msg):
+        print(f"[ N/A ] {name:30s} {msg}")
 
     def chk(name, ok, msg):
         print(f"[{'PASS' if ok else '**FAIL**'}] {name:30s} {msg}")
@@ -103,13 +140,20 @@ def main():
     # do), yet must fit inside one peak-to-peak cycle (else every start time
     # averages over the same peaks and troughs and timing stops mattering).
     med = float(np.median(L))
-    chk("job longer than a peak", med > pk, f"L median={med:.0f} vs peak={pk:.0f} ({med/pk:.2f}x)")
-    chk("job shorter than a cycle", med < 0.6 * cycle,
-        f"L median={med:.0f} vs cycle={cycle:.0f} ({med/cycle:.2f} of a cycle)")
-
     slack = dl - arr - L
-    chk("slack near one cycle", float(np.median(slack)) / cycle <= 2.5,
-        f"slack median={np.median(slack):.0f} = {np.median(slack)/cycle:.1f} cycles")
+    if sqt2:
+        # v3-lever premises (job-spans-peak commitment) do not map to the
+        # SQT2 wait-across-trough lever; marked N/A per Codex adjudication,
+        # replaced by the sqt2_trough_v1 block below. NOT deleted globally.
+        na("job longer than a peak", "sqt2_trough_v1: commitment = wait span, not job span")
+        na("job shorter than a cycle", "sqt2_trough_v1")
+        na("slack near one cycle", "sqt2_trough_v1")
+    else:
+        chk("job longer than a peak", med > pk, f"L median={med:.0f} vs peak={pk:.0f} ({med/pk:.2f}x)")
+        chk("job shorter than a cycle", med < 0.6 * cycle,
+            f"L median={med:.0f} vs cycle={cycle:.0f} ({med/cycle:.2f} of a cycle)")
+        chk("slack near one cycle", float(np.median(slack)) / cycle <= 2.5,
+            f"slack median={np.median(slack):.0f} = {np.median(slack)/cycle:.1f} cycles")
     conc = np.zeros(8300)
     for a, l in zip(arr, L):
         conc[a:a + l] += 1
@@ -118,12 +162,53 @@ def main():
     chk("green capacity > peak load", conc.max() < gv, f"peak concurrency={conc.max():.0f} vs green VMs={gv}")
     chk("deadlines land in-episode", bool((dl - L < 7200).all()), f"max latest start={int((dl-L).max())}")
     sh = N["datacenters"][0].get("short_term_rows", 0)
-    chk("short horizon covers peak", sh >= pk, f"short_term_rows={sh} vs peak={pk:.0f}")
+    if sqt2:
+        na("short horizon covers peak", "sqt2_trough_v1: v32 bins horizon is the decision channel")
+    else:
+        chk("short horizon covers peak", sh >= pk, f"short_term_rows={sh} vs peak={pk:.0f}")
     # V3.1: window_carbon_source REMOVED from the whitelist — allowing it to
     # differ is exactly the hole the two-yardstick bug walked through.
     diff = {k for k in set(O) | set(N) if O.get(k) != N.get(k)}
     allowed = {"forecast_mode", "green_oracle_mode", "experiment_name", "simulation_name"}
     chk("arms differ only as intended", diff <= allowed, f"diffs={sorted(diff)}")
+
+    if sqt2:
+        import json as _json
+        chk("sqt2: profile symmetric", profile_o == profile_n,
+            f"oracle={profile_o!r} blind={profile_n!r}")
+        art = _json.loads((Path(__file__).resolve().parent
+                           / "calib/sqt2_schedule.json").read_text())
+        short_max = art["off_short"][1]
+        long_min, long_max = art["off_long"]
+        on_min = art["on_range"][0]
+        slack_p50 = float(np.median(slack))
+        slack_p95 = float(np.percentile(slack, 95))
+        horizon = int(N.get("obs_v32_forecast_horizon_steps", 0))
+        bins = int(N.get("obs_v32_forecast_bin_count", 1))
+        chk("sqt2: structural separation",
+            short_max <= slack_p50 < long_min,
+            f"short_max={short_max} <= slack_p50={slack_p50:.0f} < long_min={long_min}")
+        anchors = [(1009 * k) % int(N["green_episode_offset_range"])
+                   for k in range(10)]
+        exp = sqt2_trough_exposure(arr, L, dl, MI, art["troughs"], anchors)
+        chk("sqt2: decision exposure (MAIN)",
+            0.35 <= exp["worthy_share"] <= 0.65,
+            f"trough-arrival MI shares worthy={exp['worthy_share']:.2f} / "
+            f"not-worth={exp['notworth_share']:.2f} "
+            f"(trough-arrival MI frac={exp['trough_arrival_mi_frac']:.2f})")
+        chk("sqt2: cashability", int(L.max()) <= on_min,
+            f"runtime_max={int(L.max())} <= ON_min={on_min}")
+        chk("sqt2: horizon covers waitable+slack",
+            horizon >= max(short_max, slack_p95),
+            f"horizon={horizon} >= max(short_max={short_max}, slack_p95={slack_p95:.0f})")
+        gap = horizon / max(1, bins - 1)
+        chk("sqt2: bin resolution", gap < on_min,
+            f"max bin gap={gap:.0f}s < ON_min={on_min}")
+        longs = [tt for tt in art["troughs"] if tt["kind"] == "long"]
+        beyond = sum(1 for tt in longs if tt["dur"] > horizon)
+        chk("sqt2: long troughs beyond horizon",
+            longs and beyond / len(longs) >= 0.2,
+            f"{beyond}/{len(longs)} long troughs exceed horizon {horizon}")
 
     # V3.1 gate: when the new observation features are on, report the trace
     # stats the clipping design must cover (time_to_deadline goes NEGATIVE at
