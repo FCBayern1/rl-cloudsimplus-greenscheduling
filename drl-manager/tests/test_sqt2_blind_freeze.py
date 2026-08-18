@@ -40,7 +40,7 @@ class TestFreezeByCarbon:
                    + [rec("hazard@0.50", 0.09, ep=i) for i in range(2)])
         stats, winner = freeze_by_carbon(records)
         assert winner == "hazard@0.50"
-        assert not stats["naive"]["dual_sla_all_anchors"]
+        assert not stats["naive"]["triple_sla_all_anchors"]
 
     def test_dual_sla_filter_drops_terminal_violator(self):
         records = ([rec("naive", 0.05, term=0.99, ep=0)]
@@ -69,3 +69,17 @@ class TestNowaitContract:
         assert nowait_contract_ok(rec("nowait", 0.1, c7200=0.996, term=0.999))
         assert not nowait_contract_ok(rec("nowait", 0.1, c7200=0.9921))
         assert not nowait_contract_ok(rec("nowait", 0.1, term=0.99))
+
+    def test_ontime_violator_dropped_and_reported(self):
+        good = [rec("hazard@0.50", 0.09, ep=i) for i in range(2)]
+        bad = [dict(rec("naive", 0.05, ep=i), ontime_mi_share=0.97)
+               for i in range(2)]
+        stats, winner = freeze_by_carbon(good + bad)
+        assert winner == "hazard@0.50"
+        assert not stats["naive"]["triple_sla_all_anchors"]
+        assert stats["naive"]["min_ontime_mi_share"] == 0.97
+
+    def test_ontime_gate_in_nowait_contract(self):
+        from sqt2_blind_freeze import nowait_contract_ok
+        assert not nowait_contract_ok(dict(rec("nowait", 0.1),
+                                           ontime_mi_share=0.99))

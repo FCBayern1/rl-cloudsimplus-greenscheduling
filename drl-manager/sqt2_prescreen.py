@@ -47,6 +47,13 @@ MARGIN_S = 120.0
 HORIZON_S = 7200.0
 BACKLOG_CAP = 200
 CONTRACT = 0.995
+# SQT2.3 unified release (Codex, 2026-08-19): every gate releases a held job
+# through the SAME spatial policy (PPO + shield) strictly BEFORE the Java
+# backstop threshold, so no arm's brown work ever rides the backstop's
+# greenest-DC router (the confound behind naive's fake 0.5-1.6pp edge).
+# The Java backstop stays armed as the final safety net; forced counts are
+# reported and should read ~0 in every arm.
+RELEASE_EPS_S = 30.0
 W_PER_PE_DYN = 2.541          # job counterfactual increment (RS500A W/PE)
 ANCHORS = (0, 20, 40, 59, 79, 99, 119, 138, 158, 178)
 MIX = ((0.8, 300.0, 1500.0), (0.2, 2700.0, 4500.0))   # registered mixture
@@ -218,7 +225,7 @@ def gate_flags(mode: str, g, batch: int, ttd_scale: float, t: int,
             continue
         runtime = mi[i] / (max(1.0, pes[i]) * MIPS)
         budget = effective_budget(ttd[i], runtime, MARGIN_S, HORIZON_S - t)
-        if budget <= 0:
+        if budget <= RELEASE_EPS_S:
             continue
         if mode == "naive":
             flags[i] = True
@@ -244,7 +251,7 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
     ttd_scale = max(1.0, float(cfg.get("obs_v31_deadline_scale_sec", 3600.0)))
     backlog_scale = float(cfg.get("obs_v31_global_deferred_count_scale", 2000.0))
     done, t, defers, backlog_max, spills = False, 0, 0, 0, 0
-    compl_7200 = carbon_7200 = forced_7200 = None
+    compl_7200 = carbon_7200 = forced_7200 = ontime_7200 = None
     while not done:
         g = obs["global"]
         row = WARMUP_ROWS + actual + t
@@ -285,11 +292,13 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
             compl_7200 = float(ges.get("completion_rate_mi", 0.0) or 0.0)
             carbon_7200 = float(ges.get("total_carbon_emission_kg", 0.0) or 0.0)
             forced_7200 = int(ges.get("deadline_forced_count", 0) or 0)
+            ontime_7200 = float(ges.get("ontime_mi_share", 1.0) or 1.0)
     m = collect_metrics(info, num_dc)
     if compl_7200 is None:      # episode drained before the horizon
         compl_7200 = float(m.get("completion_rate_mi", 0.0) or 0.0)
         carbon_7200 = float(m.get("total_carbon_kg", 0.0) or 0.0)
         forced_7200 = int(m.get("deadline_forced_count", 0) or 0)
+        ontime_7200 = float(m.get("ontime_mi_share", 1.0) or 1.0)
     forced = int(m.get("deadline_forced_count", 0) or 0)
     return {"base": base, "mode": mode, "episode_index": episode_index,
             "green_offset": actual, "steps": t, "defer_slots": defers,
@@ -297,6 +306,8 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
             "backlog_max": backlog_max,
             "deadline_forced_count": forced,
             "forced_at_7200": forced_7200,
+            "ontime_mi_share": float(m.get("ontime_mi_share", 1.0) or 1.0),
+            "ontime_at_7200": ontime_7200,
             "total_carbon_kg": float(m.get("total_carbon_kg", 0.0) or 0.0),
             "completion_rate_mi": float(m.get("completion_rate_mi", 0.0) or 0.0),
             "completion_at_7200": compl_7200, "carbon_at_7200": carbon_7200}
@@ -306,16 +317,22 @@ def pair_verdict_dual(gate_rec: dict, base_rec: dict,
                       contract: float = CONTRACT) -> dict:
     """Dual-horizon validity (Codex P0-1, 2026-08-18 afternoon).
 
-    A pair is valid ONLY if BOTH arms meet the completion contract at BOTH
-    accounts: completion@7200 (the training-horizon SLA - a clairvoyant
-    that parks work past the decision horizon must not count as a win) AND
-    terminal completion (the drain account - tail energy cannot vanish).
-    Carbon primary stays terminal (pair_verdict); carbon@7200 is reported."""
+    A pair is valid ONLY if BOTH arms meet the completion contract at ALL
+    THREE accounts (SQT2.3 triple contract, Codex 2026-08-19):
+    completion@7200 (the training-horizon SLA), terminal completion (the
+    drain account - tail energy cannot vanish), and ontime_mi_share (per-job
+    punctuality - blind maximal deferral must pay for lateness instead of
+    hiding it). Carbon primary stays terminal; carbon@7200 is reported. A
+    win produced by the reference arm failing ontime while carbon ties is a
+    FEASIBILITY advantage and must be reported as such, never as carbon."""
     v = pair_verdict(gate_rec, base_rec, contract)
     v["valid_terminal"] = v["valid"]
     v["valid_7200"] = (gate_rec["completion_at_7200"] >= contract
                        and base_rec["completion_at_7200"] >= contract)
-    v["valid"] = bool(v["valid_terminal"] and v["valid_7200"])
+    v["valid_ontime"] = (gate_rec.get("ontime_mi_share", 1.0) >= contract
+                         and base_rec.get("ontime_mi_share", 1.0) >= contract)
+    v["valid"] = bool(v["valid_terminal"] and v["valid_7200"]
+                      and v["valid_ontime"])
     b7, g7 = base_rec["carbon_at_7200"], gate_rec["carbon_at_7200"]
     v["rel_delta_c7200"] = (g7 - b7) / max(1e-9, b7)
     return v
@@ -330,6 +347,7 @@ def paired_stats(gate_recs: List[dict], base_recs: Dict[int, dict]):
     return {"valid_pairs": len(valid), "invalid_pairs": len(pv) - len(valid),
             "invalid_7200": sum(1 for v in pv if not v["valid_7200"]),
             "invalid_terminal": sum(1 for v in pv if not v["valid_terminal"]),
+            "invalid_ontime": sum(1 for v in pv if not v["valid_ontime"]),
             "neg_signs": neg,
             "median_rel_delta": (float(np.median([v["rel_delta_raw"]
                                                   for v in valid]))
@@ -408,6 +426,7 @@ def main():
                           f"carbon={rec['total_carbon_kg']:.4f} "
                           f"compl={rec['completion_rate_mi']:.4f} "
                           f"c@7200={rec['completion_at_7200']:.4f} "
+                          f"ontime={rec['ontime_mi_share']:.4f} "
                           f"defer={rec['defer_slots']} "
                           f"spill={rec['spill_slots']} "
                           f"forced={rec['deadline_forced_count']} "

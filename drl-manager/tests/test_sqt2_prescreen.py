@@ -271,3 +271,31 @@ class TestSpillShield:
     def test_wide_job_respects_width(self):
         s = self._mk([3, 8], brown=[0.55, 0.25])
         assert s.route(0, pes=4) == 1                # 3 < 4 -> spill
+
+
+class TestTripleContract:
+    def _rec(self, c7200=1.0, term=1.0, ontime=1.0, carbon=0.1):
+        return {"completion_at_7200": c7200, "completion_rate_mi": term,
+                "ontime_mi_share": ontime, "total_carbon_kg": carbon,
+                "carbon_at_7200": carbon * 0.97}
+
+    def test_ontime_violation_invalidates_pair(self):
+        from sqt2_prescreen import pair_verdict_dual
+        v = pair_verdict_dual(self._rec(ontime=0.98), self._rec())
+        assert not v["valid"] and not v["valid_ontime"]
+        assert v["valid_7200"] and v["valid_terminal"]
+        v2 = pair_verdict_dual(self._rec(), self._rec(ontime=0.98))
+        assert not v2["valid"]
+
+    def test_release_eps_frees_boundary_jobs(self):
+        from sqt2_prescreen import gate_flags, RELEASE_EPS_S, MARGIN_S, MIPS
+        # runtime 100s; ttd leaves budget just below eps -> released (no hold)
+        rt = 100.0
+        ttd_tight = rt + MARGIN_S + RELEASE_EPS_S - 1.0
+        g = obs([4e6], ttd=[ttd_tight])
+        f = gate_flags("naive", g, 1, 1.0, 0, True, 10.0, 4000.0, 0.5, 2000.0)
+        assert not f.any()
+        ttd_ok = rt + MARGIN_S + RELEASE_EPS_S + 50.0
+        g2 = obs([4e6], ttd=[ttd_ok])
+        f2 = gate_flags("naive", g2, 1, 1.0, 0, True, 10.0, 4000.0, 0.5, 2000.0)
+        assert f2.all()

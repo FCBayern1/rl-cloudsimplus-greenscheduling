@@ -62,6 +62,9 @@ public class MultiDatacenterSimulationCore {
     // SLA. Populated from the descriptors (deferrable-batch traces). Empty when the
     // trace carries no deadline column → deadline_miss_rate stays 0.
     private final Map<Long, Long> cloudletDeadlineById = new HashMap<>();
+    // SQT2.3 on-time accounting (Codex, 2026-08-19): MI per deadline-carrying
+    // cloudlet, so ontime_mi_share can weight punctuality by work volume.
+    private final Map<Long, Long> cloudletMiById = new HashMap<>();
 
     // === Simulation State ===
     private double currentClock = 0.0;
@@ -337,9 +340,11 @@ public class MultiDatacenterSimulationCore {
         // Record completion deadlines (cloudletId → deadline sim-seconds) before the
         // descriptors are converted to Cloudlets (toCloudlet drops the deadline).
         cloudletDeadlineById.clear();
+        cloudletMiById.clear();
         for (CloudletDescriptor d : descriptors) {
             if (d.hasDeadline()) {
                 cloudletDeadlineById.put((long) d.getCloudletId(), d.getDeadlineTime());
+                cloudletMiById.put((long) d.getCloudletId(), (long) d.getMi());
             }
         }
 
@@ -728,6 +733,32 @@ public class MultiDatacenterSimulationCore {
      * capacity (the cloudlet must still be routed to honour its deadline).  Returns -1
      * only if there are no datacenters at all.
      */
+    /**
+     * SQT2.3 on-time accounting: MI-weighted share of deadline-carrying work
+     * that met its deadline. Pending-job convention mirrors
+     * deadline_miss_rate: an unfinished cloudlet counts on time only while
+     * the clock has not passed its deadline. Static and side-effect-free so
+     * the maths is unit-testable.
+     */
+    static double computeOnTimeMiShare(Map<Long, Long> deadlineById,
+                                       Map<Long, Long> miById,
+                                       Map<Long, Double> finishTimeById,
+                                       double currentClock) {
+        double miTotal = 0.0, miOnTime = 0.0;
+        for (Map.Entry<Long, Long> e : deadlineById.entrySet()) {
+            long mi = miById.getOrDefault(e.getKey(), 0L);
+            miTotal += mi;
+            double deadline = e.getValue();
+            Double finish = finishTimeById.get(e.getKey());
+            if (finish != null) {
+                if (finish <= deadline) miOnTime += mi;
+            } else if (currentClock <= deadline) {
+                miOnTime += mi;
+            }
+        }
+        return miTotal > 0.0 ? miOnTime / miTotal : 1.0;
+    }
+
     private int pickGreenestAvailableDc(Cloudlet cloudlet) {
         int bestWithCap = -1; double bestCapKg = Double.MAX_VALUE;
         int bestAny = -1;     double bestAnyKg = Double.MAX_VALUE;
@@ -2502,6 +2533,7 @@ public class MultiDatacenterSimulationCore {
         // into green windows as long as it still completes before the deadline.
         // ---------------------------------------------------------------------
         double deadlineMissRate = 0.0;
+        double onTimeMiShare = 1.0;
         int deadlineTotal = cloudletDeadlineById.size();
         if (deadlineTotal > 0) {
             Map<Long, Double> finishTimeById = new HashMap<>();
@@ -2525,8 +2557,15 @@ public class MultiDatacenterSimulationCore {
                 }
             }
             deadlineMissRate = (double) misses / (double) deadlineTotal;
+            onTimeMiShare = computeOnTimeMiShare(cloudletDeadlineById,
+                    cloudletMiById, finishTimeById, currentClock);
         }
         stats.put("deadline_miss_rate", deadlineMissRate);
+        // SQT2.3 (Codex, 2026-08-19): punctuality weighted by work volume -
+        // the third completion contract. Same pending-job convention as
+        // deadline_miss_rate: unfinished counts on time only while its
+        // deadline is still ahead of the clock.
+        stats.put("ontime_mi_share", onTimeMiShare);
         stats.put("deadline_total", deadlineTotal);
         stats.put("deadline_forced_count", epDeadlineForcedCount);
         stats.put("defer_urgency_cost_sum", epDeferUrgencyCostSum);

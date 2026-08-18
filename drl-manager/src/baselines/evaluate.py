@@ -209,6 +209,7 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
         # Fix A: how many cloudlets the deadline backstop force-routed (vs proactively routed by the
         # policy). High share ⇒ the heuristic backstop is doing the routing, not the learned policy.
         'deadline_forced_count': _safe_get(gs, 'deadline_forced_count', 0),
+        'ontime_mi_share': _safe_get(gs, 'ontime_mi_share', 1.0),
         'total_finished_cloudlets': _safe_get(gs, 'total_finished_cloudlets', 0),
     }
 

@@ -8,13 +8,13 @@ CALIBRATION schedule over the frozen PPO route-only base:
     nowait, naive, hazard@q for q in {0.25, 0.40, 0.50, 0.60}
 
 then freezes the comparator as: among candidates whose every anchor meets
-the DUAL completion contract (completion@7200 >= 99.5% AND terminal
->= 99.5%), the one with the lowest median terminal carbon; ties broken by
+the TRIPLE completion contract (completion@7200, terminal completion
+and ontime_mi_share all >= 99.5%), the one with the lowest median terminal carbon; ties broken by
 the offline label accuracy already recorded in calib/sqt2_hazard_freeze.json.
 The winner (and its q, if a hazard arm) is written back into that artifact
 as comparator_v2 / q_star_carbon. Held-out never re-tunes any of this.
 
-If NO candidate survives the dual contract, comparator_v2 is written as
+If NO candidate survives the triple contract, comparator_v2 is written as
 null with the measured ceilings - that outcome escalates to Codex, it is
 never resolved by locally softening a threshold.
 """
@@ -43,9 +43,10 @@ def arm_spec(arm: str):
 
 def nowait_contract_ok(rec: dict, contract: float = CONTRACT) -> bool:
     """Codex base-certification clause: the shielded spatial base must meet
-    the DUAL contract at every anchor before any candidate may run."""
+    the TRIPLE contract at every anchor before any candidate may run."""
     return (rec["completion_at_7200"] >= contract
-            and rec["completion_rate_mi"] >= contract)
+            and rec["completion_rate_mi"] >= contract
+            and rec.get("ontime_mi_share", 1.0) >= contract)
 
 
 def freeze_by_carbon(records, accuracies=None, contract: float = CONTRACT):
@@ -58,18 +59,20 @@ def freeze_by_carbon(records, accuracies=None, contract: float = CONTRACT):
     for arm in sorted({r["arm"] for r in records}):
         rs = [r for r in records if r["arm"] == arm]
         ok = all(r["completion_at_7200"] >= contract
-                 and r["completion_rate_mi"] >= contract for r in rs)
+                 and r["completion_rate_mi"] >= contract
+                 and r.get("ontime_mi_share", 1.0) >= contract for r in rs)
         stats[arm] = {
             "anchors": len(rs),
-            "dual_sla_all_anchors": ok,
+            "triple_sla_all_anchors": ok,
             "min_completion_at_7200": min(r["completion_at_7200"] for r in rs),
             "min_terminal_completion": min(r["completion_rate_mi"] for r in rs),
+            "min_ontime_mi_share": min(r.get("ontime_mi_share", 1.0) for r in rs),
             "median_terminal_carbon": float(np.median(
                 [r["total_carbon_kg"] for r in rs])),
             "median_carbon_at_7200": float(np.median(
                 [r["carbon_at_7200"] for r in rs]))}
     eligible = [a for a, s in stats.items()
-                if a != "nowait" and s["dual_sla_all_anchors"]]
+                if a != "nowait" and s["triple_sla_all_anchors"]]
     if not eligible:
         return stats, None
     best = min(eligible, key=lambda a: stats[a]["median_terminal_carbon"])
@@ -130,7 +133,7 @@ def main():
                       f"spill={rec.get('spill_slots', 0)} "
                       f"forced={rec['deadline_forced_count']}", flush=True)
                 if arm == "nowait" and not nowait_contract_ok(rec):
-                    print(f"[BFRZ ABORT] shielded base below dual contract "
+                    print(f"[BFRZ ABORT] shielded base below triple contract "
                           f"at ep{k} (c@7200={rec['completion_at_7200']:.4f} "
                           f"term={rec['completion_rate_mi']:.4f}) - base NOT "
                           f"certified, no candidate race", flush=True)
@@ -149,7 +152,7 @@ def main():
     stats, winner = freeze_by_carbon(records, freeze_art.get("accuracies"))
     freeze_art["comparator_v2"] = winner
     freeze_art["comparator_v2_method"] = ("lowest median terminal carbon among "
-                                          "candidates meeting the dual SLA at "
+                                          "candidates meeting the triple SLA at "
                                           "every anchor; tie-break by label acc")
     freeze_art["comparator_v2_stats"] = stats
     if winner and winner.startswith("hazard@"):
@@ -159,8 +162,9 @@ def main():
         json.dumps({"records": records, "stats": stats,
                     "winner": winner}, indent=1))
     for a, s in stats.items():
-        print(f"[BFRZ STAT {a:12s}] dualSLA={s['dual_sla_all_anchors']} "
+        print(f"[BFRZ STAT {a:12s}] tripleSLA={s['triple_sla_all_anchors']} "
               f"minC7200={s['min_completion_at_7200']:.4f} "
+              f"minOntime={s['min_ontime_mi_share']:.4f} "
               f"medCarbon={s['median_terminal_carbon']:.4f}", flush=True)
     if winner is None:
         print("[BFRZ ESCALATE] no blind candidate meets the dual SLA at all "
