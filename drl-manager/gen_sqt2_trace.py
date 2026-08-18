@@ -21,7 +21,7 @@ TIGHT_LO, TIGHT_HI = 200, 900
 MIPS = 40000.0
 
 
-def generate(frac_tight: float, seed: int = SEED):
+def generate(frac_tight: float, seed: int = SEED, prefix: str = "sqt2"):
     rows = list(csv.DictReader(open(SRC)))
     runtimes = [max(1.0, float(r["length"]) / (max(1, int(r["pes_required"])) * MIPS))
                 for r in rows]
@@ -40,7 +40,7 @@ def generate(frac_tight: float, seed: int = SEED):
             slack = rng.randint(TIGHT_LO, TIGHT_HI)
             r["deadline"] = str(int(float(r["arrival_time"]) + runtimes[i] + slack))
         out_rows.append(r)
-    name = f"sqt2_n1200_t{int(frac_tight*100)}.csv"
+    name = f"{prefix}_n1200_t{int(frac_tight*100)}.csv"
     with open(OUT / name, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
@@ -51,12 +51,18 @@ def generate(frac_tight: float, seed: int = SEED):
     art = {"trace": name, "seed": seed, "frac_tight": frac_tight,
            "tight_slack_range": [TIGHT_LO, TIGHT_HI],
            "tight_cloudlet_ids": sorted(rows[i]["cloudlet_id"] for i in tight)}
-    pathlib.Path(f"calib/sqt2_trace_t{int(frac_tight*100)}.json").write_text(
+    pathlib.Path(f"calib/{prefix}_trace_t{int(frac_tight*100)}.json").write_text(
         json.dumps(art, indent=1))
     return name, tight
 
 
 if __name__ == "__main__":
-    for frac in (0.30, 0.40, 0.50, 0.60):
-        name, tight = generate(frac)
-        print(f"{name}: {len(tight)}/1200 tight jobs")
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fracs", default="0.30,0.40,0.50,0.60")
+    ap.add_argument("--seed", type=int, default=SEED)
+    ap.add_argument("--prefix", default="sqt2")
+    args = ap.parse_args()
+    for frac in [float(x) for x in args.fracs.split(",")]:
+        name, tight = generate(frac, seed=args.seed, prefix=args.prefix)
+        print(f"{name}: {len(tight)}/1200 tight jobs (seed {args.seed})")

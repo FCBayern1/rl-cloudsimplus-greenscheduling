@@ -188,19 +188,23 @@ def main():
         chk("sqt2: profile symmetric", profile_o == profile_n == "sqt2_trough_v2",
             f"oracle={profile_o!r} blind={profile_n!r} (v2 required)")
         for key in ("defer_deadline_force_mode", "defer_deadline_slack_sec",
-                    "obs_v32_demand_model"):
+                    "obs_v32_demand_model", "obs_v32_deadline_margin_sec"):
             chk(f"sqt2: {key} symmetric", O.get(key) == N.get(key),
                 f"oracle={O.get(key)} blind={N.get(key)}")
         chk("sqt2: latest-start backstop on",
             O.get("defer_deadline_force_mode") == "latest_start"
             and float(O.get("defer_deadline_slack_sec", 0)) == 120.0,
             f"mode={O.get('defer_deadline_force_mode')} slack={O.get('defer_deadline_slack_sec')}")
-        art = _json.loads((Path(__file__).resolve().parent
-                           / "calib/sqt2_schedule.json").read_text())
+        chk("sqt2: obs margin == backstop slack (SQT2.2-Clean)",
+            float(O.get("obs_v32_deadline_margin_sec", 0)) == 120.0,
+            f"obs_v32_deadline_margin_sec={O.get('obs_v32_deadline_margin_sec')}")
         trace_name = Path(N["cloudlet_trace_file"]).name
-        tag = trace_name.replace("sqt2_n1200_", "").replace(".csv", "")
+        prefix = trace_name.split("_n1200_")[0]        # sqt2 | sqt2ho
+        sched_art = "calib/sqt2ho_schedule.json" if prefix == "sqt2ho" else "calib/sqt2_schedule.json"
+        art = _json.loads((Path(__file__).resolve().parent / sched_art).read_text())
+        tag = trace_name.replace(f"{prefix}_n1200_", "").replace(".csv", "")
         tr_art = _json.loads((Path(__file__).resolve().parent
-                              / f"calib/sqt2_trace_{tag}.json").read_text())
+                              / f"calib/{prefix}_trace_{tag}.json").read_text())
         tight_ids = set(tr_art["tight_cloudlet_ids"])
         tight_flags = [r["cloudlet_id"] in tight_ids for r in tr]
         short_max = art["off_short"][1]

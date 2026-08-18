@@ -32,6 +32,18 @@ OFF_SHORT = (300, 1500)
 OFF_LONG = (2700, 4500)
 P_SHORT = 0.8
 
+# SQT2.2-Clean data split (Codex, 2026-08-18): "cal" = the original 95xx
+# calibration schedule (t60 selection, hazard freeze, preflight discovery);
+# "ho" = held-out 96xx twins with a DIFFERENT pre-registered seed, generated
+# once, used only for the single formal verdict run.
+VARIANTS = {"cal": (0, "calib/sqt2_schedule.json"),
+            "ho": (100, "calib/sqt2ho_schedule.json")}
+
+
+def variant_turbines(variant: str):
+    off = VARIANTS[variant][0]
+    return {dc: [t + off for t in tids] for dc, tids in DC_TURBINES.items()}
+
 
 def build_schedule(n_rows: int, seed: int):
     """Synchronized ON/OFF schedule; returns (on_flags, trough_instances)."""
@@ -65,12 +77,14 @@ def main():
                     help="compressed_power_divisor of the target experiment")
     ap.add_argument("--out", default="../cloudsimplus-gateway/src/main/resources/windProduction/simplified")
     ap.add_argument("--year", type=int, default=2021)
+    ap.add_argument("--variant", choices=sorted(VARIANTS), default="cal")
     args = ap.parse_args()
 
     on, troughs = build_schedule(args.rows, args.seed)
     green_ratio = sum(on) / len(on)
     out = Path(args.out)
-    for dc, tids in DC_TURBINES.items():
+    turbines = variant_turbines(args.variant)
+    for dc, tids in turbines.items():
         peak_kw_each = H_D_W[dc] * args.divisor / 1000.0 / len(tids)
         body = "\n".join(
             f"2021-01-01 00:00:00,{peak_kw_each if flag else 0.0:.3f}"
@@ -83,7 +97,8 @@ def main():
 
     short = [t for t in troughs if t["kind"] == "short"]
     long_ = [t for t in troughs if t["kind"] == "long"]
-    art = {"spec": "SQT2.1", "seed": args.seed, "rows": args.rows,
+    art = {"spec": "SQT2.1", "variant": args.variant,
+           "seed": args.seed, "rows": args.rows,
            "green_ratio": round(green_ratio, 4),
            "on_range": [ON_LO, ON_HI], "off_short": OFF_SHORT,
            "off_long": OFF_LONG, "p_short": P_SHORT,
@@ -92,7 +107,7 @@ def main():
            "short_time_s": sum(t["dur"] for t in short),
            "long_time_s": sum(t["dur"] for t in long_),
            "troughs": troughs}
-    art_path = Path("calib/sqt2_schedule.json")
+    art_path = Path(VARIANTS[args.variant][1])
     art_path.parent.mkdir(exist_ok=True)
     art_path.write_text(json.dumps(art, indent=1))
     print(f"green ratio {green_ratio:.3f} (target 0.55-0.65) | "

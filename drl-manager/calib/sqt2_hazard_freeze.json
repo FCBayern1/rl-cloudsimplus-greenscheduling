@@ -1,0 +1,38 @@
+{
+ "protocol": "SQT2.2-Clean layer 2 (frozen before held-out run)",
+ "candidates": [
+  0.25,
+  0.4,
+  0.5,
+  0.6
+ ],
+ "q_star": 0.5,
+ "comparator": "hazard",
+ "n_decisions": 82472,
+ "accuracies": {
+  "naive": {
+   "acc": 0.5035890969056165,
+   "acc_mi": 0.5035035597809769
+  },
+  "hazard@0.25": {
+   "acc": 0.7317392569599379,
+   "acc_mi": 0.7296524008985847
+  },
+  "hazard@0.40": {
+   "acc": 0.771667960034921,
+   "acc_mi": 0.770335991984478
+  },
+  "hazard@0.50": {
+   "acc": 0.7733776311960423,
+   "acc_mi": 0.7717512897569853
+  },
+  "hazard@0.60": {
+   "acc": 0.7564627994955864,
+   "acc_mi": 0.7541692167527433
+  }
+ },
+ "schedule_seed": 20260818,
+ "trace": "sqt2_n1200_t60.csv",
+ "episodes": 179,
+ "offset_range": 180000
+}

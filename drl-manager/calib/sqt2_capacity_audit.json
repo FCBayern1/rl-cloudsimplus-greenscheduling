@@ -1,0 +1,79 @@
+{
+ "per_on_second_mi": 22173326.772440773,
+ "total_job_mi": 23400680000.0,
+ "windows": [
+  {
+   "anchor": 0,
+   "offset": 0,
+   "on_seconds": 4644,
+   "green_executable_mi": 102972929531.21495,
+   "ratio": 4.400424668480358
+  },
+  {
+   "anchor": 20,
+   "offset": 20180,
+   "on_seconds": 5383,
+   "green_executable_mi": 119359018016.04868,
+   "ratio": 5.100664511289786
+  },
+  {
+   "anchor": 40,
+   "offset": 40360,
+   "on_seconds": 5971,
+   "green_executable_mi": 132396934158.24385,
+   "ratio": 5.6578242238363945
+  },
+  {
+   "anchor": 59,
+   "offset": 59531,
+   "on_seconds": 4428,
+   "green_executable_mi": 98183490948.36774,
+   "ratio": 4.195753753667318
+  },
+  {
+   "anchor": 79,
+   "offset": 79711,
+   "on_seconds": 4310,
+   "green_executable_mi": 95567038389.21973,
+   "ratio": 4.083942790945379
+  },
+  {
+   "anchor": 99,
+   "offset": 99891,
+   "on_seconds": 3202,
+   "green_executable_mi": 70998992325.35535,
+   "ratio": 3.0340568019970076
+  },
+  {
+   "anchor": 119,
+   "offset": 120071,
+   "on_seconds": 5022,
+   "green_executable_mi": 111354447051.19756,
+   "ratio": 4.758598769403178
+  },
+  {
+   "anchor": 138,
+   "offset": 139242,
+   "on_seconds": 5415,
+   "green_executable_mi": 120068564472.76678,
+   "ratio": 5.130986128299125
+  },
+  {
+   "anchor": 158,
+   "offset": 159422,
+   "on_seconds": 4867,
+   "green_executable_mi": 107917581401.46924,
+   "ratio": 4.61172843701419
+  },
+  {
+   "anchor": 178,
+   "offset": 179602,
+   "on_seconds": 5541,
+   "green_executable_mi": 122862403646.09431,
+   "ratio": 5.250377495273399
+  }
+ ],
+ "worst_window_ratio": 3.0340568019970076,
+ "requirement": 1.2,
+ "pass": true
+}
