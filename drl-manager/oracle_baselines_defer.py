@@ -33,13 +33,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
 from src.baselines.evaluate import collect_metrics
 from src.baselines.global_schedulers import GLOBAL_SCHEDULERS
+from src.baselines.green_dcs import describe_green_dcs, green_capable_dcs, green_dcs_from_env
 from oracle_diurnal_defer import green_total_now
 
-GREEN_DCS = [0, 1, 2]
 
-
-def run(env, scheduler_name, defer: bool, seed: int, drain: int, thresh: float) -> Dict[str, Any]:
+def run(env, scheduler_name, defer: bool, seed: int, drain: int, thresh: float,
+        green_dcs=None) -> Dict[str, Any]:
     num_dc = env.num_datacenters
+    # The "is it windy enough to run now" gate must sum over whichever DCs actually
+    # own turbines in this topology, not a fixed [0, 1, 2].
+    if green_dcs is None:
+        green_dcs = green_dcs_from_env(env)
     batch = env.global_routing_batch_size
     defer_idx = num_dc
     sched = GLOBAL_SCHEDULERS[scheduler_name](num_dc, batch)  # fresh (stateful) per arm
@@ -50,7 +54,7 @@ def run(env, scheduler_name, defer: bool, seed: int, drain: int, thresh: float) 
     while not done:
         g = obs["global"]
         draw = float(np.sum(np.asarray(g.get("dc_current_power_w", []), dtype=float).ravel()[:num_dc]))
-        light = green_total_now(g, GREEN_DCS, num_dc) >= thresh
+        light = green_total_now(g, green_dcs, num_dc) >= thresh
         if light: pow_day += draw; n_day += 1
         else:     pow_night += draw; n_night += 1
         if defer and not light:
@@ -88,17 +92,21 @@ def main():
     if args.trace:
         cfg["cloudlet_trace_file"] = args.trace
     drain = int(cfg.get("max_dispatch_per_step", 64))
+    dc_cfgs = cfg.get("datacenters", [])
+    green_dcs = green_capable_dcs(dc_cfgs)
 
     print(f"=== Defer robustness across baselines ({args.experiment}, thresh={args.route_thresh_w}W, "
           f"trace={cfg.get('cloudlet_trace_file')}, seed={args.seed}) ===")
+    print(f"green-capable DCs ({len(green_dcs)}/{len(dc_cfgs)}): "
+          f"{describe_green_dcs(green_dcs, dc_cfgs)}")
     env = HierarchicalMultiDCEnv(config=cfg)
     rows = []
     for name in args.schedulers:
         if name not in GLOBAL_SCHEDULERS:
             print(f"  skip unknown scheduler '{name}'"); continue
         print(f"\n--- {name} ---")
-        b = run(env, name, defer=False, seed=args.seed, drain=drain, thresh=args.route_thresh_w)
-        d = run(env, name, defer=True, seed=args.seed, drain=drain, thresh=args.route_thresh_w)
+        b = run(env, name, defer=False, seed=args.seed, drain=drain, thresh=args.route_thresh_w, green_dcs=green_dcs)
+        d = run(env, name, defer=True, seed=args.seed, drain=drain, thresh=args.route_thresh_w, green_dcs=green_dcs)
         rows.append((name, b, d))
         print(f"  base : carbon {b['total_carbon_kg']:.4f}  compl {b.get('completion_rate_mi',0):.3f}  "
               f"green_used {b['green_used_wh']:.0f}  green_ratio {b.get('green_ratio',0):.3f}")

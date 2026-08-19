@@ -7,7 +7,8 @@ plus a non-draining bestfit local policy left the sim ~idle (134W, 28% completio
 verdict was meaningless.
 
 This oracle isolates the TEMPORAL lever cleanly:
-  - ROUTING is identical for both policies: round-robin across the green DCs (0,1,2) to keep
+  - ROUTING is identical for both policies: round-robin across the green DCs (derived from the
+    config's per-DC turbine_ids, so it follows the topology rather than assuming 0,1,2) to keep
     load balanced and completion high (the QoS half). WHERE doesn't matter for carbon here
     because the green DCs share one synchronized diurnal profile — only WHEN matters.
   - LOCAL dispatch is the only difference:
@@ -36,9 +37,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
 from src.baselines.evaluate import collect_metrics, _convert_local_obs_for_scheduler
+from src.baselines.green_dcs import describe_green_dcs, green_capable_dcs, green_dcs_from_env
 from oracle_hold_until_green import _arr, dc_has_green_now, dc_green_coming
-
-GREEN_DCS = [0, 1, 2]  # the diurnal-green DCs; brown DC3/4 are never targeted
 
 
 def roundrobin_routing(batch: int, green_dcs: List[int], start: int) -> List[int]:
@@ -63,9 +63,13 @@ def green_total_now(g, green_dcs, num_dc) -> float:
 
 
 def run(env, defer: bool, lever: str, seed: int, drain: int, route_thresh_w: float = 1.0,
-        routing: str = "roundrobin") -> Dict[str, Any]:
+        routing: str = "roundrobin", green_dcs: List[int] = None) -> Dict[str, Any]:
     obs, info = env.reset(seed=seed)
     num_dc = env.num_datacenters
+    # Which DCs are worth routing to is a property of the topology, not a constant:
+    # derive it from the config unless the caller already did.
+    if green_dcs is None:
+        green_dcs = green_dcs_from_env(env)
     batch = env.global_routing_batch_size
     defer_idx = num_dc  # global DEFER action index (route to none)
     done = False
@@ -83,7 +87,7 @@ def run(env, defer: bool, lever: str, seed: int, drain: int, route_thresh_w: flo
         # "light" = an ABOVE-THRESHOLD (windy) moment, not merely green>0. On 1s-compressed
         # real wind the signal flickers, so a threshold (~demand level) concentrates execution
         # into the genuinely windier windows instead of chasing single non-zero seconds.
-        light = green_total_now(g, GREEN_DCS, num_dc) >= route_thresh_w
+        light = green_total_now(g, green_dcs, num_dc) >= route_thresh_w
         if light: pow_day += draw; n_day += 1
         else:     pow_night += draw; n_night += 1
         n_steps += 1
@@ -95,10 +99,10 @@ def run(env, defer: bool, lever: str, seed: int, drain: int, route_thresh_w: flo
             local_actions = {dc: drain for dc in range(num_dc)}
         else:
             if routing == "leastloaded":
-                global_action = leastloaded_green_routing(g, batch, GREEN_DCS, num_dc)
+                global_action = leastloaded_green_routing(g, batch, green_dcs, num_dc)
             else:
-                global_action = roundrobin_routing(batch, GREEN_DCS, rr)
-                rr = (rr + batch) % len(GREEN_DCS)
+                global_action = roundrobin_routing(batch, green_dcs, rr)
+                rr = (rr + batch) % len(green_dcs)
             local_actions = {}
             for dc in range(num_dc):
                 if defer and lever == "local" and not dc_has_green_now(g, dc, num_dc):
@@ -141,14 +145,18 @@ def main():
     cfg.setdefault("output_dir", "/tmp/oracle_diurnal")
     os.makedirs("/tmp/oracle_diurnal", exist_ok=True)
     drain = int(cfg.get("max_dispatch_per_step", 64))
+    dc_cfgs = cfg.get("datacenters", [])
+    green_dcs = green_capable_dcs(dc_cfgs)
 
     print(f"=== Version-B deferral gate: run-on-arrival vs defer-to-green "
           f"({args.experiment}, seed={args.seed}, drain={drain}, lever={args.lever}) ===")
+    print(f"green-capable DCs ({len(green_dcs)}/{len(dc_cfgs)}): "
+          f"{describe_green_dcs(green_dcs, dc_cfgs)}")
     env = HierarchicalMultiDCEnv(config=cfg)
     print(f"run 1/2: run-on-arrival (drain every step) ...")
-    base = run(env, defer=False, lever=args.lever, seed=args.seed, drain=drain, route_thresh_w=args.route_thresh_w, routing=args.routing)
+    base = run(env, defer=False, lever=args.lever, seed=args.seed, drain=drain, route_thresh_w=args.route_thresh_w, routing=args.routing, green_dcs=green_dcs)
     print(f"run 2/2: defer-to-green ({args.lever} lever, routing={args.routing}, route when green>={args.route_thresh_w}W) ...")
-    deferred = run(env, defer=True, lever=args.lever, seed=args.seed, drain=drain, route_thresh_w=args.route_thresh_w, routing=args.routing)
+    deferred = run(env, defer=True, lever=args.lever, seed=args.seed, drain=drain, route_thresh_w=args.route_thresh_w, routing=args.routing, green_dcs=green_dcs)
     env.close()
 
     def row(tag, m):
