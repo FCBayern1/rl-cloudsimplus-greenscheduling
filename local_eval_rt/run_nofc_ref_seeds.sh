@@ -6,14 +6,15 @@
 # Serialized: waits for plan-B2 to finish (end of tonight's queue).
 set -uo pipefail
 REPO=/home/joshua/rl-cloudsimplus-greenscheduling
-GATE=$REPO/local_eval_rt/perseed_planb2.txt
+GATE=$REPO/local_eval_rt/gamble_symm.txt
 OUT=$REPO/local_eval_rt/nofc_ref_seeds.txt
 OUTDIR=$REPO/local_eval_rt
 EXP=experiment_multi_5dc_carbon_v2_deferrable_gdpd_noforecast
 export EVAL_CONFIG_PATH=$REPO/config_C.yml
 export GATEWAY_LIBS=$REPO/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
-echo "[nofcref] armed $(date '+%m-%d %H:%M'); waiting for PERSEED PLAN-B2 DONE" >>"$OUT"
-while ! grep -qa "PERSEED PLAN-B2 DONE" "$GATE" 2>/dev/null; do sleep 300; done
+# 0809e queue: symm s1 -> planb2 -> symm s2 -> ref seeds -> tail.
+echo "[nofcref] armed $(date '+%m-%d %H:%M'); waiting for GAMBLE SYMM DONE" >>"$OUT"
+while ! grep -qa "GAMBLE SYMM DONE" "$GATE" 2>/dev/null; do sleep 300; done
 cd $REPO/drl-manager
 for SEED in 43 44; do
   OD=$REPO/drl-manager/logs/cregime_noforecast_s${SEED}

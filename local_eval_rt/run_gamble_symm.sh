@@ -11,14 +11,16 @@
 # Serialized: waits for the nofc reference-seed chain (end of current queue).
 set -uo pipefail
 REPO=/home/joshua/rl-cloudsimplus-greenscheduling
-GATE=$REPO/local_eval_rt/nofc_ref_seeds.txt
+GATE=$REPO/local_eval_rt/perseed_planb2.txt
 OUT=$REPO/local_eval_rt/gamble_symm.txt
 OUTDIR=$REPO/local_eval_rt
 EXP=experiment_v2026_gamble_noforecast_symm
 export EVAL_CONFIG_PATH=$REPO/config_C.yml
 export GATEWAY_LIBS=$REPO/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
-echo "[symm] armed $(date '+%m-%d %H:%M'); waiting for NOFC REF SEEDS DONE" >>"$OUT"
-while ! grep -qa "NOFC REF SEEDS DONE" "$GATE" 2>/dev/null; do sleep 300; done
+# 0809c: symm starts IMMEDIATELY (GPU idle; plan-B is CPU-side eval and starts
+# 4 min later so symm's opening ray-cleanup cannot hit its workers). The only
+# proven-safe concurrency on this box: ONE training + ONE serial eval chain.
+echo "[symm] immediate start $(date '+%m-%d %H:%M')" >>"$OUT"
 cd $REPO/drl-manager
 for SEED in 1 2; do
   OD=$REPO/drl-manager/logs/v2026gb_nofcsymm_s${SEED}

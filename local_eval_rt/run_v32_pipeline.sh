@@ -56,6 +56,31 @@ probe () {  # outdir jsonname
   .venv/bin/python probe_forecast_sensitivity.py --checkpoint "$PWD/$CK" --trials 40 \
     --raw-logits --json-out $R/probe/$2.json 2>>"$OUT" | grep -E "difference|fraction|raw defer|route logits|ratio" >>"$OUT"
 }
+probe_late () {  # outdir; probe every retained checkpoint in the final 40%
+  local run=$1
+  local cks=( $(ls -d logs/$run/multidc_gtrxl_training/PPO_*/checkpoint_* 2>/dev/null | sort -V) )
+  local n=${#cks[@]}
+  [ $n -eq 0 ] && { echo "[pipe] $run has no checkpoints for late scan" >>"$OUT"; return 1; }
+  local start=$(( n * 6 / 10 ))
+  for ((i=start; i<n; i++)); do
+    local ck=${cks[$i]}
+    local ckn=$(basename "$ck" | sed 's/checkpoint_0*/ck/')
+    local name=${run}_${ckn}
+    echo "----- lateprobe $run $ckn -----" >>"$OUT"
+    .venv/bin/python probe_forecast_sensitivity.py --checkpoint "$PWD/$ck" --trials 40 \
+      --json-out "$R/probe/$name.json" >>"$R/${name}_probe.txt" 2>>"$OUT" \
+      || { echo "[pipe] lateprobe $run $ckn FAILED" >>"$OUT"; return 1; }
+  done
+}
+summarize_run () {  # outdir jsonname [probe-glob]
+  local run=$1 jsonname=$2 pattern=${3:-}
+  local extra=()
+  [ -n "$pattern" ] && extra=(--probe-glob "$pattern")
+  .venv/bin/python summarize_v32_gate_run.py --run-dir "logs/$run" \
+    "${extra[@]}" --json-out "$R/probe/$jsonname.json" \
+    >"$R/${jsonname}.txt" \
+    || { echo "[pipe] summarize $run FAILED" >>"$OUT"; return 1; }
+}
 # Gate-2 delta reads the JOB-ALIGNED channel (the factorized gate ignores
 # dc_future_* BY DESIGN - seventh-review catch: the dc_* sweep would auto-fail
 # a healthy V3.2 model). Falls back to the dc_* temporal delta for non-v32
@@ -68,27 +93,31 @@ print(jt['delta'] if jt else d['temporal']['delta'])" 2>/dev/null; }
 
 # 3. V3.2 Gate 2 smoke (oracle s1 100k) -- prereg threshold +0.05, frozen
 train experiment_v3_2_oracle 1 100000 v32_smoke_s1
-probe v32_smoke_s1 v32_smoke_s1
+probe v32_smoke_s1 v32_smoke_s1 || exit 1
+summarize_run v32_smoke_s1 v32_smoke_s1_rollout || exit 1
 # Gate 2 is MULTI-CONDITION (eighth review): one synthetic delta is not a
 # verdict. All of: job-aligned delta >= 0.05, P(defer) monotone in
 # forecast_gain and in slack, forecast channel >= 10x null (judgeability, A2).
 # The real-rollout sign check is reported when Codex's rollout aggregator has
 # produced a file; it is listed as NOT-AVAILABLE rather than silently skipped.
-G2=$(PROBE_JSON=$R/probe/v32_smoke_s1.json .venv/bin/python - <<'PYG' 2>/dev/null
+G2=$(PROBE_JSON=$R/probe/v32_smoke_s1.json ROLLOUT_JSON=$R/probe/v32_smoke_s1_rollout.json .venv/bin/python - <<'PYG' 2>/dev/null
 import json, os
 d = json.load(open(os.environ["PROBE_JSON"]))
+r = json.load(open(os.environ["ROLLOUT_JSON"]))
 jt = d.get("job_temporal") or {}
 mo = d.get("monotone") or {}
 s = d.get("summary") or {}
 delta = jt.get("delta")
 mg, ms = mo.get("monotone_frac_gain"), mo.get("monotone_frac_slack")
 fc, nu = s.get("forecast", {}).get("tv"), s.get("null", {}).get("tv")
+real = (r.get("rollout") or {}).get("rollout_temporal_delta")
 conds = {
     "delta>=0.05": (delta is not None and delta >= 0.05, delta),
     "monotone_gain>=0.75": (mg is not None and mg >= 0.75, mg),
     "monotone_slack>=0.75": (ms is not None and ms >= 0.75, ms),
     "forecast>=10x_null": (fc is not None and nu is not None and fc >= 10 * nu,
                            None if fc is None else round(fc / max(nu, 1e-12), 1)),
+    "real_rollout_same_sign": (real is not None and real > 0.0, real),
 }
 for k, (ok, v) in conds.items():
     print(f"  cond {k}: {'PASS' if ok else 'FAIL'} (value={v})")
@@ -98,8 +127,8 @@ PYG
 echo "$G2" >>"$OUT"
 G2=$(echo "$G2" | tail -1)
 ROLL=$R/probe/v32_smoke_s1_rollout.json
-if [ -f "$ROLL" ]; then echo "  cond rollout-sign: file present, see $ROLL" >>"$OUT";
-else echo "  cond rollout-sign: NOT AVAILABLE (rollout aggregator pending)" >>"$OUT"; fi
+if [ -f "$ROLL" ]; then echo "  rollout evidence: $ROLL" >>"$OUT";
+else echo "  rollout evidence: NOT AVAILABLE" >>"$OUT"; fi
 echo "V32 GATE2 $G2 $(date '+%H:%M')" >>"$OUT"
 
 # 4. V3.2 Gate 3 FIRST (only if Gate 2 passed) - verdict ~21:00 tonight
@@ -107,16 +136,41 @@ echo "V32 GATE2 $G2 $(date '+%H:%M')" >>"$OUT"
 #    s2 pair fills the rest of the night either way.
 if [ "$G2" = "PASS" ]; then
   train experiment_v3_2_oracle 1 300000 v32_g3_s1
-  probe v32_g3_s1 v32_g3_s1
+  probe v32_g3_s1 v32_g3_s1 || exit 1
+  probe_late v32_g3_s1 || exit 1
+  summarize_run v32_g3_s1 v32_g3_s1_summary "$R/probe/v32_g3_s1_ck*.json" || exit 1
   train experiment_v3_2_oracle 2 300000 v32_g3_s2
-  probe v32_g3_s2 v32_g3_s2
-  D1=$(delta v32_g3_s1); D2=$(delta v32_g3_s2)
-  if [ -n "$D1" ] && [ -n "$D2" ] && \
-     .venv/bin/python -c "exit(0 if float('$D1')>0 and float('$D2')>0 else 1)"; then
-    echo "V32 GATE3 sign-check PASS (s1=$D1 s2=$D2) -> 600k approved pending TD-residual review" >>"$OUT"
-  else
-    echo "V32 GATE3 FAIL (s1=${D1:-?} s2=${D2:-?}) -> per prereg: check impl / V3.2B" >>"$OUT"
-  fi
+  probe v32_g3_s2 v32_g3_s2 || exit 1
+  probe_late v32_g3_s2 || exit 1
+  summarize_run v32_g3_s2 v32_g3_s2_summary "$R/probe/v32_g3_s2_ck*.json" || exit 1
+  S1_SUM=$R/probe/v32_g3_s1_summary.json S2_SUM=$R/probe/v32_g3_s2_summary.json \
+    EVIDENCE=$R/probe/v32_gate3_evidence.json .venv/bin/python - <<'PYG3'
+import json, os
+s1 = json.load(open(os.environ["S1_SUM"]))
+s2 = json.load(open(os.environ["S2_SUM"]))
+block = {
+    "late_checkpoint_temporal_deltas_by_seed": {
+        "1": s1.get("late_checkpoint_temporal_deltas", []),
+        "2": s2.get("late_checkpoint_temporal_deltas", []),
+    },
+}
+ratios = [s.get("learner", {}).get("defer_route_td_residual_ratio") for s in (s1, s2)]
+ratios = [x for x in ratios if x is not None]
+if len(ratios) == 2:
+    block["defer_route_td_residual_ratio"] = max(ratios)
+for key in ("all_defer", "backstop_dominant"):
+    vals = [s.get("rollout", {}).get(key) for s in (s1, s2)]
+    if all(v is not None for v in vals): block[key] = any(vals)
+vals = [s.get("completion", {}).get("completion_collapse") for s in (s1, s2)]
+if all(v is not None for v in vals): block["completion_collapse"] = any(vals)
+json.dump({"gate3": block}, open(os.environ["EVIDENCE"], "w"), indent=2)
+print("Gate3 diagnostic evidence:", json.dumps(block, sort_keys=True))
+for seed, s in ((1, s1), (2, s2)):
+    print(f"seed{seed} wait_realization={s['rollout'].get('wait_carbon_improvement_rate')} "
+          f"adv_by_wait={s['learner'].get('advantage_by_wait_sec')}")
+PYG3
+  .venv/bin/python v32_gate_verdict.py --evidence "$R/probe/v32_gate3_evidence.json" \
+    --json-out "$R/probe/v32_gate3_verdict.json" | grep '^GATE3:' >>"$OUT"
 else
   echo "[pipe] Gate2 FAIL -> skipping Gate3 per prereg (no weight tuning, no extension)" >>"$OUT"
 fi

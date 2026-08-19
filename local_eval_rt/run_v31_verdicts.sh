@@ -5,7 +5,7 @@
 set -uo pipefail
 REPO=/home/joshua/rl-cloudsimplus-greenscheduling
 R=$REPO/local_eval_rt
-while pgrep -f "run_v3_sp_eval[.]sh|run_v3_track0[.]sh|run_v3_drainfix[.]sh|baselines[.]evaluate|oracle_hold_until_green|entrypoint_rlmodule" >/dev/null 2>&1; do
+while pgrep -f "run_v3_sp_eval[.]sh|run_v3_track0[.]sh|run_v3_track0b[.]sh|run_v3_drainfix[.]sh|baselines[.]evaluate|oracle_hold_until_green|entrypoint_rlmodule" >/dev/null 2>&1; do
   sleep 300
 done
 sleep 60
