@@ -301,6 +301,21 @@ class ForecastResidualMonitor:
         self.mode = mode
         needs_thresh = mode in ("gate", "soft", "maskdc", "persist")
         self.threshold = 0.2 if (needs_thresh and threshold is None) else threshold
+        # Calibrated (relative) trust rule, 2026-08-19. The class-default
+        # absolute line (chi < 0.2) is tuned for SIGN-INVERTING corruption,
+        # where chi goes strongly negative. A coherent site permutation keeps
+        # every curve's shape and only mis-assigns it, so chi is DILUTED
+        # rather than inverted -- measured 0.709 clean -> 0.230 shuffled,
+        # a 67% drop that never crosses 0.2 and so never fires. Setting
+        # TRUST_GATE_CLEAN_CHI (measured once on clean forecasts) plus
+        # TRUST_GATE_REL turns the rule into "fire when chi falls below
+        # rel * chi_clean", which is portable across forecasters and
+        # testbeds instead of being a magic constant.
+        clean_s = os.environ.get("TRUST_GATE_CLEAN_CHI", "").strip()
+        self.clean_chi = float(clean_s) if clean_s else None
+        self.rel = float(os.environ.get("TRUST_GATE_REL", "0.5"))
+        if needs_thresh and self.clean_chi is not None:
+            self.threshold = self.rel * self.clean_chi
         # soft mode: graded DEFER penalty instead of a hard -inf ban.
         # penalty = soft_lambda * severity, severity = clip(thresh - corr, 0, 2)/2.
         self.soft_lambda = float(os.environ.get("TRUST_GATE_SOFT_LAMBDA", "6.0"))
