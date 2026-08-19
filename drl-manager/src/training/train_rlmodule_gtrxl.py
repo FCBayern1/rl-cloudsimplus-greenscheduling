@@ -37,6 +37,14 @@ from tqdm import tqdm
 # Add drl-manager root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+# GTrXL is stateful, so the Learner connector zero-pads observations through
+# ray's split_and_zero_pad -- which is broken for Dict obs before ray 2.47.0 and
+# crashes the Learner actor with "all input arrays must have the same shape".
+# Verify/repair the installed ray up front (fails fast instead of ~7min in).
+from src.training.rllib_zero_pad_patch import ensure_patched as _ensure_zero_pad_patched
+
+_ensure_zero_pad_patched()
+
 from gym_cloudsimplus.envs import (
     HierarchicalMultiDCParallelEnv,
     HierarchicalMultiDCParallelEnvSimple,
