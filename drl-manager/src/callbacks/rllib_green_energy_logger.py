@@ -88,10 +88,46 @@ TRAINING_CSV_HEADERS = [
     'global_entropy', 'global_policy_loss', 'global_vf_loss',
     'global_vf_explained_var', 'global_mean_kl',
     'global_grad_norm', 'global_learning_rate',
+    # V3.2 temporal-credit evidence (NaN for legacy/non-V3.2 runs).
+    'global_v32_td_abs_defer', 'global_v32_td_abs_route',
+    'global_v32_td_defer_count', 'global_v32_td_route_count',
+    'global_v32_adv_defer', 'global_v32_adv_route',
+    'global_v32_adv_defer_count', 'global_v32_adv_route_count',
+    'global_v32_adv_defer_wait_0_60',
+    'global_v32_adv_defer_wait_60_300',
+    'global_v32_adv_defer_wait_300_900',
+    'global_v32_adv_defer_wait_900_1800',
+    'global_v32_adv_defer_wait_1800_3600',
+    'global_v32_adv_defer_wait_gt3600',
+    'global_v32_adv_defer_wait_0_60_count',
+    'global_v32_adv_defer_wait_60_300_count',
+    'global_v32_adv_defer_wait_300_900_count',
+    'global_v32_adv_defer_wait_900_1800_count',
+    'global_v32_adv_defer_wait_1800_3600_count',
+    'global_v32_adv_defer_wait_gt3600_count',
     # Shared local policy
     'local_entropy', 'local_policy_loss', 'local_vf_loss',
     'local_vf_explained_var', 'local_mean_kl',
     'local_grad_norm', 'local_learning_rate',
+]
+
+V32_LEARNER_METRIC_KEYS = [
+    'v32_td_abs_defer', 'v32_td_abs_route',
+    'v32_td_defer_count', 'v32_td_route_count',
+    'v32_adv_defer', 'v32_adv_route',
+    'v32_adv_defer_count', 'v32_adv_route_count',
+    'v32_adv_defer_wait_0_60',
+    'v32_adv_defer_wait_60_300',
+    'v32_adv_defer_wait_300_900',
+    'v32_adv_defer_wait_900_1800',
+    'v32_adv_defer_wait_1800_3600',
+    'v32_adv_defer_wait_gt3600',
+    'v32_adv_defer_wait_0_60_count',
+    'v32_adv_defer_wait_60_300_count',
+    'v32_adv_defer_wait_300_900_count',
+    'v32_adv_defer_wait_900_1800_count',
+    'v32_adv_defer_wait_1800_3600_count',
+    'v32_adv_defer_wait_gt3600_count',
 ]
 
 
@@ -380,6 +416,8 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             inner = observation.get("observation", observation)
             num_dcs = len(np.asarray(inner["dc_current_power_w"]).reshape(-1))
             deadline_scale = 3600.0
+            wait_age_scale = 7200.0
+            simulation_timestep = 1.0
             runner_config = getattr(env_runner, "config", None)
             env_config = getattr(runner_config, "env_config", {})
             if isinstance(env_config, dict):
@@ -387,6 +425,13 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     "obs_v31_deadline_scale_sec",
                     env_config.get("defer_urgency_window_sec", deadline_scale),
                 ))
+                wait_age_scale = float(env_config.get(
+                    "obs_v31_wait_age_scale_sec",
+                    float(env_config.get("max_episode_length", 7200))
+                    * float(env_config.get("simulation_timestep", 1.0)),
+                ))
+                simulation_timestep = float(env_config.get(
+                    "simulation_timestep", 1.0))
             acc = getattr(episode, "_v32_rollout_accumulator", None)
             if acc is None:
                 acc = new_v32_rollout_accumulator()
@@ -419,6 +464,8 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 action,
                 num_datacenters=num_dcs,
                 deadline_scale_sec=deadline_scale,
+                wait_age_scale_sec=wait_age_scale,
+                simulation_timestep_sec=simulation_timestep,
                 action_dist_inputs=action_dist_inputs,
                 resolution_carbon_kg_by_slot=resolution_carbon,
             )
@@ -1421,6 +1468,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             'entropy': nan, 'policy_loss': nan, 'vf_loss': nan,
             'vf_explained_var': nan, 'mean_kl': nan,
             'grad_norm': nan, 'learning_rate': nan,
+            **{key: nan for key in V32_LEARNER_METRIC_KEYS},
         }
 
         def _pull(stats: dict):
@@ -1439,6 +1487,8 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'default_optimizer_learning_rate',
                 stats.get('cur_lr', out['learning_rate']),
             )
+            for key in V32_LEARNER_METRIC_KEYS:
+                out[key] = stats.get(key, out[key])
 
         # New API
         learners = result.get("learners") or {}
@@ -1502,6 +1552,7 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                     g['entropy'], g['policy_loss'], g['vf_loss'],
                     g['vf_explained_var'], g['mean_kl'],
                     g['grad_norm'], g['learning_rate'],
+                    *[g[key] for key in V32_LEARNER_METRIC_KEYS],
                     l['entropy'], l['policy_loss'], l['vf_loss'],
                     l['vf_explained_var'], l['mean_kl'],
                     l['grad_norm'], l['learning_rate'],

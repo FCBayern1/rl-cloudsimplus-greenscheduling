@@ -18,6 +18,8 @@ GAIN_EDGES = np.asarray([0.0, 0.01, 0.05, 0.10, 0.25, np.inf], dtype=np.float64)
 GAIN_LABELS = ["zero", "0-.01", ".01-.05", ".05-.10", ".10-.25", ">.25"]
 SLACK_EDGES_SEC = np.asarray([0.0, 300.0, 900.0, 1800.0, 3600.0, np.inf])
 SLACK_LABELS = ["overdue", "0-300", "300-900", "900-1800", "1800-3600", ">3600"]
+WAIT_EDGES_SEC = np.asarray([0.0, 60.0, 300.0, 900.0, 1800.0, 3600.0, np.inf])
+WAIT_LABELS = ["0-60", "60-300", "300-900", "900-1800", "1800-3600", ">3600"]
 
 
 def new_v32_rollout_accumulator() -> Dict[str, Any]:
@@ -34,6 +36,21 @@ def new_v32_rollout_accumulator() -> Dict[str, Any]:
         "gate_logit_count": np.zeros(shape, dtype=np.int64),
         "resolution_carbon_kg_sum": np.zeros(shape, dtype=np.float64),
         "resolution_carbon_count": np.zeros(shape, dtype=np.int64),
+        # Episode-local temporal ledger.  The stable fingerprint is reconstructed
+        # from policy-visible fields; it never enters the policy observation.
+        "pending_deferrals": {},
+        "deferred_job_count": 0,
+        "waited_resolution_count": 0,
+        "wait_predicted_positive_count": 0,
+        "wait_carbon_improved_count": 0,
+        "wait_forecast_half_realized_count": 0,
+        "wait_predicted_gain_sum": 0.0,
+        "wait_observed_gain_sum": 0.0,
+        "wait_duration_sum_sec": 0.0,
+        "wait_resolution_count_by_age": np.zeros(len(WAIT_LABELS), dtype=np.int64),
+        "wait_carbon_improved_count_by_age": np.zeros(len(WAIT_LABELS), dtype=np.int64),
+        "wait_observed_gain_sum_by_age": np.zeros(len(WAIT_LABELS), dtype=np.float64),
+        "job_key_collision_count": 0,
         "step_count": 0,
     }
 
@@ -72,6 +89,8 @@ def accumulate_v32_rollout_step(
     *,
     num_datacenters: int,
     deadline_scale_sec: float,
+    wait_age_scale_sec: float = 7200.0,
+    simulation_timestep_sec: float = 1.0,
     action_dist_inputs: Any = None,
     resolution_carbon_kg_by_slot: Any = None,
 ) -> bool:
@@ -91,6 +110,26 @@ def accumulate_v32_rollout_step(
     slack_sec = np.asarray(
         inner["batch_cloudlet_time_to_deadline"], dtype=np.float64).reshape(-1)
     slack_sec = slack_sec * max(1.0, float(deadline_scale_sec))
+    wait_norm = np.asarray(
+        inner.get("batch_cloudlet_wait_age", np.zeros_like(mi)),
+        dtype=np.float64,
+    ).reshape(-1)
+    wait_sec = wait_norm * max(1.0, float(wait_age_scale_sec))
+    pes = np.asarray(
+        inner.get("batch_cloudlet_pes", np.zeros_like(mi)), dtype=np.float64
+    ).reshape(-1)
+    is_deferred = np.asarray(
+        inner.get("batch_cloudlet_is_deferred", np.zeros_like(mi)),
+        dtype=np.float64,
+    ).reshape(-1)
+    best_now = np.asarray(
+        inner.get("batch_cloudlet_best_now_carbon", np.full_like(mi, np.nan)),
+        dtype=np.float64,
+    ).reshape(-1)
+    best_future = np.asarray(
+        inner.get("batch_cloudlet_best_future_carbon", np.full_like(mi, np.nan)),
+        dtype=np.float64,
+    ).reshape(-1)
     action = np.asarray(actions, dtype=np.int64).reshape(-1)
     n = min(mi.size, gain.size, slack_sec.size, action.size)
     if n == 0:
@@ -124,6 +163,62 @@ def accumulate_v32_rollout_step(
             acc["resolution_carbon_kg_sum"][cell] += float(
                 resolution_carbon[slot])
             acc["resolution_carbon_count"][cell] += 1
+
+        # Same-job temporal settlement.  arrival_marker and lifetime-to-deadline
+        # are invariant while a cloudlet is re-presented.  v3b_n1200 is unique
+        # under (MI, PEs, arrival, deadline); collisions are counted explicitly
+        # rather than silently merging evidence.
+        elapsed = float(acc["step_count"]) * max(
+            1e-9, float(simulation_timestep_sec))
+        key = (
+            int(round(float(mi[slot]))),
+            int(round(float(pes[slot]))) if slot < pes.size else 0,
+            int(round(elapsed - float(wait_sec[slot]))),
+            int(round(float(wait_sec[slot]) + float(slack_sec[slot]))),
+        )
+        pending = acc["pending_deferrals"]
+        chosen = int(action[slot])
+        if chosen == int(num_datacenters):
+            if key not in pending:
+                pending[key] = {
+                    "initial_gain": float(gain[slot]),
+                    "initial_best_now": float(best_now[slot]),
+                    "initial_best_future": float(best_future[slot]),
+                    "initial_wait_sec": float(wait_sec[slot]),
+                }
+                acc["deferred_job_count"] += 1
+            elif (
+                abs(float(pending[key]["initial_wait_sec"]) - float(wait_sec[slot]))
+                < 1e-9
+                and float(is_deferred[slot]) <= 0.5
+            ):
+                acc["job_key_collision_count"] += 1
+        elif 0 <= chosen < int(num_datacenters) and (
+            key in pending or (slot < is_deferred.size and is_deferred[slot] > 0.5)
+        ):
+            first = pending.pop(key, None)
+            if first is not None and np.isfinite(best_now[slot]):
+                predicted = max(0.0, float(first["initial_gain"]))
+                observed = float(first["initial_best_now"]) - float(best_now[slot])
+                duration = max(
+                    0.0, float(wait_sec[slot]) - float(first["initial_wait_sec"]))
+                acc["waited_resolution_count"] += 1
+                acc["wait_predicted_gain_sum"] += predicted
+                acc["wait_observed_gain_sum"] += observed
+                acc["wait_duration_sum_sec"] += duration
+                if predicted > 1e-9:
+                    acc["wait_predicted_positive_count"] += 1
+                    if observed > 1e-9:
+                        acc["wait_carbon_improved_count"] += 1
+                    if observed >= 0.5 * predicted:
+                        acc["wait_forecast_half_realized_count"] += 1
+                age_bin = int(np.searchsorted(
+                    WAIT_EDGES_SEC[1:], duration, side="right"))
+                age_bin = min(age_bin, len(WAIT_LABELS) - 1)
+                acc["wait_resolution_count_by_age"][age_bin] += 1
+                acc["wait_observed_gain_sum_by_age"][age_bin] += observed
+                if observed > 1e-9:
+                    acc["wait_carbon_improved_count_by_age"][age_bin] += 1
     acc["step_count"] += 1
     return True
 
@@ -137,6 +232,11 @@ def finalize_v32_rollout(
     logit_count = np.asarray(acc["gate_logit_count"], dtype=np.int64)
     carbon_sum = np.asarray(acc["resolution_carbon_kg_sum"], dtype=np.float64)
     carbon_count = np.asarray(acc["resolution_carbon_count"], dtype=np.int64)
+    wait_count = np.asarray(acc["wait_resolution_count_by_age"], dtype=np.int64)
+    wait_improved = np.asarray(
+        acc["wait_carbon_improved_count_by_age"], dtype=np.int64)
+    wait_gain_sum = np.asarray(
+        acc["wait_observed_gain_sum_by_age"], dtype=np.float64)
     defer_rate = np.divide(
         defers,
         counts,
@@ -160,6 +260,23 @@ def finalize_v32_rollout(
             [None if not np.isfinite(value) else float(value) for value in row]
             for row in matrix
         ]
+    def _nullable_vector(values: np.ndarray):
+        return [None if not np.isfinite(v) else float(v) for v in values]
+    waited = int(acc["waited_resolution_count"])
+    predicted_positive = int(acc["wait_predicted_positive_count"])
+    forced = int(forced_route_count)
+    wait_success_by_age = np.divide(
+        wait_improved,
+        wait_count,
+        out=np.full(wait_count.shape, np.nan, dtype=np.float64),
+        where=wait_count > 0,
+    )
+    wait_gain_by_age = np.divide(
+        wait_gain_sum,
+        wait_count,
+        out=np.full(wait_count.shape, np.nan, dtype=np.float64),
+        where=wait_count > 0,
+    )
     return {
         "schema": acc["schema"],
         "gain_labels": list(acc["gain_labels"]),
@@ -177,7 +294,33 @@ def finalize_v32_rollout(
         "resolution_carbon_kg_mean": _nullable(carbon_mean),
         "resolution_carbon_count": carbon_count.tolist(),
         "resolution_carbon_kg_total": float(carbon_sum.sum()),
-        "forced_route_count": int(forced_route_count),
+        "forced_route_count": forced,
+        "deferred_job_count": int(acc["deferred_job_count"]),
+        "waited_resolution_count": waited,
+        "wait_predicted_positive_count": predicted_positive,
+        "wait_carbon_improved_count": int(acc["wait_carbon_improved_count"]),
+        "wait_forecast_half_realized_count": int(
+            acc["wait_forecast_half_realized_count"]),
+        "wait_carbon_improvement_rate": (
+            float(acc["wait_carbon_improved_count"]) / predicted_positive
+            if predicted_positive else None),
+        "wait_forecast_half_realized_rate": (
+            float(acc["wait_forecast_half_realized_count"]) / predicted_positive
+            if predicted_positive else None),
+        "mean_predicted_gain_at_first_defer": (
+            float(acc["wait_predicted_gain_sum"]) / waited if waited else None),
+        "mean_observed_gain_at_resolution": (
+            float(acc["wait_observed_gain_sum"]) / waited if waited else None),
+        "mean_wait_duration_sec": (
+            float(acc["wait_duration_sum_sec"]) / waited if waited else None),
+        "wait_age_labels": list(WAIT_LABELS),
+        "wait_resolution_count_by_age": wait_count.tolist(),
+        "wait_carbon_improvement_rate_by_age": _nullable_vector(wait_success_by_age),
+        "wait_observed_gain_mean_by_age": _nullable_vector(wait_gain_by_age),
+        "backstop_resolution_ratio": (
+            forced / (forced + waited) if forced + waited else None),
+        "pending_deferral_count": len(acc["pending_deferrals"]),
+        "job_key_collision_count": int(acc["job_key_collision_count"]),
     }
 
 

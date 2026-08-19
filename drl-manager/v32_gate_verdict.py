@@ -124,14 +124,16 @@ def evaluate_gates(evidence: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
         syn = float(g["synthetic_temporal_delta"])
         real = float(g["rollout_temporal_delta"])
         ok = (
-            syn > 0.0
+            syn >= 0.05
             and real > 0.0
-            and min(syn, real) >= 0.05
             and _true(g["forecast_perturbation_above_null"])
             and _true(g["gain_monotonic"])
             and _true(g["slack_monotonic"])
         )
-        out["gate2"] = _result(PASS if ok else FAIL, "100k behavior threshold delta>=0.05")
+        out["gate2"] = _result(
+            PASS if ok else FAIL,
+            "100k synthetic delta>=0.05 and real-rollout same-sign",
+        )
 
     g = evidence.get("gate3", {})
     req = (

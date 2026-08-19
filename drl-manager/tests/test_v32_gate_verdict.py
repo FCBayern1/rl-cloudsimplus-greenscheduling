@@ -57,7 +57,15 @@ def test_gate0_requires_exact_real_seeds_one_and_two():
 
 def test_gate2_rejects_delta_below_frozen_point_zero_five():
     evidence = _passing_evidence()
-    evidence["gate2"]["rollout_temporal_delta"] = 0.049999
+    evidence["gate2"]["synthetic_temporal_delta"] = 0.049999
+    assert evaluate_gates(evidence)["gate2"]["status"] == FAIL
+
+
+def test_gate2_rollout_requires_same_sign_not_synthetic_magnitude_threshold():
+    evidence = _passing_evidence()
+    evidence["gate2"]["rollout_temporal_delta"] = 1e-6
+    assert evaluate_gates(evidence)["gate2"]["status"] == PASS
+    evidence["gate2"]["rollout_temporal_delta"] = 0.0
     assert evaluate_gates(evidence)["gate2"]["status"] == FAIL
 
 

@@ -87,6 +87,42 @@ def test_non_v32_observation_is_an_explicit_noop():
     assert acc["step_count"] == 0
 
 
+def test_same_job_wait_resolution_reports_realized_carbon_improvement():
+    acc = new_v32_rollout_accumulator()
+    first = {
+        "batch_cloudlet_mi": np.array([10_000.0]),
+        "batch_cloudlet_pes": np.array([2.0]),
+        "batch_cloudlet_forecast_gain": np.array([0.4]),
+        "batch_cloudlet_best_now_carbon": np.array([0.8]),
+        "batch_cloudlet_best_future_carbon": np.array([0.4]),
+        "batch_cloudlet_time_to_deadline": np.array([0.5]),
+        "batch_cloudlet_wait_age": np.array([0.0]),
+        "batch_cloudlet_is_deferred": np.array([0.0]),
+    }
+    assert accumulate_v32_rollout_step(
+        acc, first, [2], num_datacenters=2, deadline_scale_sec=3600.0,
+        wait_age_scale_sec=7200.0, simulation_timestep_sec=300.0)
+    resolved = dict(first)
+    resolved.update({
+        "batch_cloudlet_best_now_carbon": np.array([0.5]),
+        "batch_cloudlet_time_to_deadline": np.array([1500.0 / 3600.0]),
+        "batch_cloudlet_wait_age": np.array([300.0 / 7200.0]),
+        "batch_cloudlet_is_deferred": np.array([1.0]),
+    })
+    assert accumulate_v32_rollout_step(
+        acc, resolved, [0], num_datacenters=2, deadline_scale_sec=3600.0,
+        wait_age_scale_sec=7200.0, simulation_timestep_sec=300.0)
+    out = finalize_v32_rollout(acc, forced_route_count=0)
+    assert out["deferred_job_count"] == 1
+    assert out["waited_resolution_count"] == 1
+    assert out["wait_carbon_improvement_rate"] == 1.0
+    assert out["wait_forecast_half_realized_rate"] == 1.0
+    assert out["mean_observed_gain_at_resolution"] == pytest.approx(0.3)
+    assert out["mean_wait_duration_sec"] == pytest.approx(300.0)
+    assert out["wait_resolution_count_by_age"] == [0, 0, 1, 0, 0, 0]
+    assert out["job_key_collision_count"] == 0
+
+
 def test_rllib_callback_aligns_new_api_step_and_writes_strict_json(tmp_path):
     from src.callbacks.rllib_green_energy_logger import GreenEnergyLoggerCallback
 

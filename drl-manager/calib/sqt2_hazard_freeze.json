@@ -34,5 +34,57 @@
  "schedule_seed": 20260818,
  "trace": "sqt2_n1200_t60.csv",
  "episodes": 179,
- "offset_range": 180000
+ "offset_range": 180000,
+ "comparator_v2": "naive",
+ "comparator_v2_method": "lowest median terminal carbon among candidates meeting the dual SLA at every anchor; tie-break by label acc",
+ "comparator_v2_stats": {
+  "hazard@0.25": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.11835931601918899,
+   "median_carbon_at_7200": 0.11835931601918899
+  },
+  "hazard@0.40": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.11819394314124901,
+   "median_carbon_at_7200": 0.11819394314124901
+  },
+  "hazard@0.50": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.11862263967091105,
+   "median_carbon_at_7200": 0.11862263967091105
+  },
+  "hazard@0.60": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.12134146482770536,
+   "median_carbon_at_7200": 0.12134146482770536
+  },
+  "naive": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.11730412445051686,
+   "median_carbon_at_7200": 0.11730412445051686
+  },
+  "nowait": {
+   "anchors": 10,
+   "dual_sla_all_anchors": true,
+   "min_completion_at_7200": 1.0,
+   "min_terminal_completion": 1.0,
+   "median_terminal_carbon": 0.1292922191256773,
+   "median_carbon_at_7200": 0.1292922191256773
+  }
+ }
 }

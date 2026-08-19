@@ -39,6 +39,7 @@ from src.learners.normalized_critic_loss import (
     _DEFAULT_EMA_DECAY,
     _DEFAULT_VAR_EPS,
 )
+from src.learners.v32_credit_diagnostics import compute_v32_credit_diagnostics
 
 torch, _ = try_import_torch()
 
@@ -136,6 +137,21 @@ class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
             extra_vf_metrics[LEARNER_RESULTS_VF_TARGET_VAR_EMA_KEY] = var_ema
             extra_vf_metrics[LEARNER_RESULTS_VF_LOSS_RAW_MSE_KEY] = mean_vf_raw_mse
 
+        # V3.2 evidence only: condition the *actual one-step* critic TD
+        # residual and standardized GAE advantage on DEFER vs ROUTE decisions,
+        # plus wait-age buckets.  This is detached/read-only and the helper is
+        # a strict no-op when the V3.2 observation keys are absent.
+        v32_diag = compute_v32_credit_diagnostics(
+            batch,
+            value_fn_out,
+            gamma=float(config.gamma),
+            num_slots=n_slots,
+            num_choices=n_choices,
+            wait_age_scale_sec=float(
+                (getattr(module, "model_config", {}) or {}).get(
+                    "v32_wait_age_scale_sec", 7200.0)),
+        )
+
         self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
@@ -146,6 +162,7 @@ class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
                 **extra_vf_metrics,
+                **v32_diag,
             },
             key=module_id,
             window=1,
