@@ -2031,6 +2031,37 @@ class HierarchicalMultiDCEnv(gym.Env):
             short_trend      = -short_trend
             long_mean        = 1.0 - long_mean
             long_peak_timing = 1.0 - long_peak_timing
+        elif mode == "panti" and eps > 0.0:
+            # Graded coherent lie (reviewer #4, 2026-08-19): continuous path
+            # from the clean forecast (a=0) to the full "anti" mirror (a=1),
+            # so a severity SWEEP can be plotted instead of two discrete
+            # points. a=1 reproduces `anti` byte-for-byte.
+            a = float(min(max(eps, 0.0), 1.0))
+            short_mean       = (1 - a) * short_mean       + a * (1.0 - short_mean)
+            short_trend      = (1 - a) * short_trend      + a * (-short_trend)
+            long_mean        = (1 - a) * long_mean        + a * (1.0 - long_mean)
+            long_peak_timing = (1 - a) * long_peak_timing + a * (1.0 - long_peak_timing)
+        elif mode == "bias" and eps != 0.0:
+            # Systematic over/under-prediction of green: the stale-model
+            # failure mode, information preserved but mis-levelled.
+            b = float(eps)
+            short_mean = np.clip(short_mean + b, 0.0, 1.0)
+            long_mean  = np.clip(long_mean + b, 0.0, 1.0)
+        elif mode == "pshuffle" and eps > 0.0:
+            # Partial site permutation: the reversed (shuffle) forecast is
+            # adopted on the first round(eps*N) datacentres and the clean one
+            # kept elsewhere, so eps=1 reproduces `shuffle` byte-for-byte and
+            # small eps mis-maps only a few site-to-feed assignments.
+            n = int(np.asarray(short_mean).size)
+            k = int(round(float(min(max(eps, 0.0), 1.0)) * n))
+            if k > 0:
+                sel = np.zeros(n, dtype=bool)
+                sel[:k] = True
+                short_mean = np.where(sel, np.asarray(short_mean)[::-1], short_mean)
+                short_trend = np.where(sel, np.asarray(short_trend)[::-1], short_trend)
+                long_mean = np.where(sel, np.asarray(long_mean)[::-1], long_mean)
+                long_peak_timing = np.where(
+                    sel, np.asarray(long_peak_timing)[::-1], long_peak_timing)
         elif mode == "noise" and eps > 0.0:
             rng = np.random.default_rng(int(sim_step) & 0x7FFFFFFF)
             short_mean       = np.clip(short_mean + rng.normal(0, eps, short_mean.shape), 0.0, 1.0)
