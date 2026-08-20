@@ -24,8 +24,22 @@ class TestBound:
         assert 0.100 <= ten["act_share"] <= 0.112
 
     def test_brown_share_matches_5080(self, ten):
-        """5080 报 6.09% —— 碳差硬上界。"""
+        """5080 报 6.09%(MI 口径)。注意这【不是】验收线,见下面那条。"""
         assert 0.055 <= ten["brown_share"] <= 0.067
+
+    def test_carbon_bound_is_the_acceptance_line(self, ten):
+        """④ 的验收线 = 可搬走的棕电 MI / nowait 的棕电 MI = 12.95%。
+
+        分母是 nowait 的【棕电】MI,不是全部 MI。按全部 MI 算得 4.14%,
+        那是把可搬走的量摊到 3 倍大的分母上,线会过紧,可能把真实机制
+        效应误判成 bug。碳口径的线比 MI 口径【宽】,方向别记反。
+        """
+        assert 0.12 <= ten["carbon_bound"] <= 0.14
+        assert ten["carbon_bound"] > ten["brown_share"], "碳口径必须比 MI 口径宽"
+
+    def test_nowait_brown_share_of_total_mi(self, ten):
+        """5080 报 32.0%;碳 ~ 棕电 MI,所以这是碳差分母的物理基础。"""
+        assert 0.30 <= ten["nowait_brown_mi"] / ten["total_mi"] <= 0.34
 
     def test_brown_is_a_strict_subset_of_acted(self, ten):
         """落棕电的只能是动手作业的一部分:前半段本来就在绿窗里跑。"""
