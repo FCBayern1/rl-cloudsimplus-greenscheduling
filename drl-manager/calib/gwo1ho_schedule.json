@@ -1,0 +1,317 @@
+{
+ "spec": "SQT2.1",
+ "variant": "gwo1ho",
+ "seed": 20260819,
+ "rows": 200000,
+ "green_ratio": 0.6203,
+ "on_range": [
+  1500,
+  2700
+ ],
+ "off_short": [
+  300,
+  1500
+ ],
+ "off_long": [
+  2700,
+  4500
+ ],
+ "p_short": 0.8,
+ "trough_count": 58,
+ "short_count": 48,
+ "long_count": 10,
+ "short_time_s": 41314,
+ "long_time_s": 34619,
+ "troughs": [
+  {
+   "start": 2502,
+   "dur": 603,
+   "kind": "short"
+  },
+  {
+   "start": 5252,
+   "dur": 657,
+   "kind": "short"
+  },
+  {
+   "start": 8177,
+   "dur": 534,
+   "kind": "short"
+  },
+  {
+   "start": 10544,
+   "dur": 863,
+   "kind": "short"
+  },
+  {
+   "start": 12988,
+   "dur": 703,
+   "kind": "short"
+  },
+  {
+   "start": 16361,
+   "dur": 1158,
+   "kind": "short"
+  },
+  {
+   "start": 20088,
+   "dur": 312,
+   "kind": "short"
+  },
+  {
+   "start": 22149,
+   "dur": 3325,
+   "kind": "long"
+  },
+  {
+   "start": 27605,
+   "dur": 904,
+   "kind": "short"
+  },
+  {
+   "start": 30876,
+   "dur": 838,
+   "kind": "short"
+  },
+  {
+   "start": 33471,
+   "dur": 482,
+   "kind": "short"
+  },
+  {
+   "start": 36396,
+   "dur": 1345,
+   "kind": "short"
+  },
+  {
+   "start": 39949,
+   "dur": 1441,
+   "kind": "short"
+  },
+  {
+   "start": 44044,
+   "dur": 1042,
+   "kind": "short"
+  },
+  {
+   "start": 47050,
+   "dur": 1046,
+   "kind": "short"
+  },
+  {
+   "start": 50723,
+   "dur": 3407,
+   "kind": "long"
+  },
+  {
+   "start": 56553,
+   "dur": 998,
+   "kind": "short"
+  },
+  {
+   "start": 59627,
+   "dur": 632,
+   "kind": "short"
+  },
+  {
+   "start": 62604,
+   "dur": 1496,
+   "kind": "short"
+  },
+  {
+   "start": 66607,
+   "dur": 1027,
+   "kind": "short"
+  },
+  {
+   "start": 69310,
+   "dur": 3610,
+   "kind": "long"
+  },
+  {
+   "start": 74718,
+   "dur": 900,
+   "kind": "short"
+  },
+  {
+   "start": 77564,
+   "dur": 3454,
+   "kind": "long"
+  },
+  {
+   "start": 82622,
+   "dur": 520,
+   "kind": "short"
+  },
+  {
+   "start": 85609,
+   "dur": 454,
+   "kind": "short"
+  },
+  {
+   "start": 88244,
+   "dur": 604,
+   "kind": "short"
+  },
+  {
+   "start": 90485,
+   "dur": 1036,
+   "kind": "short"
+  },
+  {
+   "start": 93200,
+   "dur": 2828,
+   "kind": "long"
+  },
+  {
+   "start": 97734,
+   "dur": 487,
+   "kind": "short"
+  },
+  {
+   "start": 100238,
+   "dur": 1450,
+   "kind": "short"
+  },
+  {
+   "start": 103392,
+   "dur": 743,
+   "kind": "short"
+  },
+  {
+   "start": 106267,
+   "dur": 683,
+   "kind": "short"
+  },
+  {
+   "start": 109154,
+   "dur": 4475,
+   "kind": "long"
+  },
+  {
+   "start": 115566,
+   "dur": 991,
+   "kind": "short"
+  },
+  {
+   "start": 118961,
+   "dur": 988,
+   "kind": "short"
+  },
+  {
+   "start": 121494,
+   "dur": 1384,
+   "kind": "short"
+  },
+  {
+   "start": 125554,
+   "dur": 595,
+   "kind": "short"
+  },
+  {
+   "start": 128511,
+   "dur": 2709,
+   "kind": "long"
+  },
+  {
+   "start": 133671,
+   "dur": 719,
+   "kind": "short"
+  },
+  {
+   "start": 136610,
+   "dur": 1315,
+   "kind": "short"
+  },
+  {
+   "start": 139858,
+   "dur": 372,
+   "kind": "short"
+  },
+  {
+   "start": 141881,
+   "dur": 3757,
+   "kind": "long"
+  },
+  {
+   "start": 147298,
+   "dur": 2959,
+   "kind": "long"
+  },
+  {
+   "start": 152400,
+   "dur": 740,
+   "kind": "short"
+  },
+  {
+   "start": 155489,
+   "dur": 1475,
+   "kind": "short"
+  },
+  {
+   "start": 158880,
+   "dur": 599,
+   "kind": "short"
+  },
+  {
+   "start": 161723,
+   "dur": 988,
+   "kind": "short"
+  },
+  {
+   "start": 165408,
+   "dur": 1414,
+   "kind": "short"
+  },
+  {
+   "start": 169404,
+   "dur": 379,
+   "kind": "short"
+  },
+  {
+   "start": 172474,
+   "dur": 518,
+   "kind": "short"
+  },
+  {
+   "start": 174850,
+   "dur": 945,
+   "kind": "short"
+  },
+  {
+   "start": 177874,
+   "dur": 4095,
+   "kind": "long"
+  },
+  {
+   "start": 183597,
+   "dur": 335,
+   "kind": "short"
+  },
+  {
+   "start": 185477,
+   "dur": 947,
+   "kind": "short"
+  },
+  {
+   "start": 189052,
+   "dur": 1236,
+   "kind": "short"
+  },
+  {
+   "start": 192760,
+   "dur": 835,
+   "kind": "short"
+  },
+  {
+   "start": 195786,
+   "dur": 962,
+   "kind": "short"
+  },
+  {
+   "start": 198887,
+   "dur": 619,
+   "kind": "short"
+  }
+ ]
+}

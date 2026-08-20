@@ -37,7 +37,14 @@ P_SHORT = 0.8
 # "ho" = held-out 96xx twins with a DIFFERENT pre-registered seed, generated
 # once, used only for the single formal verdict run.
 VARIANTS = {"cal": (0, "calib/sqt2_schedule.json"),
-            "ho": (100, "calib/sqt2ho_schedule.json")}
+            "ho": (100, "calib/sqt2ho_schedule.json"),
+            # gwo1 (tenth testbed): the SAME green sequence as SQT2 -- same seed,
+            # same ON/OFF laws, so the schedule is bit-identical -- written to a
+            # fresh turbine block so the scenario keeps its own artifact and the
+            # sqt2 ones are never overwritten. What changes in gwo1 is the
+            # decision domain (the arm gate) and the trace, not the environment.
+            "gwo1": (200, "calib/gwo1_schedule.json"),
+            "gwo1ho": (300, "calib/gwo1ho_schedule.json")}
 
 
 def variant_turbines(variant: str):

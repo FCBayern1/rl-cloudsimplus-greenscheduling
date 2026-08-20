@@ -1,0 +1,312 @@
+{
+ "spec": "SQT2.1",
+ "variant": "gwo1",
+ "seed": 20260818,
+ "rows": 200000,
+ "green_ratio": 0.6179,
+ "on_range": [
+  1500,
+  2700
+ ],
+ "off_short": [
+  300,
+  1500
+ ],
+ "off_long": [
+  2700,
+  4500
+ ],
+ "p_short": 0.8,
+ "trough_count": 57,
+ "short_count": 47,
+ "long_count": 10,
+ "short_time_s": 41109,
+ "long_time_s": 35308,
+ "troughs": [
+  {
+   "start": 2184,
+   "dur": 1217,
+   "kind": "short"
+  },
+  {
+   "start": 5368,
+   "dur": 1339,
+   "kind": "short"
+  },
+  {
+   "start": 8831,
+   "dur": 1308,
+   "kind": "short"
+  },
+  {
+   "start": 12348,
+   "dur": 778,
+   "kind": "short"
+  },
+  {
+   "start": 15775,
+   "dur": 512,
+   "kind": "short"
+  },
+  {
+   "start": 17803,
+   "dur": 1208,
+   "kind": "short"
+  },
+  {
+   "start": 20738,
+   "dur": 643,
+   "kind": "short"
+  },
+  {
+   "start": 23762,
+   "dur": 726,
+   "kind": "short"
+  },
+  {
+   "start": 26945,
+   "dur": 3135,
+   "kind": "long"
+  },
+  {
+   "start": 32425,
+   "dur": 312,
+   "kind": "short"
+  },
+  {
+   "start": 34708,
+   "dur": 357,
+   "kind": "short"
+  },
+  {
+   "start": 37031,
+   "dur": 348,
+   "kind": "short"
+  },
+  {
+   "start": 39554,
+   "dur": 910,
+   "kind": "short"
+  },
+  {
+   "start": 43023,
+   "dur": 365,
+   "kind": "short"
+  },
+  {
+   "start": 46088,
+   "dur": 773,
+   "kind": "short"
+  },
+  {
+   "start": 48604,
+   "dur": 1249,
+   "kind": "short"
+  },
+  {
+   "start": 51816,
+   "dur": 709,
+   "kind": "short"
+  },
+  {
+   "start": 54802,
+   "dur": 337,
+   "kind": "short"
+  },
+  {
+   "start": 57382,
+   "dur": 2837,
+   "kind": "long"
+  },
+  {
+   "start": 62243,
+   "dur": 996,
+   "kind": "short"
+  },
+  {
+   "start": 65643,
+   "dur": 4221,
+   "kind": "long"
+  },
+  {
+   "start": 72173,
+   "dur": 350,
+   "kind": "short"
+  },
+  {
+   "start": 74182,
+   "dur": 1026,
+   "kind": "short"
+  },
+  {
+   "start": 77725,
+   "dur": 685,
+   "kind": "short"
+  },
+  {
+   "start": 79945,
+   "dur": 1187,
+   "kind": "short"
+  },
+  {
+   "start": 82934,
+   "dur": 1377,
+   "kind": "short"
+  },
+  {
+   "start": 86598,
+   "dur": 1206,
+   "kind": "short"
+  },
+  {
+   "start": 89855,
+   "dur": 1421,
+   "kind": "short"
+  },
+  {
+   "start": 93201,
+   "dur": 1319,
+   "kind": "short"
+  },
+  {
+   "start": 96958,
+   "dur": 638,
+   "kind": "short"
+  },
+  {
+   "start": 99366,
+   "dur": 3082,
+   "kind": "long"
+  },
+  {
+   "start": 104591,
+   "dur": 1454,
+   "kind": "short"
+  },
+  {
+   "start": 108199,
+   "dur": 3539,
+   "kind": "long"
+  },
+  {
+   "start": 113468,
+   "dur": 2971,
+   "kind": "long"
+  },
+  {
+   "start": 118758,
+   "dur": 766,
+   "kind": "short"
+  },
+  {
+   "start": 121345,
+   "dur": 1084,
+   "kind": "short"
+  },
+  {
+   "start": 124842,
+   "dur": 1094,
+   "kind": "short"
+  },
+  {
+   "start": 127476,
+   "dur": 3075,
+   "kind": "long"
+  },
+  {
+   "start": 132509,
+   "dur": 3745,
+   "kind": "long"
+  },
+  {
+   "start": 137941,
+   "dur": 872,
+   "kind": "short"
+  },
+  {
+   "start": 140949,
+   "dur": 1080,
+   "kind": "short"
+  },
+  {
+   "start": 144295,
+   "dur": 705,
+   "kind": "short"
+  },
+  {
+   "start": 147576,
+   "dur": 4392,
+   "kind": "long"
+  },
+  {
+   "start": 153816,
+   "dur": 1263,
+   "kind": "short"
+  },
+  {
+   "start": 157349,
+   "dur": 740,
+   "kind": "short"
+  },
+  {
+   "start": 160503,
+   "dur": 1291,
+   "kind": "short"
+  },
+  {
+   "start": 164040,
+   "dur": 867,
+   "kind": "short"
+  },
+  {
+   "start": 166460,
+   "dur": 323,
+   "kind": "short"
+  },
+  {
+   "start": 169305,
+   "dur": 1044,
+   "kind": "short"
+  },
+  {
+   "start": 172543,
+   "dur": 805,
+   "kind": "short"
+  },
+  {
+   "start": 176028,
+   "dur": 463,
+   "kind": "short"
+  },
+  {
+   "start": 178898,
+   "dur": 1157,
+   "kind": "short"
+  },
+  {
+   "start": 182082,
+   "dur": 665,
+   "kind": "short"
+  },
+  {
+   "start": 185137,
+   "dur": 554,
+   "kind": "short"
+  },
+  {
+   "start": 188293,
+   "dur": 1156,
+   "kind": "short"
+  },
+  {
+   "start": 192133,
+   "dur": 430,
+   "kind": "short"
+  },
+  {
+   "start": 194773,
+   "dur": 4311,
+   "kind": "long"
+  }
+ ]
+}
