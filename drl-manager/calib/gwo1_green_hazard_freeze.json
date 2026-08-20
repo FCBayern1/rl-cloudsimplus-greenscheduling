@@ -1,0 +1,55 @@
+{
+ "protocol": "gwo1 green-window hazard freeze (calibration data only)",
+ "candidates": [
+  0.25,
+  0.4,
+  0.5,
+  0.6
+ ],
+ "q_star_green": 0.6,
+ "n_decisions": 7577,
+ "accuracies": {
+  "always_wait": {
+   "acc": 0.08261845057410584,
+   "acc_mi": 0.10579948302289083
+  },
+  "never_wait": {
+   "acc": 0.9173815494258941,
+   "acc_mi": 0.8942005169771091
+  },
+  "green_hazard@0.25": {
+   "acc": 0.6584400158374026,
+   "acc_mi": 0.5570459810897663
+  },
+  "green_hazard@0.40": {
+   "acc": 0.7550481720997756,
+   "acc_mi": 0.6501822879123158
+  },
+  "green_hazard@0.50": {
+   "acc": 0.7956975056090801,
+   "acc_mi": 0.6987644033712663
+  },
+  "green_hazard@0.60": {
+   "acc": 0.8248647221855616,
+   "acc_mi": 0.7381291271928373
+  }
+ },
+ "schedule": "calib/gwo1_schedule.json",
+ "trace": "gwo1_n1200_x130.csv",
+ "on_law": [
+  1500,
+  2700
+ ],
+ "anchors": [
+  0,
+  20,
+  40,
+  59,
+  79,
+  99,
+  119,
+  138,
+  158,
+  178
+ ]
+}
