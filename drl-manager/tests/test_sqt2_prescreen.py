@@ -536,3 +536,36 @@ class TestBacklogCapOverride:
         finally:
             monkeypatch.delenv("GWO1_BACKLOG_CAP", raising=False)
             importlib.reload(m)
+
+
+class TestGreenIntervalEdges:
+    """5080 2026-08-20 在他那份实现里发现:zip(iv, iv[1:]) 会丢掉首段绿窗
+    (row 0 -> 第一个槽)。这里钉住本实现的两个边界。"""
+
+    @staticmethod
+    def _ti():
+        from sqt2_prescreen import TroughIndex
+        return TroughIndex([{"start": 1000, "dur": 500, "kind": "short"},
+                            {"start": 4000, "dur": 400, "kind": "short"}],
+                           horizon=10000)
+
+    def test_leading_green_segment_is_kept(self):
+        """首段是合法决策点:它后面有槽,"等不等得到下一个起点"有定义。"""
+        assert self._ti().on[0] == (0.0, 1000.0)
+        in_t, _, _, rem, age = self._ti().query(500)
+        assert (in_t, rem, age) == (False, 500.0, 500.0)
+
+    def test_trailing_green_segment_is_present_but_never_actionable(self):
+        """尾段保留在 on 里,但 next_trough_dur 返回 inf,所以 clairvoyant
+        的 `rem_green + next_trough <= budget` 恒假 —— 等价于排除它,而且
+        不需要特判(尾段之后没有绿窗,等下去永远等不到)。"""
+        import numpy as np
+        from sqt2_prescreen import gate_flags
+        ti = self._ti()
+        assert ti.on[-1] == (4400.0, 10000)
+        assert ti.next_trough_dur(5000) == float("inf")
+        g = obs([4e6])
+        out = gate_flags("clairvoyant", g, 1, 1.0, 0.0, False, 0.0, None,
+                         0.5, 1.0, rem_green=1.0, green_age=0.0,
+                         next_trough=ti.next_trough_dur(5000))
+        assert not out.any()
