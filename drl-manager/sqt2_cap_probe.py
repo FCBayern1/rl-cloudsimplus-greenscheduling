@@ -22,7 +22,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from sqt2_prescreen import (ANCHORS, BLIND_CK, TroughIndex,  # noqa: E402
+from sqt2_prescreen import (ANCHORS, TroughIndex, resolve_blind_ck,  # noqa: E402
                             load_frozen_gate, run_episode)
 
 ARMS = ("nowait", "naive", "clairvoyant")
@@ -82,7 +82,7 @@ def main():
           f"anchors={anchors}", flush=True)
     brown = [float(d.get("brown_carbon_factor", 0.5)) for d in cfg["datacenters"]]
 
-    head = ModuleHead(repo / BLIND_CK)
+    head = ModuleHead(resolve_blind_ck(repo))
     records = []
     for arm in arms:
         env = HierarchicalMultiDCEnv(dict(cfg))
