@@ -1,10 +1,10 @@
 {
  "scenario": "gwo1",
- "source": "sqt2_n1200_t50.csv",
+ "source": "sqt2_n1200_t60.csv",
  "runtime_scale": 1.45,
  "seed": 20260820,
  "n": 1200,
  "runtime_max": 1450.0,
  "runtime_median": 540.85,
- "slack_median": 1202.1
+ "slack_median": 785.0
 }
