@@ -46,7 +46,13 @@ from src.baselines.evaluate import load_config, collect_metrics  # noqa: E402
 MIPS = 40000.0
 MARGIN_S = 120.0
 HORIZON_S = 7200.0
-BACKLOG_CAP = 200
+# ON 区间的注册参数只有一个来源:gen_sqt2.py。不要在这里抄一份常量。
+from gen_sqt2 import ON_LO, ON_HI  # noqa: E402
+
+# 窄门的 cap;宽门下它会 binding(2026-08-20 实测 blmax 顶死 200),那时门被
+# cap 接管、量到的不是门本身。宽门跑请用 GWO1_BACKLOG_CAP 放大,blmax 降为
+# 诊断量报出。默认 200 保持 SQT2 逐字节不变。
+BACKLOG_CAP = int(os.environ.get("GWO1_BACKLOG_CAP", "200"))
 CONTRACT = 0.995
 # SQT2.3 unified release (Codex, 2026-08-19): every gate releases a held job
 # through the SAME spatial policy (PPO + shield) strictly BEFORE the Java
@@ -98,17 +104,68 @@ def hazard_p_end_within(age: float, budget: float, mix=MIX) -> float:
     return num / den if den > 0 else 1.0
 
 
-class TroughIndex:
-    """Row -> (in_trough, age, residual) lookup from the schedule artifact."""
+def green_p_ends_within(green_age: float, need: float,
+                        lo: float = ON_LO, hi: float = ON_HI) -> float:
+    """P(the CURRENT green window ends within `need` more seconds | age).
 
-    def __init__(self, troughs):
+    ON ~ U[lo, hi] by registration (gen_sqt2.py ON_LO/ON_HI). Conditional on
+    having survived to `green_age`, the remaining-life law is U[max(age,lo), hi].
+    This is the in-green twin of hazard_p_end_within and the simulator-side
+    counterpart of the offline `green_age` arm.
+    """
+    if need <= 0:
+        return 0.0
+    if green_age >= hi:
+        return 1.0
+    left = max(green_age, lo)
+    x = min(hi, green_age + need)
+    return 0.0 if x <= left else (x - left) / (hi - left)
+
+
+class TroughIndex:
+    """Row -> trough/green state from the schedule artifact.
+
+    query() returns (in_trough, age, residual, rem_green, green_age).
+
+    `residual` is None outside a trough - deliberately NOT 0.0. The old 0.0
+    sentinel made `residual <= budget` silently true for every job arriving in
+    a green window, so the wide-domain clairvoyant deferred everything and the
+    2026-08-20 value check measured "push all green arrivals away" instead of
+    the hypothesis (5080 finding). None makes that misuse a TypeError.
+
+    Green (ON) intervals are the complement of the troughs: [prev_end, next_start).
+    """
+
+    def __init__(self, troughs, horizon=None):
         self.iv = [(t["start"], t["start"] + t["dur"]) for t in troughs]
+        self.iv.sort()
+        self.dur = {s: e - s for s, e in self.iv}
+        # ON 区间 = 相邻两槽之间;首段从 0 起,末段延到 horizon(或 +inf)
+        end = horizon if horizon is not None else float("inf")
+        self.on = []
+        prev = 0.0
+        for s, e in self.iv:
+            if s > prev:
+                self.on.append((prev, float(s)))
+            prev = float(e)
+        if prev < end:
+            self.on.append((prev, end))
 
     def query(self, row: int):
         for s, e in self.iv:
             if s <= row < e:
-                return True, float(row - s), float(e - row)
-        return False, 0.0, 0.0
+                return True, float(row - s), float(e - row), 0.0, 0.0
+        for s, e in self.on:
+            if s <= row < e:
+                return False, 0.0, None, float(e - row), float(row - s)
+        return False, 0.0, None, 0.0, 0.0
+
+    def next_trough_dur(self, row: int) -> float:
+        """本绿窗之后那个槽的时长(没有则 inf —— 等下去永远等不到绿电)。"""
+        for s, e in self.iv:
+            if s >= row:
+                return float(e - s)
+        return float("inf")
 
 
 class PowerAwareAllocator:
@@ -216,13 +273,38 @@ def load_frozen_gate(repo: pathlib.Path):
 
 
 def gate_flags(mode: str, g, batch: int, ttd_scale: float, t: int,
-               in_trough: bool, age: float, residual: float,
-               hazard_q: float, backlog_scale: float) -> np.ndarray:
-    """Temporal hold decisions; identical budget math for every arm."""
+               in_trough: bool, age: float, residual, hazard_q: float,
+               backlog_scale: float, rem_green: float = 0.0,
+               green_age: float = 0.0, next_trough: float = float("inf")
+               ) -> np.ndarray:
+    """Temporal hold decisions; identical budget math for every arm.
+
+    Two decision domains, same budget maths:
+
+      trough (unchanged, SQT2)   naive: budget>eps | hazard: P(trough ends in
+                                 budget|age)>=q* | clair: residual<=budget
+      green  (GWO1_WIDE_DOMAIN)  naive: NEVER - a zero-information policy
+                                 cannot see remaining green, and pretending
+                                 otherwise is what made the 2026-08-20 check
+                                 measure "push every green arrival away"
+                                 hazard: P(green ends before runtime|green_age)
+                                 >= q*, on the registered ON law
+                                 clair: rem_green < runtime AND the next green
+                                 window starts within budget
+
+    The clairvoyant rule is the constant-carbon degeneration of "release iff
+    now is the least-carbon release instant inside the remaining budget
+    window", so it stays correct once TVCI lands. It also makes nowait a
+    feasible solution of clairvoyant's own problem, so clairvoyant cannot be
+    worse than nowait except through congestion - any wide-domain regression
+    after this fix is another bug, not the mechanism.
+    """
     flags = np.zeros(batch, dtype=bool)
     _wide = os.environ.get("GWO1_WIDE_DOMAIN", "").strip() == "1"
     if mode == "nowait" or t >= HORIZON_S or (not in_trough and not _wide):
         return flags
+    if not in_trough and mode == "naive":
+        return flags          # 零信息基线在绿窗里不等(见 docstring)
     backlog = int(_arr(g, "global_deferred_count", 1)[0] * backlog_scale)
     if backlog >= BACKLOG_CAP:
         return flags
@@ -237,12 +319,20 @@ def gate_flags(mode: str, g, batch: int, ttd_scale: float, t: int,
         budget = effective_budget(ttd[i], runtime, MARGIN_S, HORIZON_S - t)
         if budget <= RELEASE_EPS_S:
             continue
-        if mode == "naive":
-            flags[i] = True
-        elif mode == "hazard":
-            flags[i] = hazard_p_end_within(age, budget) >= hazard_q
-        elif mode == "clairvoyant":
-            flags[i] = residual <= budget
+        if in_trough:
+            if mode == "naive":
+                flags[i] = True
+            elif mode == "hazard":
+                flags[i] = hazard_p_end_within(age, budget) >= hazard_q
+            elif mode == "clairvoyant":
+                flags[i] = residual <= budget
+        else:                                   # 绿窗内(仅宽门可达)
+            if mode == "hazard":
+                flags[i] = green_p_ends_within(green_age, runtime) >= hazard_q
+            elif mode == "clairvoyant":
+                # 现在放 -> 绿电在跑完前耗尽;等到下一个绿窗起点又在预算内
+                flags[i] = (rem_green < runtime
+                            and rem_green + next_trough <= budget)
     return flags
 
 
@@ -265,11 +355,13 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
     while not done:
         g = obs["global"]
         row = WARMUP_ROWS + actual + t
-        in_trough, age, residual = tindex.query(row)
+        in_trough, age, residual, rem_green, green_age = tindex.query(row)
         mi = _arr(g, "batch_cloudlet_mi", batch)
         pes = _arr(g, "batch_cloudlet_pes", batch)
         hold = gate_flags(mode, g, batch, ttd_scale, t, in_trough, age,
-                          residual, hazard_q, backlog_scale)
+                          residual, hazard_q, backlog_scale,
+                          rem_green=rem_green, green_age=green_age,
+                          next_trough=tindex.next_trough_dur(row))
         backlog_max = max(backlog_max, int(
             _arr(g, "global_deferred_count", 1)[0] * backlog_scale))
         if base == "ppo":
@@ -386,6 +478,9 @@ def final_verdict(vs_nowait: dict, vs_comp: dict, comparator: str) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--schedule", choices=tuple(SCHEDULES), default="cal")
+    ap.add_argument("--ppo-arms", default="",
+                    help="restrict the ppo base to these arms (hypothesis "
+                         "checks only; the formal verdict runs all four)")
     ap.add_argument("--bases", default="ppo,greedy")
     ap.add_argument("--sentinel-arms", default="nowait,clairvoyant")
     ap.add_argument("--drain-horizon", type=int, default=10000)
@@ -396,7 +491,7 @@ def main():
     repo = pathlib.Path(__file__).resolve().parent
     experiment, sched_art = SCHEDULES[args.schedule]
     art = json.loads((repo / sched_art).read_text())
-    tindex = TroughIndex(art["troughs"])
+    tindex = TroughIndex(art["troughs"], horizon=art["rows"])
     hazard_q, comparator = load_frozen_gate(repo)
     print(f"[SQT2PS] schedule={args.schedule} experiment={experiment} "
           f"frozen hazard q*={hazard_q} comparator={comparator}", flush=True)
@@ -411,8 +506,13 @@ def main():
     all_arms = ("nowait", "naive", "hazard", "clairvoyant")
     plans = []
     for b in [x.strip() for x in args.bases.split(",") if x.strip()]:
-        arms = all_arms if b == "ppo" else tuple(
-            a.strip() for a in args.sentinel_arms.split(",") if a.strip())
+        # ppo 是正式底座,默认跑全部四臂(判决口径)。--ppo-arms 只用于
+        # 假设检验类的窄跑(如宽门价值检查的 nowait vs clairvoyant),
+        # 正式判决不要用它缩减臂集。
+        arms = tuple(a.strip() for a in (
+            args.ppo_arms if b == "ppo" and args.ppo_arms
+            else ",".join(all_arms) if b == "ppo"
+            else args.sentinel_arms).split(",") if a.strip())
         plans.append((b, arms))
 
     records = []
@@ -440,7 +540,9 @@ def main():
                           f"defer={rec['defer_slots']} "
                           f"spill={rec['spill_slots']} "
                           f"forced={rec['deadline_forced_count']} "
-                          f"blmax={rec['backlog_max']}", flush=True)
+                          f"blmax={rec['backlog_max']}"
+                          f"{'/CAP' if rec['backlog_max'] >= BACKLOG_CAP else ''}"
+                          f"(cap={BACKLOG_CAP})", flush=True)
                     if (base == "ppo" and arm == "nowait"
                             and rec["completion_at_7200"] < CONTRACT):
                         print(f"[SQT2PS ABORT] ppo control below contract at "

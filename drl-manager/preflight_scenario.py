@@ -125,6 +125,27 @@ def main():
 
     ob = N.get("obs_cloudlet_mi_high")
     chk("obs bound >= max MI", bool(ob) and ob >= MI.max(), f"bound={ob} vs max MI={MI.max():.0f}")
+    # 手设 GATEWAY_LIBS 会让 env 走 `java -cp build/install/.../lib/*` 直连
+    # JVM,用的是打包时的 jar。那个 jar 一旦落后于 Java 源码,就会静默跑回
+    # 旧实现 —— 且旧实现没有 cloudlet_cpu_utilization 旋钮,runtime 被拉伸
+    # 2.5x、runtime_max 变成 3250s >> ON_min 1500s,cashability 崩掉、整个
+    # 主机制消失,不报任何错。(2026-08-20 3060 实测:jar 停在 08-11,落后 7
+    # 个 Java 提交。)只在 jar 存在时检查 —— 没打包过不是错误。
+    _jar = (Path(__file__).resolve().parent.parent / "cloudsimplus-gateway"
+            / "build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar")
+    if _jar.is_file():
+        import subprocess as _sp
+        _src = _sp.run(["git", "log", "-1", "--format=%ct", "--",
+                        "cloudsimplus-gateway/src/main/java"],
+                       capture_output=True, text=True,
+                       cwd=str(Path(__file__).resolve().parent.parent))
+        _last = int(_src.stdout.strip() or 0)
+        chk("gateway jar not stale", _jar.stat().st_mtime >= _last,
+            f"jar mtime={int(_jar.stat().st_mtime)} vs last Java commit={_last}"
+            " (run ./gradlew installDist; a stale jar silently reverts the"
+            " cloudlet_cpu_utilization knob and voids cashability)")
+    else:
+        na("gateway jar not stale", "no installDist jar; gradlew path only")
     chk("closed-book offsets on", N.get("green_episode_offset_range", 0) > 0,
         f"range={N.get('green_episode_offset_range')}")
     need = 13 + int(N.get("green_episode_offset_range", 0)) + 7200

@@ -165,11 +165,13 @@ class TestFrozenGate:
 
 class TestTroughIndex:
     def test_query(self):
-        ti = TroughIndex([{"start": 100, "dur": 50}])
-        assert ti.query(99) == (False, 0.0, 0.0)
-        assert ti.query(100) == (True, 0.0, 50.0)
-        assert ti.query(149) == (True, 49.0, 1.0)
-        assert ti.query(150) == (False, 0.0, 0.0)
+        """query() 现在返回 5 元组;槽外 residual 是 None 而不是 0.0 —— 旧的
+        (False, 0.0, 0.0) 正是让宽门 clairvoyant 恒真的那个哨兵。"""
+        ti = TroughIndex([{"start": 100, "dur": 50}], horizon=1000)
+        assert ti.query(99) == (False, 0.0, None, 1.0, 99.0)
+        assert ti.query(100) == (True, 0.0, 50.0, 0.0, 0.0)
+        assert ti.query(149) == (True, 49.0, 1.0, 0.0, 0.0)
+        assert ti.query(150) == (False, 0.0, None, 850.0, 0.0)
 
 
 class TestDualValidity:
@@ -315,7 +317,9 @@ class TestGwo1DomainSwitches:
             monkeypatch.delenv("GWO1_WIDE_DOMAIN", raising=False)
             for k, v in (env or {}).items():
                 monkeypatch.setenv(k, v)
-        return gate_flags(mode, g, 1, 1.0, t, in_trough, 100.0, 300.0, 0.5, 1.0)
+        residual = 300.0 if in_trough else None
+        return gate_flags(mode, g, 1, 1.0, t, in_trough, 100.0, residual,
+                          0.5, 1.0, rem_green=50.0, next_trough=300.0)
 
     def test_default_off_never_defers_outside_trough(self, monkeypatch):
         g = obs([4e6])
@@ -328,11 +332,24 @@ class TestGwo1DomainSwitches:
                          env={"GWO1_WIDE_DOMAIN": "0"}, monkeypatch=monkeypatch)
         assert not out.any()
 
-    def test_wide_defers_outside_trough(self, monkeypatch):
+    def test_wide_lifts_the_restriction_without_making_arms_unconditional(
+            self, monkeypatch):
+        """这条断言原本写的是 `assert out.all()` —— 那是把 bug 写进了测试。
+
+        当时 naive 在绿窗里恒真只是因为哨兵 residual=0.0 让预算判据失效,
+        而不是因为宽门"应该"让每个臂无条件延迟。修正后的语义是:宽门解除
+        trough-only 限制,但绿窗内每个臂各有自己的判据,naive 是不等。
+        """
         g = obs([4e6])
-        out = self._call(g, in_trough=False,
+        out = self._call(g, in_trough=False, mode="naive",
                          env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
-        assert out.all(), "wide domain must lift the trough-only restriction"
+        assert not out.any(), "零信息基线在绿窗里不等"
+        # 而 clairvoyant 在同样位置是有条件的:绿电不够跑完才等
+        held = gate_flags("clairvoyant", g, 1, 1.0, 0.0, False, 0.0, None,
+                          0.5, 1.0, rem_green=50.0, next_trough=300.0)
+        free = gate_flags("clairvoyant", g, 1, 1.0, 0.0, False, 0.0, None,
+                          0.5, 1.0, rem_green=900.0, next_trough=300.0)
+        assert held.all() and not free.any()
 
     def test_wide_matches_narrow_inside_trough(self, monkeypatch):
         """Inside the trough the switch must be a no-op."""
@@ -375,4 +392,147 @@ class TestGwo1DomainSwitches:
             assert importlib.reload(m).ANCHORS == (0, 79, 158)
         finally:
             monkeypatch.delenv("GWO1_ANCHORS", raising=False)
+            importlib.reload(m)
+
+
+class TestGreenWindowSentinelRegression:
+    """5080 2026-08-20:哨兵 residual=0.0 让宽门 clairvoyant 恒真。
+
+    `0.0 <= budget` 对每个在绿窗到达的作业都成立,于是宽门那三格测的是
+    "把绿窗到达的作业全部推走",不是假设本身。residual 现在是 None,
+    这类误用会变成 TypeError 而不是静默通过。
+    """
+
+    @staticmethod
+    def _ti():
+        from sqt2_prescreen import TroughIndex
+        return TroughIndex([{"start": 1000, "dur": 500, "kind": "short"},
+                            {"start": 4000, "dur": 400, "kind": "short"}],
+                           horizon=10000)
+
+    def test_residual_outside_trough_is_none_not_zero(self):
+        in_t, _, residual, _, _ = self._ti().query(2000)
+        assert in_t is False
+        assert residual is None, "0.0 会被 `residual <= budget` 静默当成真值"
+
+    def test_residual_inside_trough_still_numeric(self):
+        in_t, age, residual, rem_green, green_age = self._ti().query(1200)
+        assert (in_t, age, residual) == (True, 200.0, 300.0)
+        assert (rem_green, green_age) == (0.0, 0.0)
+
+    def test_green_intervals_are_the_trough_complement(self):
+        assert self._ti().on == [(0.0, 1000.0), (1500.0, 4000.0),
+                                 (4400.0, 10000)]
+
+    def test_rem_green_and_green_age_split_the_window(self):
+        _, _, _, rem, age = self._ti().query(2000)
+        assert (rem, age) == (2000.0, 500.0)      # 窗口 [1500,4000)
+
+    def test_next_trough_dur_is_inf_past_the_last_trough(self):
+        assert self._ti().next_trough_dur(5000) == float("inf")
+        assert self._ti().next_trough_dur(2000) == 400.0
+
+
+class TestWideDomainGreenSemantics:
+    """宽门下绿窗内的正确语义(5080 给的表)。"""
+
+    @staticmethod
+    def _call(mode, *, rem_green, next_trough, ttd=3000.0, mi=4e6,
+              green_age=0.0, monkeypatch=None):
+        monkeypatch.setenv("GWO1_WIDE_DOMAIN", "1")
+        g = obs([mi], ttd=[ttd])
+        return gate_flags(mode, g, 1, 1.0, 0.0, False, 0.0, None, 0.5, 1.0,
+                          rem_green=rem_green, green_age=green_age,
+                          next_trough=next_trough)
+
+    def test_naive_never_defers_in_green(self, monkeypatch):
+        """零信息策略看不到剩余绿电 —— 诚实的零信息基线。"""
+        out = self._call("naive", rem_green=10.0, next_trough=10.0,
+                         monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_clairvoyant_releases_when_job_fits_in_remaining_green(self, monkeypatch):
+        # runtime = 4e6/40000 = 100s < rem_green
+        out = self._call("clairvoyant", rem_green=900.0, next_trough=300.0,
+                         monkeypatch=monkeypatch)
+        assert not out.any(), "跑得完就没有等的理由"
+
+    def test_clairvoyant_defers_when_green_runs_out_and_next_is_affordable(self, monkeypatch):
+        out = self._call("clairvoyant", rem_green=50.0, next_trough=300.0,
+                         monkeypatch=monkeypatch)
+        assert out.all(), "绿电不够跑完、且等得起下一个绿窗 -> 等"
+
+    def test_clairvoyant_releases_when_next_green_is_unaffordable(self, monkeypatch):
+        """等不起就必须放 —— 否则就是拿 backstop 兜底。"""
+        out = self._call("clairvoyant", rem_green=50.0, next_trough=1e9,
+                         monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_clairvoyant_cannot_be_worse_than_nowait_by_construction(self, monkeypatch):
+        """nowait 是 clairvoyant 可行解之一:凡 clair 选择等,必有严格理由。"""
+        for rem, nxt in ((900.0, 300.0), (50.0, 1e9), (10.0, 50.0)):
+            held = self._call("clairvoyant", rem_green=rem, next_trough=nxt,
+                              monkeypatch=monkeypatch).all()
+            runtime = 4e6 / 40000.0
+            assert held == (rem < runtime and rem + nxt <= 3000.0 - runtime - 120.0)
+
+    def test_hazard_uses_the_registered_on_law(self, monkeypatch):
+        from sqt2_prescreen import ON_HI, green_p_ends_within
+        # 绿窗龄很深 -> 剩余寿命短 -> 几乎必然在 runtime 内结束 -> 等
+        deep = self._call("hazard", rem_green=5.0, next_trough=300.0,
+                          green_age=ON_HI - 10.0, monkeypatch=monkeypatch)
+        assert deep.all()
+        assert green_p_ends_within(ON_HI - 10.0, 100.0) >= 0.5
+
+    def test_nowait_untouched_in_green(self, monkeypatch):
+        out = self._call("nowait", rem_green=1.0, next_trough=1.0,
+                         monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_narrow_still_never_decides_in_green(self, monkeypatch):
+        monkeypatch.delenv("GWO1_WIDE_DOMAIN", raising=False)
+        g = obs([4e6])
+        for mode in ("naive", "hazard", "clairvoyant"):
+            out = gate_flags(mode, g, 1, 1.0, 0.0, False, 0.0, None, 0.5, 1.0,
+                             rem_green=50.0, green_age=0.0, next_trough=300.0)
+            assert not out.any(), mode
+
+
+class TestGreenHazard:
+    def test_zero_need_is_zero(self):
+        from sqt2_prescreen import green_p_ends_within
+        assert green_p_ends_within(0.0, 0.0) == 0.0
+
+    def test_monotone_in_need(self):
+        from sqt2_prescreen import green_p_ends_within
+        ps = [green_p_ends_within(1800.0, n) for n in (10, 100, 400, 2000)]
+        assert all(b >= a for a, b in zip(ps, ps[1:]))
+
+    def test_fresh_window_cannot_end_before_on_lo(self):
+        from sqt2_prescreen import ON_LO, green_p_ends_within
+        assert green_p_ends_within(0.0, ON_LO - 1.0) == 0.0
+
+    def test_past_on_hi_is_certain(self):
+        from sqt2_prescreen import ON_HI, green_p_ends_within
+        assert green_p_ends_within(ON_HI, 1.0) == 1.0
+
+    def test_matches_the_uniform_closed_form(self):
+        from sqt2_prescreen import ON_HI, ON_LO, green_p_ends_within
+        a, need = 2000.0, 300.0
+        assert green_p_ends_within(a, need) == pytest.approx(
+            (min(ON_HI, a + need) - a) / (ON_HI - a))
+        assert ON_LO <= a < ON_HI
+
+
+class TestBacklogCapOverride:
+    def test_cap_is_env_overridable_and_defaults_to_200(self, monkeypatch):
+        import importlib
+        import sqt2_prescreen as m
+        monkeypatch.delenv("GWO1_BACKLOG_CAP", raising=False)
+        assert importlib.reload(m).BACKLOG_CAP == 200
+        monkeypatch.setenv("GWO1_BACKLOG_CAP", "1000")
+        try:
+            assert importlib.reload(m).BACKLOG_CAP == 1000
+        finally:
+            monkeypatch.delenv("GWO1_BACKLOG_CAP", raising=False)
             importlib.reload(m)

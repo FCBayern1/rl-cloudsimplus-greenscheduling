@@ -55,7 +55,10 @@ def decision_set(rows, tindex, off_range):
             budget = effective_budget(ttd, runtime, MARGIN_S, HORIZON_S - arrival)
             if budget <= 0:
                 continue
-            in_trough, age, residual = tindex.query(int(WARMUP_ROWS + off + arrival))
+            # query() 返回 5 元组(SQT2.3+):槽外 residual 是 None,不是 0.0。
+            # 这里只在槽内使用它,所以取值口径与冻结时逐位一致。
+            in_trough, age, residual, _, _ = tindex.query(
+                int(WARMUP_ROWS + off + arrival))
             if not in_trough:
                 continue
             out.append((residual <= budget, age, budget, mi))

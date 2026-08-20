@@ -92,12 +92,15 @@ class TestGwo1Certification:
 
 class TestSqt2UnchangedByRefactor:
     @pytest.mark.parametrize("variant", ["sqt2", "sqt2ho"])
-    def test_sqt2_still_passes_all_30(self, variant):
+    def test_sqt2_still_passes_every_check(self, variant):
         rc, out = run_preflight(f"experiment_{variant}_oracle",
                                 f"experiment_{variant}_noforecast",
                                 "--sqt2-cert")
         assert rc == 0, out
-        assert n_pass(out) == 30, out
+        # 30 项(重构前基线) + 1 项 "gateway jar not stale"(5080 2026-08-20
+        # 采纳:手设 GATEWAY_LIBS 会静默跑回没有 cloudlet_cpu_utilization
+        # 旋钮的旧 Java,runtime 拉伸 2.5x 直接废掉 cashability)。
+        assert n_pass(out) == 31, out
         assert not failures(out)
 
     @pytest.mark.parametrize("variant", ["sqt2", "sqt2ho"])
