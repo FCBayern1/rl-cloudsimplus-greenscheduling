@@ -28,6 +28,7 @@ Run on the calibration schedule first (protocol shakedown, --schedule cal),
 then ONCE on the held-out schedule (--schedule ho) for the formal verdict.
 """
 import argparse
+import os
 import json
 import pathlib
 import sys
@@ -56,6 +57,9 @@ CONTRACT = 0.995
 RELEASE_EPS_S = 30.0
 W_PER_PE_DYN = 2.541          # job counterfactual increment (RS500A W/PE)
 ANCHORS = (0, 20, 40, 59, 79, 99, 119, 138, 158, 178)
+# 价值检查用的子集(默认不启用,判决跑必须用全部 10 个锚点)。
+if os.environ.get("GWO1_ANCHORS", "").strip():
+    ANCHORS = tuple(int(x) for x in os.environ["GWO1_ANCHORS"].split(","))
 MIX = ((0.8, 300.0, 1500.0), (0.2, 2700.0, 4500.0))   # registered mixture
 
 SCHEDULES = {
@@ -211,7 +215,8 @@ def gate_flags(mode: str, g, batch: int, ttd_scale: float, t: int,
                hazard_q: float, backlog_scale: float) -> np.ndarray:
     """Temporal hold decisions; identical budget math for every arm."""
     flags = np.zeros(batch, dtype=bool)
-    if mode == "nowait" or not in_trough or t >= HORIZON_S:
+    _wide = os.environ.get("GWO1_WIDE_DOMAIN", "").strip() == "1"
+    if mode == "nowait" or t >= HORIZON_S or (not in_trough and not _wide):
         return flags
     backlog = int(_arr(g, "global_deferred_count", 1)[0] * backlog_scale)
     if backlog >= BACKLOG_CAP:

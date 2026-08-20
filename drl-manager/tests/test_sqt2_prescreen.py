@@ -299,3 +299,80 @@ class TestTripleContract:
         g2 = obs([4e6], ttd=[ttd_ok])
         f2 = gate_flags("naive", g2, 1, 1.0, 0, True, 10.0, 4000.0, 0.5, 2000.0)
         assert f2.all()
+
+
+class TestGwo1DomainSwitches:
+    """GWO1_WIDE_DOMAIN / GWO1_ANCHORS: the gwo1 value-check switches.
+
+    Both default to OFF and MUST leave the SQT2 decision domain byte-identical;
+    the 2026-08-20 value check relies on the narrow (trough-only) column being
+    the untouched SQT2 baseline it is compared against.
+    """
+
+    @staticmethod
+    def _call(g, *, in_trough, mode="naive", t=0.0, env=None, monkeypatch=None):
+        if monkeypatch is not None:
+            monkeypatch.delenv("GWO1_WIDE_DOMAIN", raising=False)
+            for k, v in (env or {}).items():
+                monkeypatch.setenv(k, v)
+        return gate_flags(mode, g, 1, 1.0, t, in_trough, 100.0, 300.0, 0.5, 1.0)
+
+    def test_default_off_never_defers_outside_trough(self, monkeypatch):
+        g = obs([4e6])
+        out = self._call(g, in_trough=False, monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_explicit_zero_is_off(self, monkeypatch):
+        g = obs([4e6])
+        out = self._call(g, in_trough=False,
+                         env={"GWO1_WIDE_DOMAIN": "0"}, monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_wide_defers_outside_trough(self, monkeypatch):
+        g = obs([4e6])
+        out = self._call(g, in_trough=False,
+                         env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
+        assert out.all(), "wide domain must lift the trough-only restriction"
+
+    def test_wide_matches_narrow_inside_trough(self, monkeypatch):
+        """Inside the trough the switch must be a no-op."""
+        g = obs([4e6])
+        narrow = self._call(g, in_trough=True, monkeypatch=monkeypatch)
+        wide = self._call(g, in_trough=True,
+                          env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
+        assert np.array_equal(narrow, wide)
+
+    def test_wide_does_not_break_nowait(self, monkeypatch):
+        g = obs([4e6])
+        out = self._call(g, in_trough=False, mode="nowait",
+                         env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
+        assert not out.any(), "nowait is the control arm; it never defers"
+
+    def test_wide_does_not_break_horizon_lock(self, monkeypatch):
+        g = obs([4e6])
+        out = self._call(g, in_trough=False, t=HORIZON_S,
+                         env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
+        assert not out.any(), "no deferral at or past step 7200 (layer 3)"
+
+    def test_wide_still_respects_backlog_cap(self, monkeypatch):
+        g = obs([4e6], backlog=float(BACKLOG_CAP))
+        out = self._call(g, in_trough=False,
+                         env={"GWO1_WIDE_DOMAIN": "1"}, monkeypatch=monkeypatch)
+        assert not out.any()
+
+    def test_default_anchor_set_is_the_registered_ten(self, monkeypatch):
+        import importlib
+        import sqt2_prescreen as m
+        monkeypatch.delenv("GWO1_ANCHORS", raising=False)
+        assert importlib.reload(m).ANCHORS == (0, 20, 40, 59, 79, 99, 119,
+                                               138, 158, 178)
+
+    def test_anchor_override_parses_subset(self, monkeypatch):
+        import importlib
+        import sqt2_prescreen as m
+        monkeypatch.setenv("GWO1_ANCHORS", "0,79,158")
+        try:
+            assert importlib.reload(m).ANCHORS == (0, 79, 158)
+        finally:
+            monkeypatch.delenv("GWO1_ANCHORS", raising=False)
+            importlib.reload(m)
