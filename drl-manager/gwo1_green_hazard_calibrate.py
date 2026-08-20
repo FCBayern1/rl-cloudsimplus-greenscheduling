@@ -56,12 +56,23 @@ def green_p_ends_within(age: float, need: float,
 
 
 def green_intervals(troughs):
-    """ON spans are the complement of the trough spans: (start, end, next_dur)."""
+    """ON spans are the complement of the trough spans: (start, end, next_dur).
+
+    The LEADING span (row 0 .. first trough) is a legitimate decision point -
+    it has a following trough, so "is the next onset reachable?" is defined.
+    Dropping it (the 2026-08-20 first version did, via zip(iv, iv[1:])) shrank
+    the decision set by ~7% and made the two machines disagree on the
+    denominator while agreeing on every ratio - exactly the signature the
+    3060 reported. The TRAILING span has no following trough, so a job there
+    can never reach a next onset; it is excluded on purpose, not by accident.
+    """
     iv = sorted((t["start"], t["start"] + t["dur"], t["dur"]) for t in troughs)
     spans = []
+    if iv and iv[0][0] > 0:
+        spans.append((0.0, float(iv[0][0]), iv[0][2]))     # leading green span
     for (s0, e0, _), (s1, _, d1) in zip(iv, iv[1:]):
         if s1 > e0:
-            spans.append((e0, s1, d1))       # green runs e0..s1, then a trough of d1
+            spans.append((float(e0), float(s1), d1))
     return spans
 
 

@@ -51,11 +51,20 @@ class TestGreenIntervals:
     def test_complement_of_troughs(self):
         troughs = [{"start": 100, "dur": 50}, {"start": 400, "dur": 30},
                    {"start": 900, "dur": 20}]
-        assert green_intervals(troughs) == [(150, 400, 30), (430, 900, 20)]
+        # includes the LEADING span 0..100 (it has a following trough, so the
+        # "next onset reachable?" question is well defined there)
+        assert green_intervals(troughs) == [(0.0, 100.0, 50), (150.0, 400.0, 30),
+                                            (430.0, 900.0, 20)]
 
     def test_carries_the_following_trough_duration(self):
         spans = green_intervals([{"start": 0, "dur": 10}, {"start": 500, "dur": 77}])
-        assert spans == [(10, 500, 77)]       # needed for "next onset reachable?"
+        assert spans == [(10.0, 500.0, 77)]   # needed for "next onset reachable?"
+
+    def test_leading_span_included_trailing_excluded(self):
+        spans = green_intervals([{"start": 200, "dur": 40}, {"start": 900, "dur": 10}])
+        assert spans[0] == (0.0, 200.0, 40)          # leading: kept
+        assert all(s[0] < 910 for s in spans)        # trailing (>=910): dropped,
+        # a job there has no following trough and can never reach a next onset
 
     def test_single_trough_has_no_bounded_green_span(self):
         assert green_intervals([{"start": 0, "dur": 10}]) == []
