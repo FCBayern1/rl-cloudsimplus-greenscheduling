@@ -139,11 +139,13 @@ def main():
     p.add_argument("--n-jobs", type=int, default=2000); p.add_argument("--dt", type=int, default=60)
     p.add_argument("--ci-period", type=int, default=7080); p.add_argument("--ci-amp", type=float, default=0.5)
     p.add_argument("--rho", type=float, default=0.0)
+    p.add_argument("--buckets", default="150,300,450,600,750,900")
     a_ = p.parse_args()
     dt = a_.dt; Bu = 3000 // dt
-    L_BUCKETS = list(range(125, 1000, 50))   # 50 步粒度:粗分桶让 DP 用错 runtime 的策略
+    L_BUCKETS = [int(x) for x in a_.buckets.split(',')]
     print(f"DP: dt={dt}s  时间格={a_.T//dt}  预算格={Bu}  runtime 档={L_BUCKETS}")
-    tot = {k: 0.0 for k in ("dp_blind", "clair", "combo", "onset_wait", "green_age", "naive_green")}
+    tot = {k: 0.0 for k in ("dp_blind", "clair", "combo", "onset_wait", "green_age",
+                            "naive_green", "onset_causal")}
     for k_ in range(a_.anchors):
         rng = np.random.default_rng(1009 * k_)
         g = tv.build_green(a_.T, rng); c = tv.build_ci(a_.T, a_.ci_period, a_.ci_amp, g, a_.rho)
@@ -166,6 +168,15 @@ def main():
         assert (r_dp >= 0).all(), "有作业未被任何 runtime 桶覆盖"
         cb = lambda r: float(((csum[np.clip(r+L,0,len(csum)-1)] - csum[np.clip(r,0,len(csum)-1)]) * (mi/L)).sum())
         tot["dp_blind"] += cb(r_dp)
+        # 因果版 onset:逐步走,只用当下可观测的绿窗起点;到 hi 强制放行。
+        onset = np.zeros(a_.T, bool); onset[0] = g[0] == 1
+        onset[1:] = (g[1:] == 1) & (g[:-1] == 0)
+        r_oc = np.empty(a_.n_jobs, dtype=np.int64)
+        for i in range(a_.n_jobs):
+            lo_, hi_ = int(arr[i]), int(min(arr[i] + Bg[i], a_.T - L[i] - 1))
+            w = np.arange(lo_, hi_ + 1); ow = np.flatnonzero(onset[w])
+            r_oc[i] = w[ow[0]] if ow.size else hi_
+        tot["onset_causal"] += cb(r_oc)
         res = tv.anchor(1009*k_, a_.T, a_.n_jobs, (200,3000), (100,1000), a_.ci_period,
                         a_.ci_amp, a_.rho, 0.30, [10**9])
         for k in ("clair","combo","onset_wait","green_age","naive_green"):
@@ -175,11 +186,15 @@ def main():
         print(f"  {k:12} {tot[k]/1e6:8.3f}")
     voi = 100*(tot["clair"]-tot["dp_blind"])/tot["dp_blind"]
     print(f"\n★ VoI = clairvoyant vs dp_blind = {voi:+.2f}%   门槛 <=-5%  {'✅' if voi<=-5 else '❌'}")
-    print("  正确性检查(DP 必须 <= 每个手搓盲臂):")
-    for k in ("combo","onset_wait","green_age","naive_green"):
-        ok = tot["dp_blind"] <= tot[k] * 1.001
-        print(f"    dp_blind <= {k:12} {'OK' if ok else 'FAIL — DP 实现有误'}"
-              f"   ({tot['dp_blind']/1e6:.3f} vs {tot[k]/1e6:.3f})")
+    # 正确性检查只对【因果】臂成立。offline_proof_tvci3 里的 onset_wait/green_age/combo
+    # 用整窗扫描挑 fallback 分支 = 偷看未来,DP 输给它们不构成 DP 有误(5080 已确认并
+    # 用 tests/test_blind_arms_are_causal.py 固化了这条判据)。
+    ok = tot["dp_blind"] <= tot["onset_causal"] * 1.001
+    print(f"  正确性自检 dp_blind <= onset_causal(因果版): "
+          f"{'✅ 通过' if ok else '❌ DP 实现有误'}"
+          f"   ({tot['dp_blind']/1e6:.3f} vs {tot['onset_causal']/1e6:.3f})")
+    print(f"    参考(偷看版,不作判据): onset_wait={tot['onset_wait']/1e6:.3f} "
+          f"combo={tot['combo']/1e6:.3f}")
 
 
 if __name__ == "__main__":
