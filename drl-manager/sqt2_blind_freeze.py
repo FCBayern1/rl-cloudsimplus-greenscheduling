@@ -27,7 +27,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from sqt2_prescreen import (ANCHORS, BLIND_CK, CONTRACT, TroughIndex,  # noqa: E402
+from sqt2_prescreen import (ANCHORS, CONTRACT, TroughIndex, resolve_blind_ck,  # noqa: E402
                             run_episode)
 
 CANDIDATE_QS = (0.25, 0.40, 0.50, 0.60)
@@ -108,7 +108,7 @@ def main():
     cfg["max_episode_length"] = 10000
     brown = [float(d.get("brown_carbon_factor", 0.5)) for d in cfg["datacenters"]]
 
-    head = ModuleHead(repo / BLIND_CK)
+    head = ModuleHead(resolve_blind_ck(repo))
     records = []
     for arm in ARMS:
         mode, q = arm_spec(arm)

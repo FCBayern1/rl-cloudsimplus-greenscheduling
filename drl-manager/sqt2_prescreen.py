@@ -77,8 +77,26 @@ SCHEDULES = {
     "gwo1": ("experiment_gwo1_noforecast", "calib/gwo1_schedule.json"),
     "gwo1ho": ("experiment_gwo1ho_noforecast", "calib/gwo1ho_schedule.json"),
 }
-BLIND_CK = ("logs/v32_nofc600_s1/multidc_gtrxl_training/"
-            "PPO_multidc_env_70179_00000_0_2026-08-17_01-34-42/checkpoint_000010")
+# The frozen spatial base. It lives under logs/ (gitignored) on the machine
+# that trained it, so a hash-verified copy is tracked at frozen_ckpt/ - both
+# boxes must load the SAME bytes or "shared frozen base" is not a shared base.
+# Resolution order: the training path if present, else the tracked copy.
+_BLIND_CK_LOCAL = ("logs/v32_nofc600_s1/multidc_gtrxl_training/"
+                   "PPO_multidc_env_70179_00000_0_2026-08-17_01-34-42/checkpoint_000010")
+_BLIND_CK_TRACKED = "../frozen_ckpt/v32_nofc600_s1_ck10"
+
+
+def resolve_blind_ck(repo: pathlib.Path) -> pathlib.Path:
+    for cand in (_BLIND_CK_LOCAL, _BLIND_CK_TRACKED):
+        p = (repo / cand).resolve()
+        if (p / "learner_group/learner/rl_module/global_policy/module_state.pt").exists():
+            return p
+    raise FileNotFoundError(
+        "frozen blind PPO base not found; expected either "
+        f"{_BLIND_CK_LOCAL} or {_BLIND_CK_TRACKED} under {repo}")
+
+
+BLIND_CK = _BLIND_CK_LOCAL          # back-compat for callers that join it
 
 
 def hazard_p_end_within(age: float, budget: float, mix=MIX) -> float:
@@ -518,7 +536,7 @@ def main():
     records = []
     aborted = False
     for base, arms in plans:
-        head = ModuleHead(repo / BLIND_CK) if base == "ppo" else None
+        head = ModuleHead(resolve_blind_ck(repo)) if base == "ppo" else None
         for arm in arms:
             env = HierarchicalMultiDCEnv(dict(cfg))
             try:
