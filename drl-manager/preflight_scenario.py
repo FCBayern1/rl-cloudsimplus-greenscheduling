@@ -134,14 +134,15 @@ def main():
     _jar = (Path(__file__).resolve().parent.parent / "cloudsimplus-gateway"
             / "build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar")
     if _jar.is_file():
-        import subprocess as _sp
-        _src = _sp.run(["git", "log", "-1", "--format=%ct", "--",
-                        "cloudsimplus-gateway/src/main/java"],
-                       capture_output=True, text=True,
-                       cwd=str(Path(__file__).resolve().parent.parent))
-        _last = int(_src.stdout.strip() or 0)
-        chk("gateway jar not stale", _jar.stat().st_mtime >= _last,
-            f"jar mtime={int(_jar.stat().st_mtime)} vs last Java commit={_last}"
+        # 与【源文件 mtime】比,不与提交时间戳比。正常工作流是"改 -> 构建 ->
+        # 测 -> 提交",jar 必然比提交早几秒(5080 实测差 2 秒),按提交时间
+        # 判会在每次正常提交后误报。源文件 mtime 才是"改完有没有重新构建"的
+        # 真信号:git 只在文件内容变化时改写它,pull 到新 Java 会自然触发。
+        _srcs = list((Path(__file__).resolve().parent.parent
+                      / "cloudsimplus-gateway/src/main/java").rglob("*.java"))
+        _newest = max((f.stat().st_mtime for f in _srcs), default=0.0)
+        chk("gateway jar not stale", _jar.stat().st_mtime >= _newest,
+            f"jar={int(_jar.stat().st_mtime)} vs newest .java={int(_newest)}"
             " (run ./gradlew installDist; a stale jar silently reverts the"
             " cloudlet_cpu_utilization knob and voids cashability)")
     else:
