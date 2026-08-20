@@ -194,10 +194,10 @@ config 引用 97xx/98xx，但文件只在本地磁盘上。SQT2 的 95xx/96xx �
 
 ## 附：证据文件
 
-全部随本文档提交在 `docs/data/gwo1_step2/`：
+全部随本文档提交在 `reports/gwo1_step2/`：
 
 ```
-docs/data/gwo1_step2/
+reports/gwo1_step2/
 ├── gwo1_valuecheck.log      ← 价值检查原始输出（12 episode，§1）
 ├── baseline_sqt2.txt        ← preflight 重构前基线
 ├── baseline_sqt2ho.txt
