@@ -1,0 +1,10 @@
+{
+ "scenario": "gwo1ho",
+ "source": "sqt2ho_n1200_t60.csv",
+ "runtime_scale": 1.3,
+ "seed": 20260820,
+ "n": 1200,
+ "runtime_max": 1300.0,
+ "runtime_median": 484.9,
+ "slack_median": 773.9
+}

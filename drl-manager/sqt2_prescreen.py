@@ -62,9 +62,14 @@ if os.environ.get("GWO1_ANCHORS", "").strip():
     ANCHORS = tuple(int(x) for x in os.environ["GWO1_ANCHORS"].split(","))
 MIX = ((0.8, 300.0, 1500.0), (0.2, 2700.0, 4500.0))   # registered mixture
 
+# gwo1(第十考场)复用同一份 sqt2_hazard_freeze.json:危险率只依赖 ON/OFF
+# 时长分布,而 gwo1 的绿电序列与 SQT2 同种子、同 ON/OFF 律(gen_sqt2.py
+# VARIANTS 注释),分布逐位相同 —— 与 ho 侧复用同一份冻结是同一个理由。
 SCHEDULES = {
     "cal": ("experiment_sqt2_noforecast", "calib/sqt2_schedule.json"),
     "ho": ("experiment_sqt2ho_noforecast", "calib/sqt2ho_schedule.json"),
+    "gwo1": ("experiment_gwo1_noforecast", "calib/gwo1_schedule.json"),
+    "gwo1ho": ("experiment_gwo1ho_noforecast", "calib/gwo1ho_schedule.json"),
 }
 BLIND_CK = ("logs/v32_nofc600_s1/multidc_gtrxl_training/"
             "PPO_multidc_env_70179_00000_0_2026-08-17_01-34-42/checkpoint_000010")
@@ -380,7 +385,7 @@ def final_verdict(vs_nowait: dict, vs_comp: dict, comparator: str) -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--schedule", choices=("cal", "ho"), default="cal")
+    ap.add_argument("--schedule", choices=tuple(SCHEDULES), default="cal")
     ap.add_argument("--bases", default="ppo,greedy")
     ap.add_argument("--sentinel-arms", default="nowait,clairvoyant")
     ap.add_argument("--drain-horizon", type=int, default=10000)

@@ -88,7 +88,9 @@ def exposure(trace_rows, runtimes, on_flags):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=str(OUT / "sqt2_n1200_t50.csv"))
+    # 源 trace 必须是 t60(与 config 的 SQT2 块一致);t50 会静默产出
+    # 一个同名但底座不同的 trace,是 2026-08-19 抓到的地雷。
+    ap.add_argument("--src", default=str(OUT / "sqt2_n1200_t60.csv"))
     ap.add_argument("--scales", default="1.00,1.15,1.30,1.45")
     ap.add_argument("--prefix", default="gwo1")
     ap.add_argument("--schedule", default="calib/gwo1_schedule.json")

@@ -105,6 +105,15 @@ def main():
     profile_o = str(O.get("preflight_temporal_profile") or "").strip()
     profile_n = str(N.get("preflight_temporal_profile") or "").strip()
     sqt2 = profile_o.startswith("sqt2_trough_") or ("--sqt2-cert" in sys.argv)
+    # gwo1(第十考场):与 SQT2 同属"绿电断续"族,共享几何/对称/预算类检查,
+    # 但暴露门是另一套机制 —— SQT2 量 tight/loose 类条件的"值不值得等",
+    # gwo1 量"到达时在绿窗内、立刻释放就会溢出到棕电"的 MI 占比。
+    gwo1 = profile_o.startswith("gwo1_trough_") or ("--gwo1-cert" in sys.argv)
+    trough = sqt2 or gwo1
+    fam = "gwo1" if gwo1 else "sqt2"
+    want_profile = "gwo1_trough_v1" if gwo1 else "sqt2_trough_v2"
+    want_v = want_profile.rsplit("_", 1)[-1]
+    spec_tag = "GWO1.1" if gwo1 else "SQT2.2-Clean"
 
     def na(name, msg):
         print(f"[ N/A ] {name:30s} {msg}")
@@ -152,7 +161,7 @@ def main():
     # averages over the same peaks and troughs and timing stops mattering).
     med = float(np.median(L))
     slack = dl - arr - L
-    if sqt2:
+    if trough:
         # v3-lever premises (job-spans-peak commitment) do not map to the
         # SQT2 wait-across-trough lever; marked N/A per Codex adjudication,
         # replaced by the sqt2_trough_v1 block below. NOT deleted globally.
@@ -173,7 +182,7 @@ def main():
     chk("green capacity > peak load", conc.max() < gv, f"peak concurrency={conc.max():.0f} vs green VMs={gv}")
     chk("deadlines land in-episode", bool((dl - L < 7200).all()), f"max latest start={int((dl-L).max())}")
     sh = N["datacenters"][0].get("short_term_rows", 0)
-    if sqt2:
+    if trough:
         na("short horizon covers peak", f"{profile_o}: v32 bins horizon is the decision channel")
     else:
         chk("short horizon covers peak", sh >= pk, f"short_term_rows={sh} vs peak={pk:.0f}")
@@ -183,81 +192,118 @@ def main():
     allowed = {"forecast_mode", "green_oracle_mode", "experiment_name", "simulation_name"}
     chk("arms differ only as intended", diff <= allowed, f"diffs={sorted(diff)}")
 
-    if sqt2:
+    if trough:
         import json as _json
-        chk("sqt2: profile symmetric", profile_o == profile_n == "sqt2_trough_v2",
-            f"oracle={profile_o!r} blind={profile_n!r} (v2 required)")
+        chk(f"{fam}: profile symmetric", profile_o == profile_n == want_profile,
+            f"oracle={profile_o!r} blind={profile_n!r} ({want_v} required)")
         for key in ("defer_deadline_force_mode", "defer_deadline_slack_sec",
                     "obs_v32_demand_model", "obs_v32_deadline_margin_sec",
                     "cloudlet_cpu_utilization"):
-            chk(f"sqt2: {key} symmetric", O.get(key) == N.get(key),
+            chk(f"{fam}: {key} symmetric", O.get(key) == N.get(key),
                 f"oracle={O.get(key)} blind={N.get(key)}")
-        chk("sqt2: latest-start backstop on",
+        chk(f"{fam}: latest-start backstop on",
             O.get("defer_deadline_force_mode") == "latest_start"
             and float(O.get("defer_deadline_slack_sec", 0)) == 120.0,
             f"mode={O.get('defer_deadline_force_mode')} slack={O.get('defer_deadline_slack_sec')}")
-        chk("sqt2: obs margin == backstop slack (SQT2.2-Clean)",
+        chk(f"{fam}: obs margin == backstop slack ({spec_tag})",
             float(O.get("obs_v32_deadline_margin_sec", 0)) == 120.0,
             f"obs_v32_deadline_margin_sec={O.get('obs_v32_deadline_margin_sec')}")
-        chk("sqt2: full CPU utilization (physics == registered maths)",
+        chk(f"{fam}: full CPU utilization (physics == registered maths)",
             float(O.get("cloudlet_cpu_utilization", 0.5)) == 1.0,
             f"cloudlet_cpu_utilization={O.get('cloudlet_cpu_utilization')}"
             " (0.5 stretches runtimes ~2.5x and voids every budget check)")
         trace_name = Path(N["cloudlet_trace_file"]).name
-        prefix = trace_name.split("_n1200_")[0]        # sqt2 | sqt2ho
-        sched_art = "calib/sqt2ho_schedule.json" if prefix == "sqt2ho" else "calib/sqt2_schedule.json"
+        prefix = trace_name.split("_n1200_")[0]   # sqt2|sqt2ho|gwo1|gwo1ho
+        sched_art = f"calib/{prefix}_schedule.json"
         art = _json.loads((Path(__file__).resolve().parent / sched_art).read_text())
         tag = trace_name.replace(f"{prefix}_n1200_", "").replace(".csv", "")
-        tr_art = _json.loads((Path(__file__).resolve().parent
-                              / f"calib/{prefix}_trace_{tag}.json").read_text())
-        tight_ids = set(tr_art["tight_cloudlet_ids"])
-        tight_flags = [r["cloudlet_id"] in tight_ids for r in tr]
+        tr_art_g = _json.loads((Path(__file__).resolve().parent
+                                / f"calib/{prefix}_trace_{tag}.json").read_text())
+        # 绿电序列与观测通道的标量,两族共用
         short_max = art["off_short"][1]
         long_min, long_max = art["off_long"]
         on_min = art["on_range"][0]
         horizon = int(N.get("obs_v32_forecast_horizon_steps", 0))
         bins = int(N.get("obs_v32_forecast_bin_count", 1))
-        # class-conditional structure on the EXECUTABLE wait budget
-        # B = deadline - arrival - runtime - 120 (== latest-start backstop)
-        B = dl - arr - L - 120.0
-        Bt = B[np.asarray(tight_flags)]
-        Bl = B[~np.asarray(tight_flags)]
-        chk("sqt2v2: tight budget positive", float(np.percentile(Bt, 5)) > 0,
-            f"B_p05(tight)={np.percentile(Bt, 5):.0f} > 0")
-        chk("sqt2v2: tight cannot outwait short troughs",
-            float(np.percentile(Bt, 95)) < short_max,
-            f"B_p95(tight)={np.percentile(Bt, 95):.0f} < short_max={short_max}")
-        chk("sqt2v2: loose budget between classes",
-            short_max <= float(np.median(Bl)) < long_min,
-            f"short_max={short_max} <= B_p50(loose)={np.median(Bl):.0f} < long_min={long_min}")
-        anchors = [(1009 * k) % int(N["green_episode_offset_range"])
-                   for k in (0, 20, 40, 59, 79, 99, 119, 138, 158, 178)]
-        exp = sqt2_trough_exposure(arr, L, dl, MI, art["troughs"], anchors,
-                                   kwargs_tight=tight_flags)
-        chk("sqt2v2: decision exposure (MAIN)",
-            0.35 <= exp["worthy_share"] <= 0.65,
-            f"worthy={exp['worthy_share']:.2f} not-worth={exp['notworth_share']:.2f} "
-            f"(trough-arrival MI frac={exp['trough_arrival_mi_frac']:.2f})")
-        chk("sqt2v2: P(worthy|tight) in band",
-            0.25 <= exp["p_worthy_given_tight"] <= 0.75,
-            f"P(worthy|tight)={exp['p_worthy_given_tight']:.2f}")
-        cells = {k: round(v / 1e9, 1) for k, v in exp["cell_mi"].items()}
-        print(f"[info ] sqt2v2 exposure cells (GMI): {cells}")
-        chk("sqt2v2: distinct trough coverage",
-            exp["distinct_troughs_hit"] >= 8,
-            f"{exp['distinct_troughs_hit']} distinct troughs across anchors")
-        chk("sqt2: cashability", int(L.max()) <= on_min,
+        if sqt2:
+            tr_art = _json.loads((Path(__file__).resolve().parent
+                                  / f"calib/{prefix}_trace_{tag}.json").read_text())
+            tight_ids = set(tr_art["tight_cloudlet_ids"])
+            tight_flags = [r["cloudlet_id"] in tight_ids for r in tr]
+            # class-conditional structure on the EXECUTABLE wait budget
+            # B = deadline - arrival - runtime - 120 (== latest-start backstop)
+            B = dl - arr - L - 120.0
+            Bt = B[np.asarray(tight_flags)]
+            Bl = B[~np.asarray(tight_flags)]
+            chk("sqt2v2: tight budget positive", float(np.percentile(Bt, 5)) > 0,
+                f"B_p05(tight)={np.percentile(Bt, 5):.0f} > 0")
+            chk("sqt2v2: tight cannot outwait short troughs",
+                float(np.percentile(Bt, 95)) < short_max,
+                f"B_p95(tight)={np.percentile(Bt, 95):.0f} < short_max={short_max}")
+            chk("sqt2v2: loose budget between classes",
+                short_max <= float(np.median(Bl)) < long_min,
+                f"short_max={short_max} <= B_p50(loose)={np.median(Bl):.0f} < long_min={long_min}")
+            anchors = [(1009 * k) % int(N["green_episode_offset_range"])
+                       for k in (0, 20, 40, 59, 79, 99, 119, 138, 158, 178)]
+            exp = sqt2_trough_exposure(arr, L, dl, MI, art["troughs"], anchors,
+                                       kwargs_tight=tight_flags)
+            chk("sqt2v2: decision exposure (MAIN)",
+                0.35 <= exp["worthy_share"] <= 0.65,
+                f"worthy={exp['worthy_share']:.2f} not-worth={exp['notworth_share']:.2f} "
+                f"(trough-arrival MI frac={exp['trough_arrival_mi_frac']:.2f})")
+            chk("sqt2v2: P(worthy|tight) in band",
+                0.25 <= exp["p_worthy_given_tight"] <= 0.75,
+                f"P(worthy|tight)={exp['p_worthy_given_tight']:.2f}")
+            cells = {k: round(v / 1e9, 1) for k, v in exp["cell_mi"].items()}
+            print(f"[info ] sqt2v2 exposure cells (GMI): {cells}")
+            chk("sqt2v2: distinct trough coverage",
+                exp["distinct_troughs_hit"] >= 8,
+                f"{exp['distinct_troughs_hit']} distinct troughs across anchors")
+        if gwo1:
+            # gwo1 的暴露门:到达时处于绿窗、且立刻释放就会溢出到棕电的 MI 占比。
+            # 预注册带宽 [0.20, 0.50];按注册锚点标定 —— 只在 offset=0 处量会
+            # 严重偏斜(绿电序列开头恰是一段 ON,早到达的作业几乎全在绿窗里)。
+            import statistics as _st
+            import gen_gwo1_trace as _gt
+            import gen_sqt2 as _gs
+            on_flags, _ = _gs.build_schedule(art["rows"], art["seed"])
+            per = _gt.exposure_anchored(tr, [float(x) for x in L], on_flags)
+            med_exp = _st.median(x[1] for x in per)
+            lo_exp, hi_exp = min(x[1] for x in per), max(x[1] for x in per)
+            chk("gwo1v1: decision exposure (MAIN)", 0.20 <= med_exp <= 0.50,
+                f"exposure median={med_exp:.3f} in [0.20,0.50] "
+                f"(anchors {lo_exp:.3f}-{hi_exp:.3f}, green-arrival MI="
+                f"{_st.median(x[0] for x in per):.3f})")
+            chk("gwo1v1: no dead anchor", lo_exp > 0.0,
+                f"min anchored exposure={lo_exp:.3f} > 0 "
+                "(a zero anchor contributes only noise to the verdict)")
+            chk("gwo1v1: registered runtime scale",
+                abs(float(tr_art_g["runtime_scale"]) - 1.30) < 1e-9,
+                f"runtime_scale={tr_art_g['runtime_scale']} (pre-registered 1.30)")
+            chk("gwo1v1: source trace is t60",
+                str(tr_art_g["source"]).endswith("_t60.csv"),
+                f"source={tr_art_g['source']} (t50 silently changes the base)")
+            # 暴露标定用 %rows,env 的 episode_offset 用 %green_episode_offset_range;
+            # 注册锚点必须落在两者同值的区间,否则标定与评测量的不是同一批偏移。
+            _rng = int(N["green_episode_offset_range"])
+            _bad = [k for k in _gt.ANCHORS
+                    if (1009 * k) % _rng != (1009 * k) % art["rows"]]
+            chk("gwo1v1: anchor modulus invariant", not _bad,
+                f"anchors wrapping differently under %{_rng} vs "
+                f"%{art['rows']}: {_bad or 'none'}")
+
+        chk(f"{fam}: cashability", int(L.max()) <= on_min,
             f"runtime_max={int(L.max())} <= ON_min={on_min}")
         slack_p95 = float(np.percentile(slack, 95))
-        chk("sqt2: horizon covers waitable+slack",
+        chk(f"{fam}: horizon covers waitable+slack",
             horizon >= max(short_max, slack_p95),
             f"horizon={horizon} >= max(short_max={short_max}, slack_p95={slack_p95:.0f})")
         gap = horizon / max(1, bins - 1)
-        chk("sqt2: bin resolution", gap < on_min,
+        chk(f"{fam}: bin resolution", gap < on_min,
             f"max bin gap={gap:.0f}s < ON_min={on_min}")
         longs = [tt for tt in art["troughs"] if tt["kind"] == "long"]
         beyond = sum(1 for tt in longs if tt["dur"] > horizon)
-        chk("sqt2: long troughs beyond horizon",
+        chk(f"{fam}: long troughs beyond horizon",
             longs and beyond / len(longs) >= 0.2,
             f"{beyond}/{len(longs)} long troughs exceed horizon {horizon}")
 
