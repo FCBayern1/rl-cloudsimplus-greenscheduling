@@ -1,0 +1,19 @@
+===== GWO1_WIDE_DOMAIN=0 start 03:17 =====
+  rc=0  end 05:22
+[SQT2PS] schedule=cal experiment=experiment_sqt2_noforecast frozen hazard q*=0.5 comparator=naive
+[SQT2PS greedy:nowait      ep  0 off=     0] carbon=0.1810 compl=1.0000 c@7200=1.0000 ontime=0.9547 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:nowait      ep 79 off= 79711] carbon=0.2860 compl=1.0000 c@7200=1.0000 ontime=0.9311 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:nowait      ep158 off=159422] carbon=0.2678 compl=1.0000 c@7200=1.0000 ontime=0.9321 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:clairvoyant ep  0 off=     0] carbon=0.1502 compl=1.0000 c@7200=1.0000 ontime=0.9640 defer=92585 spill=0 forced=0 blmax=182
+[SQT2PS greedy:clairvoyant ep 79 off= 79711] carbon=0.2248 compl=1.0000 c@7200=1.0000 ontime=0.9611 defer=174207 spill=0 forced=0 blmax=200
+[SQT2PS greedy:clairvoyant ep158 off=159422] carbon=0.2276 compl=1.0000 c@7200=1.0000 ontime=0.9501 defer=106635 spill=0 forced=0 blmax=182
+===== GWO1_WIDE_DOMAIN=1 start 05:22 =====
+  rc=0  end 07:42
+[SQT2PS] schedule=cal experiment=experiment_sqt2_noforecast frozen hazard q*=0.5 comparator=naive
+[SQT2PS greedy:nowait      ep  0 off=     0] carbon=0.1810 compl=1.0000 c@7200=1.0000 ontime=0.9547 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:nowait      ep 79 off= 79711] carbon=0.2860 compl=1.0000 c@7200=1.0000 ontime=0.9311 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:nowait      ep158 off=159422] carbon=0.2678 compl=1.0000 c@7200=1.0000 ontime=0.9321 defer=0 spill=0 forced=0 blmax=0
+[SQT2PS greedy:clairvoyant ep  0 off=     0] carbon=0.2862 compl=1.0000 c@7200=1.0000 ontime=0.9593 defer=583703 spill=0 forced=0 blmax=200
+[SQT2PS greedy:clairvoyant ep 79 off= 79711] carbon=0.3177 compl=1.0000 c@7200=0.9964 ontime=0.9610 defer=650520 spill=0 forced=0 blmax=200
+[SQT2PS greedy:clairvoyant ep158 off=159422] carbon=0.3194 compl=1.0000 c@7200=0.9966 ontime=0.9567 defer=671024 spill=0 forced=0 blmax=200
+VALUE CHECK DONE 07:42
