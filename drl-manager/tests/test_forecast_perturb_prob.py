@@ -86,3 +86,43 @@ def test_missing_flag_defaults_to_perturbed(monkeypatch, forecasts):
     assert not hasattr(env, "_perturb_this_episode")
     out_sm, *_ = env._perturb_forecast(*forecasts, sim_step=1)
     np.testing.assert_allclose(out_sm, 1.0 - forecasts[0], rtol=1e-6)
+
+
+# --- forecast-DROPOUT training curriculum (reviewer R5 baseline, 2026-08-21) ---
+# The dropout baseline is `blend` at eps=1.0 under an episode lottery: on a
+# selected episode the whole forecast channel collapses to the uninformative
+# constants, on an unselected one it passes through untouched. Same operator as
+# the Blend evaluation column, so training curriculum and eval condition share
+# one implementation.
+
+def test_dropout_selected_episode_collapses_channel(monkeypatch, forecasts):
+    monkeypatch.setenv("FORECAST_PERTURB_MODE", "blend")
+    monkeypatch.setenv("FORECAST_PERTURB_EPS", "1.0")
+    env = _bare_env()
+    env._perturb_this_episode = True
+    out_sm, out_st, out_lm, out_lp = env._perturb_forecast(*forecasts, sim_step=7)
+    # neutral defaults: mean/peak 0.5, trend 0.0 -> zero information left
+    np.testing.assert_allclose(out_sm, np.full_like(forecasts[0], 0.5), rtol=1e-6)
+    np.testing.assert_allclose(out_st, np.zeros_like(forecasts[1]), atol=1e-6)
+    np.testing.assert_allclose(out_lm, np.full_like(forecasts[2], 0.5), rtol=1e-6)
+    np.testing.assert_allclose(out_lp, np.full_like(forecasts[3], 0.5), rtol=1e-6)
+
+
+def test_dropout_unselected_episode_is_identity(monkeypatch, forecasts):
+    monkeypatch.setenv("FORECAST_PERTURB_MODE", "blend")
+    monkeypatch.setenv("FORECAST_PERTURB_EPS", "1.0")
+    env = _bare_env()
+    env._perturb_this_episode = False
+    for got, exp in zip(env._perturb_forecast(*forecasts, sim_step=7), forecasts):
+        np.testing.assert_array_equal(got, exp)
+
+
+def test_dropout_rate_is_honoured(monkeypatch):
+    """p=0.5 must actually draw ~half the episodes, else the arm silently
+    trains as a plain Vanilla clone and the 11-hour run is wasted."""
+    monkeypatch.setenv("FORECAST_PERTURB_MODE", "blend")
+    monkeypatch.setenv("FORECAST_PERTURB_EPS", "1.0")
+    monkeypatch.setenv("FORECAST_PERTURB_PROB", "0.5")
+    env = _bare_env(rng_seed=12345)
+    draws = [env._draw_perturb_episode() for _ in range(4000)]
+    assert 0.46 < sum(draws) / len(draws) < 0.54
