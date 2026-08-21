@@ -354,6 +354,12 @@ def gate_flags(mode: str, g, batch: int, ttd_scale: float, t: int,
     return flags
 
 
+_GATE_TRACE = ({"steps": 0, "present": 0, "green_steps": 0, "green_present": 0,
+                "green_held": 0, "trough_steps": 0, "trough_present": 0,
+                "trough_held": 0}
+               if os.environ.get("GWO1_GATE_TRACE", "").strip() == "1" else None)
+
+
 def run_episode(env, cfg, base, mode, tindex, episode_index, head,
                 hazard_q, brown):
     obs, info = env.reset(seed=1)
@@ -380,6 +386,16 @@ def run_episode(env, cfg, base, mode, tindex, episode_index, head,
                           residual, hazard_q, backlog_scale,
                           rem_green=rem_green, green_age=green_age,
                           next_trough=tindex.next_trough_dur(row))
+        if _GATE_TRACE is not None:
+            # 门兑现率诊断(GWO1_GATE_TRACE=1)。离线模型预测每锚应延迟 57-103
+            # 个绿窗作业,而实测只兑现 24% —— 这里数门到底开火了几次、在哪个域。
+            n_present = int((_arr(g, "batch_cloudlet_mi", batch) > 0).sum())
+            _GATE_TRACE["steps"] += 1
+            _GATE_TRACE["present"] += n_present
+            dom = "trough" if in_trough else "green"
+            _GATE_TRACE[dom + "_steps"] += 1
+            _GATE_TRACE[dom + "_present"] += n_present
+            _GATE_TRACE[dom + "_held"] += int(hold.sum())
         backlog_max = max(backlog_max, int(
             _arr(g, "global_deferred_count", 1)[0] * backlog_scale))
         if base == "ppo":
@@ -558,7 +574,12 @@ def main():
                           f"defer={rec['defer_slots']} "
                           f"spill={rec['spill_slots']} "
                           f"forced={rec['deadline_forced_count']} "
-                          f"blmax={rec['backlog_max']}"
+                          + (f"gate[green {_GATE_TRACE['green_held']}/"
+                             f"{_GATE_TRACE['green_present']} present, trough "
+                             f"{_GATE_TRACE['trough_held']}/"
+                             f"{_GATE_TRACE['trough_present']}] "
+                             if _GATE_TRACE else "")
+                          + f"blmax={rec['backlog_max']}"
                           f"{'/CAP' if rec['backlog_max'] >= BACKLOG_CAP else ''}"
                           f"(cap={BACKLOG_CAP})", flush=True)
                     if (base == "ppo" and arm == "nowait"
