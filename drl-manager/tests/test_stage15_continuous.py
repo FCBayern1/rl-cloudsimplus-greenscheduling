@@ -77,16 +77,25 @@ class TestCoordinatedContiguous:
                 for _ in range(n)]
 
     def test_blind_is_causal_by_construction(self):
-        """改动未来行的 G 不得改变协调盲在其之前的任何释放决定。"""
+        """改动 cutoff 之后的 G 不得以任何方向改变 cutoff 之前的决定。
+
+        Codex 复核指出旧版只查"原轨迹已在截止点前释放"的作业 —— 若改未来
+        让某个原本晚释放的作业反向跑到截止点之前,旧断言抓不到。现在对称:
+        "是否在截止点前释放"这个谓词本身必须逐作业一致,一致者时刻逐位相同。
+        双向各测一次(未来变富 / 变穷)。"""
         import numpy as np
         from stage15_continuous import coordinated_blind_contig
         jobs = self._mk()
-        w1 = np.full(40, 3.0); w2 = w1.copy(); w2[20:] = 100.0
-        r1 = coordinated_blind_contig(jobs, w1, 1.0)
-        r2 = coordinated_blind_contig(jobs, w2, 1.0)
-        for a, b in zip(r1, r2):
-            if a < 20 * 600:
-                assert a == b, "未来 G 泄漏进了因果盲的早期决定"
+        cutoff = 20 * 600
+        w1 = np.full(40, 3.0)
+        for future in (100.0, 0.0):
+            w2 = w1.copy(); w2[20:] = future
+            r1 = coordinated_blind_contig(jobs, w1, 1.0)
+            r2 = coordinated_blind_contig(jobs, w2, 1.0)
+            for a, b in zip(r1, r2):
+                assert (a < cutoff) == (b < cutoff),                     "未来 G 改变了'是否在截止点前释放'"
+                if a < cutoff:
+                    assert a == b, "未来 G 泄漏进早期释放时刻"
 
     def test_no_job_released_before_arrival_or_after_latest(self):
         import numpy as np
