@@ -469,7 +469,8 @@ public class MultiDatacenterSimulationCore {
                         config.getTimeZoneOffsetRows(),       // per-DC tz offset (geo)
                         config.getCompressedPowerDivisor(),   // COMPRESSED-mode divisor
                         config.getSimulationWarmupRows(),     // global sim warm-up (eliminates cold start)
-                        config.getGreenPowerScale()           // mode-independent multiplier (1.0 = legacy)
+                        config.getGreenPowerScale(),          // mode-independent multiplier (1.0 = legacy)
+                        config.getGreenInterpolationMode()    // row semantics (SPLINE = legacy)
                 );
                 dcInstance.addGreenEnergyProvider(greenEnergyProvider);
             }

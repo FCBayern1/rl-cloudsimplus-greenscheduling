@@ -338,9 +338,16 @@ public class DatacenterInstance {
             availableGreenPower = getCurrentGreenPowerW(currentClock);
             double timeDeltaHours = timeDelta / 3600.0;
 
-            // Calculate energy amounts in Wh
+            // Calculate energy amounts in Wh. Green energy integrates over the
+            // interval [previousClock, currentClock) with the provider's row
+            // semantics: under STEP this is the exact per-row integral; under
+            // SPLINE/LINEAR getIntervalEnergyWh reproduces the legacy
+            // end-of-interval-sample x delta arithmetic bit-for-bit.
             double demandWh = currentPowerW * timeDeltaHours;
-            double greenAvailableWh = availableGreenPower * timeDeltaHours;
+            double greenAvailableWh = 0.0;
+            for (exe.edu.cspg.energy.GreenEnergyProvider p : greenEnergyProviders) {
+                greenAvailableWh += p.getIntervalEnergyWh(previousClock, currentClock);
+            }
 
             // Prioritise green energy, excess is wasted (no storage)
             deltaGreenUsed = Math.min(demandWh, greenAvailableWh);

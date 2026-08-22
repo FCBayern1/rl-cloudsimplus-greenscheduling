@@ -70,6 +70,16 @@ public class GreenEnergyProvider {
     private final double compressedPowerDivisor;
     // Mode-independent multiplier applied AFTER mode handling (default 1.0 = legacy)
     private final double greenPowerScale;
+    // CSV row -> continuous signal semantics (STEP = registered TB12 main-cell mode)
+    private final GreenInterpolationMode interpolationMode;
+    // Raw powers in FILE ROW ORDER - no timestamp parsing, no dedup.
+    // Timestamp.valueOf uses the JVM-local timezone: Europe/London DST
+    // makes 2021-03-28 01:00-01:50 nonexistent, those six rows collide
+    // with their +1h twins and the spline dedup DELETES them, shifting
+    // every later row by six (T100_2021 row 12389; fold again at 43637).
+    // STEP/LINEAR therefore index this array directly: row i IS time
+    // [i*rowSeconds, (i+1)*rowSeconds) by construction.
+    private double[] rowPowers;
 
     /**
      * Convert the configured time-zone + warm-up offset (in "rows") into
@@ -193,6 +203,18 @@ public class GreenEnergyProvider {
                               int shortTermRows, int longTermRows, int timeZoneOffsetRows,
                               double compressedPowerDivisor, int simulationWarmupRows,
                               double greenPowerScale) {
+        this(turbineId, csvFilePath, timeScalingMode, shortTermRows, longTermRows,
+             timeZoneOffsetRows, compressedPowerDivisor, simulationWarmupRows,
+             greenPowerScale, GreenInterpolationMode.SPLINE);
+    }
+
+    /** Full constructor with explicit interpolation semantics (Codex 2026-08-23). */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows, int timeZoneOffsetRows,
+                              double compressedPowerDivisor, int simulationWarmupRows,
+                              double greenPowerScale, GreenInterpolationMode interpolationMode) {
+        this.interpolationMode = interpolationMode != null
+                ? interpolationMode : GreenInterpolationMode.SPLINE;
         this.greenPowerScale = greenPowerScale > 0 ? greenPowerScale : 1.0;
         this.turbineId = turbineId;
         this.csvFilePath = resolveCsvPath(turbineId, csvFilePath);
@@ -289,6 +311,74 @@ public class GreenEnergyProvider {
      * Get current green power at specified simulation time.
      * Applies timezone offset for geo-distributed simulation.
      */
+    /** Row seconds for the active time-scaling mode (REAL_TIME: 600). */
+    private double rowSeconds() {
+        return timeScalingMode != null ? timeScalingMode.getTypicalInterval() : 1.0;
+    }
+
+    /** kW of the row that owns adjusted (already tz/offset-shifted, wrapped) time.
+     *  Row i is valid on [i*rowSeconds, (i+1)*rowSeconds) - the STEP unit. */
+    private double rowValueKW(double adjustedTime) {
+        if (rowPowers == null || rowPowers.length == 0) return 0.0;
+        int n = rowPowers.length;
+        int idx = (int) Math.floor(adjustedTime / rowSeconds());
+        idx = ((idx % n) + n) % n;                      // cyclic, both directions
+        return rowPowers[idx];
+    }
+
+    /** kW sampled under the configured interpolation semantics. */
+    private double sampleKW(double adjustedTime) {
+        switch (interpolationMode) {
+            case STEP:
+                return rowValueKW(adjustedTime);
+            case LINEAR: {
+                double rs = rowSeconds();
+                double pos = adjustedTime / rs;
+                int i = (int) Math.floor(pos);
+                double frac = pos - i;
+                int n = rowPowers.length;
+                int a = ((i % n) + n) % n;
+                int b = ((a + 1) % n);
+                return Math.max(0.0, rowPowers[a] * (1 - frac) + rowPowers[b] * frac);
+            }
+            case SPLINE:
+            default:
+                return Math.max(0.0, powerSpline.value(adjustedTime));
+        }
+    }
+
+    /** Green ENERGY (Wh, post-scale) over [t0, t1) in raw sim time.
+
+     *  STEP: exact row-overlap integral - the carbon-ledger half of the
+     *  bit-consistency contract (one instantaneous query multiplied across a
+     *  600 s delta is precisely the legacy flaw). Non-STEP modes reproduce the
+     *  legacy ledger arithmetic (end-of-interval sample x delta) bit-for-bit. */
+    public double getIntervalEnergyWh(double t0, double t1) {
+        if (t1 <= t0) return 0.0;
+        if (interpolationMode != GreenInterpolationMode.STEP) {
+            return getCurrentPowerW(t1) * (t1 - t0) / 3600.0;
+        }
+        double rs = rowSeconds();
+        double a0 = t0 + getTimeZoneOffsetSeconds();   // 行号模运算在 rowValueKW 内
+        double span = t1 - t0;
+        double energyWs = 0.0;
+        double cursor = a0;
+        double remaining = span;
+        while (remaining > 1e-9) {
+            double rowEnd = (Math.floor(cursor / rs) + 1) * rs;
+            double chunk = Math.min(remaining, rowEnd - cursor);
+            double kw = rowValueKW(cursor);
+            double w = kw * 1000.0;
+            if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                w = w / compressedPowerDivisor;
+            }
+            energyWs += w * greenPowerScale * chunk;
+            cursor = rowEnd;
+            remaining -= chunk;
+        }
+        return energyWs / 3600.0;
+    }
+
     public double getCurrentPowerW(double simulationTime) {
         if (powerSpline == null) {
             LOGGER.warn("Power spline not initialized, returning 0");
@@ -298,10 +388,21 @@ public class GreenEnergyProvider {
         try {
             // Apply timezone offset to simulate different geographic locations
             double adjustedTime = simulationTime + getTimeZoneOffsetSeconds();
+            if (interpolationMode != GreenInterpolationMode.SPLINE) {
+                // Row-index modes wrap by row count inside rowValueKW; the
+                // time-domain wrap below uses the DEDUPED spline domain and
+                // would re-introduce the DST shift.
+                double kw = sampleKW(adjustedTime);
+                double w0 = Math.max(0, kw * 1000);
+                if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                    w0 = w0 / compressedPowerDivisor;
+                }
+                return w0 * greenPowerScale;
+            }
             // Wrap around for cyclic behavior (both directions)
             adjustedTime = wrapTimeCyclic(adjustedTime);
 
-            double powerKW = powerSpline.value(adjustedTime);
+            double powerKW = sampleKW(adjustedTime);
             double powerW = Math.max(0, powerKW * 1000);
 
             if (timeScalingMode == TimeScalingMode.COMPRESSED) {
@@ -357,11 +458,14 @@ public class GreenEnergyProvider {
         for (int i = 0; i < horizonSeconds.length; i++) {
             // Apply timezone offset
             double futureTime = currentTime + horizonSeconds[i] + tzOffsetSec;
-            // Wrap around for cyclic behavior (both directions)
-            futureTime = wrapTimeCyclic(futureTime);
+            if (interpolationMode == GreenInterpolationMode.SPLINE) {
+                // Row-index modes wrap inside rowValueKW; the time-domain wrap
+                // uses the deduped spline domain (DST-shifted).
+                futureTime = wrapTimeCyclic(futureTime);
+            }
 
             try {
-                double futurePowerKW = powerSpline.value(futureTime);
+                double futurePowerKW = sampleKW(futureTime);
                 double futurePowerW = Math.max(0, futurePowerKW * 1000);
 
                 if (timeScalingMode == TimeScalingMode.COMPRESSED) {
@@ -606,6 +710,11 @@ public class GreenEnergyProvider {
             }
 
             // Extract time and power sequences, removing duplicates
+            rowPowers = new double[dataPoints.size()];
+            for (int i = 0; i < dataPoints.size(); i++) {
+                rowPowers[i] = Math.max(0.0, dataPoints.get(i).powerKW);
+            }
+
             List<Double> uniqueTimes = new ArrayList<>();
             List<Double> uniquePowers = new ArrayList<>();
 

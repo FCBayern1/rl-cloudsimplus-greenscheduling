@@ -42134,6 +42134,7 @@ experiment_tb12_smoke:
     turbine_id: 57
   green_episode_offset_range: 52262
   green_oracle_mode: godeye
+  green_interpolation_mode: STEP
   green_power_scale: 9.05562658195e-05
   gtrxl:
     critic_separate_trunk: true
@@ -42391,6 +42392,7 @@ experiment_tb12_iso:
     turbine_id: 57
   green_episode_offset_range: 52262
   green_oracle_mode: godeye
+  green_interpolation_mode: STEP
   green_power_scale: 9.05562658195e-05
   gtrxl:
     critic_separate_trunk: true

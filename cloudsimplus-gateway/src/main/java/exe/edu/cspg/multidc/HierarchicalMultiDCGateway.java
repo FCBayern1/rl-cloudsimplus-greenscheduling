@@ -134,6 +134,10 @@ public class HierarchicalMultiDCGateway {
                 if (globalScale != null) {
                     dcParams.putIfAbsent("green_power_scale", globalScale);
                 }
+                Object globalInterp = params.get("green_interpolation_mode");
+                if (globalInterp != null) {
+                    dcParams.putIfAbsent("green_interpolation_mode", globalInterp);
+                }
                 if (globalWarmup != null) {
                     dcParams.putIfAbsent("simulation_warmup_rows", globalWarmup);
                 }
@@ -196,6 +200,9 @@ public class HierarchicalMultiDCGateway {
                 .compressedPowerDivisor(getDoubleParam(dcParams, "compressed_power_divisor", 60.0))
                 // Mode-independent green power multiplier (default 1.0 = legacy)
                 .greenPowerScale(getDoubleParam(dcParams, "green_power_scale", 1.0))
+                // Row semantics (default SPLINE = legacy bit-identical)
+                .greenInterpolationMode(exe.edu.cspg.energy.GreenInterpolationMode.parse(
+                        getStringParam(dcParams, "green_interpolation_mode", "SPLINE")))
                 // Carbon emission factors
                 .brownCarbonFactor(getDoubleParam(dcParams, "brown_carbon_factor", 0.5))
                 .greenCarbonFactor(getDoubleParam(dcParams, "green_carbon_factor", 0.01))

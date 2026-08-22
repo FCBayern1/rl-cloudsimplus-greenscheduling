@@ -58,3 +58,38 @@ double powerW = Math.max(0, powerKW * 1000);                                  //
 
 证据文件:`lexec_probe.log`、`green_trace_probe.log`、`finish_probe_postfix.txt`、
 `calib/tb12_lexec.json`。
+
+---
+
+# 修复实施与四层一致性门（2026-08-23 凌晨,Codex 九步序列 1–4 完成）
+
+## 第二个 harness bug:DST 删行平移(修 STEP 时被门抓出)
+
+三层门首跑:off=8000 逐位、off=26000 差 89.6W —— 错位有分界点。
+根因:`Timestamp.valueOf` 用 JVM 本地时区(-Duser.country=GB),
+**2021-03-28 01:00–01:50 六行在 Europe/London 不存在**,解析后与 +1h 行
+撞车,样条去重**静默删 6 行**,此后全年数组平移(空洞实测 row 12389,
+恰在 8000 与 26000 之间;10-31 回拨 row 43637 第二处)。
+Python 审计扫不到:datetime 时区无关。合成风时间戳全部重复不过 DST 边界,
+gwo1 一族从未暴露。
+
+## 修复
+
+STEP/LINEAR 使用**文件行序原始数组 + 纯行号模运算**:不解析语义时间戳、
+不去重、不经时间域 wrap —— "row i = [i·600,(i+1)·600)" 由构造保证。
+SPLINE 传统路径一字未动(历史复现)。能量账 `getIntervalEnergyWh` 逐行
+重叠积分(非 STEP 复现旧算术,逐位兼容)。12 个 JUnit 全绿。
+
+## 四层一致性门终版(`tb12_consistency_gate.py`,T100+101/2021)
+
+| 层 | off=8000 | off=26000 |
+|---|---|---|
+| 1 现观测 vs 行值 | 7.6e-6 W(float32 舍入) | 3.6e-6 W |
+| 2 future bins vs 未来行 | **2.84e-14 W**(double 精度) | 2.84e-14 W |
+| 4 累计绿能 vs 逐行积分 | 0.001% | **0.000%** |
+| 3/5 偏移同步 / 无负值 | ✅ | ✅ |
+
+## 正式 jar(Codex 并案:两修复必须同 jar)
+
+SHA256 `622319d4234ff7a5…`,2026-08-22 23:46:48。含:VM free-PE 派发修复 +
+STEP 行语义 + DST 修复。(前一 jar e4dfba… 为 DST 修复前,作废。)

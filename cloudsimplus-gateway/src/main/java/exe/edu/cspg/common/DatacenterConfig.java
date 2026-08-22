@@ -163,6 +163,12 @@ public class DatacenterConfig {
     @Builder.Default
     private final double greenPowerScale = 1.0;
 
+    /** CSV row -> signal semantics. Default SPLINE keeps every legacy
+     *  experiment bit-identical; TB12 formal cells set STEP explicitly. */
+    @Builder.Default
+    private final exe.edu.cspg.energy.GreenInterpolationMode greenInterpolationMode =
+            exe.edu.cspg.energy.GreenInterpolationMode.SPLINE;
+
     // === VM Lifecycle Delays ===
     private final double vmStartupDelay;   // Time (sec) for VM to boot
     private final double vmShutdownDelay;  // Time (sec) before idle VM is destroyed
