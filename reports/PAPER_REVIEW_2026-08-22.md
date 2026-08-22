@@ -169,7 +169,7 @@ Recorded so the audit is symmetric — these were checked and found correct.
 | Re-run the auditor grid on a healthy EU-CRD checkpoint | W4 | ~2h eval | high — converts a contribution from "undemonstrated" to "demonstrated" |
 | Re-run the ablation on the Table 1 configuration | W5 | ~11h train+eval | medium |
 | Raise ablation to 10 episodes per cell | W6 | ~16h eval | medium |
-| Expand main-arm seeds to 8–10 | W1 | very expensive | **do not** — power analysis on the observed deltas {+19.0, −5.4, +3.0, +0.0} (mean 4.16%, sd 10.46%) needs ~50 seeds for 80% power; 8 seeds carry a 63% chance of a worse-looking result. Keep as a stated limitation. |
+| Expand main-arm seeds to 8–10 | W1 | very expensive | **defer** — on the *observed v4* deltas {+19.0, −5.4, +3.0, +0.0} (mean 4.16%, sd 10.46%), 80% power needs ~50 seeds, so 8 seeds buy no resolution and the cost is not justified by the marginal power. The only admissible reasons are compute cost and marginal power, never the direction the result might move. NOTE: this power calculation is derived from the v4 build; if the fixed build shows a larger effect the required n falls sharply and seed expansion becomes worthwhile. |
 
 ---
 
