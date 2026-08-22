@@ -288,3 +288,71 @@ def coordinated_bound(jobs, watts, green_scale):
             heapq.heappush(heap, it)
     brown = totalE - absorbed
     return C_BROWN * brown + C_GREEN * absorbed, absorbed / totalE
+
+
+def coordinated_blind_contig(jobs, watts, green_scale):
+    """连续版协调盲(严格因果):绿电跟随准入。
+
+    逐行向前;只用当前实测 G(r) 与自己已释放作业的需求 D_run(r):
+    空余绿电够一个 pending 作业的功率就放行(EDF 按 latest-start),
+    到 latest-start 的作业无条件放行(永不过期)。不看任何未来 G。
+    """
+    n = len(watts)
+    G = watts * green_scale
+    order = sorted(range(len(jobs)), key=lambda i: jobs[i][3])
+    D = np.zeros(n)
+    releases = [0.0] * len(jobs)
+    import heapq
+    pend = []                     # (latest_start, idx)
+    i = 0
+    for r in range(n):
+        t = r * ROW_S
+        while i < len(order) and jobs[order[i]][3] < t + ROW_S:
+            j = order[i]
+            heapq.heappush(pend, (jobs[j][3] + jobs[j][4], j))
+            i += 1
+        while pend:
+            latest, j = pend[0]
+            p = jobs[j][1] * W_PER_PE
+            if latest <= t:                       # 兜底:到点必须放
+                heapq.heappop(pend)
+                releases[j] = max(jobs[j][3], float(latest))
+                a = int(releases[j] // ROW_S)
+                b = min(n, a + int(jobs[j][2] // ROW_S) + 1)
+                D[a:b] += p
+            elif G[r] - D[r] >= p:                # 空余绿电够 -> 放行
+                heapq.heappop(pend)
+                releases[j] = max(jobs[j][3], float(t))
+                a = r
+                b = min(n, a + int(jobs[j][2] // ROW_S) + 1)
+                D[a:b] += p
+            else:
+                break
+    return releases
+
+
+def coordinated_clair_contig(jobs, watts, green_scale):
+    """连续版协调 clairvoyant:按 latest-start 序贪心插入,每个作业在自己
+    窗口内选【给定已放置作业后增量棕电最小】的整块位置。看得到全部未来 G。"""
+    n = len(watts)
+    G = watts * green_scale
+    D = np.zeros(n)
+    order = sorted(range(len(jobs)), key=lambda i: jobs[i][3] + jobs[i][4])
+    releases = [0.0] * len(jobs)
+    for j in order:
+        mi, pes, rt, arr, slack, _ = jobs[j]
+        p = pes * W_PER_PE
+        rt_rows = int(rt // ROW_S) + 1
+        best = (float("inf"), arr)
+        r_lo = int(arr // ROW_S)
+        r_hi = int((arr + slack) // ROW_S)
+        for r in range(r_lo, r_hi + 1):
+            seg = slice(r, min(n, r + rt_rows))
+            inc = (np.maximum(0.0, D[seg] + p - G[seg])
+                   - np.maximum(0.0, D[seg] - G[seg])).sum()
+            if inc < best[0] - 1e-9:
+                best = (inc, max(arr, r * ROW_S))
+        releases[j] = best[1]
+        a = int(best[1] // ROW_S)
+        D[a:min(n, a + rt_rows)] += p
+    return releases
