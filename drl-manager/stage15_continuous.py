@@ -332,12 +332,14 @@ def coordinated_blind_contig(jobs, watts, green_scale):
 
 
 def coordinated_clair_contig(jobs, watts, green_scale):
-    """连续版协调 clairvoyant:按 latest-start 序贪心插入,每个作业在自己
-    窗口内选【给定已放置作业后增量棕电最小】的整块位置。看得到全部未来 G。"""
+    """在线到达 clairvoyant(Codex P0-1):按【到达序】提交,时刻 t 只见
+    已到达作业的已承诺需求 D;可读全部未来风电,不可读未来作业;
+    承诺后不重排(预注册规则)。旧版按 latest-start 序 —— slack 恒定时
+    与到达序相同,但异构 slack 下会泄漏未来作业,故改为结构性到达序。"""
     n = len(watts)
     G = watts * green_scale
     D = np.zeros(n)
-    order = sorted(range(len(jobs)), key=lambda i: jobs[i][3] + jobs[i][4])
+    order = sorted(range(len(jobs)), key=lambda i: jobs[i][3])
     releases = [0.0] * len(jobs)
     for j in order:
         mi, pes, rt, arr, slack, _ = jobs[j]

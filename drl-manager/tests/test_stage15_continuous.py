@@ -144,3 +144,29 @@ class TestCoordinatedContiguous:
         bound = coordinated_bound(jobs, w, 1.0)[0]
         for f in (coordinated_blind_contig, coordinated_clair_contig):
             assert bound <= fluid_carbon(jobs, f(jobs, w, 1.0), w, 1.0)[0] + 1e-6
+
+
+class TestOnlineArrivalClair:
+    """P0-1:clairvoyant 可读未来风,不可读未来作业。"""
+
+    def test_future_job_cannot_change_earlier_commitments(self):
+        import numpy as np
+        from stage15_continuous import coordinated_clair_contig
+        rng = np.random.default_rng(21)
+        w = rng.uniform(0, 8.0, 80)
+        early = [(1e6, 1, 1800.0, float(a), 6000.0, 0)
+                 for a in (0.0, 2000.0, 5000.0)]
+        late = early + [(1e6, 1, 1800.0, 20000.0, 6000.0, 0)]
+        r1 = coordinated_clair_contig(early, w, 1.0)
+        r2 = coordinated_clair_contig(late, w, 1.0)
+        assert r1 == r2[:3], "晚到作业改变了更早作业的已承诺释放"
+
+    def test_wind_clairvoyance_is_allowed(self):
+        """对照:改未来风【应当】能改变决策(这是被允许的那一半)。"""
+        import numpy as np
+        from stage15_continuous import coordinated_clair_contig, W_PER_PE
+        jobs = [(1e6, 1, 6000.0, 0.0, 12000.0, 0)]
+        w1 = np.zeros(40); w1[0:2] = 2 * W_PER_PE
+        w2 = w1.copy(); w2[10:22] = 2 * W_PER_PE
+        assert (coordinated_clair_contig(jobs, w1, 1.0)
+                != coordinated_clair_contig(jobs, w2, 1.0))
