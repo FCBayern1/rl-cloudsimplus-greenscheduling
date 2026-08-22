@@ -42274,3 +42274,260 @@ experiment_tb12_smoke:
   window_carbon_source: persistence
   workload_mode: CSV
   workload_reader_mips: 50000
+
+# tb12 v2 REAL_TIME(gen_tb12.py 生成,勿手改)
+experiment_tb12_iso:
+  algorithm: PPO
+  base_log_dir: logs
+  batch_size: 64
+  carbon_mi_floor: 1.0e7
+  carbon_normalization_fixed_max: 2.0e-05
+  carbon_normalization_mode: FIXED
+  carbon_penalty_mode: TOTAL
+  clear_created_lists: true
+  clip_range: 0.2
+  cloudlet_cpu_utilization: 1.0
+  cloudlet_trace_file: traces/tb12_n5_rt4h.csv
+  compressed_power_divisor: 5103.4
+  crd:
+    baseline:
+      green_weight: 0.6
+    blender:
+      eta: 0.05
+      kappa: 0.5
+      tau_0: 1.0
+    delta_r:
+      alpha: 1.0
+    enabled: false
+    ensemble:
+      K: 5
+      bootstrap_p: 0.7
+      hidden_dim: 128
+      prior_lambda: 3.0
+      q_loss_coef: 0.5
+      q_train_every_n_iters: 1
+    forecast:
+      beta: 0.5
+      gamma: 0.3
+    responsibility:
+      rho_min: 0.05
+  csv_year: 2021
+  datacenters:
+  - brown_carbon_factor: 0.55
+    datacenter_id: 0
+    green_carbon_factor: 0.01
+    green_energy_enabled: true
+    host_count_spec_asus_rs500a: 8
+    idle_host_power_down: true
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 8
+    large_vm_multiplier: 4
+    long_term_rows: 1000
+    medium_vm_multiplier: 2
+    name: DC_Nordic
+    short_term_rows: 240
+    small_vm_bw: 1000
+    small_vm_pes: 2
+    small_vm_ram: 8192
+    small_vm_storage: 4000
+    time_scaling_mode: REAL_TIME
+    time_zone_offset_rows: 0
+    turbine_ids:
+    - 100
+    - 101
+    vm_pe_mips: 40000
+    vm_shutdown_delay: 0.0
+    vm_startup_delay: 0.0
+    wind_data_file: windProduction/simplified
+  defer_base_cost: 0.5
+  defer_cost_mode: incremental_urgency
+  defer_deadline_force_mode: latest_start
+  defer_deadline_slack_sec: 120.0
+  defer_urgency_weight: 2.0
+  defer_urgency_window_sec: 3600.0
+  device: auto
+  early_stop:
+    enabled: false
+    eval_freq: 5000
+    min_evals: 5
+    n_eval_episodes: 5
+    patience: 5
+    type: no_improvement
+  ent_coef: 0.01
+  env_id: LoadBalancingScaling-v0
+  experiment_name: tb12_iso
+  experiment_type_dir: Multi_Datacenter
+  fixed_local_scheduler: drain
+  forecast_mode: none
+  future_energy_forecast:
+    long_term_rows: 144
+    short_term_rows: 3
+  gae_lambda: 0.95
+  gamma: 0.99
+  global_completion_rate_mi_coef: 0.3
+  global_defer_enabled: true
+  global_model:
+    clip_range: 0.2
+    ent_coef: 0.002
+    gae_lambda: 0.98
+    gamma: 0.999
+    learning_rate: 0.0003
+    max_grad_norm: 20.0
+    vf_clip_param: 10.0
+    vf_coef: 10.0
+  global_reward_alpha: 0.0
+  global_reward_beta: 1.0
+  global_reward_gamma: 0.0
+  global_routing_batch_size: 128
+  global_throughput_mi_coef: 0.0
+  green_energy:
+    enabled: true
+    prediction:
+      cache_duration_seconds: 600
+      enabled: false
+      horizon: 8
+      model_path: ../SWF_Prediction/saved_models/best_model.pth
+    turbine_id: 57
+  green_episode_offset_range: 52262
+  green_oracle_mode: godeye
+  green_power_scale: 9.05562658195e-05
+  gtrxl:
+    critic_separate_trunk: true
+    d_ff: 192
+    d_model: 96
+    dropout: 0.1
+    factorized_temporal_gate: true
+    learning_rate: 0.0003
+    mem_len: 16
+    num_heads: 4
+    num_layers: 2
+    score_encoder_init_gain: 0.5
+    score_temperature: 1.0
+    use_score_based: true
+  host_bw: 50000
+  host_pe_mips: 50000
+  host_pes: 16
+  host_ram: 65536
+  host_storage: 100000
+  hosts_count: 32
+  idle_host_power_down: true
+  initial_l_vm_count: 5
+  initial_m_vm_count: 10
+  initial_s_vm_count: 20
+  lagrangian:
+    c_ep_tolerance: 0.0
+    enabled: true
+    lambda: 0.0
+    lambda_init: 0.0
+    lambda_lr: 0.3
+    lambda_max: 1.5
+  large_vm_multiplier: 4
+  learning_rate: 0.0003
+  local_dispatch_mode: dispatch_rate
+  local_model:
+    clip_range: 0.2
+    ent_coef: 0.01
+    gae_lambda: 0.95
+    gamma: 0.99
+    learning_rate: 0.0003
+    max_grad_norm: 0.5
+    vf_coef: 0.5
+  log_interval: 1
+  max_cloudlet_pes: 8
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  max_dispatch_per_step: 64
+  max_episode_length: 288
+  max_grad_norm: 0.5
+  medium_vm_multiplier: 2
+  min_time_between_events: 1.0
+  mode: train
+  multi_datacenter_enabled: true
+  n_epochs: 10
+  n_steps: 2048
+  normalized_critic:
+    enabled: true
+  obs_cloudlet_mi_high: 2000000000
+  obs_v31_features: true
+  obs_v32_deadline_margin_sec: 120.0
+  obs_v32_demand_model: job_counterfactual_v1
+  obs_v32_forecast_bin_count: 20
+  obs_v32_forecast_horizon_steps: 3600
+  obs_v32_job_forecast: true
+  paying_for_the_full_hour: false
+  per_action_carbon_mu: 3.524
+  per_action_carbon_norm: centered_zscore
+  per_action_carbon_sigma: 2.512
+  per_action_carbon_weight: 0.5
+  per_action_completion_mode: no_offset
+  per_action_completion_weight: 2.0
+  per_action_marg_normalizer: 0.05
+  per_action_overflow_sharpness: 6.0
+  per_action_spatial_center: candidate_mean
+  per_action_spatial_sigma: 1.146
+  per_action_spatial_weight: 1.0
+  per_action_window_carbon: true
+  per_slot_credit:
+    enabled: true
+  policy: MultiInputPolicy
+  preflight_temporal_profile: tb12_lumpy_v0
+  py4j_port: 25333
+  reward_completion_coef: 0.3
+  reward_cost_coef: 0.02
+  reward_invalid_action_coef: 0.2
+  reward_local_carbon_enabled: false
+  reward_queue_penalty_coef: 0.05
+  reward_unutilization_coef: 0.02
+  reward_wait_time_coef: 0.05
+  save_experiment: true
+  save_replay_buffer: false
+  seed: 4567
+  simulation_name: TB12_iso
+  simulation_timestep: 600.0
+  sla_deadline_miss_target: 0.005
+  sla_lagrangian_enabled: true
+  sla_mode: completion
+  sla_pending_target: 0.15
+  sla_target: 0.995
+  small_vm_bw: 10000
+  small_vm_hourly_cost: 0.086
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_storage: 10000
+  split_large_cloudlets: true
+  timecap:
+    checkpoint: timecap_prediction/TimeCAP/model/finetune_TimeCAP_custom_sl96_baseline_4358062/ckpt_best.pth
+    csv_year: 2021
+    device: cpu
+    feature_set: v1
+    forecast_every: 6
+    forecast_shift:
+      bias_kw: 0.0
+      enabled: false
+      end_step: -1
+      factor: 2.0
+      mode: scale
+      start_step: 0
+    warmup_on_reset: true
+  timesteps: 1000
+  train_model_dir: ''
+  training:
+    algorithm: PPO
+    checkpoint_freq_timesteps: 60000
+    num_gpus: 1
+    num_sgd_iter: 5
+    num_workers: 0
+    parameter_sharing: true
+    sgd_minibatch_size: 2048
+    total_timesteps: 600000
+    train_batch_size: 8000
+  use_flat_obs_protocol: true
+  verbose: 0
+  vf_coef: 0.5
+  vm_shutdown_delay: 0.0
+  vm_startup_delay: 0.0
+  wandb:
+    enabled: false
+  window_carbon_source: persistence
+  workload_mode: CSV
+  workload_reader_mips: 50000

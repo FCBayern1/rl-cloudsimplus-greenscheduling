@@ -1090,7 +1090,20 @@ public class MultiDatacenterSimulationCore {
             Map<Long, Long> freePes = new HashMap<>();
             for (Vm vm : dc.getVmPool()) {
                 if (vm.isCreated() && !vm.isFailed()) {
-                    freePes.put(vm.getId(), vm.getFreePesNumber());
+                    // vm.getFreePesNumber() never updates under this broker's
+                    // custom submission path (setVm + manual submit bypasses the
+                    // accounting CloudSim's default broker performs), so every VM
+                    // reports full capacity forever and "most-free" degenerates to
+                    // always-VM-0: SpaceShared then queues the whole fleet's work
+                    // on one VM back-to-back (tb12 A' probe: five 2-PE jobs, five
+                    // serial finishes exactly one runtime apart, every assignment
+                    // logged "VM 0 (avail PEs: 2)"). Count committed PEs from the
+                    // scheduler's exec+waiting lists instead.
+                    long used = vm.getCloudletScheduler().getCloudletExecList().stream()
+                            .mapToLong(ce -> ce.getPesNumber()).sum()
+                            + vm.getCloudletScheduler().getCloudletWaitingList().stream()
+                            .mapToLong(ce -> ce.getPesNumber()).sum();
+                    freePes.put(vm.getId(), Math.max(0L, vm.getPesNumber() - used));
                 }
             }
             int placed = 0;

@@ -28,7 +28,10 @@ ROW_S = 600.0
 GREEN_POWER_SCALE = 9.05562658195e-5     # T100+101/2020 冻结,勿重算
 P_JOB_W = 28.75
 MIPS = 40000.0
-MARGIN_S = 120.0
+# margin 必须覆盖 释放量化(1 步,<=600s) + 派发延迟(实测 ~2 步:路由动作
+# 生效 1 步 + 本地派发 1 步) + 余量 1 步 = 4 x 600s。margin=120 时 ontime=0,
+# margin=1200 时 ontime=0.2(只有量化残差恰好为零的作业赶上)—— 两点定标。
+MARGIN_S = 2400.0
 
 
 def gen_trace(name, per_block, rt_s, slack_s, seed):
@@ -47,12 +50,23 @@ def gen_trace(name, per_block, rt_s, slack_s, seed):
     return rows
 
 
-def build_config(base_cfg, trace, turbines, year, ep_steps, offset_range):
+def build_config(base_cfg, trace, turbines, year, ep_steps, offset_range,
+                 isolate=False):
     import copy
     b = copy.deepcopy(base_cfg)
     dc0 = copy.deepcopy(b["datacenters"][0])
     dc0["turbine_ids"] = list(turbines)
     dc0["time_scaling_mode"] = "REAL_TIME"
+    if isolate:
+        # A'(Codex 2026-08-23):一 VM 一 host、一作业一 VM,物理消除 host
+        # 静态功率共享通道 —— 无风 smoke 实测聚簇可白得 -4.6% 碳差,直逼
+        # -5% 判决线。host profile 不动(单作业功率 28.75W 与冻结 scale 依赖它);
+        # small_vm_pes=2 恰好装下 2-PE 作业(SpaceShared -> 一 VM 一作业);
+        # 8 = 最大并发 5 + 余量,依 VmAllocationPolicyRoundRobin 等数 1:1。
+        dc0["initial_s_vm_count"] = 8
+        dc0["initial_m_vm_count"] = 0
+        dc0["initial_l_vm_count"] = 0
+        dc0["host_count_spec_asus_rs500a"] = 8
     b["datacenters"] = [dc0]
     b["cloudlet_trace_file"] = f"traces/{trace}"
     b["simulation_timestep"] = TIMESTEP
@@ -93,13 +107,22 @@ def main():
     base = load_config("experiment_gwo1_noforecast")
     blk = build_config(base, trace, turbines, a.year, ep_steps, offset_range)
 
+    blk_iso = build_config(base, trace, turbines, a.year, ep_steps,
+                           offset_range, isolate=True)
+    blk_iso["experiment_name"] = "tb12_iso"
+    blk_iso["simulation_name"] = "TB12_iso"
     cfg_path = _REPO / "config_C.yml"
-    if "experiment_tb12_smoke:" in cfg_path.read_text():
-        raise SystemExit("experiment_tb12_smoke 已存在,先删再生成(不覆盖)")
+    txt = cfg_path.read_text()
+    out = {}
+    if "experiment_tb12_smoke:" not in txt:
+        out["experiment_tb12_smoke"] = blk          # 共享 host,留作打包敏感性副实验
+    if "experiment_tb12_iso:" not in txt:
+        out["experiment_tb12_iso"] = blk_iso        # A' 隔离,主判决场景
+    if not out:
+        raise SystemExit("两个 block 都已存在,先删再生成(不覆盖)")
     with open(cfg_path, "a") as f:
         f.write("\n# tb12 v2 REAL_TIME(gen_tb12.py 生成,勿手改)\n")
-        f.write(yaml.safe_dump({"experiment_tb12_smoke": blk},
-                               default_flow_style=False, sort_keys=True,
+        f.write(yaml.safe_dump(out, default_flow_style=False, sort_keys=True,
                                allow_unicode=True, width=4096))
     art = {"scenario": "tb12_v2", "seed": a.seed, "per_block": a.per_block,
            "rt_h": a.rt_h, "slack_h": a.slack_h, "p_job_w": P_JOB_W,
