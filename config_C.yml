@@ -42018,10 +42018,7 @@ experiment_gwo1ho_oracle:
   workload_reader_mips: 50000
 
 
-# tb12 烟测(gen_tb12.py 生成,勿手改)
-
-
-# tb12 烟测(gen_tb12.py 生成,勿手改)
+# tb12 v2 REAL_TIME(gen_tb12.py 生成,勿手改)
 experiment_tb12_smoke:
   algorithm: PPO
   base_log_dir: logs
@@ -42033,8 +42030,8 @@ experiment_tb12_smoke:
   clear_created_lists: true
   clip_range: 0.2
   cloudlet_cpu_utilization: 1.0
-  cloudlet_trace_file: traces/tb12_smoke_n5.csv
-  compressed_power_divisor: 12074.754235447206
+  cloudlet_trace_file: traces/tb12_n5_rt4h.csv
+  compressed_power_divisor: 5103.4
   crd:
     baseline:
       green_weight: 0.6
@@ -42057,6 +42054,7 @@ experiment_tb12_smoke:
       gamma: 0.3
     responsibility:
       rho_min: 0.05
+  csv_year: 2021
   datacenters:
   - brown_carbon_factor: 0.55
     datacenter_id: 0
@@ -42076,11 +42074,11 @@ experiment_tb12_smoke:
     small_vm_pes: 2
     small_vm_ram: 8192
     small_vm_storage: 4000
-    time_scaling_mode: COMPRESSED
+    time_scaling_mode: REAL_TIME
     time_zone_offset_rows: 0
     turbine_ids:
-    - 9100
-    - 9101
+    - 100
+    - 101
     vm_pe_mips: 40000
     vm_shutdown_delay: 0.0
     vm_startup_delay: 0.0
@@ -42134,8 +42132,9 @@ experiment_tb12_smoke:
       horizon: 8
       model_path: ../SWF_Prediction/saved_models/best_model.pth
     turbine_id: 57
-  green_episode_offset_range: 522940
+  green_episode_offset_range: 52262
   green_oracle_mode: godeye
+  green_power_scale: 9.05562658195e-05
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -42181,7 +42180,7 @@ experiment_tb12_smoke:
   max_cloudlet_pes: 8
   max_cloudlets_to_create_from_workload_file: 2147483647
   max_dispatch_per_step: 64
-  max_episode_length: 2640
+  max_episode_length: 288
   max_grad_norm: 0.5
   medium_vm_multiplier: 2
   min_time_between_events: 1.0
@@ -42227,7 +42226,7 @@ experiment_tb12_smoke:
   save_replay_buffer: false
   seed: 4567
   simulation_name: TB12_smoke
-  simulation_timestep: 60.0
+  simulation_timestep: 600.0
   sla_deadline_miss_target: 0.005
   sla_lagrangian_enabled: true
   sla_mode: completion

@@ -68,6 +68,8 @@ public class GreenEnergyProvider {
     // per-simulation-second power regime. Configurable from config.yml via
     // "compressed_power_divisor"; defaults to 60.0.
     private final double compressedPowerDivisor;
+    // Mode-independent multiplier applied AFTER mode handling (default 1.0 = legacy)
+    private final double greenPowerScale;
 
     /**
      * Convert the configured time-zone + warm-up offset (in "rows") into
@@ -178,6 +180,20 @@ public class GreenEnergyProvider {
     public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
                               int shortTermRows, int longTermRows, int timeZoneOffsetRows,
                               double compressedPowerDivisor, int simulationWarmupRows) {
+        this(turbineId, csvFilePath, timeScalingMode, shortTermRows, longTermRows,
+             timeZoneOffsetRows, compressedPowerDivisor, simulationWarmupRows, 1.0);
+    }
+
+    /**
+     * Full constructor with the mode-independent green power multiplier
+     * (testbed 12, Codex 2026-08-22). Applied after REAL_TIME passthrough or
+     * the COMPRESSED divisor in every power read path; 1.0 = legacy.
+     */
+    public GreenEnergyProvider(int turbineId, String csvFilePath, TimeScalingMode timeScalingMode,
+                              int shortTermRows, int longTermRows, int timeZoneOffsetRows,
+                              double compressedPowerDivisor, int simulationWarmupRows,
+                              double greenPowerScale) {
+        this.greenPowerScale = greenPowerScale > 0 ? greenPowerScale : 1.0;
         this.turbineId = turbineId;
         this.csvFilePath = resolveCsvPath(turbineId, csvFilePath);
         this.timeScalingMode = timeScalingMode;
@@ -292,7 +308,7 @@ public class GreenEnergyProvider {
                 powerW = powerW / compressedPowerDivisor;
             }
 
-            return powerW;
+            return powerW * greenPowerScale;
         } catch (OutOfRangeException e) {
             return 0;
         } catch (Exception e) {
@@ -352,7 +368,7 @@ public class GreenEnergyProvider {
                     futurePowerW = futurePowerW / compressedPowerDivisor;
                 }
 
-                predictions[i] = futurePowerW;
+                predictions[i] = futurePowerW * greenPowerScale;
             } catch (OutOfRangeException e) {
                 predictions[i] = 0.0;
             }
@@ -387,7 +403,7 @@ public class GreenEnergyProvider {
             sumKw += powerValues[(start + i) % n];
         }
         double meanW = Math.max(0, (sumKw / horizonSteps) * 1000.0);
-        return meanW / compressedPowerDivisor;
+        return meanW / compressedPowerDivisor * greenPowerScale;
     }
 
     /**

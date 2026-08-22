@@ -153,6 +153,16 @@ public class DatacenterConfig {
     @Builder.Default
     private final double compressedPowerDivisor = 60.0;
 
+    /**
+     * Unit-preserving green power multiplier, applied AFTER the time-scaling
+     * mode handling (REAL_TIME passthrough or COMPRESSED divisor). Default 1.0
+     * keeps every existing experiment bit-identical. Introduced for testbed 12
+     * (Codex 2026-08-22): REAL_TIME needs a rho calibration knob and
+     * compressedPowerDivisor is COMPRESSED-only by contract.
+     */
+    @Builder.Default
+    private final double greenPowerScale = 1.0;
+
     // === VM Lifecycle Delays ===
     private final double vmStartupDelay;   // Time (sec) for VM to boot
     private final double vmShutdownDelay;  // Time (sec) before idle VM is destroyed

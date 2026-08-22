@@ -125,10 +125,14 @@ public class HierarchicalMultiDCGateway {
         if (dcListObj instanceof List) {
             List<Map<String, Object>> dcList = (List<Map<String, Object>>) dcListObj;
             Object globalDivisor = params.get("compressed_power_divisor");
+            Object globalScale   = params.get("green_power_scale");
             Object globalWarmup  = params.get("simulation_warmup_rows");
             for (Map<String, Object> dcParams : dcList) {
                 if (globalDivisor != null) {
                     dcParams.putIfAbsent("compressed_power_divisor", globalDivisor);
+                }
+                if (globalScale != null) {
+                    dcParams.putIfAbsent("green_power_scale", globalScale);
                 }
                 if (globalWarmup != null) {
                     dcParams.putIfAbsent("simulation_warmup_rows", globalWarmup);
@@ -190,6 +194,8 @@ public class HierarchicalMultiDCGateway {
                 .simulationWarmupRows(getIntParam(dcParams, "simulation_warmup_rows", 0))
                 // Divisor applied in COMPRESSED mode (default 60)
                 .compressedPowerDivisor(getDoubleParam(dcParams, "compressed_power_divisor", 60.0))
+                // Mode-independent green power multiplier (default 1.0 = legacy)
+                .greenPowerScale(getDoubleParam(dcParams, "green_power_scale", 1.0))
                 // Carbon emission factors
                 .brownCarbonFactor(getDoubleParam(dcParams, "brown_carbon_factor", 0.5))
                 .greenCarbonFactor(getDoubleParam(dcParams, "green_carbon_factor", 0.01))
