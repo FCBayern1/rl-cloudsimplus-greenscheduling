@@ -73,6 +73,19 @@ def span(offset, warm, ep, tz=0):
     return offset + warm + tz, offset + warm + tz + ep
 
 
+def test_warmup_rows_comes_from_the_config_not_the_artifact():
+    """`warmup_rows: 13` was an invented constant that both the artifact and an
+    external reviewer reproduced. The simulator reads simulation_warmup_rows,
+    which is absent everywhere and therefore 0."""
+    import yaml
+    cfg = yaml.safe_load(CONFIG.read_text())
+    art_val = json.loads(ART.read_text())["safe_domain"]["warmup_rows"]
+    for key in ("common", "experiment_p0cprobe_van",
+                "experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_eucrd_knSV3b",
+                "experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_matchedvan"):
+        assert cfg.get(key, {}).get("simulation_warmup_rows", 0) == art_val, key
+
+
 def test_turbine_timezones_match_the_config():
     """The stratifier is only meaningful if these offsets are the ones the
     simulator uses. This is the test that would have caught max_tz=108."""

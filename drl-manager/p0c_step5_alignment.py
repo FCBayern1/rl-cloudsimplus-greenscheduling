@@ -35,6 +35,13 @@ STEPS = 300
 LAGS = range(-6, 7)
 
 
+def _green(obs):
+    """reset()/step() return {"global": {...}, "local_i": {...}}; the green
+    series lives on the global observation."""
+    g = obs.get("global", obs)
+    return np.asarray(g["dc_current_green_power_w"], dtype=float).copy()
+
+
 def csv_series(turbines, start, n):
     out = np.zeros(n)
     for t in turbines:
@@ -55,10 +62,10 @@ def probe(experiment, k, offset):
         for _ in range(k):
             env.reset(seed=20260823)
         obs, _ = env.reset(seed=20260823)
-        series = [np.asarray(obs["dc_current_green_power_w"], dtype=float).copy()]
+        series = [_green(obs)]
         for _ in range(STEPS - 1):
             obs, _, term, trunc, _ = env.step(env.action_space.sample())
-            series.append(np.asarray(obs["dc_current_green_power_w"], dtype=float).copy())
+            series.append(_green(obs))
             if term or trunc:
                 break
     finally:
@@ -70,7 +77,9 @@ def probe(experiment, k, offset):
 
 
 def main():
-    warm = ART["safe_domain"]["warmup_rows"]
+    warm = int(load_config("experiment_p0cprobe_van").get("simulation_warmup_rows", 0))
+    print(f"simulation_warmup_rows from config = {warm} "
+          f"(artifact records {ART['safe_domain']['warmup_rows']})")
     rows = []
     for w in ART["windows"]:
         k, offset = w["episode_index_k"], w["offset_rows"]

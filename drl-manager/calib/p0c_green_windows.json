@@ -3,11 +3,12 @@
  "frozen": "2026-08-23",
  "supersedes": [
   "row-position terciles (k=4/19/34): offset 4036 overlapped the training window by 3164 rows (44%)",
-  "same-row turbine sum with a blanket max_tz=108: tz=108 is DC_APAC, which carries no turbines, and the five turbines do not share a timezone"
+  "same-row turbine sum with a blanket max_tz=108: tz=108 is DC_APAC, which carries no turbines, and the five turbines do not share a timezone",
+  "warmup_rows=13: an invented constant. simulation_warmup_rows is absent from every relevant config block, so the simulator warms up 0 rows. Strata and offsets are unchanged; the recorded means shift by at most 6.7 kW."
  ],
  "stratifier": {
   "quantity": "sum over the five green turbines of each turbine's mean power over the rows its own datacentre reads",
-  "read_semantics": "turbine t at datacentre i reads rows [offset + warmup + tz_i, offset + warmup + tz_i + episode_rows)",
+  "read_semantics": "turbine t at datacentre i reads rows [offset + simulation_warmup_rows + tz_i, ... + episode_rows); simulation_warmup_rows is 0 on this testbed",
   "turbine_timezones_rows": {
    "12": 0,
    "36": 0,
@@ -20,21 +21,22 @@
  },
  "safe_domain": {
   "rows_available": 52559,
-  "warmup_rows": 13,
+  "warmup_rows": 0,
   "episode_rows": 7200,
   "max_turbine_tz_offset_rows": 54,
   "timecap_horizon_reserve_rows": 288,
-  "safe_offset_max_exact": 45004,
+  "safe_offset_max_exact": 45017,
   "safe_offset_max_used": 44950,
-  "note": "44950 is retained deliberately. The exact bound with the corrected max turbine tz (54, not 108) is 45004, but moving the range would move every scheduled offset. The frozen offsets stay where they are and the extra 54 rows are left as unused margin."
+  "note": "44950 is retained deliberately. The exact bound with the corrected max turbine tz (54, not 108) is 45004, but moving the range would move every scheduled offset. The frozen offsets stay where they are and the extra 54 rows are left as unused margin.",
+  "warmup_rows_source": "config_C.yml simulation_warmup_rows (absent -> 0), confirmed against TimeCAPGodEyeProvider log line warmup_rows=0"
  },
  "green_episode_offset_range": 44950,
  "schedule_formula": "offset(k) = (1009*k) mod 44950",
  "training_window": {
   "episode_index_k": 0,
   "offset_rows": 0,
-  "mean_total_kw": 1419.15,
-  "percentile": 10.15,
+  "mean_total_kw": 1419.58,
+  "percentile": 10.19,
   "note": "training is open-book on a LOW-green window; the three evaluation windows are a cross-scarcity generalisation test, not a claim that k=0 represents the year"
  },
  "windows": [
@@ -42,24 +44,24 @@
    "stratum": "low",
    "episode_index_k": 19,
    "offset_rows": 19171,
-   "mean_total_kw": 1682.26,
-   "percentile": 20.6,
+   "mean_total_kw": 1682.0,
+   "percentile": 20.52,
    "overlap_rows_with_training": 0
   },
   {
    "stratum": "mid",
    "episode_index_k": 56,
    "offset_rows": 11554,
-   "mean_total_kw": 1834.17,
-   "percentile": 49.06,
+   "mean_total_kw": 1840.86,
+   "percentile": 50.23,
    "overlap_rows_with_training": 0
   },
   {
    "stratum": "high",
    "episode_index_k": 34,
    "offset_rows": 34306,
-   "mean_total_kw": 2021.1,
-   "percentile": 81.84,
+   "mean_total_kw": 2022.41,
+   "percentile": 82.04,
    "overlap_rows_with_training": 0
   }
  ],
