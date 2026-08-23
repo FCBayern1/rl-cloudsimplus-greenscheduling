@@ -338,21 +338,51 @@ public class DatacenterInstance {
             availableGreenPower = getCurrentGreenPowerW(currentClock);
             double timeDeltaHours = timeDelta / 3600.0;
 
-            // Calculate energy amounts in Wh. Green energy integrates over the
-            // interval [previousClock, currentClock) with the provider's row
-            // semantics: under STEP this is the exact per-row integral; under
-            // SPLINE/LINEAR getIntervalEnergyWh reproduces the legacy
-            // end-of-interval-sample x delta arithmetic bit-for-bit.
+            // P0.5-3/4 (Codex 2026-08-23): STEP settles the ledger PER ROW
+            // SEGMENT - min(demand, green) inside each constant-power segment,
+            // so surplus green in one row can never cover a deficit in another
+            // (implicit intra-step storage). The non-STEP path restores the
+            // ORIGINAL aggregation order (sum turbine powers first, then
+            // multiply by the delta) so legacy results stay bit-identical.
             double demandWh = currentPowerW * timeDeltaHours;
-            double greenAvailableWh = 0.0;
-            for (exe.edu.cspg.energy.GreenEnergyProvider p : greenEnergyProviders) {
-                greenAvailableWh += p.getIntervalEnergyWh(previousClock, currentClock);
+            boolean stepLedger = !greenEnergyProviders.isEmpty()
+                    && greenEnergyProviders.stream().allMatch(p ->
+                            p.getInterpolationMode()
+                                    == exe.edu.cspg.energy.GreenInterpolationMode.STEP);
+            double greenAvailableWh;
+            if (stepLedger) {
+                // Merge per-provider segments by index (all providers share the
+                // REAL_TIME row grid, so segment boundaries coincide).
+                java.util.List<exe.edu.cspg.energy.LedgerMath.Segment> total = null;
+                for (exe.edu.cspg.energy.GreenEnergyProvider p : greenEnergyProviders) {
+                    java.util.List<exe.edu.cspg.energy.LedgerMath.Segment> segs =
+                            p.getIntervalSegments(previousClock, currentClock);
+                    if (total == null) {
+                        total = segs;
+                    } else {
+                        for (int i = 0; i < Math.min(total.size(), segs.size()); i++) {
+                            total.set(i, new exe.edu.cspg.energy.LedgerMath.Segment(
+                                    total.get(i).greenPowerW + segs.get(i).greenPowerW,
+                                    total.get(i).durationSec));
+                        }
+                    }
+                }
+                double[] settled = exe.edu.cspg.energy.LedgerMath.settlePerSegment(
+                        currentPowerW, total == null ? java.util.List.of() : total);
+                deltaGreenUsed = settled[0];
+                deltaBrownUsed = settled[1];
+                deltaGreenWasted = settled[2];
+                greenAvailableWh = settled[0] + settled[2];
+            } else {
+                greenAvailableWh = availableGreenPower * timeDeltaHours;
             }
 
             // Prioritise green energy, excess is wasted (no storage)
-            deltaGreenUsed = Math.min(demandWh, greenAvailableWh);
-            deltaBrownUsed = demandWh - deltaGreenUsed;
-            deltaGreenWasted = greenAvailableWh - deltaGreenUsed;
+            if (!stepLedger) {
+                deltaGreenUsed = Math.min(demandWh, greenAvailableWh);
+                deltaBrownUsed = demandWh - deltaGreenUsed;
+                deltaGreenWasted = greenAvailableWh - deltaGreenUsed;
+            }
 
             // Update cumulative statistics
             cumulativeGreenEnergyWh += deltaGreenUsed;

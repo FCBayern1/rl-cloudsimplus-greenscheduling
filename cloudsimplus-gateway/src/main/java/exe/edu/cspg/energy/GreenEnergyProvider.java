@@ -80,6 +80,7 @@ public class GreenEnergyProvider {
     // STEP/LINEAR therefore index this array directly: row i IS time
     // [i*rowSeconds, (i+1)*rowSeconds) by construction.
     private double[] rowPowers;
+    private List<Double> rawRowPowersList;      // 装载期缓冲(P0.5-1)
 
     /**
      * Convert the configured time-zone + warm-up offset (in "rows") into
@@ -353,6 +354,33 @@ public class GreenEnergyProvider {
      *  bit-consistency contract (one instantaneous query multiplied across a
      *  600 s delta is precisely the legacy flaw). Non-STEP modes reproduce the
      *  legacy ledger arithmetic (end-of-interval sample x delta) bit-for-bit. */
+    /** Row-aligned overlap segments of [t0, t1) with this provider's green
+     *  power (post-scale), for per-segment ledger settlement (P0.5-3).
+     *  Only meaningful under STEP. */
+    public java.util.List<LedgerMath.Segment> getIntervalSegments(double t0, double t1) {
+        java.util.List<LedgerMath.Segment> out = new java.util.ArrayList<>();
+        if (t1 <= t0) return out;
+        double rs = rowSeconds();
+        double cursor = t0 + getTimeZoneOffsetSeconds();
+        double remaining = t1 - t0;
+        while (remaining > 1e-9) {
+            double rowEnd = (Math.floor(cursor / rs) + 1) * rs;
+            double chunk = Math.min(remaining, rowEnd - cursor);
+            double w = rowValueKW(cursor) * 1000.0;
+            if (timeScalingMode == TimeScalingMode.COMPRESSED) {
+                w = w / compressedPowerDivisor;
+            }
+            out.add(new LedgerMath.Segment(w * greenPowerScale, chunk));
+            cursor = rowEnd;
+            remaining -= chunk;
+        }
+        return out;
+    }
+
+    public GreenInterpolationMode getInterpolationMode() {
+        return interpolationMode;
+    }
+
     public double getIntervalEnergyWh(double t0, double t1) {
         if (t1 <= t0) return 0.0;
         if (interpolationMode != GreenInterpolationMode.STEP) {
@@ -380,8 +408,11 @@ public class GreenEnergyProvider {
     }
 
     public double getCurrentPowerW(double simulationTime) {
-        if (powerSpline == null) {
+        if (powerSpline == null && interpolationMode == GreenInterpolationMode.SPLINE) {
             LOGGER.warn("Power spline not initialized, returning 0");
+            return 0;
+        }
+        if (rowPowers == null && interpolationMode != GreenInterpolationMode.SPLINE) {
             return 0;
         }
 
@@ -497,14 +528,16 @@ public class GreenEnergyProvider {
                 || powerValues == null || powerValues.length == 0 || horizonSteps <= 1) {
             return getCurrentPowerW(simTime);
         }
-        int n = powerValues.length;
+        final double[] meanSeries = interpolationMode != GreenInterpolationMode.SPLINE
+                ? rowPowers : powerValues;
+        int n = meanSeries.length;
         int start = simTimeToRowIndex(simTime);
         if (start < 0) {
             return getCurrentPowerW(simTime);
         }
         double sumKw = 0;
         for (int i = 0; i < horizonSteps; i++) {
-            sumKw += powerValues[(start + i) % n];
+            sumKw += meanSeries[(start + i) % n];
         }
         double meanW = Math.max(0, (sumKw / horizonSteps) * 1000.0);
         return meanW / compressedPowerDivisor * greenPowerScale;
@@ -520,46 +553,51 @@ public class GreenEnergyProvider {
         features[2] = 0.5;  // long_mean
         features[3] = 0.5;  // long_peak_timing
 
-        if (powerValues == null || powerValues.length == 0) {
+        // P0.5-2: one row semantics for EVERY information path. Under
+        // STEP/LINEAR the trend features read the raw row array via pure row
+        // arithmetic; the DST-deduped powerValues/timePoints stay SPLINE-only.
+        final double[] series = interpolationMode != GreenInterpolationMode.SPLINE
+                ? rowPowers : powerValues;
+        if (series == null || series.length == 0) {
             return features;
         }
 
         int currentIdx = simTimeToRowIndex(simTime);
-        if (currentIdx < 0 || currentIdx >= powerValues.length) {
+        if (currentIdx < 0 || currentIdx >= series.length) {
             return features;
         }
 
         // Short-term features
-        int shortEndIdx = Math.min(currentIdx + shortTermRows, powerValues.length);
+        int shortEndIdx = Math.min(currentIdx + shortTermRows, series.length);
         int shortAvailable = shortEndIdx - currentIdx;
 
         if (shortAvailable > 0) {
             double shortSum = 0;
             for (int i = currentIdx; i < shortEndIdx; i++) {
-                shortSum += powerValues[i];
+                shortSum += series[i];
             }
             double shortMean = shortSum / shortAvailable;
             features[0] = Math.min(1.0, Math.max(0.0, shortMean / maxPowerKw));
 
-            double startPower = powerValues[currentIdx];
-            double endPower = powerValues[shortEndIdx - 1];
+            double startPower = series[currentIdx];
+            double endPower = series[shortEndIdx - 1];
             double shortTrend = (endPower - startPower) / maxPowerKw;
             features[1] = Math.min(1.0, Math.max(-1.0, shortTrend));
         }
 
         // Long-term features
-        int longEndIdx = Math.min(currentIdx + longTermRows, powerValues.length);
+        int longEndIdx = Math.min(currentIdx + longTermRows, series.length);
         int longAvailable = longEndIdx - currentIdx;
 
         if (longAvailable > 0) {
             double longSum = 0;
             int peakIdx = currentIdx;
-            double peakPower = powerValues[currentIdx];
+            double peakPower = series[currentIdx];
 
             for (int i = currentIdx; i < longEndIdx; i++) {
-                longSum += powerValues[i];
-                if (powerValues[i] > peakPower) {
-                    peakPower = powerValues[i];
+                longSum += series[i];
+                if (series[i] > peakPower) {
+                    peakPower = series[i];
                     peakIdx = i;
                 }
             }
@@ -580,6 +618,15 @@ public class GreenEnergyProvider {
     private int simTimeToRowIndex(double simTime) {
         // Apply timezone offset
         double adjustedTime = simTime + getTimeZoneOffsetSeconds();
+
+        // P0.5-2: row-index modes never touch timePoints (DST-deduped)
+        if (interpolationMode != GreenInterpolationMode.SPLINE) {
+            if (rowPowers == null || rowPowers.length == 0) return -1;
+            int n = rowPowers.length;
+            int idx = (int) Math.floor(adjustedTime / rowSeconds());
+            idx = ((idx % n) + n) % n;
+            return idx;
+        }
 
         if (timeScalingMode == TimeScalingMode.COMPRESSED) {
             int index = (int) Math.round(adjustedTime);
@@ -704,17 +751,21 @@ public class GreenEnergyProvider {
             List<WindDataPoint> dataPoints = loadCsvData();
             LOGGER.info("Loaded {} data points for turbine {}", dataPoints.size(), turbineId);
 
+            // P0.5-1: STEP/LINEAR's row array comes from RAW file rows, fixed
+            // here BEFORE any spline machinery - a spline failure below must
+            // not take the row-index modes down with it.
+            rowPowers = new double[rawRowPowersList.size()];
+            for (int i = 0; i < rowPowers.length; i++) {
+                rowPowers[i] = rawRowPowersList.get(i);
+            }
+            rawRowPowersList = null;
+
             if (dataPoints.isEmpty()) {
                 LOGGER.error("No data points loaded for turbine {} from file: {}", turbineId, csvFilePath);
                 return;
             }
 
             // Extract time and power sequences, removing duplicates
-            rowPowers = new double[dataPoints.size()];
-            for (int i = 0; i < dataPoints.size(); i++) {
-                rowPowers[i] = Math.max(0.0, dataPoints.get(i).powerKW);
-            }
-
             List<Double> uniqueTimes = new ArrayList<>();
             List<Double> uniquePowers = new ArrayList<>();
 
@@ -744,7 +795,9 @@ public class GreenEnergyProvider {
             SplineInterpolator interpolator = new SplineInterpolator();
             powerSpline = interpolator.interpolate(timePoints, powerValues);
 
-            maxPowerKw = java.util.Arrays.stream(powerValues).max().orElse(1.0);
+            maxPowerKw = interpolationMode != GreenInterpolationMode.SPLINE
+                    ? java.util.Arrays.stream(rowPowers).max().orElse(1.0)
+                    : java.util.Arrays.stream(powerValues).max().orElse(1.0);
             if (maxPowerKw <= 0) {
                 maxPowerKw = 1.0;
             }
@@ -763,6 +816,7 @@ public class GreenEnergyProvider {
      */
     private List<WindDataPoint> loadCsvData() throws IOException {
         List<WindDataPoint> result = new ArrayList<>();
+        rawRowPowersList = new ArrayList<>();
 
         BufferedReader reader = null;
         try {
@@ -802,6 +856,12 @@ public class GreenEnergyProvider {
                     // Simplified format: timestamp,power_kw
                     if (parts.length < 2) continue;
 
+                    // P0.5-1: raw row capture BEFORE any timestamp parsing.
+                    // A row whose timestamp fails to parse must still exist in
+                    // row space - dropping it would shift every later row (the
+                    // DST bug's exact failure shape, via a different door).
+                    rawRowPowersList.add(Math.max(0.0, parseDoubleOrZero(parts[1])));
+
                     if (timeScalingMode == TimeScalingMode.COMPRESSED) {
                         if (rowIndex < 12) {
                             rowIndex++;
@@ -828,6 +888,9 @@ public class GreenEnergyProvider {
                 } else {
                     // Legacy format: TurbID,Tmstamp,...,Patv (15 columns)
                     if (parts.length < 15) continue;
+
+                    // P0.5-1: raw row capture (see simplified branch)
+                    rawRowPowersList.add(Math.max(0.0, parseDoubleOrZero(parts[14])));
 
                     if (timeScalingMode == TimeScalingMode.COMPRESSED) {
                         if (rowIndex < 12) {
