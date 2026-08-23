@@ -1,0 +1,6 @@
+{
+ "jar_sha256": "12c30342f26e998982b6cbca5a8d836e6cef3e5c03fa0200aed635ac416bcf77",
+ "source_code_commit": "1a4023a131b18f62abb7756f33670fda4a202d3c",
+ "build_cmd": "./gradlew --offline installDist (post clean)",
+ "note": "manifest_commit = the commit adding this file (P), distinct from source C"
+}

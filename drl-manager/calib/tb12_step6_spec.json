@@ -1,0 +1,44 @@
+{
+ "step": 6,
+ "purpose": "T100+101/2021 \u91cd\u51bb\u7ed3\u6700\u5f3a\u56e0\u679c\u76f2\u6bd4\u8f83\u5668(STEP harness \u4e0b)",
+ "candidate_set": [
+  "greenfollow",
+  "hazard",
+  "dpcont"
+ ],
+ "reference_arms_also_run": [
+  "nowait",
+  "clair"
+ ],
+ "validity_contract": "\u6bcf\u683c finished==5 \u4e14 steps<288;\u4efb\u4e00\u5019\u9009\u4efb\u4e00\u683c\u8fdd\u7ea6 -> \u8be5\u5019\u9009\u51fa\u5c40;\u5168\u90e8\u51fa\u5c40 -> \u505c\u6b62\u5e76\u62a5\u544a,\u4e0d\u5f97\u653e\u5bbd",
+ "ranking_metric": "12 \u4e2a\u9009\u62e9\u504f\u79fb\u7684\u603b\u78b3(\u5347\u5e8f)",
+ "tie_break": [
+  "\u66f4\u591a\u9010\u504f\u79fb\u4e25\u683c\u80dc\u51fa(vs nowait)",
+  "\u5b57\u5178\u5e8f\u81c2\u540d"
+ ],
+ "selection_offsets": [
+  235,
+  541,
+  11369,
+  13960,
+  16328,
+  19276,
+  28564,
+  31183,
+  39032,
+  43235,
+  50038,
+  51708
+ ],
+ "trace_sha256": "5a7737c0fc917f8793fcc4a0c93993bb4d775dfa5b1f2bb045ae6d00f35ac20f",
+ "calibration_data_sha256": {
+  "Turbine_100_2020.csv": "5cf5716ad19bf0919fe7adbdec0c55ef753a3454aff0a85ce130694400bc29ab",
+  "Turbine_100_2021.csv": "754feef6bc6c586b9713d438818c218a83c5fec474a4f7a0a75f7d3c5f8a771d",
+  "Turbine_101_2020.csv": "bb30f189a5bac678e0884349b435f53cf29c85a6db2817d33d17a59cb8929738",
+  "Turbine_101_2021.csv": "d453a727860b7fcc2747f531aa4b24bf9f5c512850dcda8a1b4193f5f840a782"
+ },
+ "blind_fit_source": "T100+101/2020 only (theta/F/DP), frozen in FrozenPolicies",
+ "config_block": "experiment_tb12_iso (green_interpolation_mode=STEP)",
+ "spec_commit": "1a4023a131b18f62abb7756f33670fda4a202d3c",
+ "jar_sha256": "12c30342f26e998982b6cbca5a8d836e6cef3e5c03fa0200aed635ac416bcf77"
+}

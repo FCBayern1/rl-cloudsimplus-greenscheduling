@@ -15,6 +15,7 @@
 import argparse
 import csv
 import json
+import os
 import pathlib
 import sys
 
@@ -130,6 +131,27 @@ def run_episode(env_cfg, offset_rows, release_times, arrivals, max_steps=300):
         env.close()
 
 
+def verify_frozen_jar():
+    """P0.5-2(Codex):正式跑必须显式 GATEWAY_LIBS 指向冻结 installDist,
+    且实际 jar SHA256 与 calib/tb12_jar_manifest.json 一致,不一致立即退出。"""
+    import hashlib, os
+    man_p = pathlib.Path(__file__).resolve().parent / "calib/tb12_jar_manifest.json"
+    if not man_p.exists():
+        sys.exit("tb12_jar_manifest.json 不存在 —— 先冻结 jar 再跑正式格")
+    man = json.loads(man_p.read_text())
+    libs = os.environ.get("GATEWAY_LIBS", "").strip()
+    if not libs:
+        sys.exit("正式跑必须设置 GATEWAY_LIBS 指向冻结 installDist(P0.5-2)")
+    jar = pathlib.Path(libs) / "cloudsimplus-gateway.jar"
+    if not jar.is_file():
+        sys.exit(f"GATEWAY_LIBS 下无 cloudsimplus-gateway.jar: {libs}")
+    sha = hashlib.sha256(jar.read_bytes()).hexdigest()
+    if sha != man["jar_sha256"]:
+        sys.exit(f"jar SHA 不一致!\n  实际   {sha}\n  冻结   {man['jar_sha256']}")
+    print(f"[TB12] jar SHA 哨兵通过: {sha[:16]}… (source={man['source_code_commit'][:12]})",
+          flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experiment", default="experiment_tb12_smoke")
@@ -139,6 +161,9 @@ def main():
     ap.add_argument("--arms", default="nowait,greenfollow,hazard,dpcont,clair")
     ap.add_argument("--json-out", default=None)
     a = ap.parse_args()
+
+    if os.environ.get("TB12_REQUIRE_FROZEN_JAR", "1") != "0":
+        verify_frozen_jar()
 
     from src.baselines.evaluate import load_config
     cfg = load_config(a.experiment)

@@ -1,10 +1,12 @@
-# TB12 第二轮正式 jar 清单（P0.5 后,2026-08-23 02:35 构建）
+# TB12 第二轮正式 jar 清单（P0.5 三阻塞修复后,clean 构建）
+
+> 旧 8a3b5e1f… 与 622319d4… 均已退役。
 
 | 项 | 值 |
 |---|---|
-| jar SHA256(完整 64 位) | `8a3b5e1fab8d2ec1f00eecda2c780b65ccbb5b2bc982e995c3497f4b3a013cc4` |
+| jar SHA256(完整 64 位) | `12c30342f26e998982b6cbca5a8d836e6cef3e5c03fa0200aed635ac416bcf77` |
 | jar mtime | 2026-08-23 02:35:22 |
-| 构建源 git commit | 7ec9c859a49216330db131a4b16162928085ba54（本清单与 P0.5 代码同一提交入库） |
+| 构建源 git commit(source_code_commit C) | 1a4023a131b18f62abb7756f33670fda4a202d3c (clean --offline build;manifest 所在 commit 即 P) |
 | Java | openjdk version 21.0.11 2026-04-21 |
 | JVM 时区来源 | gradle jvmargs -Duser.country=GB(Europe/London);DST 缺陷已由行语义绕开 |
 | GATEWAY_LIBS | 本地一律 unset(gradlew 路径);若设必须指向 build/install/.../lib 且 SHA 与本清单一致 |
