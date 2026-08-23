@@ -1,27 +1,40 @@
 {
- "protocol": "P0-C stratified green windows, GREEN-SCARCITY terciles (Codex re-ruling 2026-08-23)",
+ "protocol": "P0-C stratified green windows, GREEN-SCARCITY terciles (Codex re-ruling 2026-08-23; per-turbine timezone correction 2026-08-23)",
  "frozen": "2026-08-23",
- "supersedes": "row-position terciles (k=4/19/34): offset 4036 overlapped the training window by 3164 rows (44%)",
+ "supersedes": [
+  "row-position terciles (k=4/19/34): offset 4036 overlapped the training window by 3164 rows (44%)",
+  "same-row turbine sum with a blanket max_tz=108: tz=108 is DC_APAC, which carries no turbines, and the five turbines do not share a timezone"
+ ],
  "stratifier": {
-  "quantity": "mean total power of the five green turbines over the window the episode actually reads",
-  "window": "offset + warmup_rows .. + episode_rows + max_tz_offset_rows",
-  "why": "policy-independent physical measure; row position does not control green scarcity, and scarcity is what determines whether routing has room to matter"
+  "quantity": "sum over the five green turbines of each turbine's mean power over the rows its own datacentre reads",
+  "read_semantics": "turbine t at datacentre i reads rows [offset + warmup + tz_i, offset + warmup + tz_i + episode_rows)",
+  "turbine_timezones_rows": {
+   "12": 0,
+   "36": 0,
+   "95": 18,
+   "91": 18,
+   "96": 54
+  },
+  "why": "policy-independent physical measure; row position does not control green scarcity, and scarcity is what determines whether routing has room to matter",
+  "correction_note": "the earlier artifact summed all five turbines on the same row and padded the span by max_tz=108. Both were wrong: tz=108 belongs to DC_APAC (no turbines), and turbines at tz 0/18/54 read different rows."
  },
  "safe_domain": {
   "rows_available": 52559,
   "warmup_rows": 13,
   "episode_rows": 7200,
-  "max_tz_offset_rows": 108,
+  "max_turbine_tz_offset_rows": 54,
   "timecap_horizon_reserve_rows": 288,
-  "safe_offset_max": 44950
+  "safe_offset_max_exact": 45004,
+  "safe_offset_max_used": 44950,
+  "note": "44950 is retained deliberately. The exact bound with the corrected max turbine tz (54, not 108) is 45004, but moving the range would move every scheduled offset. The frozen offsets stay where they are and the extra 54 rows are left as unused margin."
  },
  "green_episode_offset_range": 44950,
  "schedule_formula": "offset(k) = (1009*k) mod 44950",
  "training_window": {
   "episode_index_k": 0,
   "offset_rows": 0,
-  "mean_total_kw": 1418.4,
-  "percentile": 10.0,
+  "mean_total_kw": 1419.15,
+  "percentile": 10.15,
   "note": "training is open-book on a LOW-green window; the three evaluation windows are a cross-scarcity generalisation test, not a claim that k=0 represents the year"
  },
  "windows": [
@@ -29,29 +42,33 @@
    "stratum": "low",
    "episode_index_k": 19,
    "offset_rows": 19171,
-   "mean_total_kw": 1685.6,
-   "percentile": 21.9,
+   "mean_total_kw": 1682.26,
+   "percentile": 20.6,
    "overlap_rows_with_training": 0
   },
   {
    "stratum": "mid",
    "episode_index_k": 56,
    "offset_rows": 11554,
-   "mean_total_kw": 1840.5,
-   "percentile": 50.0,
+   "mean_total_kw": 1834.17,
+   "percentile": 49.06,
    "overlap_rows_with_training": 0
   },
   {
    "stratum": "high",
    "episode_index_k": 34,
    "offset_rows": 34306,
-   "mean_total_kw": 2050.9,
-   "percentile": 87.3,
+   "mean_total_kw": 2021.1,
+   "percentile": 81.84,
    "overlap_rows_with_training": 0
   }
  ],
  "applies_to": "every arm, every seed, every condition (clean/blend/shuffle)",
  "primary_analysis": "pool the three windows first, then seed-level log-ratio; the low-green window alone must not decide seed expansion",
  "secondary_prereg": "effect vs green scarcity. If the pooled gate fails but the low-green window is significant, the claim is 'effective under green scarcity', never a year-round advantage",
- "eval_rng_seed": 20260823
+ "eval_rng_seed": 20260823,
+ "percentile_reference": {
+  "domain": "all offsets the schedule can produce, 0..44949 (n=44950)",
+  "convention": "bisect_left on the sorted domain"
+ }
 }
