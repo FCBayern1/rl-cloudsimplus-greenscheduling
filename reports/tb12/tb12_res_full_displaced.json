@@ -1,0 +1,5415 @@
+{
+ "mode": "displaced",
+ "eps_w": 1.0,
+ "m_consec": 3,
+ "planning_turbines": [
+  110,
+  111
+ ],
+ "environment_turbines": [
+  110,
+  111
+ ],
+ "results": [
+  {
+   "offset": 3492,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1417366115050034,
+   "green_wh": 323.1729416574015,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 3492,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.019027095451129093,
+   "green_wh": 550.4127862016131,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    30000.0,
+    30000.0,
+    31800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 3492,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005912529980125932,
+   "green_wh": 574.6990185553225,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 217,
+   "releases": [
+    30000.0,
+    30000.0,
+    31800.0,
+    48824.0,
+    115200.0
+   ]
+  },
+  {
+   "offset": 3492,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11497105401296699,
+   "green_wh": 372.7387888648759,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    26400.0,
+    26400.0,
+    61800.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 3492,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.019027095451129093,
+   "green_wh": 550.4127862016131,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    30000.0,
+    30000.0,
+    31800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 3976,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.18020648803332315,
+   "green_wh": 251.93242956792008,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 3976,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05223168466906148,
+   "green_wh": 488.922806168405,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 164,
+   "releases": [
+    17020.0,
+    31800.0,
+    33600.0,
+    79200.0,
+    83400.0
+   ]
+  },
+  {
+   "offset": 3976,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.048189268859126465,
+   "green_wh": 496.408761371988,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 168,
+   "releases": [
+    31800.0,
+    75000.0,
+    30000.0,
+    90000.0,
+    85200.0
+   ]
+  },
+  {
+   "offset": 3976,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.19487196539623514,
+   "green_wh": 224.77413815512,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 199,
+   "releases": [
+    21600.0,
+    21600.0,
+    22218.0,
+    101400.0,
+    104400.0
+   ]
+  },
+  {
+   "offset": 3976,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05223168466906148,
+   "green_wh": 488.922806168405,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 164,
+   "releases": [
+    17020.0,
+    31800.0,
+    33600.0,
+    79200.0,
+    83400.0
+   ]
+  },
+  {
+   "offset": 4901,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.15954110149569292,
+   "green_wh": 290.2016638968656,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 4901,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.029611080141565587,
+   "green_wh": 530.8128145526571,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    26400.0,
+    40200.0,
+    40800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 4901,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.005749999999999998,
+   "green_wh": 575.0,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    39000.0,
+    40200.0,
+    40800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 4901,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.10861623019904994,
+   "green_wh": 384.50698111287045,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 160,
+   "releases": [
+    17020.0,
+    75000.0,
+    76200.0,
+    79800.0,
+    81000.0
+   ]
+  },
+  {
+   "offset": 4901,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.029611080141565587,
+   "green_wh": 530.8128145526571,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    26400.0,
+    40200.0,
+    40800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 5189,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.18871570056071882,
+   "green_wh": 236.17462859126198,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 5189,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11298856170759405,
+   "green_wh": 376.41007091186304,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    42000.0,
+    46800.0,
+    50400.0,
+    65400.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 5189,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1217810886629964,
+   "green_wh": 360.1276135870436,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    43200.0,
+    48000.0,
+    58200.0,
+    64200.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 5189,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2792936150083595,
+   "green_wh": 68.43774998451961,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 208,
+   "releases": [
+    17020.0,
+    21254.0,
+    76200.0,
+    80400.0,
+    109800.0
+   ]
+  },
+  {
+   "offset": 5189,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11298856170759405,
+   "green_wh": 376.41007091186304,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    42000.0,
+    46800.0,
+    50400.0,
+    65400.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 5280,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.29706967189042194,
+   "green_wh": 35.51912612884837,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 5280,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12394209837441963,
+   "green_wh": 356.1257437510749,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 169,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    85800.0,
+    86400.0
+   ]
+  },
+  {
+   "offset": 5280,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12926309413918582,
+   "green_wh": 346.27204789039695,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 175,
+   "releases": [
+    70800.0,
+    75000.0,
+    76200.0,
+    85800.0,
+    90000.0
+   ]
+  },
+  {
+   "offset": 5280,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21677930194973682,
+   "green_wh": 184.20499638937676,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 218,
+   "releases": [
+    55200.0,
+    25200.0,
+    72600.0,
+    93600.0,
+    115800.0
+   ]
+  },
+  {
+   "offset": 5280,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12394209837441963,
+   "green_wh": 356.1257437510749,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 169,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    85800.0,
+    86400.0
+   ]
+  },
+  {
+   "offset": 5502,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1474436118105775,
+   "green_wh": 312.6044225730053,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 5502,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.02475473026792932,
+   "green_wh": 539.8060550593899,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    51600.0,
+    56400.0,
+    64800.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 5502,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999999,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 142,
+   "releases": [
+    54000.0,
+    63000.0,
+    67800.0,
+    69000.0,
+    70200.0
+   ]
+  },
+  {
+   "offset": 5502,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1474436118105775,
+   "green_wh": 312.6044225730053,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 147,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    73200.0
+   ]
+  },
+  {
+   "offset": 5502,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.02475473026792932,
+   "green_wh": 539.8060550593899,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    51600.0,
+    56400.0,
+    64800.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 7747,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.14716075772405388,
+   "green_wh": 313.12822643693727,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 7747,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04267653100241827,
+   "green_wh": 506.6175351807074,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 213,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    102824.0,
+    112800.0
+   ]
+  },
+  {
+   "offset": 7747,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04026538433214418,
+   "green_wh": 511.0826216071412,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 220,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    102600.0,
+    117000.0
+   ]
+  },
+  {
+   "offset": 7747,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.22438725807765791,
+   "green_wh": 170.116188745078,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 195,
+   "releases": [
+    32400.0,
+    75000.0,
+    76200.0,
+    102000.0,
+    102000.0
+   ]
+  },
+  {
+   "offset": 7747,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04267653100241827,
+   "green_wh": 506.6175351807074,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 213,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    102824.0,
+    112800.0
+   ]
+  },
+  {
+   "offset": 8595,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09913509339858731,
+   "green_wh": 402.0646418544681,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 8595,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08435354758077065,
+   "green_wh": 429.43787485042503,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    25800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 8595,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.053837545414789155,
+   "green_wh": 485.9489899726124,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 177,
+   "releases": [
+    46800.0,
+    30600.0,
+    54000.0,
+    90600.0,
+    91200.0
+   ]
+  },
+  {
+   "offset": 8595,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11274254796923523,
+   "green_wh": 376.86565190882385,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 220,
+   "releases": [
+    36000.0,
+    51000.0,
+    55800.0,
+    70800.0,
+    117000.0
+   ]
+  },
+  {
+   "offset": 8595,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08435354758077065,
+   "green_wh": 429.43787485042503,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    25800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 9737,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08354447083221497,
+   "green_wh": 430.9361651255279,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 9737,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03298392208243995,
+   "green_wh": 524.5668109584453,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    39600.0,
+    54600.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 9737,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09864311086596639,
+   "green_wh": 402.975720618581,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 138,
+   "releases": [
+    39600.0,
+    54600.0,
+    64800.0,
+    49200.0,
+    67800.0
+   ]
+  },
+  {
+   "offset": 9737,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.16107917788651135,
+   "green_wh": 287.35337428423776,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 185,
+   "releases": [
+    32400.0,
+    32400.0,
+    33000.0,
+    48824.0,
+    96000.0
+   ]
+  },
+  {
+   "offset": 9737,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03298392208243995,
+   "green_wh": 524.5668109584453,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    39600.0,
+    54600.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 10702,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1745994588634945,
+   "green_wh": 262.3158169194553,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 10702,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.050399458863494166,
+   "green_wh": 492.3158169194562,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    39600.0,
+    39600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 10702,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 574.9999999999999,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    39600.0,
+    39600.0,
+    42600.0,
+    61800.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 10702,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1739418125000005,
+   "green_wh": 263.5336805555554,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 206,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    88800.0,
+    108600.0
+   ]
+  },
+  {
+   "offset": 10702,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.050399458863494166,
+   "green_wh": 492.3158169194562,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    39600.0,
+    39600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12023,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15613827214625656,
+   "green_wh": 296.5031997291545,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12023,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03193827214625654,
+   "green_wh": 526.5031997291542,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 170,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    86400.0,
+    87000.0
+   ]
+  },
+  {
+   "offset": 12023,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03193827214625654,
+   "green_wh": 526.5031997291542,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 170,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    86400.0,
+    87000.0
+   ]
+  },
+  {
+   "offset": 12023,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15613827214625656,
+   "green_wh": 296.5031997291545,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 137,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    67200.0
+   ]
+  },
+  {
+   "offset": 12023,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03193827214625654,
+   "green_wh": 526.5031997291542,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 170,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    86400.0,
+    87000.0
+   ]
+  },
+  {
+   "offset": 12094,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.19205000000000047,
+   "green_wh": 229.99999999999986,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12094,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999999,
+   "green_wh": 574.9999999999999,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    43800.0,
+    44400.0,
+    45000.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12094,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999999,
+   "green_wh": 574.9999999999999,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    43800.0,
+    44400.0,
+    45000.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12094,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.28765022857257005,
+   "green_wh": 52.96253968042604,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 213,
+   "releases": [
+    17020.0,
+    37800.0,
+    24600.0,
+    102600.0,
+    112800.0
+   ]
+  },
+  {
+   "offset": 12094,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999999,
+   "green_wh": 574.9999999999999,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    43800.0,
+    44400.0,
+    45000.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12268,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2238342283244474,
+   "green_wh": 171.1403179176902,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12268,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12115838774809533,
+   "green_wh": 361.2807634294531,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    34200.0,
+    34800.0,
+    36000.0,
+    63000.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12268,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09336263225810328,
+   "green_wh": 412.75438470721593,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 159,
+   "releases": [
+    62400.0,
+    32400.0,
+    59400.0,
+    100800.0,
+    79800.0
+   ]
+  },
+  {
+   "offset": 12268,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1262690678812065,
+   "green_wh": 351.81654096072856,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 201,
+   "releases": [
+    70800.0,
+    57000.0,
+    76200.0,
+    101400.0,
+    105600.0
+   ]
+  },
+  {
+   "offset": 12268,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12115838774809533,
+   "green_wh": 361.2807634294531,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    34200.0,
+    34800.0,
+    36000.0,
+    63000.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12735,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.25451750823589925,
+   "green_wh": 114.3194291927793,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12735,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21955500261800678,
+   "green_wh": 179.06480996665434,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 221,
+   "releases": [
+    17020.0,
+    21254.0,
+    76218.0,
+    102824.0,
+    117600.0
+   ]
+  },
+  {
+   "offset": 12735,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.218642461718268,
+   "green_wh": 180.75470052172622,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    17020.0,
+    52800.0,
+    24600.0,
+    102600.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 12735,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2247552855320744,
+   "green_wh": 169.43465642208463,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    34800.0,
+    49800.0,
+    67200.0,
+    59400.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 12735,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21955500261800678,
+   "green_wh": 179.06480996665434,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 221,
+   "releases": [
+    17020.0,
+    21254.0,
+    76218.0,
+    102824.0,
+    117600.0
+   ]
+  },
+  {
+   "offset": 12793,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2819460516823327,
+   "green_wh": 63.525830217902445,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 12793,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2095289777718647,
+   "green_wh": 197.63152264469485,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 180,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    85800.0,
+    93000.0
+   ]
+  },
+  {
+   "offset": 12793,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1642941201764186,
+   "green_wh": 281.39977745107655,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 196,
+   "releases": [
+    18000.0,
+    75000.0,
+    76200.0,
+    85800.0,
+    102600.0
+   ]
+  },
+  {
+   "offset": 12793,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.20235702116268334,
+   "green_wh": 210.9129237728087,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 177,
+   "releases": [
+    32400.0,
+    21254.0,
+    76200.0,
+    90000.0,
+    91200.0
+   ]
+  },
+  {
+   "offset": 12793,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2095289777718647,
+   "green_wh": 197.63152264469485,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 180,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    85800.0,
+    93000.0
+   ]
+  },
+  {
+   "offset": 13643,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03277711290816928,
+   "green_wh": 524.9497909107982,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 13643,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01576398305012485,
+   "green_wh": 556.455586944214,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    29400.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 13643,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 165,
+   "releases": [
+    17020.0,
+    25200.0,
+    29400.0,
+    48824.0,
+    84000.0
+   ]
+  },
+  {
+   "offset": 13643,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0066573820276041645,
+   "green_wh": 573.3196629118445,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 205,
+   "releases": [
+    21600.0,
+    34800.0,
+    39600.0,
+    94200.0,
+    108000.0
+   ]
+  },
+  {
+   "offset": 13643,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01576398305012485,
+   "green_wh": 556.455586944214,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    29400.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 14078,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21555043469290333,
+   "green_wh": 186.48067649462365,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 14078,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.14439937321779123,
+   "green_wh": 318.2419014485351,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 191,
+   "releases": [
+    17020.0,
+    31800.0,
+    76218.0,
+    91200.0,
+    99600.0
+   ]
+  },
+  {
+   "offset": 14078,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12871101478874192,
+   "green_wh": 347.2944170578856,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 187,
+   "releases": [
+    17020.0,
+    21254.0,
+    76200.0,
+    99000.0,
+    96600.0
+   ]
+  },
+  {
+   "offset": 14078,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.28606271967021457,
+   "green_wh": 55.9023709810843,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    29400.0,
+    43800.0,
+    48600.0,
+    58800.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 14078,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.14439937321779123,
+   "green_wh": 318.2419014485351,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 191,
+   "releases": [
+    17020.0,
+    31800.0,
+    76218.0,
+    91200.0,
+    99600.0
+   ]
+  },
+  {
+   "offset": 15087,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.06102542693786707,
+   "green_wh": 472.63809826320994,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 15087,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.052645919098524355,
+   "green_wh": 488.15570537310384,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    22200.0,
+    22200.0,
+    22800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 15087,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0057499999999999956,
+   "green_wh": 575.0000000000003,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 170,
+   "releases": [
+    22200.0,
+    22200.0,
+    37200.0,
+    48824.0,
+    87000.0
+   ]
+  },
+  {
+   "offset": 15087,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.015738491271510533,
+   "green_wh": 556.5027939416475,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 217,
+   "releases": [
+    44400.0,
+    47400.0,
+    32400.0,
+    100800.0,
+    115200.0
+   ]
+  },
+  {
+   "offset": 15087,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.052645919098524355,
+   "green_wh": 488.15570537310384,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    22200.0,
+    22200.0,
+    22800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 15308,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2135338075277414,
+   "green_wh": 190.2151712449235,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 15308,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.20563659324347178,
+   "green_wh": 204.83964214171903,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 192,
+   "releases": [
+    17020.0,
+    51600.0,
+    57000.0,
+    99600.0,
+    100200.0
+   ]
+  },
+  {
+   "offset": 15308,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.23044892918032436,
+   "green_wh": 158.89087188828833,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 173,
+   "releases": [
+    51000.0,
+    66000.0,
+    44400.0,
+    88200.0,
+    88800.0
+   ]
+  },
+  {
+   "offset": 15308,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2135751734819871,
+   "green_wh": 190.13856762594992,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 160,
+   "releases": [
+    43200.0,
+    46800.0,
+    47400.0,
+    58200.0,
+    81000.0
+   ]
+  },
+  {
+   "offset": 15308,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.20563659324347178,
+   "green_wh": 204.83964214171903,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 192,
+   "releases": [
+    17020.0,
+    51600.0,
+    57000.0,
+    99600.0,
+    100200.0
+   ]
+  },
+  {
+   "offset": 18279,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 20,
+   "carbon_kg": 0.2396624681409779,
+   "green_wh": 141.82876270189306,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 18279,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 20,
+   "carbon_kg": 0.11374612776814441,
+   "green_wh": 375.00717079973265,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 174,
+   "releases": [
+    58800.0,
+    70200.0,
+    74400.0,
+    80400.0,
+    89400.0
+   ]
+  },
+  {
+   "offset": 18279,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 20,
+   "carbon_kg": 0.16725957847089054,
+   "green_wh": 275.9081880168691,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 174,
+   "releases": [
+    68400.0,
+    74400.0,
+    30600.0,
+    88800.0,
+    89400.0
+   ]
+  },
+  {
+   "offset": 18279,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 20,
+   "carbon_kg": 0.20647780630960846,
+   "green_wh": 203.28184016739155,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 213,
+   "releases": [
+    48600.0,
+    74400.0,
+    76200.0,
+    102600.0,
+    112800.0
+   ]
+  },
+  {
+   "offset": 18279,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 20,
+   "carbon_kg": 0.11374612776814441,
+   "green_wh": 375.00717079973265,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 174,
+   "releases": [
+    58800.0,
+    70200.0,
+    74400.0,
+    80400.0,
+    89400.0
+   ]
+  },
+  {
+   "offset": 19463,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03821424919918201,
+   "green_wh": 514.8810200015153,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 19463,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03702120678138738,
+   "green_wh": 517.090357812246,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    49200.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 19463,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.007976519994970952,
+   "green_wh": 570.8768148241281,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 220,
+   "releases": [
+    17020.0,
+    21254.0,
+    71400.0,
+    84600.0,
+    117000.0
+   ]
+  },
+  {
+   "offset": 19463,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12022476708297404,
+   "green_wh": 363.00969058708523,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 190,
+   "releases": [
+    17020.0,
+    31200.0,
+    42000.0,
+    98400.0,
+    99000.0
+   ]
+  },
+  {
+   "offset": 19463,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03702120678138738,
+   "green_wh": 517.090357812246,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    49200.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 19482,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07748454339912848,
+   "green_wh": 442.1582529645771,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 19482,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0579417485260977,
+   "green_wh": 478.34861384056035,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    55200.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 19482,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.014099496374795012,
+   "green_wh": 559.5379696763051,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 202,
+   "releases": [
+    17020.0,
+    60000.0,
+    73200.0,
+    102600.0,
+    106200.0
+   ]
+  },
+  {
+   "offset": 19482,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15122544076413563,
+   "green_wh": 305.60103562197105,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 171,
+   "releases": [
+    17020.0,
+    30600.0,
+    22218.0,
+    87000.0,
+    87600.0
+   ]
+  },
+  {
+   "offset": 19482,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0579417485260977,
+   "green_wh": 478.34861384056035,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    55200.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 19769,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10234038756200187,
+   "green_wh": 396.12891192221923,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 19769,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07483062985517021,
+   "green_wh": 447.0729076756111,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 168,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    85800.0
+   ]
+  },
+  {
+   "offset": 19769,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.009562849180197251,
+   "green_wh": 567.9391681848197,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 199,
+   "releases": [
+    17020.0,
+    29400.0,
+    46800.0,
+    100800.0,
+    104400.0
+   ]
+  },
+  {
+   "offset": 19769,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04063316615761378,
+   "green_wh": 510.4015441525678,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    17020.0,
+    21254.0,
+    27000.0,
+    48824.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 19769,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07483062985517021,
+   "green_wh": 447.0729076756111,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 168,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    85800.0
+   ]
+  },
+  {
+   "offset": 21652,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.06774595621596492,
+   "green_wh": 460.19267367413937,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 21652,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05671284594058573,
+   "green_wh": 480.6243593692862,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 161,
+   "releases": [
+    19200.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    81600.0
+   ]
+  },
+  {
+   "offset": 21652,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 574.9999999999998,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 192,
+   "releases": [
+    19200.0,
+    27600.0,
+    28200.0,
+    99000.0,
+    100200.0
+   ]
+  },
+  {
+   "offset": 21652,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15285480838076299,
+   "green_wh": 302.5836881837723,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    48000.0,
+    52800.0,
+    54600.0,
+    55200.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 21652,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05671284594058573,
+   "green_wh": 480.6243593692862,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 161,
+   "releases": [
+    19200.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    81600.0
+   ]
+  },
+  {
+   "offset": 23527,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.18485796578457384,
+   "green_wh": 243.3185818804195,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 23527,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07118374260476099,
+   "green_wh": 453.82640258377603,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    46800.0,
+    51600.0,
+    54600.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 23527,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999999,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 135,
+   "releases": [
+    49800.0,
+    61200.0,
+    64800.0,
+    65400.0,
+    66000.0
+   ]
+  },
+  {
+   "offset": 23527,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12374576017051273,
+   "green_wh": 356.48933301756915,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 137,
+   "releases": [
+    17020.0,
+    21254.0,
+    60000.0,
+    61200.0,
+    67200.0
+   ]
+  },
+  {
+   "offset": 23527,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07118374260476099,
+   "green_wh": 453.82640258377603,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    46800.0,
+    51600.0,
+    54600.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 24012,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.045879517869145944,
+   "green_wh": 500.68607802010126,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24012,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01330315962243866,
+   "green_wh": 561.0126673658549,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    33600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24012,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    31800.0,
+    33600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24012,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005788486007206384,
+   "green_wh": 574.9287296162846,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 188,
+   "releases": [
+    63000.0,
+    67200.0,
+    67200.0,
+    74400.0,
+    97800.0
+   ]
+  },
+  {
+   "offset": 24012,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01330315962243866,
+   "green_wh": 561.0126673658549,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    33600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24413,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 3,
+   "carbon_kg": 0.13733515941851043,
+   "green_wh": 331.3237788546105,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24413,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 3,
+   "carbon_kg": 0.14404623881885548,
+   "green_wh": 318.8958540391565,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 148,
+   "releases": [
+    24600.0,
+    25200.0,
+    25200.0,
+    52800.0,
+    73800.0
+   ]
+  },
+  {
+   "offset": 24413,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 3,
+   "carbon_kg": 0.12797960930157565,
+   "green_wh": 348.6488716637487,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 188,
+   "releases": [
+    44400.0,
+    24600.0,
+    72000.0,
+    90600.0,
+    97800.0
+   ]
+  },
+  {
+   "offset": 24413,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 3,
+   "carbon_kg": 0.19213600131850395,
+   "green_wh": 229.8407382990668,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 135,
+   "releases": [
+    35400.0,
+    49200.0,
+    52200.0,
+    83400.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24413,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 3,
+   "carbon_kg": 0.14404623881885548,
+   "green_wh": 318.8958540391565,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 148,
+   "releases": [
+    24600.0,
+    25200.0,
+    25200.0,
+    52800.0,
+    73800.0
+   ]
+  },
+  {
+   "offset": 24566,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21016599270455136,
+   "green_wh": 196.4518653619422,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24566,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1722676823548417,
+   "green_wh": 266.633921565108,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 207,
+   "releases": [
+    51600.0,
+    67200.0,
+    76218.0,
+    102824.0,
+    109200.0
+   ]
+  },
+  {
+   "offset": 24566,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1651304862889185,
+   "green_wh": 279.8509513168176,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    65400.0,
+    48600.0,
+    63600.0,
+    102600.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 24566,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2608213841014505,
+   "green_wh": 102.64558499731385,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 164,
+   "releases": [
+    69000.0,
+    69600.0,
+    70200.0,
+    77400.0,
+    83400.0
+   ]
+  },
+  {
+   "offset": 24566,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1722676823548417,
+   "green_wh": 266.633921565108,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 207,
+   "releases": [
+    51600.0,
+    67200.0,
+    76218.0,
+    102824.0,
+    109200.0
+   ]
+  },
+  {
+   "offset": 24817,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.17989716080342263,
+   "green_wh": 252.5052577714398,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 24817,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10413526153750721,
+   "green_wh": 392.805071226839,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    17020.0,
+    22800.0,
+    31800.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 24817,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.1302345691413399,
+   "green_wh": 344.4730201086301,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 220,
+   "releases": [
+    21600.0,
+    31800.0,
+    22800.0,
+    102600.0,
+    117000.0
+   ]
+  },
+  {
+   "offset": 24817,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2889123667236907,
+   "green_wh": 50.625246807980375,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 187,
+   "releases": [
+    65400.0,
+    67200.0,
+    43200.0,
+    52200.0,
+    97200.0
+   ]
+  },
+  {
+   "offset": 24817,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10413526153750721,
+   "green_wh": 392.805071226839,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    17020.0,
+    22800.0,
+    31800.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 26277,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2334303752064875,
+   "green_wh": 153.36967554354177,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 26277,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11856437955331689,
+   "green_wh": 366.0844823086727,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 183,
+   "releases": [
+    17020.0,
+    31800.0,
+    76218.0,
+    91200.0,
+    94800.0
+   ]
+  },
+  {
+   "offset": 26277,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12546526229932128,
+   "green_wh": 353.30506981607164,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 183,
+   "releases": [
+    25200.0,
+    66600.0,
+    22218.0,
+    94800.0,
+    94800.0
+   ]
+  },
+  {
+   "offset": 26277,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21566551500099984,
+   "green_wh": 186.2675648129637,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    17020.0,
+    61200.0,
+    69000.0,
+    57000.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 26277,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11856437955331689,
+   "green_wh": 366.0844823086727,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 183,
+   "releases": [
+    17020.0,
+    31800.0,
+    76218.0,
+    91200.0,
+    94800.0
+   ]
+  },
+  {
+   "offset": 26404,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0104062908761051,
+   "green_wh": 566.3772391183239,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 26404,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006117603293933871,
+   "green_wh": 574.3192531593817,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    18600.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 26404,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005851078498140819,
+   "green_wh": 574.8128175960355,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    18600.0,
+    21254.0,
+    22218.0,
+    50400.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 26404,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12088581655804082,
+   "green_wh": 361.7855248925171,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 143,
+   "releases": [
+    52800.0,
+    65400.0,
+    66000.0,
+    66600.0,
+    70800.0
+   ]
+  },
+  {
+   "offset": 26404,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006117603293933871,
+   "green_wh": 574.3192531593817,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    18600.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27396,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.033672631150520986,
+   "green_wh": 523.2914237953325,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27396,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0057499999999999956,
+   "green_wh": 575.0000000000006,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    31800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27396,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0057499999999999956,
+   "green_wh": 575.0000000000006,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    31800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27396,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.033672631150520986,
+   "green_wh": 523.2914237953325,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 161,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    81600.0
+   ]
+  },
+  {
+   "offset": 27396,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0057499999999999956,
+   "green_wh": 575.0000000000006,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    31800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27900,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006233008199094241,
+   "green_wh": 574.1055403720479,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27900,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006233008199094241,
+   "green_wh": 574.1055403720479,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 27900,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 165,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    84000.0
+   ]
+  },
+  {
+   "offset": 27900,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.024458492526595717,
+   "green_wh": 540.3546434692674,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 216,
+   "releases": [
+    22800.0,
+    29400.0,
+    70800.0,
+    77400.0,
+    114600.0
+   ]
+  },
+  {
+   "offset": 27900,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006233008199094241,
+   "green_wh": 574.1055403720479,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 28320,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.17179047731140556,
+   "green_wh": 267.5176346085087,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 28320,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11032247817817502,
+   "green_wh": 381.34726263300917,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 152,
+   "releases": [
+    17020.0,
+    41400.0,
+    55200.0,
+    61200.0,
+    76200.0
+   ]
+  },
+  {
+   "offset": 28320,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15060452225317333,
+   "green_wh": 306.75088471634615,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    48600.0,
+    60600.0,
+    34800.0,
+    102000.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 28320,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.17496148608391088,
+   "green_wh": 261.64539614090546,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 180,
+   "releases": [
+    21000.0,
+    58200.0,
+    33600.0,
+    58800.0,
+    93000.0
+   ]
+  },
+  {
+   "offset": 28320,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.11032247817817502,
+   "green_wh": 381.34726263300917,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 152,
+   "releases": [
+    17020.0,
+    41400.0,
+    55200.0,
+    61200.0,
+    76200.0
+   ]
+  },
+  {
+   "offset": 28560,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10441089368675141,
+   "green_wh": 392.2946413208309,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 28560,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09812535451939665,
+   "green_wh": 403.93452866778415,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    52200.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 28560,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.02311210594898056,
+   "green_wh": 542.8479519463323,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 205,
+   "releases": [
+    17020.0,
+    52200.0,
+    52800.0,
+    100800.0,
+    108000.0
+   ]
+  },
+  {
+   "offset": 28560,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08361344783065014,
+   "green_wh": 430.80842994324036,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    52800.0,
+    63600.0,
+    63000.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 28560,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09812535451939665,
+   "green_wh": 403.93452866778415,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    52200.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 29140,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29140,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29140,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29140,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.030978735334731243,
+   "green_wh": 528.2801197504986,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 212,
+   "releases": [
+    46800.0,
+    43800.0,
+    58800.0,
+    97200.0,
+    112200.0
+   ]
+  },
+  {
+   "offset": 29140,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29654,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.16853393637001124,
+   "green_wh": 273.5482659814613,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29654,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05242709190969673,
+   "green_wh": 488.56094090796944,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    46200.0,
+    51600.0,
+    51600.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29654,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999998,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 138,
+   "releases": [
+    51000.0,
+    60000.0,
+    60600.0,
+    65400.0,
+    67800.0
+   ]
+  },
+  {
+   "offset": 29654,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.16860926250331487,
+   "green_wh": 273.40877314201015,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    27000.0,
+    28800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 29654,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05242709190969673,
+   "green_wh": 488.56094090796944,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    46200.0,
+    51600.0,
+    51600.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 30168,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.042878901492484536,
+   "green_wh": 506.24277501391856,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 30168,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.029397441949745976,
+   "green_wh": 531.2084408338046,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    26400.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 30168,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    19200.0,
+    34200.0,
+    34800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 30168,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.015160071980889771,
+   "green_wh": 557.5739407761306,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    59400.0,
+    21254.0,
+    76200.0,
+    95400.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 30168,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.029397441949745976,
+   "green_wh": 531.2084408338046,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    22800.0,
+    26400.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 33388,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.22322591897006297,
+   "green_wh": 172.2668167221061,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 33388,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10473359109984941,
+   "green_wh": 391.6970535187973,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    61200.0,
+    62400.0,
+    66600.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 33388,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999998,
+   "green_wh": 575.0,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 159,
+   "releases": [
+    62400.0,
+    75000.0,
+    75600.0,
+    76200.0,
+    80400.0
+   ]
+  },
+  {
+   "offset": 33388,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21882284625608225,
+   "green_wh": 180.4206550813295,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    30600.0,
+    30600.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 33388,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.10473359109984941,
+   "green_wh": 391.6970535187973,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 136,
+   "releases": [
+    17020.0,
+    61200.0,
+    62400.0,
+    66600.0,
+    66600.0
+   ]
+  },
+  {
+   "offset": 34082,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03990401525529913,
+   "green_wh": 511.75182360129907,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 34082,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.023788189094017167,
+   "green_wh": 541.5959461221912,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    22200.0,
+    22200.0,
+    22800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 34082,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005750367869060897,
+   "green_wh": 574.9993187609984,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    22200.0,
+    37200.0,
+    37800.0,
+    49800.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 34082,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006552643027489725,
+   "green_wh": 573.5136240231672,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 156,
+   "releases": [
+    25200.0,
+    32400.0,
+    38400.0,
+    48824.0,
+    78600.0
+   ]
+  },
+  {
+   "offset": 34082,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.023788189094017167,
+   "green_wh": 541.5959461221912,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    22200.0,
+    22200.0,
+    22800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36400,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36400,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36400,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36400,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.017016697832755636,
+   "green_wh": 554.1357447541568,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 200,
+   "releases": [
+    49200.0,
+    50400.0,
+    53400.0,
+    90000.0,
+    105000.0
+   ]
+  },
+  {
+   "offset": 36400,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36517,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36517,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36517,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36517,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006185411825779511,
+   "green_wh": 574.1936818041115,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    19800.0,
+    34800.0,
+    49800.0,
+    60000.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 36517,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 37455,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.2014615871490881,
+   "green_wh": 212.57113490909637,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 37455,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.023130099505185686,
+   "green_wh": 542.8146305459529,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    25800.0,
+    34800.0,
+    36000.0,
+    48824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 37455,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.0091148663249152,
+   "green_wh": 568.7687660649718,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    33600.0,
+    37800.0,
+    37800.0,
+    48824.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 37455,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.29403885844704275,
+   "green_wh": 41.13174361658746,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 173,
+   "releases": [
+    70800.0,
+    73800.0,
+    75000.0,
+    83400.0,
+    88800.0
+   ]
+  },
+  {
+   "offset": 37455,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 6,
+   "carbon_kg": 0.023130099505185686,
+   "green_wh": 542.8146305459529,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    25800.0,
+    34800.0,
+    36000.0,
+    48824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 38547,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0730101993282692,
+   "green_wh": 450.44407531802057,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 38547,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08141862659810427,
+   "green_wh": 434.872913707215,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 139,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    53400.0,
+    68400.0
+   ]
+  },
+  {
+   "offset": 38547,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04562453271038716,
+   "green_wh": 501.1582727585425,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 196,
+   "releases": [
+    17020.0,
+    54600.0,
+    51600.0,
+    96600.0,
+    102600.0
+   ]
+  },
+  {
+   "offset": 38547,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.09016976078231763,
+   "green_wh": 418.667109662375,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 207,
+   "releases": [
+    17020.0,
+    22200.0,
+    28200.0,
+    55800.0,
+    109200.0
+   ]
+  },
+  {
+   "offset": 38547,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08141862659810427,
+   "green_wh": 434.872913707215,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 139,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    53400.0,
+    68400.0
+   ]
+  },
+  {
+   "offset": 38768,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 25,
+   "carbon_kg": 0.11080340121742394,
+   "green_wh": 380.45666441217844,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 38768,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 25,
+   "carbon_kg": 0.05026782549348206,
+   "green_wh": 492.55958241947826,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    20400.0,
+    23400.0,
+    30600.0,
+    48824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 38768,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 25,
+   "carbon_kg": 0.049468184094608535,
+   "green_wh": 494.0403998247994,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    20400.0,
+    30000.0,
+    31800.0,
+    48824.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 38768,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 25,
+   "carbon_kg": 0.30815625217344267,
+   "green_wh": 14.9884219010322,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 214,
+   "releases": [
+    69600.0,
+    75000.0,
+    66600.0,
+    90000.0,
+    113400.0
+   ]
+  },
+  {
+   "offset": 38768,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 25,
+   "carbon_kg": 0.05026782549348206,
+   "green_wh": 492.55958241947826,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    20400.0,
+    23400.0,
+    30600.0,
+    48824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 39759,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 39759,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 39759,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 39759,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.03838797615330317,
+   "green_wh": 514.5593034198096,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 202,
+   "releases": [
+    68400.0,
+    74400.0,
+    76200.0,
+    91200.0,
+    106200.0
+   ]
+  },
+  {
+   "offset": 39759,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 40715,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 40715,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 40715,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 40715,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.006778396060920377,
+   "green_wh": 573.0955628501476,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 159,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    80400.0
+   ]
+  },
+  {
+   "offset": 40715,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 41364,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 41364,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 41364,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 41364,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.008029148490714556,
+   "green_wh": 570.7793546468246,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 166,
+   "releases": [
+    63600.0,
+    73800.0,
+    58800.0,
+    78600.0,
+    84600.0
+   ]
+  },
+  {
+   "offset": 41364,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42331,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42331,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42331,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42331,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000002,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 222,
+   "releases": [
+    34800.0,
+    75000.0,
+    60000.0,
+    102600.0,
+    118200.0
+   ]
+  },
+  {
+   "offset": 42331,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999995,
+   "green_wh": 575.0000000000001,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42359,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01767365047550783,
+   "green_wh": 552.9191657860972,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42359,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01767365047550783,
+   "green_wh": 552.9191657860972,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42359,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999994,
+   "green_wh": 575.0,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    31800.0,
+    39000.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 42359,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999994,
+   "green_wh": 575.0,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 170,
+   "releases": [
+    18000.0,
+    61800.0,
+    76200.0,
+    101400.0,
+    86400.0
+   ]
+  },
+  {
+   "offset": 42359,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.01767365047550783,
+   "green_wh": 552.9191657860972,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 44675,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.277232643415117,
+   "green_wh": 72.25436404607986,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 44675,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.3146180311999074,
+   "green_wh": 3.0221644446161133,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 44675,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2742515373474432,
+   "green_wh": 77.77493083806823,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    54600.0,
+    39600.0,
+    73800.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 44675,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.29012511910273886,
+   "green_wh": 48.37940906900232,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 150,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    75000.0
+   ]
+  },
+  {
+   "offset": 44675,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.3146180311999074,
+   "green_wh": 3.0221644446161133,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 46392,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.08578506294150079,
+   "green_wh": 426.78692047870226,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 46392,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.021795882635860846,
+   "green_wh": 545.2854025261838,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    28200.0,
+    40200.0,
+    49200.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 46392,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.005749999999999994,
+   "green_wh": 574.9999999999998,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 176,
+   "releases": [
+    17020.0,
+    31800.0,
+    43200.0,
+    50400.0,
+    90600.0
+   ]
+  },
+  {
+   "offset": 46392,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.0918602342903202,
+   "green_wh": 415.53660316607346,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 188,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    96600.0,
+    97800.0
+   ]
+  },
+  {
+   "offset": 46392,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.021795882635860846,
+   "green_wh": 545.2854025261838,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    28200.0,
+    40200.0,
+    49200.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 46466,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 4,
+   "carbon_kg": 0.06552499219450827,
+   "green_wh": 464.3055700101707,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 46466,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 4,
+   "carbon_kg": 0.06552499219450827,
+   "green_wh": 464.3055700101707,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 46466,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 4,
+   "carbon_kg": 0.0057499999999999956,
+   "green_wh": 574.9999999999999,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 167,
+   "releases": [
+    46200.0,
+    72000.0,
+    73800.0,
+    81600.0,
+    85200.0
+   ]
+  },
+  {
+   "offset": 46466,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 4,
+   "carbon_kg": 0.09043675695689875,
+   "green_wh": 418.17267230203936,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 137,
+   "releases": [
+    52200.0,
+    53400.0,
+    66000.0,
+    67200.0,
+    67200.0
+   ]
+  },
+  {
+   "offset": 46466,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 4,
+   "carbon_kg": 0.06552499219450827,
+   "green_wh": 464.3055700101707,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65400.0
+   ]
+  },
+  {
+   "offset": 47390,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2992555455224808,
+   "green_wh": 31.471211995406065,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 47390,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.3021727735624706,
+   "green_wh": 26.06893784727695,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 47390,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.285897290149922,
+   "green_wh": 56.20872194458911,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 223,
+   "releases": [
+    43200.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    118800.0
+   ]
+  },
+  {
+   "offset": 47390,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.3051434032663079,
+   "green_wh": 20.567771729059654,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 220,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    102000.0,
+    117000.0
+   ]
+  },
+  {
+   "offset": 47390,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.3021727735624706,
+   "green_wh": 26.06893784727695,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 224,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    119146.0
+   ]
+  },
+  {
+   "offset": 47851,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.28771325941152687,
+   "green_wh": 52.84581590457993,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 47851,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21582588076478265,
+   "green_wh": 185.97059117632872,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 221,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    117600.0
+   ]
+  },
+  {
+   "offset": 47851,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.20435008536735233,
+   "green_wh": 207.2220641345329,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 221,
+   "releases": [
+    21600.0,
+    70200.0,
+    51600.0,
+    102600.0,
+    117600.0
+   ]
+  },
+  {
+   "offset": 47851,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2757574302278457,
+   "green_wh": 74.98624031880425,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 153,
+   "releases": [
+    17020.0,
+    31800.0,
+    46800.0,
+    61800.0,
+    76800.0
+   ]
+  },
+  {
+   "offset": 47851,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21582588076478265,
+   "green_wh": 185.97059117632872,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 221,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    117600.0
+   ]
+  },
+  {
+   "offset": 48783,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04350707465582245,
+   "green_wh": 505.07949137810687,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 48783,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04350707465582245,
+   "green_wh": 505.07949137810687,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 48783,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.047858123704125,
+   "green_wh": 497.02199314050944,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 146,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    60600.0,
+    72600.0
+   ]
+  },
+  {
+   "offset": 48783,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12995000000000004,
+   "green_wh": 345.0,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 215,
+   "releases": [
+    70800.0,
+    75000.0,
+    29400.0,
+    101400.0,
+    114000.0
+   ]
+  },
+  {
+   "offset": 48783,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.04350707465582245,
+   "green_wh": 505.07949137810687,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 48869,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.27034280734590105,
+   "green_wh": 85.01331972981296,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 48869,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15937342238011723,
+   "green_wh": 290.5121807775612,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 212,
+   "releases": [
+    17020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    112200.0
+   ]
+  },
+  {
+   "offset": 48869,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15642394942721963,
+   "green_wh": 295.9741677273716,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 215,
+   "releases": [
+    17020.0,
+    21254.0,
+    72600.0,
+    102600.0,
+    114000.0
+   ]
+  },
+  {
+   "offset": 48869,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2858328337393682,
+   "green_wh": 56.32808566783687,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 171,
+   "releases": [
+    49800.0,
+    21254.0,
+    62400.0,
+    87000.0,
+    87600.0
+   ]
+  },
+  {
+   "offset": 48869,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.15937342238011723,
+   "green_wh": 290.5121807775612,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 212,
+   "releases": [
+    17020.0,
+    75254.0,
+    76218.0,
+    102824.0,
+    112200.0
+   ]
+  },
+  {
+   "offset": 49573,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2519360504757253,
+   "green_wh": 119.09990652643448,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 49573,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05954102520130609,
+   "green_wh": 475.38699036795174,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 177,
+   "releases": [
+    67200.0,
+    75254.0,
+    76218.0,
+    90000.0,
+    91200.0
+   ]
+  },
+  {
+   "offset": 49573,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.07434837911381915,
+   "green_wh": 447.9659646040385,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 171,
+   "releases": [
+    70800.0,
+    75000.0,
+    76200.0,
+    90000.0,
+    87000.0
+   ]
+  },
+  {
+   "offset": 49573,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.21813699675638015,
+   "green_wh": 181.69074674744434,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 193,
+   "releases": [
+    56400.0,
+    67200.0,
+    62400.0,
+    97800.0,
+    100800.0
+   ]
+  },
+  {
+   "offset": 49573,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.05954102520130609,
+   "green_wh": 475.38699036795174,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 177,
+   "releases": [
+    67200.0,
+    75254.0,
+    76218.0,
+    90000.0,
+    91200.0
+   ]
+  },
+  {
+   "offset": 49972,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.22230247292242672,
+   "green_wh": 173.97690199550644,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 49972,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12645577245494127,
+   "green_wh": 351.4707917501089,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 216,
+   "releases": [
+    47400.0,
+    52800.0,
+    57000.0,
+    90600.0,
+    114600.0
+   ]
+  },
+  {
+   "offset": 49972,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2190207993986202,
+   "green_wh": 180.05407518774038,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 216,
+   "releases": [
+    47400.0,
+    49200.0,
+    28200.0,
+    83400.0,
+    114600.0
+   ]
+  },
+  {
+   "offset": 49972,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.16785186527119722,
+   "green_wh": 274.81136060889406,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 215,
+   "releases": [
+    64800.0,
+    68400.0,
+    52200.0,
+    99000.0,
+    114000.0
+   ]
+  },
+  {
+   "offset": 49972,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.12645577245494127,
+   "green_wh": 351.4707917501089,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 216,
+   "releases": [
+    47400.0,
+    52800.0,
+    57000.0,
+    90600.0,
+    114600.0
+   ]
+  },
+  {
+   "offset": 51901,
+   "arm": "nowait",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.28410208901704187,
+   "green_wh": 59.533168486959525,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    17020.0,
+    21254.0,
+    22218.0,
+    48824.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 51901,
+   "arm": "greenfollow",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.19867014028173302,
+   "green_wh": 217.74048095975363,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 196,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    95400.0,
+    102600.0
+   ]
+  },
+  {
+   "offset": 51901,
+   "arm": "clair_true",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.19398783462306537,
+   "green_wh": 226.4114173646936,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 188,
+   "releases": [
+    48600.0,
+    25200.0,
+    76200.0,
+    99600.0,
+    97200.0
+   ]
+  },
+  {
+   "offset": 51901,
+   "arm": "clair_corrupt",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.2823613006992736,
+   "green_wh": 62.75685055690078,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 134,
+   "releases": [
+    23400.0,
+    36000.0,
+    47400.0,
+    57600.0,
+    65146.0
+   ]
+  },
+  {
+   "offset": 51901,
+   "arm": "repaired",
+   "mode": "displaced",
+   "trigger_row": 2,
+   "carbon_kg": 0.19867014028173302,
+   "green_wh": 217.74048095975363,
+   "finished": 5,
+   "ontime": 1.0,
+   "steps": 196,
+   "releases": [
+    71020.0,
+    75254.0,
+    76218.0,
+    95400.0,
+    102600.0
+   ]
+  }
+ ]
+}
