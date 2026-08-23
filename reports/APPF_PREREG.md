@@ -22,6 +22,30 @@
 
 计数对象是 **24 个策略 checkpoint**(12 种子 × 2 臂),不是 12 个种子。
 
+### 99.5% 的口径(现在锁定)
+
+条件 2 和 3 里的完成率,一律指**同一组三个注册窗口上 pooled 的 MI completion**:
+
+```
+completion = Σ_windows (completed_MI) / Σ_windows (submitted_MI)
+```
+
+三个窗口是 low(k=19)/ mid(k=56)/ high(k=34),每窗一局。
+**不得**事后取最优窗口、最差窗口或任一单局。deterministic 与 stochastic 用同一组窗口。
+
+## 定级流程(两步,不必等完整采样附录)
+
+完整的 216 局采样附录排在最后,但 App F 定级不必等它。按定义分两步:
+
+1. **筛候选。** 用训练日志(条件 1)和 deterministic clean 三窗 pooled(条件 3)找出候选。
+2. **只对候选补 stochastic clean。** 候选为 0 则直接定级为 0,不跑任何 stochastic;
+   候选存在则只对这些 checkpoint 跑 stochastic clean 三窗,完成定级。
+
+这不是按结果筛选:stochastic 检查本来就是脆弱定义的必要条件,而条件 1 和 3 是它的前置。
+对不满足前置的 checkpoint 跑 stochastic 不会改变任何一个判定。
+
+完整采样附录仍按原排期最后运行,与本定级互不替代。
+
 ## 分级(结果 → 论文怎么写)
 
 | 脆弱 checkpoint 数 | 处置 | 开关 |

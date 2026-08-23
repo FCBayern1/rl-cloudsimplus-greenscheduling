@@ -73,6 +73,11 @@ Address \\
 % ---------------------------------------------------------------------
 % \RiskSamplingtrue only if the retrained risk baselines are themselves evaluated
 % under sampling. The old claim cannot be carried over from contaminated runs.
+% \FragileUnresolvedtrue prints a visible [UNRESOLVED] tag next to every
+% fragility claim. It stays true until the grading in reports/APPF_PREREG.md
+% is executed. Turning it off is a required pre-submission step.
+\newif\ifFragileUnresolved \FragileUnresolvedtrue
+\newcommand{\FragTag}{\ifFragileUnresolved\textcolor{red}{\,[UNRESOLVED]}\fi}
 \newif\ifRiskSampling \RiskSamplingfalse
 \newif\ifFragileNone   \FragileNonefalse
 \newif\ifFragilePattern \FragilePatterntrue
@@ -311,7 +316,7 @@ The C$_{\min}$ column reports the failure depth carbon hides.
 Every seed in both arms holds completion inside the contract under greedy decoding, so the column
 records no failure to explain.
 \else\ifFragilePattern
-\ResFragileCount{} over-defers under greedy decoding in both arms, a property of the training recipe
+\ResFragileCount{}\FragTag{} over-defers under greedy decoding in both arms, a property of the training recipe
 rather than of either method, and only EU-CRD makes it observable, its critic-ensemble disagreement
 rising before any conventional metric moves (Appendices~\ref{app:failure} and \ref{app:mechanism}).
 \else
@@ -371,7 +376,7 @@ Finally, the environment is a simulator. Carbon, completion and utilisation are 
 of the fleet, and no result has been reproduced on physical hardware.
 
 \section{Conclusion}
-Forecast-conditioned schedulers inherit a credit-assignment flaw: the policy gradient charges the acting policy for errors the forecaster made, so training preserves unconditional trust in a signal that deployment cannot guarantee. EU-CRD addresses the flaw at its source, separating forecast responsibility from routing responsibility, trusting the learned value gap only as far as the critic ensemble agrees on it, and redistributing credit without shrinking the learning signal. On a five-datacentre testbed with measured wind, this yields a scheduler that pays no premium on clean forecasts and, under coherently corrupted forecasts, absorbs \ResContain{} of the penalty conventional training incurs while holding completion inside the contract on every seed. One training seed in four over-commits to deferral under greedy decoding in both arms, and only EU-CRD's own uncertainty signal flags it before any conventional metric moves. Characterising EU-CRD where forecasting is indispensable at the deployment decode is the immediate next step. The recipe touches only the training signal and applies in principle to schedulers that condition on an imperfect exogenous prediction, provided the prediction enters through an identifiable channel, its realisation becomes observable in hindsight, and a counterfactual reference action can be drawn from the policy itself.
+Forecast-conditioned schedulers inherit a credit-assignment flaw: the policy gradient charges the acting policy for errors the forecaster made, so training preserves unconditional trust in a signal that deployment cannot guarantee. EU-CRD addresses the flaw at its source, separating forecast responsibility from routing responsibility, trusting the learned value gap only as far as the critic ensemble agrees on it, and redistributing credit without shrinking the learning signal. On a five-datacentre testbed with measured wind, this yields a scheduler that pays no premium on clean forecasts and, under coherently corrupted forecasts, absorbs \ResContain{} of the penalty conventional training incurs while holding completion inside the contract on every seed. \ifFragileNone\else\ifFragilePattern \ResFragileCount{}\FragTag{} over-commits to deferral under greedy decoding in both arms, and only EU-CRD's own uncertainty signal flags it before any conventional metric moves.\fi\fi Characterising EU-CRD where forecasting is indispensable at the deployment decode is the immediate next step. The recipe touches only the training signal and applies in principle to schedulers that condition on an imperfect exogenous prediction, provided the prediction enters through an identifiable channel, its realisation becomes observable in hindsight, and a counterfactual reference action can be drawn from the policy itself.
 
 \subsection*{AI use statement}
 In this work, we used generative AI tools for editing and language polishing of the manuscript, and for assisting with debugging the experimental code. We have reviewed all AI-assisted work: all AI-assisted code was verified and tested by the authors, and all reported results were produced by the authors' own experimental runs. We take responsibility for the final content of this work, including text, claims, or artifacts produced with the aid of generative AI.
@@ -531,8 +536,10 @@ Method & Clean carbon \\
 \midrule
 \textbf{EU-CRD (ours)} & \textbf{0.379} \\
 Vanilla PPO            & 0.397 \\
+\ifRiskSampling
 CVaR-PPO               & 0.443 \\
 Risk-sensitive         & 0.451 \\
+\fi
 No-Forecast PPO        & 0.464 \\
 \bottomrule
 \end{tabular*}
@@ -540,17 +547,17 @@ No-Forecast PPO        & 0.464 \\
 
 Two observations. First, the forecast is unambiguously valuable at this decode. Access to the TimeCAP forecast lowers Vanilla PPO from the no-forecast 0.464 to 0.397, a 14\% margin that deterministic decoding compresses to about 5\% because the routing mode is already decided by current green power. The forecast shifts probability mass rather than the mode. Second, at this decode EU-CRD attains the lowest clean carbon of any learned method, 5\% below Vanilla. Under the deterministic decode of the main text the same comparison is parity (0.192 against 0.187), so the honest summary is that the decomposition costs nothing on clean forecasts at deployment and helps at the distribution level.
 
-Under shuffled forecasts at this decode, every forecast-using method converges to a similar level (Vanilla 0.480, EU-CRD 0.483, risk objectives 0.50 to 0.51, medians and singles respectively). The containment advantage that EU-CRD shows in the main text is therefore specific to deterministic decoding, which is also the deployment form. This boundary is reported explicitly rather than claimed away. Neutralised forecasts (Blend) at this decode cost Vanilla 13\% (0.397 to 0.454) and EU-CRD 13\% (0.379 to 0.428), confirming that at the distribution level both policies genuinely consume forecast information. The risk-reshaping baselines complete the workload under sampling (their completion collapse in the main text is an interaction between their learned distributions and greedy mode selection) but occupy the worst carbon tier throughout.
+Under shuffled forecasts at this decode, the two main arms converge to a similar level (Vanilla 0.480, EU-CRD 0.483, medians)\ifRiskSampling, and the risk objectives sit at 0.50 to 0.51 (singles)\fi. The containment advantage that EU-CRD shows in the main text is therefore specific to deterministic decoding, which is also the deployment form. This boundary is reported explicitly rather than claimed away. Neutralised forecasts (Blend) at this decode cost Vanilla 13\% (0.397 to 0.454) and EU-CRD 13\% (0.379 to 0.428), confirming that at the distribution level both policies genuinely consume forecast information. \ifRiskSampling The risk-reshaping baselines complete the workload under sampling (their completion collapse in the main text is an interaction between their learned distributions and greedy mode selection) but occupy the worst carbon tier throughout.\fi
 
 \section{Failure-Mode Analysis}
 \label{app:failure}
-\ifFragileNone\else
+\ifFragileNone\else\ifFragilePattern
 
 \textbf{One seed in four over-defers under greedy decoding, in both arms.} Vanilla PPO and EU-CRD each produce one seed (of four) whose greedy decode over-commits to deferral on clean forecasts, so the basin belongs to the aligned reward on this regime rather than to the decomposition. The EU-CRD instance is analysed here, the only one observable in training. It completes 91 to 96\% of the workload on clean forecasts (the Vanilla instance reaches 98\%, giving the \ResFragileRange{} range quoted in the main text), and both are excluded from the iso-eligible medians of Table~\ref{tab:main}. Three facts locate the failure precisely. The seed's training-time completion is 99.7\% and its sampling-decode completion is 100\%, so the learned distribution is healthy and the failure lives entirely in mode selection. The failure reproduced under a clean re-run on an exclusive machine, ruling out infrastructure interference. And the internal diagnostics of the failing seed are indistinguishable from healthy seeds in every channel (gate $c_t$, responsibility shares, counterfactual gap) except one: the critic-ensemble disagreement $\sigma^2$ doubles mid-training (7.2 against a healthy-band 3.2) before any conventional metric moves, then recovers. The method's own epistemic signal is thus the only training-time precursor of the failure, a useful property in itself: the quantity EU-CRD already computes for credit blending doubles as an early-warning channel.
 
 One candidate mechanism was also ruled out quantitatively. The mean-preserving reweighting multiplies advantages by $w=\rho/\bar\rho$, and an unbounded amplification of deferral credit was a plausible driver. A probe over trained checkpoints instead measures $\max w \approx 1.15$ (the routing share averages 0.87, bounding amplification by construction), while the dispersion that matters for credit redistribution is substantial ($\sigma(w)\approx0.33$, with per-transition shares spanning 0.20 to 1.00). The reweighting is active but bounded. The over-deferral basin is a decode-level fragility, not a credit-amplification runaway. Consistent with this, corrupting the forecast by reassignment restores full completion on the failing seed, because the corrupted signal breaks the learned deferral pattern.
 
-\fi
+\fi\fi
 \textbf{Risk-reshaping baselines collapse completion.} All four risk-sensitive objectives lose completion discipline on the aligned reward (Table~\ref{tab:main}), down to 18\% of the workload, and one collapsed policy (mean-variance) produces byte-identical trajectories under neutralised and reassigned forecasts, confirming that its degenerate mode ignores the forecast channel altogether. \ifRiskSampling Their completion recovers under sampling-based decoding (Appendix~\ref{app:stoch}), which again identifies greedy mode selection as the fragile step.\fi Unlike EU-CRD, however, their carbon remains in the worst tier\ifRiskSampling{} at both decodes\fi.
 
 \section{Training Diagnostics}
