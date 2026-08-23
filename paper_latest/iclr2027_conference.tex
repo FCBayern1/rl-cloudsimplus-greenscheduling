@@ -149,15 +149,15 @@ This work proposes EU-CRD, illustrated in Figure~\ref{fig:framework-full}: durin
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=1.0\linewidth]{./figs/new_EUCRD_drawio_nature.png}
-    \caption{The EU-CRD training loop: forecast, decision, outcome, counterfactual, responsibility, gated credit, policy update. The decomposition splits each transition's credit between the forecast and the routing action, ensemble disagreement $\sigma^2$ gates how far the value-based estimate is trusted over the model-free fallback, and the weights rescale the PPO advantages. Only the auditor stays active at deployment.}
+    \includegraphics[width=1.0\linewidth]{./figs/fig_framework_main.pdf}
+    \caption{EU-CRD. Each transition is probed twice, against the realised green supply and against a counterfactual routing action, and the two responsibilities are normalised into shares. Only the policy share scales the PPO advantage. The forecast share is quarantined from the gradient. Ensemble disagreement $\sigma^2_t$ sets how far the value-based estimate $\Delta Q$ is trusted over the model-free fallback $\Delta r$. Training-time machinery is absent at deployment, where a per-datacentre correlation auditor is the only addition to the router. Full specification in Algorithm~\ref{alg:eucrd} and Appendix~\ref{app:auditor}.}
     \label{fig:framework-full}
     \vspace{-12pt}
 \end{figure*}
 
 \subsection{Hierarchical MDP Design}
 \label{sec:mdp}
-The global router acts once per control interval on the waiting batch, observing per-DC green power, queue length and utilisation, the forecast features $\hat{\mathbf{y}}_i$ (short- and long-horizon mean, trend, and time-to-peak), and per-job size and deadline. Its action routes each of up to $B$ jobs to one of the $N$ DCs or to a DEFER slot, a factored space $\{0,\dots,N\}^{B}$ treated as $B$ per-job decisions rather than one joint distribution ($B{=}128$ in Section~\ref{sec:experiments}). A deadline backstop shared by all methods force-routes any job whose deadline is imminent, bounding how long a job can be held. Each DC's local scheduler, its parameters shared across sites so one policy serves any number of DCs, observes its own hosts, VMs, and queue, and its action is a release count $k\in\{0,\dots,K\}$ that paces how fast the queue drains. The local agent never observes the forecast, so the forecast enters only through the global router. Full observation and action specifications are in Appendix~\ref{app:testbed}.
+The global router acts once per control interval on the waiting batch, observing per-DC green power, queue length and utilisation, the forecast features $\hat{\mathbf{y}}_i$ (short- and long-horizon mean, trend, and time-to-peak), and per-job size and deadline. Its action routes each of up to $B$ jobs to one of the $N$ DCs or to a DEFER slot, a factored space $\{0,\dots,N\}^{B}$ treated as $B$ per-job decisions rather than one joint distribution ($B{=}128$ in Section~\ref{sec:experiments}). A deadline backstop shared by all methods force-routes any job whose deadline is imminent, bounding how long a job can be held. Each DC's local scheduler, its parameters shared across sites so one policy serves any number of DCs, observes its own hosts, VMs, and queue, and its action is a release count $k\in\{0,\dots,K\}$ that paces how fast the queue drains. The local agent never observes the forecast. Full observation and action specifications are in Appendix~\ref{app:testbed}.
 
 The two reward channels mirror this division. The global reward $r^{G}_t$ carries the carbon objective: a per-job marginal-carbon term, a congestion term $\hat{P}_i$ estimating the probability that a job routed to DC $i$ still finishes on time, and a deferral cost priced by an urgency ramp as the job's slack runs out. The local reward $r^{L}_t$ is a standard, forecast-independent quality-of-service signal (completions, mean wait, VM-utilisation imbalance, backlog, invalid actions). Carbon and the forecast enter only through $r^{G}_t$. Full definitions and coefficients are in Appendix~\ref{app:reward}. The decomposition of the next subsection dissects the credit carried by $r^{G}_t$ alone. The local channel passes through untouched.
 
@@ -434,6 +434,11 @@ both favour EU-CRD, by 22.9\% and 17.8\%. Selection drops pairs asymmetrically,
 which is why the unselected final checkpoint is used here for the paired
 analysis and the selected one for the cross-method medians.
 
+% PLACEHOLDERS: every number in this appendix is from the pre-campaign build
+% (v4, pre-61043cf dispatcher) and is scheduled for regeneration by re-evaluating
+% the frozen G1 checkpoints with --stochastic. Pre-registered as a SECONDARY,
+% DESCRIPTIVE endpoint: no significance test is run on it. Do NOT submit until
+% these are regenerated. See reports/NUMBERS_MANIFEST.md, items 11/12/12b and D2.
 \section{Results under Sampling-Based Decoding}
 \label{app:stoch}
 
