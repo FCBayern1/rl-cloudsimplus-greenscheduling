@@ -1,0 +1,110 @@
+# TB12 第二轮正式判决预注册(机读正文如下,冻结后不可改)
+
+```json
+{
+ "title": "TB12 \u7b2c\u4e8c\u8f6e\u6b63\u5f0f\u5224\u51b3\u9884\u6ce8\u518c(STEP harness)",
+ "frozen_at": "2026-08-23 04:15",
+ "verdict_dataset": {
+  "turbines": [
+   112,
+   113
+  ],
+  "year": 2021,
+  "sha256": {
+   "Turbine_112_2021.csv": "f5cfea01281a2c8da05e7d5c94c1cf85ecd5874a2ae936190fab2cf20e543d9a",
+   "Turbine_113_2021.csv": "3dbb83b10cf5b2dd44725afbe1954436168d56dbcc63e5ec21ce295fdd76879a"
+  },
+  "never_read_before_this_freeze": true
+ },
+ "offsets_seed": 20260825,
+ "offsets": [
+  480,
+  1488,
+  4024,
+  4206,
+  5072,
+  5103,
+  5637,
+  5902,
+  6559,
+  7120,
+  9876,
+  9926,
+  10139,
+  10422,
+  12863,
+  13394,
+  15897,
+  16448,
+  17722,
+  17872,
+  18255,
+  18540,
+  19438,
+  20636,
+  21380,
+  21743,
+  23240,
+  23331,
+  23608,
+  26135,
+  27267,
+  27932,
+  28217,
+  28854,
+  32653,
+  32693,
+  32982,
+  33726,
+  34836,
+  35143,
+  36565,
+  37369,
+  37595,
+  37722,
+  37754,
+  40053,
+  41083,
+  42255,
+  42274,
+  42473,
+  43014,
+  43271,
+  44730,
+  44782,
+  45856,
+  46971,
+  47773,
+  48996,
+  50435,
+  51948
+ ],
+ "jar_sha256": "12c30342f26e998982b6cbca5a8d836e6cef3e5c03fa0200aed635ac416bcf77",
+ "source_code_commit": "1a4023a131b18f62abb7756f33670fda4a202d3c",
+ "trace_sha256": "5a7737c0fc917f8793fcc4a0c93993bb4d775dfa5b1f2bb045ae6d00f35ac20f",
+ "config_block": "experiment_tb12_iso (STEP)",
+ "comparator": "greenfollow (step-6 re-freeze, calib/tb12_step6_result.json)",
+ "arms": [
+  "nowait",
+  "greenfollow",
+  "hazard",
+  "dpcont",
+  "clair"
+ ],
+ "gates": {
+  "main_pooled": "<= -5%",
+  "strong_pooled": "<= -8%",
+  "direction": ">= 42/60 strict clair<greenfollow",
+  "ci": "quarter-block bootstrap 10000x, 95% CI upper <= -5%",
+  "validity": "60/60 pairs finished 5/5 no truncation"
+ },
+ "diagnostic_context_T110_111_STEP": {
+  "pooled": -0.1642,
+  "wins": 35,
+  "ties": 12,
+  "losses": 13,
+  "median": -0.0498
+ },
+ "prereg_commit": "SELF (the commit adding this file)"
+}
+```
