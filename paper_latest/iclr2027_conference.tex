@@ -174,8 +174,8 @@ This work proposes EU-CRD, illustrated in Figure~\ref{fig:framework-full}: durin
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=1.0\linewidth]{./figs/fig_framework_main.pdf}
-    \caption{EU-CRD. Each transition is probed twice, against the realised green supply and against a counterfactual routing action, and the two responsibilities are normalised into shares. Only the policy share scales the PPO advantage. The forecast share is quarantined from the gradient. Ensemble disagreement $\sigma^2_t$ sets how far the value-based estimate $\Delta Q$ is trusted over the model-free fallback $\Delta r$. Training-time machinery is absent at deployment, where a per-datacentre correlation auditor is the only addition to the router. Full specification in Algorithm~\ref{alg:eucrd} and Appendix~\ref{app:auditor}.}
+    \includegraphics[width=1.0\linewidth]{./figs/new_EUCRD_drawio_nature.png}
+    \caption{The EU-CRD training loop: forecast, decision, outcome, counterfactual, responsibility, gated credit, policy update. The decomposition splits each transition's credit between the forecast and the routing action, ensemble disagreement $\sigma^2$ gates how far the value-based estimate is trusted over the model-free fallback, and the weights rescale the PPO advantages. Only the auditor stays active at deployment.}
     \label{fig:framework-full}
     \vspace{-12pt}
 \end{figure*}
@@ -321,7 +321,7 @@ rather than of either method, and only EU-CRD makes it observable, its critic-en
 rising before any conventional metric moves (Appendices~\ref{app:failure} and \ref{app:mechanism}).
 \else
 A single seed over-defers under greedy decoding. One instance does not establish a pattern, so it is
-reported as an isolated case in Section~\ref{sec:limitations} rather than analysed as a failure mode.
+noted here and not analysed as a failure mode.
 \fi\fi
 
 Two boundaries belong here rather than in an appendix. The containment advantage is specific to deterministic decoding, since under sampling every forecast-using method converges to a similar shuffle carbon (Appendix~\ref{app:stoch}). That decode is nevertheless the deployment form for operational reasons, capacity planning and SLA certification both requiring the same placement for the same cluster state, and its over-deferral fragility strikes both arms alike.
@@ -329,51 +329,6 @@ Two boundaries belong here rather than in an appendix. The containment advantage
 One deployment-time result completes the picture. An inverted forecast costs a trained policy twenty points of completion, direct evidence that it acts on the forecast rather than merely carrying it, and the auditor restores 99.9\% completion at 0.178 carbon against 0.185 clean (Appendix~\ref{app:auditor}).
 
 All learned methods share one backbone, so they are indistinguishable at deployment, routing a batch in about 2.1\,ms. EU-CRD adds no inference-time neural computation, and the auditor adds only a rolling correlation per datacentre (Appendix~\ref{app:overhead}).
-
-\section{Limitations}
-\label{sec:limitations}
-The evidence comes from one testbed. Five datacentres, one workload trace, one wind dataset and one
-forecaster produce every number reported here. The mechanism argument is stated for any scheduler
-whose exogenous prediction enters through an identifiable channel, and nothing in the method is
-specific to wind or to carbon, but the demonstration is not.
-
-Training is open-book on a single wind window, and that window sits at the tenth percentile of the
-year's green supply. The policy therefore learns from one realisation of the exogenous process it is
-asked to reason about. Evaluation uses three windows the training never saw, spanning low, middle and
-high scarcity, which tests whether the learned behaviour transfers. It does not widen what the
-behaviour was learned from.
-
-Corruption is injected rather than observed. Blend and Shuffle are synthetic degradations applied at
-evaluation, chosen because each has a plausible operational cause, and Shuffle in particular
-reproduces a misconfigured site-to-feed mapping. No trace of a real forecaster degrading in
-production drives any result here, so the magnitude of the penalty is a property of the injected
-corruption as much as of the policy.
-
-The containment advantage holds under deterministic decoding and closes under sampling. Deterministic
-decoding is the deployment form, for reasons of capacity planning and service certification that hold
-independently of this work, so the boundary is placed where deployment places it. That is an argument
-about operational practice rather than a demonstration that the mechanism survives a sampled policy,
-and a scheduler deployed with sampled actions would not inherit the result.
-
-\ifFragileNone\else\ifFragilePattern\else
-One seed produced a policy whose greedy decode over-commits to deferral while its sampled decode
-completes the workload. A single instance locates nothing, and it is reported here rather than
-analysed.
-\fi\fi
-
-The training-time decomposition and the deployment-time auditor share a principle and not an
-implementation. The auditor computes no gradients, changes no weights, and would function in front of
-a policy trained by any method. Presenting them together is a claim about one idea applied at two
-time scales, and a reader who wants the decomposition evaluated alone should read
-Section~\ref{sec:main} without Appendix~\ref{app:auditor}.
-
-Hindsight credit assignment is the nearest prior treatment of exogenous influence on the return, and
-it is discussed in Section~\ref{sec:related} but not run as a baseline. The comparison set here
-covers risk-reshaping objectives, which target the same symptom through the objective rather than
-through credit, and a policy trained without the forecast at all.
-
-Finally, the environment is a simulator. Carbon, completion and utilisation are computed from a model
-of the fleet, and no result has been reproduced on physical hardware.
 
 \section{Conclusion}
 Forecast-conditioned schedulers inherit a credit-assignment flaw: the policy gradient charges the acting policy for errors the forecaster made, so training preserves unconditional trust in a signal that deployment cannot guarantee. EU-CRD addresses the flaw at its source, separating forecast responsibility from routing responsibility, trusting the learned value gap only as far as the critic ensemble agrees on it, and redistributing credit without shrinking the learning signal. On a five-datacentre testbed with measured wind, this yields a scheduler that pays no premium on clean forecasts and, under coherently corrupted forecasts, absorbs \ResContain{} of the penalty conventional training incurs while holding completion inside the contract on every seed. \ifFragileNone\else\ifFragilePattern \ResFragileCount{}\FragTag{} over-commits to deferral under greedy decoding in both arms, and only EU-CRD's own uncertainty signal flags it before any conventional metric moves.\fi\fi Characterising EU-CRD where forecasting is indispensable at the deployment decode is the immediate next step. The recipe touches only the training signal and applies in principle to schedulers that condition on an imperfect exogenous prediction, provided the prediction enters through an identifiable channel, its realisation becomes observable in hindsight, and a counterfactual reference action can be drawn from the policy itself.

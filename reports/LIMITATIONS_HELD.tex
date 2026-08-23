@@ -1,0 +1,49 @@
+% Limitations section, written 2026-08-23, held out of the paper on request
+% (page budget). Insert immediately before \section{Conclusion}. It depends on
+% \ifFragileNone / \ifFragilePattern and on \label{sec:related}.
+
+\section{Limitations}
+\label{sec:limitations}
+The evidence comes from one testbed. Five datacentres, one workload trace, one wind dataset and one
+forecaster produce every number reported here. The mechanism argument is stated for any scheduler
+whose exogenous prediction enters through an identifiable channel, and nothing in the method is
+specific to wind or to carbon, but the demonstration is not.
+
+Training is open-book on a single wind window, and that window sits at the tenth percentile of the
+year's green supply. The policy therefore learns from one realisation of the exogenous process it is
+asked to reason about. Evaluation uses three windows the training never saw, spanning low, middle and
+high scarcity, which tests whether the learned behaviour transfers. It does not widen what the
+behaviour was learned from.
+
+Corruption is injected rather than observed. Blend and Shuffle are synthetic degradations applied at
+evaluation, chosen because each has a plausible operational cause, and Shuffle in particular
+reproduces a misconfigured site-to-feed mapping. No trace of a real forecaster degrading in
+production drives any result here, so the magnitude of the penalty is a property of the injected
+corruption as much as of the policy.
+
+The containment advantage holds under deterministic decoding and closes under sampling. Deterministic
+decoding is the deployment form, for reasons of capacity planning and service certification that hold
+independently of this work, so the boundary is placed where deployment places it. That is an argument
+about operational practice rather than a demonstration that the mechanism survives a sampled policy,
+and a scheduler deployed with sampled actions would not inherit the result.
+
+\ifFragileNone\else\ifFragilePattern\else
+One seed produced a policy whose greedy decode over-commits to deferral while its sampled decode
+completes the workload. A single instance locates nothing, and it is reported here rather than
+analysed.
+\fi\fi
+
+The training-time decomposition and the deployment-time auditor share a principle and not an
+implementation. The auditor computes no gradients, changes no weights, and would function in front of
+a policy trained by any method. Presenting them together is a claim about one idea applied at two
+time scales, and a reader who wants the decomposition evaluated alone should read
+Section~\ref{sec:main} without Appendix~\ref{app:auditor}.
+
+Hindsight credit assignment is the nearest prior treatment of exogenous influence on the return, and
+it is discussed in Section~\ref{sec:related} but not run as a baseline. The comparison set here
+covers risk-reshaping objectives, which target the same symptom through the objective rather than
+through credit, and a policy trained without the forecast at all.
+
+Finally, the environment is a simulator. Carbon, completion and utilisation are computed from a model
+of the fleet, and no result has been reproduced on physical hardware.
+
