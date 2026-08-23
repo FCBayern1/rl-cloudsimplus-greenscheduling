@@ -90,16 +90,31 @@ class FrozenPolicies:
         raise ValueError(arm)
 
 
-def run_episode(env_cfg, offset_rows, release_times, arrivals, max_steps=300):
+def run_episode(env_cfg, offset_rows, release_times, arrivals, turbines,
+                ref_series=None, max_steps=300):
+    """turbines 必须显式传入并写进环境(2026-08-23 接线事故:CLI 的
+    --turbines 只喂了离线规划,环境永远跑 config 里的 T100+101,
+    T110-113 两波全部作废)。ref_series 给出时做逐位启动哨兵:
+    仿真前 3 步绿功率必须匹配离线序列,不符立即退出。"""
+    import copy
     from gym_cloudsimplus.envs.hierarchical_multidc_env import HierarchicalMultiDCEnv
     from oracle_slack_planner import drain_action
-    cfg = dict(env_cfg)
+    cfg = copy.deepcopy(env_cfg)                        # 深拷贝:不污染原配置
     cfg["green_episode_offset_range"] = 0
     for dc in cfg["datacenters"]:
-        dc["time_zone_offset_rows"] = int(offset_rows)   # 偏移经涡轮 tz 注入
+        dc["time_zone_offset_rows"] = int(offset_rows)
+        if dc.get("turbine_ids"):                       # 只改绿电 DC
+            dc["turbine_ids"] = list(turbines)
     env = HierarchicalMultiDCEnv(cfg)
     try:
         obs, _ = env.reset(seed=1)
+        if ref_series is not None:
+            g0 = float(np.asarray(obs["global"]["dc_current_green_power_w"]).reshape(-1)[0])
+            expect = float(ref_series[int(offset_rows)])
+            if abs(g0 - expect) > 1e-3:
+                env.close()
+                sys.exit(f"接线哨兵失败 off={offset_rows}: sim绿功率 {g0:.6f} W != "
+                         f"离线 {expect:.6f} W —— 环境涡轮与规划涡轮不一致")
         done, t, ges = False, 0, {}
         batch = env.global_routing_batch_size
         order = np.argsort(arrivals)                     # 槽位 = 到达序
@@ -129,6 +144,14 @@ def run_episode(env_cfg, offset_rows, release_times, arrivals, max_steps=300):
         return ges, t
     finally:
         env.close()
+
+
+def check_turbine_consistency(prereg, planning, environment):
+    """三方核对(Codex 最小修复第 7 条):prereg / artifact.planning /
+    实际环境涡轮必须相等,否则判决无效。"""
+    if not (list(prereg) == list(planning) == list(environment)):
+        sys.exit(f"涡轮三方不一致: prereg={prereg} planning={planning} "
+                 f"environment={environment}")
 
 
 def verify_frozen_jar():
@@ -187,7 +210,8 @@ def main():
         w_ep = w_year[off:off + 300]
         for arm in a.arms.split(","):
             rel = pol.releases(arm, w_ep, arrivals)
-            ges, steps = run_episode(cfg, off, rel, arrivals)
+            ges, steps = run_episode(cfg, off, rel, arrivals, turbines,
+                                     ref_series=w_year)
             rec = {"offset": off, "arm": arm, "steps": steps,
                    "carbon_kg": ges.get("total_carbon_emission_kg"),
                    "green_wh": ges.get("total_green_energy_wh"),
@@ -203,7 +227,11 @@ def main():
                   f"ontime={rec['ontime']:.3f} steps={steps}", flush=True)
     if a.json_out:
         pathlib.Path(a.json_out).write_text(json.dumps(
-            {"artifact": art, "results": results}, indent=1))
+            {"artifact": art,
+             "planning_turbines": list(turbines),
+             "environment_turbines": list(turbines),   # run_episode 强制同步
+             "year": a.year,
+             "results": results}, indent=1))
     print("TB12 RUN DONE", flush=True)
 
 
