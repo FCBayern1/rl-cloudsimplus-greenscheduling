@@ -32,7 +32,12 @@ def corrupt_series(w, mode, off, turbines, year):
     if mode == "displaced":                      # 别处的风(+7000 行,循环)
         return np.roll(w, -7000)
     if mode == "stale":                          # 去年的同一位置
-        return load_scaled(turbines, year - 1)
+        prev = load_scaled(turbines, year - 1)
+        # T110/111 的 2020 文件是部分年(32224 行):污染序列本就是虚构的
+        # "预报",循环平铺到当年长度以覆盖全部偏移;如实记录于 JSON。
+        if len(prev) < len(w):
+            prev = np.resize(prev, len(w))
+        return prev
     raise ValueError(mode)
 
 
