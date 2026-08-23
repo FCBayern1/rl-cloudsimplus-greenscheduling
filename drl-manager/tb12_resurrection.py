@@ -81,6 +81,10 @@ def main():
     ap.add_argument("--mode", default="displaced", choices=("displaced", "stale"))
     ap.add_argument("--offsets", required=True)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--first-arrival-row", type=int, default=None,
+                    help="部分损伤扫描(5080 2026-08-23):把全部到达整体前移,"
+                         "使首作业落在第 K 行 —— 触发余量从 1 行变成负值,"
+                         "暴露检测延迟的真实代价")
     a = ap.parse_args()
 
     from src.baselines.evaluate import load_config
@@ -91,6 +95,28 @@ def main():
     art = json.loads((pathlib.Path(__file__).resolve().parent
                       / "calib/tb12_v2.json").read_text())
     arrivals = np.array([j[1] for j in art["jobs"]], float)
+    if a.first_arrival_row is not None:
+        shift = arrivals.min() - a.first_arrival_row * ROW_S
+        arrivals = arrivals - shift
+        # 生成对应 trace 并指给仿真(deadline 同步平移,slack 语义不变)
+        import csv as _csv
+        name = f"tb12_pd_r{a.first_arrival_row}.csv"
+        src = pathlib.Path("../cloudsimplus-gateway/src/main/resources/traces") / name
+        rows = []
+        for j, arr2 in zip(art["jobs"], arrivals):
+            rows.append((j[0], int(arr2), j[2], j[3], j[4], j[5],
+                         int(j[6] - shift)))
+        with open(src, "w") as f:
+            f.write("cloudlet_id,arrival_time,length,pes_required,"
+                    "file_size,output_size,deadline\n")
+            for r in rows:
+                f.write(",".join(map(str, r)) + "\n")
+        import shutil
+        shutil.copy(src, pathlib.Path(
+            "../cloudsimplus-gateway/build/resources/main/traces") / name)
+        cfg["cloudlet_trace_file"] = f"traces/{name}"
+        print(f"[RES] 部分损伤模式: 首到达 -> 行 {a.first_arrival_row}, trace={name}",
+              flush=True)
     pol = FrozenPolicies(art["rt_h"] * 3600.0, art["slack_h"] * 3600.0)
     turbines = tuple(int(x) for x in a.turbines.split(","))
     w = load_scaled(turbines, a.year)
