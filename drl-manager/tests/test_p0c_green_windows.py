@@ -73,17 +73,21 @@ def span(offset, warm, ep, tz=0):
     return offset + warm + tz, offset + warm + tz + ep
 
 
-def test_warmup_rows_comes_from_the_config_not_the_artifact():
-    """`warmup_rows: 13` was an invented constant that both the artifact and an
-    external reviewer reproduced. The simulator reads simulation_warmup_rows,
-    which is absent everywhere and therefore 0."""
+def test_warmup_rows_is_measured_not_configured():
+    """The 13 is real but it is not the config key. simulation_warmup_rows is
+    absent everywhere, so Java's documented rule would predict 0; the simulator
+    consumes 13 rows during startup instead. The artifact must record the
+    measured value and say so, because reading it off the config gives 0 and
+    silently shifts every window by 13 rows."""
     import yaml
     cfg = yaml.safe_load(CONFIG.read_text())
-    art_val = json.loads(ART.read_text())["safe_domain"]["warmup_rows"]
-    for key in ("common", "experiment_p0cprobe_van",
+    sd = json.loads(ART.read_text())["safe_domain"]
+    for key in ("common", "experiment_g1eval_matchedvan",
                 "experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_eucrd_knSV3b",
                 "experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_matchedvan"):
-        assert cfg.get(key, {}).get("simulation_warmup_rows", 0) == art_val, key
+        assert cfg.get(key, {}).get("simulation_warmup_rows", 0) == 0, key
+    assert sd["warmup_rows"] == 13
+    assert "MEASURED" in sd["warmup_rows_source"]
 
 
 def test_turbine_timezones_match_the_config():

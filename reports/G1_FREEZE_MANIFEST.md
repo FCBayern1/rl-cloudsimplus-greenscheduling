@@ -10,7 +10,7 @@ Any run whose artefacts do not match this manifest is not a G1 run.
 | repo commit | `4921ebd2992b1ffed5d4b7b193c7004100eaac18` |
 | working tree | clean at freeze time (`git status --porcelain` empty) |
 | Python entrypoint | `drl-manager/entrypoint_rlmodule_gtrxl.py` |
-| config file | `config_C.yml`, sha256 `74b5e24bf3026f9a6c0c61a96670b55928521bbbc7f614bfe3a69b3e8e204cf1` |
+| config file | `config_C.yml`, sha256 `11f52e052711fa9569a491294129e0b14a510604abb1286f11d22ec5519e67f5` |
 
 ## Frozen gateway
 
@@ -39,6 +39,31 @@ this round by construction, because nothing in G1 reads the build directory.
 The two blocks differ in exactly `crd.enabled`, `experiment_name`,
 `simulation_name` (`drl-manager/verify_matched_vanilla.py`, 147/147 keys,
 differing=3, PASS).
+
+Evaluation uses separate blocks, because training is deliberately open-book on
+one window (`green_episode_offset_range` unset) while evaluation must reach the
+three registered ones.
+
+| arm | eval config key | sha256 |
+|---|---|---|
+| EU-CRD | `experiment_g1eval_knSV3b` | `e52944c70563b544cecd6ea9ab73fbe1128d2cef10faec03ea050da4ecda2134` |
+| matched Vanilla | `experiment_g1eval_matchedvan` | `7d6eebc0b05dacd5c94d3f40728e3e3ac40f28dc413da546f0d822080afc04ab` |
+
+Each is generated as an exact copy of its training block plus
+`green_episode_offset_range`, and `tests/test_g1_eval_blocks.py` asserts the
+difference set is exactly that one key, that the matched-arm property survives
+the copy, and that no G1 runner mentions the old blocks.
+
+The old evaluation block for the Vanilla arm, `experiment_p0cprobe_van`, was
+**not** a copy of the matched Vanilla. It was a stale pre-v5 block differing in
+twelve keys, eight of them objective-level: `carbon_penalty_mode`,
+`per_action_carbon_weight`, `per_action_completion_weight`, `global_reward_beta`,
+`global_completion_rate_mi_coef`, `carbon_normalization_fixed_max`, and two model
+hyperparameters. That is the same family of parameters that invalidated the
+original Vanilla comparator, so the error P0-B was built to catch was sitting
+unguarded in the evaluation path. It is retired. Every P0-C feasibility number
+carrying the `van` label came from it and is not a matched-Vanilla measurement.
+`experiment_p0cprobe_knSV3b` was clean (differing=1) but is retired with it.
 
 ## Fixed artefacts
 
@@ -138,10 +163,34 @@ to a single-datacentre SWF environment and still exits 0.
 |---|---|
 | matched-config exact diff | PASS, 147/147 keys, differing=3 |
 | VM dispersion (dispatcher wiring) | PASS, VMs carrying 90% of load 65 → 155 |
-| green / TimeCAP offset alignment at the three windows | **OPEN**, P0-C step 5 |
+| green / TimeCAP offset alignment at the three windows | **OPEN**, P0-C step 5, rerunning on the corrected eval blocks |
 
 The third must close before any formal evaluation. Training may proceed in
 parallel.
+
+## Warmup: 13 rows, measured
+
+Java documents `sim_step=0` as CSV row `tz + simulation_warmup_rows`, and
+`simulation_warmup_rows` is absent from every relevant block, so the documented
+prediction is row `tz`. The simulator in fact consumes 13 rows during startup
+before it emits the first observation. Cross-correlating the observed per-DC
+green series against the CSV puts the peak at lag 13 with r = 1.0000 in 9 of 9
+cells, identically across all three windows and all three green datacentres.
+
+The registered windows therefore read `[offset + 13 + tz_i, + 7200)`. Reading
+the constant off the config gives 0 and silently shifts every window by 13 rows.
+The artifact records the measured value and its provenance, and a test asserts
+both.
+
+## Java fast path is inactive, on every run
+
+`hierarchical_multidc_env.py` tries `getStepAsFlatMap()` and falls back to the
+legacy 200-getter parser when it is absent. The method does not exist in the
+Java source at all, so every run on this testbed uses the legacy path: the A/B
+dispatcher probe, the P0-C feasibility runs, the concurrency probe and the smoke
+training all log the fallback. This is the status quo, not a property of the
+frozen jar. It is recorded here so that implementing the fast path mid-campaign
+is recognised as changing the data path, not as a speed-up.
 
 ## Concurrency
 
