@@ -1,0 +1,48 @@
+{
+ "protocol": "P0-C stratified green windows (C-regime knSV3b campaign)",
+ "frozen": "2026-08-23",
+ "safe_domain": {
+  "rows_available": 52559,
+  "warmup_rows": 13,
+  "episode_rows": 7200,
+  "max_tz_offset_rows": 108,
+  "timecap_horizon_reserve_rows": 288,
+  "safe_offset_max": 44950
+ },
+ "green_episode_offset_range": 44950,
+ "schedule_formula": "offset(k) = (1009*k) mod 44950",
+ "note": "Java applies the offset only through this formula; the three windows are reached by advancing the reset counter to the listed episode index, so no gateway change is needed and the mapping stays deterministic.",
+ "windows": [
+  {
+   "stratum": 1,
+   "stratum_rows": [
+    0,
+    14983
+   ],
+   "episode_index_k": 4,
+   "offset_rows": 4036
+  },
+  {
+   "stratum": 2,
+   "stratum_rows": [
+    14983,
+    29966
+   ],
+   "episode_index_k": 19,
+   "offset_rows": 19171
+  },
+  {
+   "stratum": 3,
+   "stratum_rows": [
+    29966,
+    44950
+   ],
+   "episode_index_k": 34,
+   "offset_rows": 34306
+  }
+ ],
+ "applies_to": "every arm, every seed, every condition",
+ "eval_rng_seed": 20260823,
+ "selection_rule": "smallest reset index k whose offset falls in the inner 50% of its stratum; midpoint targeting was rejected because it needs k up to 3705 and every reset restarts the Java simulation",
+ "max_reset_index": 34
+}
