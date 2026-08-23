@@ -163,10 +163,10 @@ to a single-datacentre SWF environment and still exits 0.
 |---|---|
 | matched-config exact diff | PASS, 147/147 keys, differing=3 |
 | VM dispersion (dispatcher wiring) | PASS, VMs carrying 90% of load 65 → 155 |
-| green / TimeCAP offset alignment at the three windows | **OPEN**, P0-C step 5, rerunning on the corrected eval blocks |
+| green / TimeCAP offset alignment at the three windows | **PASS**, 18/18 cells, lag 13, r=1.0000, both arms |
 
-The third must close before any formal evaluation. Training may proceed in
-parallel.
+All three are closed. The alignment sentinel covers both arms at all three
+windows and all three green datacentres: `drl-manager/p0c_step5_alignment.py`.
 
 ## Warmup: 13 rows, measured
 
