@@ -1,6 +1,12 @@
 {
- "protocol": "P0-C stratified green windows (C-regime knSV3b campaign)",
+ "protocol": "P0-C stratified green windows, GREEN-SCARCITY terciles (Codex re-ruling 2026-08-23)",
  "frozen": "2026-08-23",
+ "supersedes": "row-position terciles (k=4/19/34): offset 4036 overlapped the training window by 3164 rows (44%)",
+ "stratifier": {
+  "quantity": "mean total power of the five green turbines over the window the episode actually reads",
+  "window": "offset + warmup_rows .. + episode_rows + max_tz_offset_rows",
+  "why": "policy-independent physical measure; row position does not control green scarcity, and scarcity is what determines whether routing has room to matter"
+ },
  "safe_domain": {
   "rows_available": 52559,
   "warmup_rows": 13,
@@ -11,38 +17,41 @@
  },
  "green_episode_offset_range": 44950,
  "schedule_formula": "offset(k) = (1009*k) mod 44950",
- "note": "Java applies the offset only through this formula; the three windows are reached by advancing the reset counter to the listed episode index, so no gateway change is needed and the mapping stays deterministic.",
+ "training_window": {
+  "episode_index_k": 0,
+  "offset_rows": 0,
+  "mean_total_kw": 1418.4,
+  "percentile": 10.0,
+  "note": "training is open-book on a LOW-green window; the three evaluation windows are a cross-scarcity generalisation test, not a claim that k=0 represents the year"
+ },
  "windows": [
   {
-   "stratum": 1,
-   "stratum_rows": [
-    0,
-    14983
-   ],
-   "episode_index_k": 4,
-   "offset_rows": 4036
-  },
-  {
-   "stratum": 2,
-   "stratum_rows": [
-    14983,
-    29966
-   ],
+   "stratum": "low",
    "episode_index_k": 19,
-   "offset_rows": 19171
+   "offset_rows": 19171,
+   "mean_total_kw": 1685.6,
+   "percentile": 21.9,
+   "overlap_rows_with_training": 0
   },
   {
-   "stratum": 3,
-   "stratum_rows": [
-    29966,
-    44950
-   ],
+   "stratum": "mid",
+   "episode_index_k": 56,
+   "offset_rows": 11554,
+   "mean_total_kw": 1840.5,
+   "percentile": 50.0,
+   "overlap_rows_with_training": 0
+  },
+  {
+   "stratum": "high",
    "episode_index_k": 34,
-   "offset_rows": 34306
+   "offset_rows": 34306,
+   "mean_total_kw": 2050.9,
+   "percentile": 87.3,
+   "overlap_rows_with_training": 0
   }
  ],
- "applies_to": "every arm, every seed, every condition",
- "eval_rng_seed": 20260823,
- "selection_rule": "smallest reset index k whose offset falls in the inner 50% of its stratum; midpoint targeting was rejected because it needs k up to 3705 and every reset restarts the Java simulation",
- "max_reset_index": 34
+ "applies_to": "every arm, every seed, every condition (clean/blend/shuffle)",
+ "primary_analysis": "pool the three windows first, then seed-level log-ratio; the low-green window alone must not decide seed expansion",
+ "secondary_prereg": "effect vs green scarcity. If the pooled gate fails but the low-green window is significant, the claim is 'effective under green scarcity', never a year-round advantage",
+ "eval_rng_seed": 20260823
 }
