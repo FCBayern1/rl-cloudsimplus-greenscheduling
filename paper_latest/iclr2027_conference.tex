@@ -206,7 +206,7 @@ $\Delta Q$ is paired with a coarser reward-level signal $\Delta r(t)$ computed a
 \qquad g_t(\textsc{defer})=0 ,
 \label{eq:deltar}
 \end{equation}
-where $g_t(i)$ is the green headroom available at datacentre $i$ at the moment of the decision. Deferral slots score zero because immediate green fit is undefined for a job that is not placed; the long-horizon value of deferring is the $\Delta Q$ path's responsibility. $\Delta r$ therefore ignores long-horizon effects, and in exchange uses no learned value function, so unfamiliar states cannot corrupt it. Aligning it with the carbon objective matters: a load-balance proxy would track a quantity the reward does not contain and can disagree with $\Delta Q$ in sign. A soft blend of the two gives the routing responsibility,
+where $g_t(i)$ is the green ratio observed at datacentre $i$ at the moment of the decision, the same per-DC quantity the router sees in its observation. Deferral slots score zero because immediate green fit is undefined for a job that is not placed; the long-horizon value of deferring is the $\Delta Q$ path's responsibility. $\Delta r$ therefore ignores long-horizon effects, and in exchange uses no learned value function, so unfamiliar states cannot corrupt it. Aligning it with the carbon objective matters: a load-balance proxy would track a quantity the reward does not contain and can disagree with $\Delta Q$ in sign. A soft blend of the two gives the routing responsibility,
 \begin{equation}
 R_{\text{global}}(t)=c_t\,\Delta Q(t)+(1-c_t)\,\Delta r(t),
 \qquad
@@ -640,13 +640,21 @@ r^{L}_t={} & \lambda_1\log(1{+}n_t)-\lambda_2\log(1{+}\bar{W}_t) \\
 \end{equation}
 which rewards the $n_t$ completions in the step and penalises the mean wait $\bar{W}_t$ of finished jobs, the imbalance $\operatorname{std}_v\rho_{v,t}$ of utilisation across active VMs, the backlog ratio $Q_t/R_t$ of queued to received jobs, and invalid actions. Carbon and the forecast both enter only through $r^{G}_t$, so the local reward is forecast-independent. The coefficients, identical across all methods, are $w_c{=}1.0$, $w_p{=}2.0$, $k{=}6.0$, $c_0{=}0.5$, $w_u{=}2.0$, $W_u{=}3{,}600$\,s (with $\hat m_i$ normalised by 0.05\,kg), and $\lambda_{1\ldots5}=0.3,\,0.05,\,0.02,\,0.05,\,0.2$. The decomposition of Section~\ref{sec:crd} dissects the credit carried by $r^{G}_t$ alone. The local channel passes through untouched.
 
-The reward-level fallback of Eq.~\ref{eq:blend} is defined as
-\begin{equation}
-\Delta r(t)=\alpha\,\big[\operatorname{std}_d L_d(\tilde a_t)-\operatorname{std}_d L_d(a_t)\big],
-\qquad \alpha=1,
-\label{eq:deltar}
-\end{equation}
-where $L_d(\cdot)$ is the per-datacentre load that a routing decision induces. Both terms are analytic functions of the assignment, so the reference routing never needs to be executed, and the contrast keeps the chosen-minus-reference semantics of $\Delta Q$. The proxy deliberately measures only load dispersion. It ignores long-horizon effects, but no learned model enters its computation, which is what makes it a safe fallback when the ensemble disagrees.
+The reward-level fallback of Eq.~\ref{eq:blend} is the green-fit contrast of
+Eq.~\ref{eq:deltar}, with $\alpha{=}1$. It is evaluated slot by slot on the
+routing batch: each slot contributes the green ratio of the datacentre the
+router chose minus the green ratio of the datacentre the reference action would
+have chosen, DEFER slots contribute zero, and the per-transition value is the
+mean over slots. Both terms read the observation the router already saw, so the
+reference routing never needs to be executed, and the contrast keeps the
+chosen-minus-reference semantics of $\Delta Q$. Orientation matters here: a
+positive $\Delta r$ means the router placed work on greener sites than the
+reference, which is the sign convention $\Delta Q$ carries, so the soft blend
+mixes two estimators of the same quantity rather than two different ones. An
+earlier version of this fallback measured load dispersion instead. Under the
+per-action carbon reward used here, load balance is not a term in the reward at
+all, so that proxy tracked a quantity the objective does not contain and could
+disagree with $\Delta Q$ in sign; the green-fit form replaces it.
 
 
 
