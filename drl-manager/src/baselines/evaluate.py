@@ -954,6 +954,15 @@ def run_rllib_evaluation(
 
     all_results = []
 
+    # P0-C: advance the reset counter to the registered window before measuring.
+    # env.reset() is 1:1 with Java's resetSimulation(), so k resets put both the
+    # simulator and the TimeCAP provider on window (1009*k) mod range.
+    reset_skip = int(getattr(args, "reset_skip", 0) or 0)
+    for _k in range(reset_skip):
+        env.reset(seed=seed)
+    if reset_skip:
+        print(f"[P0-C] advanced reset counter by {reset_skip} before measuring")
+
     for ep in range(num_episodes):
         obs, info = env.reset(seed=seed + ep)
         done = False
@@ -1130,6 +1139,14 @@ if __name__ == "__main__":
                         help="Base directory to save compare_result outputs when using --compare")
     parser.add_argument("--shared-local", action="store_true",
                         help="For RLlib evaluation: treat all local agents as sharing 'shared_local_policy'")
+    parser.add_argument("--reset-skip", type=int, default=0,
+                        help="Advance the environment's reset counter by N before the "
+                             "first measured episode. The Java green-window offset "
+                             "follows (1009*k) mod green_episode_offset_range, so this "
+                             "is how a specific PRE-REGISTERED window is reached "
+                             "explicitly instead of being produced implicitly by "
+                             "consecutive resets (P0-C, drl-manager/calib/"
+                             "p0c_green_windows.json).")
     parser.add_argument("--stochastic", action="store_true",
                         help="For RLlib (new-API) evaluation: sample global routing choices from the policy "
                              "distribution instead of greedy argmax. Needed for a faithful iso-completion "
