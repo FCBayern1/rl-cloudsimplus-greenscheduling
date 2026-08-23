@@ -1,0 +1,30 @@
+{
+ "purpose": "Step 5: numerical CONFIRMATION (not recalibration) of the frozen green_power_scale",
+ "years_read": [
+  2020
+ ],
+ "files": {
+  "Turbine_100_2020.csv": {
+   "sha256": "5cf5716ad19bf0919fe7adbdec0c55ef753a3454aff0a85ce130694400bc29ab",
+   "data_rows": 32224
+  },
+  "Turbine_101_2020.csv": {
+   "sha256": "bb30f189a5bac678e0884349b435f53cf29c85a6db2817d33d17a59cb8929738",
+   "data_rows": 32224
+  }
+ },
+ "turbine_means_kw": {
+  "T100": 236.0265837840243,
+  "T101": 293.1103702747487
+ },
+ "combined_mean_kw": 529.136954058773,
+ "registered_mean_kw": 529.136954,
+ "abs_diff_kw": 5.8773025557457004e-08,
+ "rel_diff": 1.1107337167280327e-10,
+ "registered_green_power_scale": 9.05562658195e-05,
+ "demand_mean_w": 23.958333333333332,
+ "realized_rho_2020": 0.4999999999999985,
+ "verdict": "CONFIRMED UNCHANGED (diff = float accumulation order)",
+ "script_commit": "0b6a7bf2795326aaaf4ee6e0ea927dd97b2f84ed",
+ "command": "reports/tb12/STEP5_SCALE_CHECK.json generated inline; arithmetic mirrors gen_tb12.py calibration"
+}

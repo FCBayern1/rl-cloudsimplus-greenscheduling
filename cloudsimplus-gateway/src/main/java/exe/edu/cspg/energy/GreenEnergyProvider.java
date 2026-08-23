@@ -479,8 +479,16 @@ public class GreenEnergyProvider {
      * Applies timezone offset for geo-distributed simulation.
      */
     public double[] getFuturePowerPredictions(double currentTime, int[] horizonSeconds) {
-        if (powerSpline == null || horizonSeconds == null) {
+        if (horizonSeconds == null) {
             return new double[0];
+        }
+        // P0.5-1(Codex 2026-08-23): SPLINE checks the spline; row-index modes
+        // check rowPowers - future bins must survive spline-construction
+        // failure exactly like the current-power path does.
+        if (interpolationMode == GreenInterpolationMode.SPLINE) {
+            if (powerSpline == null) return new double[0];
+        } else {
+            if (rowPowers == null || rowPowers.length == 0) return new double[0];
         }
 
         double[] predictions = new double[horizonSeconds.length];
@@ -524,12 +532,12 @@ public class GreenEnergyProvider {
      * instantaneous value outside COMPRESSED mode or without data.
      */
     public double getMeanFuturePowerW(double simTime, int horizonSteps) {
-        if (timeScalingMode != TimeScalingMode.COMPRESSED
-                || powerValues == null || powerValues.length == 0 || horizonSteps <= 1) {
-            return getCurrentPowerW(simTime);
-        }
         final double[] meanSeries = interpolationMode != GreenInterpolationMode.SPLINE
                 ? rowPowers : powerValues;
+        if (timeScalingMode != TimeScalingMode.COMPRESSED
+                || meanSeries == null || meanSeries.length == 0 || horizonSteps <= 1) {
+            return getCurrentPowerW(simTime);
+        }
         int n = meanSeries.length;
         int start = simTimeToRowIndex(simTime);
         if (start < 0) {
@@ -759,6 +767,12 @@ public class GreenEnergyProvider {
                 rowPowers[i] = rawRowPowersList.get(i);
             }
             rawRowPowersList = null;
+            if (interpolationMode != GreenInterpolationMode.SPLINE
+                    && rowPowers.length > 0) {
+                // trend 特征的归一化基准不能依赖 spline 成功
+                maxPowerKw = Math.max(1e-9,
+                        java.util.Arrays.stream(rowPowers).max().orElse(1.0));
+            }
 
             if (dataPoints.isEmpty()) {
                 LOGGER.error("No data points loaded for turbine {} from file: {}", turbineId, csvFilePath);

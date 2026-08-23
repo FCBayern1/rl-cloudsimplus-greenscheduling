@@ -101,4 +101,47 @@ class GreenInterpolationModeTest {
                 spline.getIntervalEnergyWh(t0, t1), 0.0,
                 "non-STEP interval energy must be the legacy end-sample x delta");
     }
+
+    // ---- P0.5-1(Codex):时间戳全部不可解析,power rows 仍有效 ----
+
+    private GreenEnergyProvider badTs(GreenInterpolationMode mode) {
+        return new GreenEnergyProvider(9999,
+                "windProduction/simplified/Turbine_9999_2021.csv",
+                TimeScalingMode.REAL_TIME, 3, 12, 0, 60.0, 0, 1.0, mode);
+    }
+
+    @Test
+    void unparsableTimestamps_currentPowerStillWorks() {
+        GreenEnergyProvider step = badTs(GreenInterpolationMode.STEP);
+        assertEquals(0.0, step.getCurrentPowerW(0.0), 1e-9);          // row 0 = 0 kW
+        assertEquals(100_000.0, step.getCurrentPowerW(600.0), 1e-6);  // row 1 = 100 kW
+        assertEquals(300_000.0, step.getCurrentPowerW(1500.0), 1e-6); // row 2 held mid-unit
+    }
+
+    @Test
+    void unparsableTimestamps_futureBinsStillWork() {
+        GreenEnergyProvider step = badTs(GreenInterpolationMode.STEP);
+        double[] bins = step.getFuturePowerPredictions(0.0, new int[] { 600, 1200 });
+        assertEquals(2, bins.length, "future bins must not collapse to empty on spline failure");
+        assertEquals(100_000.0, bins[0], 1e-6);
+        assertEquals(300_000.0, bins[1], 1e-6);
+    }
+
+    @Test
+    void unparsableTimestamps_trendFeaturesStillWork() {
+        GreenEnergyProvider step = badTs(GreenInterpolationMode.STEP);
+        double[] f = step.computeFutureTrendFeatures(0.0);
+        assertEquals(4, f.length);
+        // short window rows {0,100,300}kW, max=300 -> mean/max = 400/3/300
+        assertEquals((0.0 + 100.0 + 300.0) / 3.0 / 300.0, f[0], 1e-9,
+                "trend must read raw rows, normalised by raw max");
+    }
+
+    @Test
+    void unparsableTimestamps_meanPathStillWorks() {
+        GreenEnergyProvider step = badTs(GreenInterpolationMode.STEP);
+        // REAL_TIME -> mean path falls back to current power; must not NPE
+        assertEquals(step.getCurrentPowerW(600.0),
+                step.getMeanFuturePowerW(600.0, 3), 1e-9);
+    }
 }
