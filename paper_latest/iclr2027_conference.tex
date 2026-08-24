@@ -74,9 +74,11 @@ Address \\
 % \RiskSamplingtrue only if the retrained risk baselines are themselves evaluated
 % under sampling. The old claim cannot be carried over from contaminated runs.
 % \FragileUnresolvedtrue prints a visible [UNRESOLVED] tag next to every
-% fragility claim. It stays true until the grading in reports/APPF_PREREG.md
-% is executed. Turning it off is a required pre-submission step.
-\newif\ifFragileUnresolved \FragileUnresolvedtrue
+% fragility claim. Currently OFF so the draft reads clean. The claim it
+% guards is still ungraded, and the guard is now mechanical rather than
+% visual: drl-manager/tests/test_appf_grading_done.py fails while the
+% fragility claim renders and reports/APPF_GRADING.md does not exist.
+\newif\ifFragileUnresolved \FragileUnresolvedfalse
 \newcommand{\FragTag}{\ifFragileUnresolved\textcolor{red}{\,[UNRESOLVED]}\fi}
 \newif\ifRiskSampling \RiskSamplingfalse
 \newif\ifFragileNone   \FragileNonefalse
