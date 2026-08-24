@@ -34,7 +34,7 @@ C1 无法量化,因为命名通道在 v4 里根本不是它声称的量。
 | 12b | §4「Two boundaries」段 + §4.1 setup「14% under sampling」 | 依赖 App E | C1+C2 | 随 App E 一起换;这两处是 App E 的正文承重点,漏换即自相矛盾 |
 | 13 | App F | 失效种子 `91–96% / 98%`、`σ² 7.2 vs 3.2`、`max w≈1.15`、`σ(w)≈0.33`、`0.20–1.00` | C1+C2 | **全部重生成**。σ² 与 ρ 的诊断在 v4 上本就测的是坏机制 |
 | 14 | App G + `fig:mechanism` | 训练诊断图与 `0.87 / 0.2–1.0 / σ(w)≈0.33` | C1+C2 | **图需重画**(数据换成修复构建)。~~0.87 正是 BUG 1 的病征~~ **已更正**:G1 修复构建的 `ρ_routing` 仍是 0.89,但带真实离散(p10 在 0.14–1.0 摆动)。数值本身从来不是病征,**缺少离散**才是 |
-| 15 | `tab:ablation` (App H) | base/gate-open/no-reweight × 3 条件 | **C2 only** | 重生成(仅因 C2) |
+| 15 | `tab:ablation` (App H) | base/gate-open/no-reweight × 3 条件 **+ 新增第四级 `Decomposition off = Vanilla PPO`** | **C2 only** | 重生成(仅因 C2)。第四级**复用主表的 matchedvan**,不是新臂,用 `\ResVanClean/Blend/Shuffle` 三个宏,与主表同源 |
 | 16 | App H 正文 | `23%`、`0.283 / 0.275 / 0.205 / 0.248`、`99.46 / 99.42`、`0.227→0.213`、`10–13%` | C2 | 全换 |
 | 17 | `tab:auditor` (App I) | 10 格网格 + χ + 开火率 | C2(Vanilla 臂) | 重生成;并按 W4 换成健康 EU-CRD ckpt |
 | 18 | App I 正文 | `+0.71 / −0.71 / 0.00 / +0.23`、`14.9% / 99.4% / 0.5%`、`2.3% / 0.9pp` | C2 | 全换 |

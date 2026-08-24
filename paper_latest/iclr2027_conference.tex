@@ -91,7 +91,9 @@ Address \\
 \newcommand{\ResContainEu}{0.063}      % corruption increment, EU-CRD
 \newcommand{\ResContainDiD}{-0.022}    % difference in differences
 \newcommand{\ResNoFcst}{0.196}         % No-Forecast PPO, clean
-\newcommand{\ResVanShuffle}{0.269}     % Vanilla, shuffle
+\newcommand{\ResVanShuffle}{0.269}    % Vanilla, shuffle
+\newcommand{\ResVanClean}{0.184}      % Vanilla, clean   (also the ablation ladder's bottom rung)
+\newcommand{\ResVanBlend}{0.184}      % Vanilla, blend
 \newcommand{\ResEuShuffle}{0.255}      % EU-CRD, shuffle
 \newcommand{\fix}{\marginpar{FIX}}
 \newcommand{\new}{\marginpar{NEW}}
@@ -281,7 +283,7 @@ The testbed is a five-datacentre environment on CloudSim Plus \citep{silvafilhoC
 \label{sec:main}
 
 \begin{table}[t]
-\caption{Carbon per completed work, completion rate in parentheses (\%), under forecast corruption at deterministic decoding. Medians over iso-eligible seeds. The checkpoint rule and seed counts are in Section~\ref{sec:setup}, per-seed values in Appendix~\ref{app:perseed}. $\Delta_{\text{corr}}$ is the absolute carbon a coherent lie adds, Shuffle minus Clean of the tabled medians, so a method is not rewarded for being poor on clean forecasts the way a Shuffle/Clean ratio would be. C$_{\min}$ is the lowest completion over the iso-eligible seeds and all conditions; each arm's decode-fragility seed is excluded by the same rule (Appendix~\ref{app:failure}). $\dagger$: completion below 99.5\%, carbon deflated by dropped work and not highlighted. Dashes mark undefined cells.}
+\caption{Carbon per completed work, completion rate in parentheses (\%), under forecast corruption at deterministic decoding. Medians over iso-eligible seeds. The checkpoint rule and seed counts are in Section~\ref{sec:setup}, per-seed values in Appendix~\ref{app:perseed}. $\Delta_{\text{corr}}$ is the absolute carbon a coherent lie adds, Shuffle minus Clean of the tabled medians, so a method is not rewarded for being poor on clean forecasts the way a Shuffle/Clean ratio would be. C$_{\min}$ is the lowest completion over the iso-eligible seeds and all conditions; each arm's decode-fragility seed is excluded by the same rule (Appendix~\ref{app:failure}). $\dagger$: completion below 99.5\%, carbon deflated by dropped work and not highlighted. Dashes mark undefined cells. Vanilla PPO is both the standard-training reference and the complete ablation of the method: it differs from EU-CRD in one configuration key, so the comparison is matched by construction rather than by argument (Appendix~\ref{app:ablation}).}
 \label{tab:main}
 \centering
 \small
@@ -538,7 +540,8 @@ exactly one configuration key, the base arm is evaluated through the same
 protocol as the variants, and no cell is compared across training campaigns.
 
 \begin{table}[ht]
-\caption{Component ablation, carbon per completed work (deterministic decoding). Medians over two seeds; each seed contributes the checkpoint with the lowest clean carbon among those completing $\geq$99.5\% on clean forecasts, the rule used in Table~\ref{tab:main}. $^{\dagger}$: at least one seed below the completion contract, carbon deflated by dropped work.}
+\caption{Component ablation, carbon per completed work (deterministic decoding). Medians over two seeds; each seed contributes the checkpoint with the lowest clean carbon among those completing $\geq$99.5\% on clean forecasts, the rule used in Table~\ref{tab:main}. $^{\dagger}$: at least one seed below the completion contract, carbon deflated by dropped work.
+The last row is not a separate run. Disabling the decomposition leaves the matched Vanilla arm of Table~\ref{tab:main}, which differs from the full method in one configuration key, so the ladder ends where the main comparison begins and the two tables share that arm.}
 \label{tab:ablation}
 \centering
 \small
@@ -549,9 +552,13 @@ Arm & Clean & Blend & Shuffle \\
 Base (full method)       & 0.189 & 0.186 & \textbf{0.227} \\
 Gate open, $c_t\equiv1$  & 0.184 & 0.188 & 0.279$^{\dagger}$ \\
 No advantage reweighting & 0.174 & 0.185 & 0.213 \\
+\midrule
+Decomposition off, $=$ Vanilla PPO & \ResVanClean{} & \ResVanBlend{} & \ResVanShuffle{} \\
 \bottomrule
 \end{tabular*}
 \end{table}
+
+The ladder ends at the matched Vanilla arm, so the ablation and the main comparison measure the same distance from two directions.
 
 The gate carries the containment. Opening it costs nothing on clean forecasts
 and 23\% on shuffled ones, and the effect reproduces on both seeds separately
