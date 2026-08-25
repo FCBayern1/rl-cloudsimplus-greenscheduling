@@ -1,0 +1,12 @@
+{
+ "purpose": "TB12 RL repair frozen jar (Codex \u786c\u963b\u585e#6)",
+ "frozen_at": "2026-08-25",
+ "source_commit": "27f05bcb139f53ef8fa35e6e6728949531d8eaa0",
+ "jar_sha256": "33089d1dbbc06aa24ca33e337382a2f2b249d6d19cb54ed2542ea1841e98823e",
+ "config_sha256": "777990218365623b2f36dc040742bfec93d89b220974e605192cd3eb1983648d",
+ "includes": [
+  "ontime_mi SLA",
+  "cap monitor global_carbon_cap_count/max_ratio",
+  "deadlineForceLatestStart per-PE runtime fix"
+ ]
+}
