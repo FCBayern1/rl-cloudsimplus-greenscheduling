@@ -2,7 +2,8 @@
 """P1/P2(Codex 裁定):per-step 碳分布标定 + 奖励真值表,零训练。
 
 - 环境 = experiment_tb12_rl_fc(未来修复训练的同一物理),gradlew 路径。
-- 风 = 校准对 T100+101/2020(fixed_max 必须冻结自校准数据,不碰 held-out)。
+- 风 = 训练分布 T100+101/2021(= rl block csv_year;fixed_max 冻结自
+  训练分布,不碰 held-out 判决对 T110/111+)。
 - 逐步碳 = info.global_energy_stats.total_carbon_emission_kg 的一阶差分
   (与判决同一本账,天然满足恒等式 3)。
 - 四轨:nowait / greenfollow / clair(FrozenPolicies)+ always_defer
@@ -47,6 +48,15 @@ def truth_table(per_arm_kg, per_arm_steps, fixed_max, cap=CAP):
     rows["_order_match"] = by_phys == by_rew
     rows["_order_phys"] = by_phys
     return rows
+
+
+def assert_year_consistency(cfg, cli_year):
+    """Codex 2026-08-25:experiment csv_year == CLI year == 离线参考序列年份,
+    启动前锁死,不允许只靠运行期接线哨兵事后发现年份漂移。"""
+    cfg_year = int(cfg.get("csv_year", -1))
+    if cfg_year != int(cli_year):
+        sys.exit(f"年份不一致: experiment csv_year={cfg_year} != --year {cli_year}"
+                 " —— 标定必须对齐训练分布")
 
 
 def episode_step_kg(env_cfg, off, releases, arrivals, turbines, ref_series):
@@ -108,13 +118,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experiment", default="experiment_tb12_rl_fc")
     ap.add_argument("--turbines", default="100,101")
-    ap.add_argument("--year", type=int, default=2020)
+    ap.add_argument("--year", type=int, default=2021)
     ap.add_argument("--offsets", default="4000,12000,20000,28000,36000,44000")
     ap.add_argument("--json-out", required=True)
     a = ap.parse_args()
 
     from src.baselines.evaluate import load_config
     cfg = load_config(a.experiment)
+    assert_year_consistency(cfg, a.year)
     cfg.pop("py4j_port", None)
     cfg.setdefault("gateway_log_dir", "/tmp/tb12_gw")
     cfg.setdefault("output_dir", "/tmp/tb12_gw")
@@ -145,7 +156,9 @@ def main():
             per_arm_steps[arm] += t
             recs.append({"offset": off, "arm": arm, "steps": t,
                          "carbon_kg": float(kgs.sum()), "finished": fin,
-                         "ontime": ot})
+                         "ontime": ot,
+                         "env_cap_count": ges.get("global_carbon_cap_count"),
+                         "env_max_ratio": ges.get("global_carbon_max_ratio")})
             print(f"[CALIB off={off:>6} {arm:>13}] kg={kgs.sum():.5f} "
                   f"step_kg max={kgs.max():.3e} finished={fin} ontime={ot:.3f} "
                   f"steps={t}", flush=True)

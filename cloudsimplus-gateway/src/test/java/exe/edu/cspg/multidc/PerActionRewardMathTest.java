@@ -192,13 +192,18 @@ public class PerActionRewardMathTest {
     }
 
     @Test
-    void latestStartUsesPesInRuntime() {
-        // 4 pes -> runtime 250 s: at now=2000 deadline 2380, 2000+250+120=2370 < 2380 -> wait ok
-        assertFalse(PerActionRewardMath.deadlineForceLatestStart(
+    void latestStartRuntimeIsPerPeAndIgnoresPesCount() {
+        // TB12 audit 2026-08-25: CloudSim length is PER-PE MI — runtime does
+        // not shrink with pes. The old assertion (4 pes → 250 s) codified the
+        // 2x underestimate that fired the TB12 backstop ~1.8h past latest
+        // start. 40e6 MI at 40000 MIPS is 1000 s regardless of pes.
+        assertTrue(PerActionRewardMath.deadlineForceLatestStart(
                 2000, 2380, 40_000_000, 4, 40000, 120));
-        // 1 pes -> runtime 1000 s: same instant is far past latest start -> force
         assertTrue(PerActionRewardMath.deadlineForceLatestStart(
                 2000, 2380, 40_000_000, 1, 40000, 120));
+        // Same job, deadline far enough for 1000+120 s → genuinely waits.
+        assertFalse(PerActionRewardMath.deadlineForceLatestStart(
+                2000, 3200, 40_000_000, 4, 40000, 120));
     }
 
     @Test

@@ -140,6 +140,11 @@ public class MultiDatacenterSimulationCore {
     // - PER_MI mode: signal = step carbon per completed MI (kg/MI) or CARBON_RATIO_MAX if MI==0
     private double epGlobalCarbonSignalSum = 0.0;        // Σ signal, total carbon emission sum at each timestep in kg
     private double epGlobalCarbonPenaltyNormSum = 0.0;   // Σ Ĉ
+    // Cap-saturation monitor (Codex 2026-08-25, TB12 reward audit): the 3.0 cap
+    // silently erased 97% of carbon when fixed_max was mis-scaled. Export-only —
+    // the training-side gate stops on any cap hit; behaviour is unchanged.
+    private long epGlobalCarbonCapCount = 0;             // steps with uncapped ratio > CARBON_RATIO_MAX
+    private double epGlobalCarbonMaxRatio = 0.0;         // max uncapped signal/denominator this episode
     private int epDeadlineForcedCount = 0;               // Fix A: # cloudlets force-routed at deadline backstop
     private int episodeIndex = -1;                       // incremented at each reset; drives the green episode-offset schedule
     private double epDeferUrgencyCostSum = 0.0;          // Fix B: Σ urgency-scaled deferral cost (≤0)
@@ -239,6 +244,8 @@ public class MultiDatacenterSimulationCore {
         stepRoutedCount = 0;
         epGlobalCarbonSignalSum = 0.0;
         epGlobalCarbonPenaltyNormSum = 0.0;
+        epGlobalCarbonCapCount = 0;
+        epGlobalCarbonMaxRatio = 0.0;
         epDeadlineForcedCount = 0;
         epDeferUrgencyCostSum = 0.0;
         lastGlobalCarbonSignal = 0.0;
@@ -759,6 +766,16 @@ public class MultiDatacenterSimulationCore {
             }
         }
         return miTotal > 0.0 ? miOnTime / miTotal : 1.0;
+    }
+
+    /**
+     * TB12 reward repair (Codex prereg 2026-08-25): sla_mode "ontime_mi" cost
+     * c_t = max(0, target − ontime_mi_share). MI-weighted — a late big job
+     * costs proportionally more than a late small one, unlike the job-count
+     * deadline_miss_rate. Static and side-effect-free for unit tests.
+     */
+    static double ontimeMiSlaCost(double slaTarget, double onTimeMiShare) {
+        return Math.max(0.0, slaTarget - onTimeMiShare);
     }
 
     private int pickGreenestAvailableDc(Cloudlet cloudlet) {
@@ -1891,6 +1908,9 @@ public class MultiDatacenterSimulationCore {
                 lastGlobalCarbonPenaltyNorm = CARBON_RATIO_MAX;
                 epGlobalCarbonSignalSum += lastGlobalCarbonSignal;
                 epGlobalCarbonPenaltyNormSum += lastGlobalCarbonPenaltyNorm;
+                // Idle saturation IS a cap hit for the monitor.
+                epGlobalCarbonCapCount++;
+                epGlobalCarbonMaxRatio = Math.max(epGlobalCarbonMaxRatio, CARBON_RATIO_MAX);
                 return CARBON_RATIO_MAX;
             } else {
                 signal = totalCarbonKg / (completedMiThisStep + EPSILON); // kg/MI
@@ -1928,10 +1948,12 @@ public class MultiDatacenterSimulationCore {
         // producing `norm = signal × 1e8` instead of `signal / fixed_max`.  Use a
         // dedicated tiny floor so we still avoid div-by-zero if `denominator` is 0.
         final double denomFloor = 1e-30;
-        double normalizedCarbon = Math.min(
-                signal / Math.max(denominator, denomFloor),
-                CARBON_RATIO_MAX
-        );
+        double rawRatio = signal / Math.max(denominator, denomFloor);
+        double normalizedCarbon = Math.min(rawRatio, CARBON_RATIO_MAX);
+        if (rawRatio > CARBON_RATIO_MAX) {
+            epGlobalCarbonCapCount++;
+        }
+        epGlobalCarbonMaxRatio = Math.max(epGlobalCarbonMaxRatio, rawRatio);
 
         // 4) Track signal + normalized penalty for logging/analysis
         lastGlobalCarbonSignal = signal;
@@ -2623,6 +2645,12 @@ public class MultiDatacenterSimulationCore {
             double missCost = Math.max(0.0, deadlineMissRate - missTarget);
             slaCostStep = missCost;
             slaCostEpisode = missCost;
+        } else if ("ontime_mi".equals(settings.getSlaMode()) && deadlineTotal > 0) {
+            // TB12 reward repair: MI-weighted punctuality contract, aligned with
+            // the verdict metric (ontime_mi_share) instead of eventual completion.
+            double ontimeCost = ontimeMiSlaCost(slaTarget, onTimeMiShare);
+            slaCostStep = ontimeCost;
+            slaCostEpisode = ontimeCost;
         } else {
             slaCostStep = Math.max(0.0, pendingRatio - slaPendingTarget);
             slaCostEpisode = Math.max(0.0, slaTarget - completionRateMi);
@@ -2641,6 +2669,9 @@ public class MultiDatacenterSimulationCore {
         stats.put("global_carbon_penalty_norm_last", lastGlobalCarbonPenaltyNorm);
         stats.put("global_carbon_penalty_norm_sum", epGlobalCarbonPenaltyNormSum);
         stats.put("global_carbon_penalty_norm_mean", currentStep > 0 ? epGlobalCarbonPenaltyNormSum / currentStep : 0.0);
+        // Cap-saturation monitor (TB12 reward audit): training gate stops on any hit.
+        stats.put("global_carbon_cap_count", epGlobalCarbonCapCount);
+        stats.put("global_carbon_max_ratio", epGlobalCarbonMaxRatio);
 
         // Add global reward breakdown (episode cumulative term sums)
         // r_global = α·L - β·Ĉ - γ·Rw

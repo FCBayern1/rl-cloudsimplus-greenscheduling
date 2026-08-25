@@ -36,3 +36,13 @@ def test_truth_table_detects_cap_arbitrage():
     assert tt["burst"]["sum_chat"] < tt["spread"]["sum_chat"]  # 奖励空间反转
     assert not tt["_order_match"]
     assert tt["burst"]["cap_hits"] >= 1
+
+
+def test_assert_year_consistency_locks_training_distribution():
+    import pytest
+    from tb12_reward_calib import assert_year_consistency
+    assert_year_consistency({"csv_year": 2021}, 2021)  # 通过
+    with pytest.raises(SystemExit):
+        assert_year_consistency({"csv_year": 2021}, 2020)  # 2020 事故复现
+    with pytest.raises(SystemExit):
+        assert_year_consistency({}, 2021)  # 缺键也拒绝

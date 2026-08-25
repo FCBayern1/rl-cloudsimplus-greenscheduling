@@ -1,4 +1,4 @@
-# P1 奖励分母标定 + P2 真值表(零训练) — 全判据通过,待 Codex 签预注册
+# P1 奖励分母标定 + P2 真值表(零训练) — 奖励一致性通过;clair 上界判据不通过
 
 日期:2026-08-25。脚本 `tb12_reward_calib.py`(+3 条纯函数测试,含封顶套利
 最小复现回归锚);判决 harness `tb12_run.py` 字节未动。
@@ -39,20 +39,35 @@ rl block 实际是 `csv_year: 2021` —— **训练分布是 T100+101/2021**,不
 - **ontime 分离**:always_defer ontime=0.0 → sla_mode 改 on-time MI 后它
   另挨 SLA 惩罚,双保险。
 
-## 一条诚实标注(非阻塞)
+## 判据结果的机械表述(Codex 更正 2026-08-25)
 
-Codex 真值表判据"clair 优于最强因果盲"在**物理层**池化不成立:clair 0.564 >
-greenfollow 0.519,由单偏移 off=4000 驱动(0.195 vs 0.088;其余 4 胜 1 平)。
-这是 2020 拟合 DP 跨年到 2021 的迁移损耗,是冻结策略的性质,不是奖励设计缺陷
-(奖励对物理严格同序)。对 RL 的含义:训练分布上 RL 的可学上限不必以 clair 为
-天花板参照,capture 判据的分母(盲−clair)在 held-out 判决对上另测,不受此影响。
+**奖励一致性真值表通过;预测价值/clair 上界判据在该校准格不通过**
+(clair 0.5637 > greenfollow 0.5193,由单偏移 off=4000 驱动:0.195 vs 0.088,
+其余 4 胜 1 平)。此失败项不阻塞奖励修复,但影响 capture 的解释(见下)。
 
-## 新预注册草案要素(待 Codex 签发,append-only 新 block)
+**原因更正**:本文初版把 off=4000 的反例解释为"2020 拟合 DP 跨年损耗"——
+**错误**。`tb12_run.py` 的 clair 臂调用的是 `coordinated_clair_contig`
+(在线读取当前 episode 完整未来风的启发式;2020 冻结 DP 表对应的是 dpcont 臂)。
+正确表述:**当前命名为 clair 的在线未来启发式并非全局最优调度器,其连续
+插入/协调规则在该窗口被 greenfollow 打败**。clair 不是理论上界。
 
-1. `carbon_normalization_fixed_max: 6.637e-3`(冻结自本标定,不得回调);
-   封顶保留但注册范围内零触发(或删除,由 Codex 定)。
-2. `sla_mode: ontime`(on-time MI 对齐判决合同);latest-start backstop margin
-   覆盖 600s 决策量化(≥720s)。
-3. global policy γ=1, λ=1(288 步有限 episode,碳信用全程无衰减)。
-4. 训练风 = T100+101/2021(csv_year 如实注册);判决 = 既有 capture 判据。
-5. 先 50k 烟测,三门:奖励改善与 kg 同向、on-time 不降、argmax 无全 defer。
+**capture 判据降格改名**(Codex 裁定):原"capture rate"更名
+**frozen-reference gap closure** = (盲−RL_fc)/(盲−clair_ref)。锁定:
+仅在池化 盲>clair_ref 时有定义;分母≤0 报 undefined 不反转解释;
+**RL_fc vs RL_nofc 才是 RL 使用预测的直接主判据**;gap closure 是相对
+冻结参考策略的次级强度指标,不得称"理论上限捕获率"。
+
+## 复现口径(Codex 补全要求)
+
+- 完整命令:`EVAL_CONFIG_PATH=$R/config_C.yml TB12_REQUIRE_FROZEN_JAR=0
+  .venv/bin/python tb12_reward_calib.py --year 2021
+  --json-out ../local_eval_rt/audit/tb12_reward_calib.json`(GATEWAY_LIBS unset)
+- 脚本 --year 默认已改 2021,新增 `assert_year_consistency`
+  (experiment csv_year == CLI year,启动前锁死,不依赖运行期哨兵)+ 单测。
+- artifact sha256 见 git 提交与下方哈希记录。
+
+## 后续(见 PREREG_RL_REPAIR_DRAFT.md)
+
+v2 配置块已 append-only 生成;ontime_mi SLA、720s backstop、cap 监控已实现
+并测试;**backstop 又揪出一个 2x runtime 低估 bug(per-PE 语义),已修**——
+详见预注册草案的实现清单。真值表在 v2 块上重跑,结果另记。

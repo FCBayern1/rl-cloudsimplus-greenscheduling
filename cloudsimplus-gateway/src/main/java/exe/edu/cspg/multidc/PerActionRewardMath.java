@@ -124,7 +124,12 @@ final class PerActionRewardMath {
     static boolean deadlineForceLatestStart(double nowSec, double deadlineSec,
                                             double lengthMi, long pes,
                                             double mipsPerPe, double slackSec) {
-        double runtime = lengthMi / (Math.max(1L, pes) * Math.max(1.0, mipsPerPe));
+        // TB12 audit 2026-08-25: CloudSim Cloudlet.getLength() is PER-PE MI, so
+        // runtime = length / mipsPerPe and does NOT shrink with pes. The old
+        // pes× division underestimated runtime 2x for 2-PE jobs and fired the
+        // backstop ~1.8h past latest start (always_defer ontime=0 despite
+        // slack 720). `pes` stays in the signature for call-site stability.
+        double runtime = lengthMi / Math.max(1.0, mipsPerPe);
         return nowSec + runtime + slackSec >= deadlineSec;
     }
 
