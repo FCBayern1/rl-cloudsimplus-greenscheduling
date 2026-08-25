@@ -25,7 +25,7 @@ from stage15_continuous import coordinated_blind_contig, coordinated_clair_conti
 from tb12_run import FrozenPolicies, load_scaled, run_episode, ROW_S
 
 EPS_W = 1.0        # 残差阈(W):godeye 干净时残差恒 0,任何持续失配都是异常
-M_CONSEC = 3       # 连续失配行数(检测延迟 = 3 行 = 30 分钟)
+M_CONSEC = 3       # 连续失配行数(默认 30 分钟;--m-consec 扫检测延迟代价曲线)
 
 
 def corrupt_series(w, mode, off, turbines, year):
@@ -41,14 +41,15 @@ def corrupt_series(w, mode, off, turbines, year):
     raise ValueError(mode)
 
 
-def trigger_row(w_true, w_corrupt, off, max_rows=300):
+def trigger_row(w_true, w_corrupt, off, max_rows=300, m_consec=None):
     """因果监视器:行 k 时比较 w_corrupt[off+k](昨步对本行的预报) 与实测
     w_true[off+k];连续 M 行失配 -> 在行 k 触发。返回触发行(相对 episode)。"""
+    m = m_consec if m_consec is not None else M_CONSEC
     consec = 0
     for k in range(max_rows):
         if abs(float(w_corrupt[off + k]) - float(w_true[off + k])) > EPS_W:
             consec += 1
-            if consec >= M_CONSEC:
+            if consec >= m:
                 return k
         else:
             consec = 0
@@ -81,6 +82,8 @@ def main():
     ap.add_argument("--mode", default="displaced", choices=("displaced", "stale"))
     ap.add_argument("--offsets", required=True)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--m-consec", type=int, default=None,
+                    help="检测确认窗(行):扫描审计器延迟->损伤代价曲线(5080 曲线的正确自变量)")
     ap.add_argument("--first-arrival-row", type=int, default=None,
                     help="部分损伤扫描(5080 2026-08-23):把全部到达整体前移,"
                          "使首作业落在第 K 行 —— 触发余量从 1 行变成负值,"
@@ -124,7 +127,7 @@ def main():
     results = []
     for off in [int(x) for x in a.offsets.split(",")]:
         w_ep, wc_ep = w[off:off + 300], wc[off:off + 300]
-        trig = trigger_row(w, wc, off)
+        trig = trigger_row(w, wc, off, m_consec=a.m_consec)
         jobs = pol._mkjobs(arrivals)
         plans = {
             "nowait": [j[3] for j in jobs],
