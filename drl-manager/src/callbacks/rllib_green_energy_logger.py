@@ -397,7 +397,10 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
             env_cfg = {}
         if not env_cfg.get("save_initial_checkpoint"):
             return
-        ck0_dir = os.path.join(algorithm.logdir, "checkpoint_ck0")
+        # v3 修正(Codex Step 2):ck0 直接落持久 storage_path(self.log_dir =
+        # entrypoint 的时间戳输出目录),不再依赖 /tmp/ray 的 working_dir 存续。
+        base = self.log_dir if self.log_dir else algorithm.logdir
+        ck0_dir = os.path.join(base, "checkpoint_ck0")
         algorithm.save_to_path(ck0_dir)   # raises on failure — ck0 is mandatory
         logger.info(f"[ck0] initial checkpoint saved to {ck0_dir}")
 

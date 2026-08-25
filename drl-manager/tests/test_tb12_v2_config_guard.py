@@ -94,3 +94,30 @@ def test_v2_smoke_values_pinned():
     assert c["defer_deadline_slack_sec"] == 720.0
     assert c["global_model"]["gamma"] == 1.0 and c["global_model"]["gae_lambda"] == 1.0
     assert c["csv_year"] == 2021
+
+
+# ---- v3 守卫(Codex Step 2, 2026-08-26):v2→v3 仅身份字段 ----
+
+def test_v2_to_v3_identity_only():
+    for pair in (("experiment_tb12_rl_fc_v2", "experiment_tb12_rl_fc_v3"),
+                 ("experiment_tb12_rl_nofc_v2", "experiment_tb12_rl_nofc_v3"),
+                 ("experiment_tb12_rl_fc_v2s50k", "experiment_tb12_rl_fc_v3s50k"),
+                 ("experiment_tb12_rl_nofc_v2s50k", "experiment_tb12_rl_nofc_v3s50k")):
+        d = diff_keys(load_config(pair[0]), load_config(pair[1]))
+        assert d == IDENTITY, f"{pair}: v3 含非身份变更 {sorted(d)}"
+
+
+def test_v3_pair_single_variable():
+    d = diff_keys(load_config("experiment_tb12_rl_fc_v3s50k"),
+                  load_config("experiment_tb12_rl_nofc_v3s50k"))
+    assert d == IDENTITY | {"forecast_mode"}, f"v3 配对不是单变量: {sorted(d)}"
+    d = diff_keys(load_config("experiment_tb12_rl_fc_v3"),
+                  load_config("experiment_tb12_rl_nofc_v3"))
+    assert d == IDENTITY | {"forecast_mode"}, f"v3 600k 配对不是单变量: {sorted(d)}"
+
+
+def test_v3_defer_base_cost_present():
+    # 修复使其生效的键必须在(值从 v1 起未变,防止静默丢失)
+    c = load_config("experiment_tb12_rl_fc_v3s50k")
+    assert c["defer_base_cost"] == 0.5
+    assert c["defer_cost_mode"] == "incremental_urgency"
