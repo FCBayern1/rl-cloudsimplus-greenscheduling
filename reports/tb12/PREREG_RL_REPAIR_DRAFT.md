@@ -25,7 +25,7 @@ P1_REWARD_CALIB(含 Codex 更正)。本文冻结后不得因结果回调。
 
 | 变更 | 位置 | 测试 |
 |---|---|---|
-| ontime_mi SLA 分支 + 静态 `ontimeMiSlaCost` | MultiDatacenterSimulationCore | SlaOntimeMiCostTest(7 例) |
+| ontime_mi SLA 分支 + 静态 `ontimeMiSlaCost` | MultiDatacenterSimulationCore | SlaOntimeMiCostTest(8 例) |
 | cap 监控 `global_carbon_cap_count/max_ratio`(export-only) | 同上(TOTAL+PER_MI 两路) | 行为中性,套件全绿 |
 | **backstop per-PE runtime 修复**:`deadlineForceLatestStart` 原用 length/(pes×mips),CloudSim length 为 per-PE → 2-PE 作业 runtime 低估 2x,backstop 晚开火 ~1.8h(v1 always_defer/RL 坍缩臂 ontime=0 的直接原因) | PerActionRewardMath | 真实 TB12 作业回归例 + 旧错误测试改正 |
 | 720s 量化覆盖(≥120s 保底) | 配置 + 数学测试 | slack720CoversControlQuantization600 |
@@ -74,3 +74,37 @@ tb12_reward_calib_v2.json sha256[:16]=4cc8fba40390a27b。
 命令:`EVAL_CONFIG_PATH=$R/config_C.yml TB12_REQUIRE_FROZEN_JAR=0
 .venv/bin/python tb12_reward_calib.py --experiment experiment_tb12_rl_fc_v2
 --json-out ../local_eval_rt/audit/tb12_reward_calib_v2.json`(GATEWAY_LIBS unset)。
+
+## 执行接线补齐(Codex 硬阻塞 8 项,2026-08-25 第二轮)
+
+1. **cap 硬止损已接通**:`GreenEnergyLoggerCallback.check_carbon_cap` 消费
+   Java 的 `global_carbon_cap_count/max_ratio`,写入训练 metrics;块开关
+   `carbon_cap_hard_stop: true`(v2/v2s50k)下任一 cap 命中抛 RuntimeError
+   立即停训。单测覆盖(启用抛/未启用只读/缺键容错)。
+2. **50k smoke 块已建**:`experiment_tb12_rl_{fc,nofc}_v2s50k`(append-only,
+   与 _v2 差分仅 total_timesteps 50000 / checkpoint_freq 50000 / 身份字段,
+   由守卫测试锁死)。
+3. **ck0 训练前固化**:`save_initial_checkpoint: true` 下
+   `on_algorithm_init` 保存 `checkpoint_ck0`(save_to_path,失败即抛,
+   ck0 为强制项)。
+4. **四门机械执行器**:`tb12_smoke_gate.py` —— ck0/ck50 × fc/nofc × 6 校准
+   offset,逐集采集 kg/reward/ontime/cap/forced/defer 比例/主动释放,
+   四门纯函数判定 + 单测 8 例(含 v1 事故指纹回归:reward↑ 而 kg 不降 → STOP)。
+5. **配置守卫**:`tests/test_tb12_v2_config_guard.py` 6 例 —— v1→v2 差分
+   精确等于白名单(五项修复+两开关+身份),fc↔nofc 单变量,v2→smoke 仅步数,
+   关键值 pin 死。
+6. **修复 jar 冻结**:`calib/tb12_repair_jar_manifest.json`(source_commit /
+   jar_sha256 / config_sha256),smoke gate 启动强制核验;训练由
+   `scripts/tb12_smoke_run.sh` 设 GATEWAY_LIBS 并核验后启动。
+7. SLA 测试计数已更正:8 例。
+8. **实验阶梯冻结(读取任何 50k 数据前)**:
+   - **50k**:只做健康四门,不宣布效果;T100+101/2021 六校准 offset。
+   - **300k**:诊断门 —— fc 相对 nofc 碳方向有利、SLA 合同通过、cap=0、
+     无全 defer 坍缩。
+   - **600k**:固定最终 checkpoint(ck 末),**不挑 ck**。
+   - **正式 held-out**:预注册 **T116+117/2021**(从未分析过;
+     T110–T115 已反复使用,退役),只在 600k 完成后首次读取。
+   - **正式主门**:RL_fc 相对 RL_nofc 聚合碳至少 **−5%**;ontime 全部合格;
+     cap=0;严格方向 **≥42/60**。次级强度指标:frozen-reference gap
+     closure ≥30%(仅池化 盲>clair_ref 时有定义)。
+   - **s2**:s1 正式门通过才启动预注册复刻;失败则保留负结果并停止。

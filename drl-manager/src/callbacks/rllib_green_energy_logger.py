@@ -382,6 +382,39 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         else:
             self.best_episode_file = None
 
+    # ------------------------------------------------------------------
+    # TB12 reward repair (Codex prereg 2026-08-25): ck0 + cap hard stop.
+    # ------------------------------------------------------------------
+    def on_algorithm_init(self, *, algorithm=None, metrics_logger=None, **kwargs):
+        """Persist the INITIAL (pre-training) checkpoint when the experiment
+        block sets save_initial_checkpoint — the 50k smoke gate compares
+        ck0 → ck50 and must not reconstruct ck0 after the fact."""
+        super().on_algorithm_init(algorithm=algorithm,
+                                  metrics_logger=metrics_logger, **kwargs)
+        try:
+            env_cfg = dict(getattr(algorithm.config, "env_config", None) or {})
+        except Exception:
+            env_cfg = {}
+        if not env_cfg.get("save_initial_checkpoint"):
+            return
+        ck0_dir = os.path.join(algorithm.logdir, "checkpoint_ck0")
+        algorithm.save_to_path(ck0_dir)   # raises on failure — ck0 is mandatory
+        logger.info(f"[ck0] initial checkpoint saved to {ck0_dir}")
+
+    @staticmethod
+    def check_carbon_cap(global_energy_stats, hard_stop_enabled):
+        """Return (cap_count, max_ratio); raise on any cap hit when the block
+        enables carbon_cap_hard_stop. Cap saturation silently erased 97% of
+        carbon in the TB12 v1 arms — a single hit invalidates the run."""
+        cap_count = int(global_energy_stats.get('global_carbon_cap_count', 0) or 0)
+        max_ratio = float(global_energy_stats.get('global_carbon_max_ratio', 0.0) or 0.0)
+        if hard_stop_enabled and cap_count > 0:
+            raise RuntimeError(
+                f"CARBON CAP HIT (count={cap_count}, max_ratio={max_ratio:.3f}) "
+                "— carbon_cap_hard_stop is enabled, stopping training (Codex "
+                "prereg 2026-08-25: any cap hit invalidates the reward signal)")
+        return cap_count, max_ratio
+
     def on_episode_step(
         self,
         *,
@@ -641,6 +674,15 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
         global_carbon_penalty_norm_mean = global_energy_stats.get('global_carbon_penalty_norm_mean', 0.0)
         global_carbon_penalty_norm_sum = global_energy_stats.get('global_carbon_penalty_norm_sum', 0.0)
 
+        # TB12 cap monitor (Codex prereg 2026-08-25): consume the Java-side
+        # saturation counters; hard-stop the trial on any hit when the block
+        # opts in via carbon_cap_hard_stop.
+        _cap_env_cfg = getattr(getattr(env_runner, "config", None), "env_config", {}) or {}
+        _cap_hard_stop = bool(_cap_env_cfg.get("carbon_cap_hard_stop")) \
+            if isinstance(_cap_env_cfg, dict) else False
+        global_carbon_cap_count, global_carbon_max_ratio = self.check_carbon_cap(
+            global_energy_stats, _cap_hard_stop)
+
         # Global reward component contributions (episode cumulative term sums)
         # r_global = α·L - β·Ĉ - γ·Rw
         global_term_local_sum = global_energy_stats.get('global_reward_term_local_sum', 0.0)
@@ -882,6 +924,8 @@ class GreenEnergyLoggerCallback(DefaultCallbacks):
                 'global_carbon_signal_sum': global_carbon_signal_sum,
                 'global_carbon_penalty_norm_mean': global_carbon_penalty_norm_mean,
                 'global_carbon_penalty_norm_sum': global_carbon_penalty_norm_sum,
+                'global_carbon_cap_count': global_carbon_cap_count,
+                'global_carbon_max_ratio': global_carbon_max_ratio,
                 'global_term_local_sum': global_term_local_sum,
                 'global_term_carbon_sum': global_term_carbon_sum,
                 'global_term_waste_sum': global_term_waste_sum,
