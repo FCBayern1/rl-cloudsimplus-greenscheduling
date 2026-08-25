@@ -679,13 +679,14 @@ public class MultiDatacenterSimulationCore {
                 //             deferUrgencyWindowSec, so near-deadline work is much costlier to defer.
                 double cost;
                 if ("incremental_urgency".equals(settings.getDeferCostMode())) {
-                    // V3.1: telescoping settlement −w·[U(now) − U(last)]. Base cost
-                    // is forced 0 (fresh work waits for free); the total charge over
-                    // a job's whole waiting life is −w·[U(final) − U(first)] no
-                    // matter how many times it re-enters the batch. First sighting
-                    // only records the baseline. Ledger entry survives (job stays
-                    // deferred); it is cleared when the job is finally routed.
-                    cost = settleUrgencyIncrement(cloudlet, ddl);
+                    // TB12 repair v3: charge the configured base opportunity
+                    // cost exactly once, on the first explicit defer. Later
+                    // sightings retain the telescoping urgency settlement, so
+                    // total cost remains independent of encounter count.
+                    cost = PerActionRewardMath.firstDeferBaseCharge(
+                            settings.getDeferBaseCost(),
+                            globalBroker.isCloudletDeferred(cloudlet));
+                    cost += settleUrgencyIncrement(cloudlet, ddl);
                 } else {
                     // legacy "flat": charged in full at EVERY sighting
                     double wBase = settings.getDeferBaseCost();
@@ -795,11 +796,9 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
-     * V3.1 incremental-urgency settlement for one sighting of a cloudlet.
-     * Charges −w·[U(now) − U(lastCharged)] and advances the ledger. The FIRST
-     * sighting only records the baseline (charge 0) — fresh work defers free,
-     * matching flat mode where a fresh route also pays no urgency. Returns 0
-     * when urgency is disabled or the cloudlet has no deadline.
+     * Incremental urgency settlement for one sighting of a cloudlet. Only
+     * deadline-carrying jobs with a positive urgency weight enter this ledger;
+     * first-defer identity is tracked by GlobalBroker's explicit-defer ledger.
      */
     private double settleUrgencyIncrement(Cloudlet cloudlet, Long ddl) {
         double wUrg = settings.getDeferUrgencyWeight();
@@ -809,10 +808,9 @@ public class MultiDatacenterSimulationCore {
         double uNow = PerActionRewardMath.urgency(
                 ddl - currentClock, settings.getDeferUrgencyWindowSec());
         Double uLast = deferUrgencyLedger.put(cloudlet.getId(), uNow);
-        if (uLast == null) {
-            return 0.0;
-        }
-        return PerActionRewardMath.urgencySettlement(wUrg, uNow, uLast);
+        return uLast == null
+                ? 0.0
+                : PerActionRewardMath.urgencySettlement(wUrg, uNow, uLast);
     }
 
     /**

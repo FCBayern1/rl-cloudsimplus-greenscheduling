@@ -157,6 +157,31 @@ public class PerActionRewardSurgeryTest {
     }
 
     @Test
+    public void incrementalModeChargesBaseExactlyOnceOnFirstExplicitDefer() {
+        double base = 0.5;
+        double first = PerActionRewardMath.firstDeferBaseCharge(base, false);
+        double repeatedBase = PerActionRewardMath.firstDeferBaseCharge(base, true);
+        double repeatedUrgency = PerActionRewardMath.urgencySettlement(
+                W_URGENCY, 0.25, 0.0);
+        double finalRoute = PerActionRewardMath.urgencySettlement(
+                W_URGENCY, 1.0, 0.25);
+
+        assertEquals(-base, first, 1e-12);
+        assertEquals(0.0, repeatedBase, 1e-12);
+        assertEquals(-W_URGENCY * 0.25, repeatedUrgency, 1e-12);
+        assertEquals(-W_URGENCY * 0.75, finalRoute, 1e-12);
+        assertEquals(-base - W_URGENCY,
+                first + repeatedBase + repeatedUrgency + finalRoute, 1e-12,
+                "base is charged once and urgency still telescopes");
+    }
+
+    @Test
+    public void incrementalModeDoesNotRepeatBaseAfterFirstDefer() {
+        assertEquals(0.0,
+                PerActionRewardMath.firstDeferBaseCharge(0.5, true), 1e-12);
+    }
+
+    @Test
     public void zscoreClipsAndCentersCorrectly() {
         assertEquals(0.0,
                 PerActionRewardMath.normalizeCarbon("centered_zscore", MU, NORMALIZER, MU, SIGMA), 1e-12);

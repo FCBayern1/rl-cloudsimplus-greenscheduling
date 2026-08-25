@@ -25,6 +25,10 @@ package exe.edu.cspg.multidc;
  *       {@code −w·[U(final) − U(first)]}, independent of how many times or at
  *       what intervals the job re-entered the batch. This replaces the flat
  *       per-encounter tax whose total grew with encounter count.</li>
+ *   <li>{@code firstDeferBaseCharge} adds the configured base opportunity
+ *       cost exactly once, on the first explicit DEFER. Later sightings and
+ *       the final route carry only the telescoping urgency increment. This
+ *       keeps waiting non-free without reintroducing encounter-count bias.</li>
  *   <li>{@code normalizeCarbon} "centered_zscore" deliberately adds a
  *       {@code +w·μ/σ} advantage to below-mean-carbon routes relative to
  *       defer. That constant is NOT an accident of normalisation: it defines
@@ -67,6 +71,11 @@ final class PerActionRewardMath {
     /** Incremental urgency settlement {@code −w·[uNow − uLast]}. */
     static double urgencySettlement(double wUrgency, double uNow, double uLast) {
         return -wUrgency * (uNow - uLast);
+    }
+
+    /** Base opportunity cost for the first explicit defer only. */
+    static double firstDeferBaseCharge(double baseCost, boolean alreadyDeferred) {
+        return alreadyDeferred ? 0.0 : -Math.max(0.0, baseCost);
     }
 
     /**

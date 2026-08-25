@@ -244,9 +244,10 @@ public class SimulationSettings {
      *  between DCs unchanged). */
     private final String perActionCompletionMode;
     /** defer_cost_mode — "flat" (legacy: −base −w·U charged at EVERY sighting) |
-     *  "incremental_urgency" (telescoping −w·[U(now)−U(last)], settled at every
-     *  sighting incl. the final route so a job cannot escape its last waiting
-     *  segment; base cost forced 0; U(s)=clip(1−s/W,0,1)²). */
+     *  "incremental_urgency" (−base once on the first explicit defer, plus
+     *  telescoping −w·[U(now)−U(last)] settled at every later sighting incl.
+     *  the final route, so cost is independent of encounter count and a job
+     *  cannot escape its last waiting segment; U(s)=clip(1−s/W,0,1)²). */
     private final String deferCostMode;
     /** per_action_carbon_norm — "fixed" (legacy kg/normalizer) | "scale_only"
      *  (kg/σ, physical zero kept) | "centered_zscore" (clip((kg−μ)/σ,±5); the
