@@ -307,6 +307,44 @@ def loo_direction(ck0, data, index_qy, steps, lr, batch_size, seed):
     return {"held_out_ok_if_gating": ok, "per_fold_movement": folds, **det}
 
 
+def raw_feature_diagnostic(data, steps, lr, batch_size, seed):
+    """事后诊断(非判据):跳过 q,直接在**原始逐作业特征**上训同容量 MLP。
+    区分断点位置 —— 若原始特征上 fc 明显优于 nofc,断点在 trunk/q(表示未
+    携带预报);若原始特征上也无优势,断点在**特征定义本身**(预报特征不
+    区分 clair↔greenfollow 分歧的那些情形)。"""
+    import torch
+    keys = sorted(k for k in data[list(data)[0]]["obs_seq"][0]
+                  if k.startswith("batch_cloudlet_"))
+    X, Y = [], []
+    for off, ep in data.items():
+        rel_cl = ep["clair_releases_sorted"]
+        for t, obs in enumerate(ep["obs_seq"]):
+            cols = {k: np.asarray(obs[k], dtype=float).reshape(-1) for k in keys}
+            for slot, rank in ep["slotmaps"].get(t, {}).items():
+                if rank >= len(rel_cl):
+                    continue
+                X.append([cols[k][int(slot)] for k in keys])
+                Y.append(1.0 if clair_hold_label(rel_cl[rank], t) else 0.0)
+    X = np.asarray(X, dtype=np.float64)
+    # 量纲修正(2026-08-26):原始 obs 未归一化(batch_cloudlet_mi=5.76e8),
+    # 直接喂 Linear 会饱和 Tanh 退化为常数输出。生产模型在
+    # _forward_pass 里做 per_cloudlet*_cloudlet_scale;诊断用 z-score
+    # 等价处理,并丢弃零方差列(mi/pes/deadline_present 在 TB12 恒定)。
+    sd = X.std(axis=0)
+    keep = sd > 1e-12
+    dropped = [k for k, kp in zip(keys, keep) if not kp]
+    X = (X[:, keep] - X[:, keep].mean(axis=0)) / sd[keep]
+    keys = [k for k, kp in zip(keys, keep) if kp]
+    X = torch.tensor(X, dtype=torch.float32)
+    Y = torch.tensor(np.asarray(Y), dtype=torch.float32)
+    torch.manual_seed(seed)
+    mlp = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 64), torch.nn.Tanh(),
+                              torch.nn.Linear(64, 1))
+    _, fit = train_gate(mlp, X, Y, steps, lr, batch_size, seed)
+    return {"features": keys, "n_feat": int(X.shape[1]),
+            "dropped_constant": dropped, "standardized": True, **fit}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=None,
@@ -362,6 +400,13 @@ def main():
         print(f"[BC {tag:>5}] 留一诊断(非判据): 移动 "
               f"{loo.get('pooled_movement', float('nan')):+.4f} "
               f"pos={loo.get('offsets_positive', 0)}/{loo.get('offsets_valid', 0)}",
+              flush=True)
+
+    for tag, data in (("fc", fc), ("nofc", nofc)):
+        rd = raw_feature_diagnostic(data, a.steps, a.lr, a.batch_size, a.seed)
+        res[tag]["raw_feature_diagnostic"] = rd
+        print(f"[BC {tag:>5}] 原始特征诊断(非判据,跳过 q): "
+              f"acc={rd['acc']:.4f} loss={rd['loss']:.4f} n_feat={rd['n_feat']}",
               flush=True)
 
     ok, verdict = bc_probe_verdict(
