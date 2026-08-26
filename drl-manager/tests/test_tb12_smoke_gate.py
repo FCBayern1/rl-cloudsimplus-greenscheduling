@@ -62,3 +62,13 @@ def test_cap_hard_stop_raises_only_when_enabled():
     # 未启用 -> 只读数不抛(legacy 行为不变)
     assert GreenEnergyLoggerCallback.check_carbon_cap(stats, False) == (2, 4.2)
     assert GreenEnergyLoggerCallback.check_carbon_cap({}, True) == (0, 0.0)
+
+
+def test_smoke_chain_references_v3s50k_not_v2():
+    # Codex ①防回归:runner 与 gate 不得再指向 v2s50k
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for f in ("scripts/tb12_smoke_run.sh", "tb12_smoke_gate.py"):
+        txt = (root / f).read_text()
+        assert "v2s50k" not in txt, f"{f} 仍引用 v2s50k"
+        assert "v3s50k" in txt, f"{f} 未指向 v3s50k"

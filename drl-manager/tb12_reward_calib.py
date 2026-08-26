@@ -148,7 +148,12 @@ def episode_step_kg(env_cfg, off, releases, arrivals, turbines, ref_series):
                     continue
                 j = released + k
                 slotmap[i] = j                      # 槽 i -> 到达序作业 j
-                hold = (j < len(rel_sorted) and now < rel_sorted[j] - 1e-9)
+                # Codex ④(2026-08-26):作业在到达所在窗口起点即被呈现;释放
+                # 判据 = 计划释放落在当前窗 [t·Δ,(t+1)·Δ) 之前或之内即路由。
+                # nowait 首次 eligible 立即 route(不再吃量化 hold 的 -base);
+                # 边界对齐的计划(greenfollow/clair 全部落行边界)行为不变。
+                hold = (j < len(rel_sorted)
+                        and rel_sorted[j] >= now + ROW_S - 1e-9)
                 acts.append(1 if hold else 0)
                 k += 1
             released += sum(1 for i in range(batch) if mi[i] > 0 and acts[i] == 0)

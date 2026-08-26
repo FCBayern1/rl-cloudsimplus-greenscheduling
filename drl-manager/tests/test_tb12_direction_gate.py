@@ -1,77 +1,81 @@
-"""方向门纯函数测试(Codex Step 3 附加门口径)。"""
+"""方向门纯函数测试(Codex ② 重做版:分歧作业 signed 移动)。"""
 import pathlib
 import sys
 
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from tb12_direction_gate import (direction_gate_verdict, pooled_auc,
+from tb12_direction_gate import (movement_gate_verdict, pooled_auc,
                                  worthy_labels, GAP_MIN)
 
 
-def mk(off, worthy, p):
-    return {"offset": off, "job_rank": 0, "worthy": worthy,
-            "p_hold": p, "logit_margin": 0.0}
+def mk(off, target_hold, p0, p5):
+    return {"offset": off, "job_rank": 0, "target_hold": target_hold,
+            "p_ck0": p0, "p_ck50": p5}
 
 
-def test_clean_separation_passes():
+def test_correct_movement_both_directions_passes():
+    # clair 说等的 p_hold 上移,clair 说走的下移 -> PASS
     samples = []
-    for off in range(6):
-        samples += [mk(off, True, 0.8), mk(off, False, 0.2)]
-    ok, d = direction_gate_verdict(samples)
-    assert ok and d["mean_gap"] > GAP_MIN and d["offsets_positive"] == 6
-    assert abs(d["pooled_auc_diagnostic"] - 1.0) < 1e-12
+    for off in range(5):
+        samples += [mk(off, True, 0.5, 0.7), mk(off, False, 0.5, 0.3)]
+    ok, d = movement_gate_verdict(samples)
+    assert ok and abs(d["pooled_movement"] - 0.2) < 1e-12
+    assert d["offsets_valid"] == 5 and d["offsets_positive"] == 5
 
 
-def test_uniform_p_hold_fails_gap():
-    # v2 事故指纹:p_hold 全 1.0(全 defer)→ 无分离 → FAIL
+def test_uniform_drift_up_fails():
+    # 全体 p_hold 同涨(defer 漂移):target=route 的样本贡献负移动 -> 池化 0
     samples = []
-    for off in range(6):
-        samples += [mk(off, True, 1.0), mk(off, False, 1.0)]
-    ok, d = direction_gate_verdict(samples)
-    assert not ok and abs(d["mean_gap"]) < 1e-12
+    for off in range(5):
+        samples += [mk(off, True, 0.5, 0.7), mk(off, False, 0.5, 0.7)]
+    ok, d = movement_gate_verdict(samples)
+    assert not ok and abs(d["pooled_movement"]) < 1e-12
 
 
-def test_empty_class_is_undefined_fail():
-    ok, d = direction_gate_verdict([mk(0, True, 0.9), mk(1, True, 0.8)])
-    assert not ok and not d["both_classes_nonempty"]
+def test_frozen_policy_zero_movement_fails():
+    samples = [mk(off, bool(off % 2), 0.6, 0.6) for off in range(5)]
+    ok, d = movement_gate_verdict(samples)
+    assert not ok and d["pooled_movement"] == 0.0
 
 
-def test_gap_threshold_around_0p05():
-    def run(hi, lo):
-        samples = []
-        for off in range(6):
-            samples += [mk(off, True, hi), mk(off, False, lo)]
-        return direction_gate_verdict(samples)
-    ok_hi, d_hi = run(0.551, 0.50)     # gap 0.051 > 0.05 -> PASS
-    assert ok_hi and d_hi["mean_gap"] > GAP_MIN
-    ok_lo, d_lo = run(0.549, 0.50)     # gap 0.049 < 0.05 -> FAIL
-    assert not ok_lo and d_lo["mean_gap"] < GAP_MIN
+def test_no_disagreement_undefined_fail():
+    ok, d = movement_gate_verdict([])
+    assert not ok and d["undefined"] == "no_disagreement_samples"
 
 
-def test_offsets_positive_minimum_4_of_6():
-    samples = []
-    for off in range(4):                       # 4 个正向
-        samples += [mk(off, True, 0.9), mk(off, False, 0.1)]
-    for off in (4, 5):                         # 2 个反向
-        samples += [mk(off, True, 0.1), mk(off, False, 0.9)]
-    ok, d = direction_gate_verdict(samples)
-    assert d["offsets_positive"] == 4 and ok
-    # 3/6 则 FAIL
-    samples2 = samples[:6] + [mk(3, True, 0.1), mk(3, False, 0.9)] \
-        + samples[8:]
-    ok2, d2 = direction_gate_verdict(samples2)
-    assert d2["offsets_positive"] < 4 and not ok2
+def test_fewer_than_4_valid_offsets_fails_even_if_positive():
+    samples = [mk(off, True, 0.4, 0.9) for off in range(3)]   # 仅 3 个有效 offset
+    ok, d = movement_gate_verdict(samples)
+    assert not ok and d["offsets_valid"] == 3
 
 
-def test_auc_handles_ties():
-    assert pooled_auc([0.5], [0.5]) == 0.5
-    assert pooled_auc([0.9, 0.8], [0.1]) == 1.0
+def test_4_of_5_positive_passes_3_of_5_fails():
+    good = [mk(off, True, 0.4, 0.8) for off in range(4)]       # 4 正
+    bad1 = [mk(4, True, 0.8, 0.4)]                             # 1 负
+    ok, d = movement_gate_verdict(good + bad1)
+    assert ok and d["offsets_positive"] == 4
+    bad2 = [mk(3, True, 0.8, 0.2), mk(4, True, 0.8, 0.2)]
+    ok2, d2 = movement_gate_verdict(good[:3] + bad2)
+    assert not ok2 and d2["offsets_positive"] == 3
+
+
+def test_pooled_threshold_gap_min():
+    hi = [mk(off, True, 0.5, 0.5 + 0.051) for off in range(5)]
+    ok, _ = movement_gate_verdict(hi)
+    assert ok
+    lo = [mk(off, True, 0.5, 0.5 + 0.049) for off in range(5)]
+    ok2, d2 = movement_gate_verdict(lo)
+    assert not ok2 and d2["pooled_movement"] < GAP_MIN
+
+
+def test_auc_helper_still_sane():
+    assert pooled_auc([0.9], [0.1]) == 1.0
     assert np.isnan(pooled_auc([], [0.1]))
 
 
 def test_worthy_labels_from_teacher_releases():
     arrivals = np.array([0.0, 1200.0, 2400.0])
-    releases = [0.0, 4800.0, 2400.0]          # 作业1 等待,0/2 立即
+    releases = [0.0, 4800.0, 2400.0]
     lab = worthy_labels(releases, arrivals)
     assert lab == {0: False, 1: True, 2: False}

@@ -13,10 +13,10 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 .venv/bin/python -c "from tb12_smoke_gate import verify_repair_jar; verify_repair_jar()"
 
 for ARM in fc nofc; do
-  echo "[SMOKE] tb12_rl_${ARM}_v2s50k train start $(date '+%m-%d %H:%M')"
+  echo "[SMOKE] tb12_rl_${ARM}_v3s50k train start $(date '+%m-%d %H:%M')"
   .venv/bin/python entrypoint_rlmodule_gtrxl.py \
     --config "$R/config_C.yml" \
-    --experiment "experiment_tb12_rl_${ARM}_v2s50k"
+    --experiment "experiment_tb12_rl_${ARM}_v3s50k"
   echo "[SMOKE] ${ARM} train exit rc=$? $(date '+%m-%d %H:%M')"
 done
 echo "SMOKE TRAIN DONE — 用 tb12_smoke_gate.py 对 ck0/ck50 跑四门"

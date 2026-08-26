@@ -9,13 +9,16 @@ corpus 构建(--build):每偏移用 teacher(greenfollow 冻结释放计划)驱�
 episode,记录整段 obs 序列 + 每个作业的首次 eligible decision(步,槽)+
 worthy 标签(teacher 释放时刻 > 到达 + 半步 ⇒ 值得等)。npz 落盘并记 sha256。
 
-判定(--judge,对 ck0/ck50 各跑):
-  - 每作业只取首次 eligible decision 的 p_hold;
-  - 两类样本必须都非空,否则 undefined → FAIL;
-  - mean p_hold(worthy) − mean p_hold(not_worth) ≥ +0.05;
-  - 六偏移中 ≥4 个方向为正;
-  - pooled AUC 仅作连续诊断,不设阈值;
-  - 同时报 p_hold 分位数与 logit margin。
+判定(Codex ② 重做,2026-08-26):greenfollow 标签只有 3 个 offset 同时含
+两类(≥4/6 数学不可达)且不能证明预测载重 —— 改为:
+  - corpus 仍 = greenfollow 固定驱动;
+  - 只取 **clair 与 greenfollow 分歧** 的作业,以 clair 为目标方向;
+  - 判定量 = fc 从 ck0→ck50 的 signed p_hold 移动
+    (target=hold ⇒ +Δp;target=route ⇒ −Δp);
+  - 池化 mean movement ≥ +0.05;
+  - 有效 offset(含 ≥1 分歧作业,预期 5 个)中 ≥4 个方向为正;
+    有效数 <4 ⇒ undefined FAIL;
+  - 每作业只取首次 eligible decision;附 p_hold 分位数与 logit margin。
 训练侧诊断(采样 defer 率、defer/route advantage、TD residual)由
 report_training_diagnostics 从 progress.csv 读取。
 """
@@ -67,6 +70,31 @@ def pooled_auc(p_worthy, p_not):
             elif a == b:
                 ties += 1
     return (wins + 0.5 * ties) / (len(p_worthy) * len(p_not))
+
+
+def movement_gate_verdict(samples, gap_min=GAP_MIN,
+                          offsets_positive_min=OFFSETS_POSITIVE_MIN):
+    """samples: [{offset, job_rank, target_hold, p_ck0, p_ck50}](仅分歧作业)。
+    movement = (p_ck50 − p_ck0) × (+1 if target_hold else −1)。机械判定。"""
+    if not samples:
+        return False, {"undefined": "no_disagreement_samples"}
+    movs = [(s_["p_ck50"] - s_["p_ck0"]) * (1.0 if s_["target_hold"] else -1.0)
+            for s_ in samples]
+    pooled = float(np.mean(movs))
+    per_off = {}
+    for s_, m in zip(samples, movs):
+        per_off.setdefault(s_["offset"], []).append(m)
+    signs = {off: float(np.mean(ms)) > 0 for off, ms in per_off.items()}
+    n_valid = len(signs)
+    n_pos = sum(signs.values())
+    ok = pooled >= gap_min and n_valid >= offsets_positive_min \
+        and n_pos >= offsets_positive_min
+    return ok, {"pooled_movement": pooled, "gap_min": gap_min,
+                "offsets_valid": n_valid, "offsets_positive": n_pos,
+                "offsets_positive_min": offsets_positive_min,
+                "per_offset_mean_movement": {str(k): float(np.mean(v))
+                                             for k, v in per_off.items()},
+                "n_samples": len(samples)}
 
 
 def direction_gate_verdict(samples):
@@ -135,7 +163,9 @@ def build_corpus_episode(cfg0, off, releases, arrivals, ref_series):
                 j = released + k                    # 到达序第 j 个作业占此槽
                 if j not in first_seen:
                     first_seen[j] = (t, i)          # 实测首次 eligible (步,槽)
-                hold = (j < len(rel_sorted) and t * ROW_S < rel_sorted[j] - 1e-9)
+                # 与校准 runner 同一量化语义(Codex ④):窗内释放即路由
+                hold = (j < len(rel_sorted)
+                        and rel_sorted[j] >= t * ROW_S + ROW_S - 1e-9)
                 acts.append(1 if hold else 0)
                 k += 1
             released += sum(1 for i in range(batch)
@@ -164,24 +194,33 @@ def build_corpus(experiment, out_path):
     for off in CALIB_OFFSETS:
         w_ep = ref[off:off + 300]
         rel = pol.releases("greenfollow", w_ep, arrivals)      # 冻结 teacher
+        rel_clair = pol.releases("clair", w_ep, arrivals)      # 目标策略
         order = np.argsort(arrivals)
-        labels = worthy_labels(rel, arrivals)
+        gf = worthy_labels(rel, arrivals)
+        cl = worthy_labels(rel_clair, arrivals)
         # rank(到达序) -> 原作业号,与 run 循环的 j 语义一致
-        rank_worthy = {rank: labels[int(j)] for rank, j in enumerate(order)}
+        rank_worthy = {rank: gf[int(j)] for rank, j in enumerate(order)}
+        rank_clair = {rank: cl[int(j)] for rank, j in enumerate(order)}
+        disagree = {rank: rank_clair[rank] for rank in rank_worthy
+                    if rank_worthy[rank] != rank_clair[rank]}   # rank -> target_hold
         obs_seq, first_seen = build_corpus_episode(cfg0, off, rel, arrivals, ref)
         data[str(off)] = {"obs_seq": obs_seq, "first_seen": first_seen,
                           "worthy_by_rank": rank_worthy,
-                          "teacher_releases": [float(r) for r in rel]}
-        n_w = sum(rank_worthy.values())
+                          "clair_by_rank": rank_clair,
+                          "disagree_targets": disagree,
+                          "teacher_releases": [float(r) for r in rel],
+                          "clair_releases": [float(r) for r in rel_clair]}
         print(f"[CORPUS off={off:>6}] steps={len(obs_seq)} jobs={len(first_seen)} "
-              f"worthy={n_w}/{len(rank_worthy)}", flush=True)
+              f"gf_worthy={sum(rank_worthy.values())}/5 分歧={len(disagree)} "
+              f"targets={disagree}", flush=True)
     np.savez_compressed(out_path, corpus=np.array([data], dtype=object),
                         experiment=experiment)
     print(f"CORPUS SAVED {out_path} sha256={corpus_sha(out_path)[:16]}", flush=True)
 
 
 # ---------------------------------------------------------------- p_hold 判定
-def judge(ckpt, corpus_path, json_out, tag):
+def read_p_hold(ckpt, data):
+    """在冻结 corpus 上逐步推进 GTrXL 状态,返回 {(offset,rank): (p_hold, margin)}。"""
     import torch
     from tb12_rl_eval import FullActionHead
     from ray.rllib.core.columns import Columns
@@ -207,35 +246,51 @@ def judge(ckpt, corpus_path, json_out, tag):
             lg = logits.reshape(self.n_slots, n_opt)
             return torch.softmax(lg, -1).numpy(), lg.numpy()
 
-    raw = np.load(corpus_path, allow_pickle=True)
-    data = raw["corpus"][0]
     head = ProbHead(pathlib.Path(ckpt).resolve())
-    samples = []
+    out = {}
     for off, ep in data.items():
         head.reset()
-        want = {int(t): [] for t, _ in ep["first_seen"].values()}
+        want = {}
         for rank, (t, slot) in ep["first_seen"].items():
-            want[int(t)].append((int(rank), int(slot)))
+            want.setdefault(int(t), []).append((int(rank), int(slot)))
         for t, obs in enumerate(ep["obs_seq"]):
             probs, logits = head.step_probs(obs)     # 状态必须逐步推进
             for rank, slot in want.get(t, []):
                 n_opt = probs.shape[1]
                 defer_idx = n_opt - 1                # 选项 = [dc0..dcN-1, defer]
-                samples.append({
-                    "offset": int(off), "job_rank": rank,
-                    "worthy": bool(ep["worthy_by_rank"][rank]),
-                    "p_hold": float(probs[slot, defer_idx]),
-                    "logit_margin": float(logits[slot, defer_idx]
-                                          - logits[slot, :defer_idx].max()),
-                })
-    ok, det = direction_gate_verdict(samples)
-    print(f"[DIRECTION {tag}] {'PASS' if ok else '**FAIL**'} "
-          f"gap={det['mean_gap']:.4f} pos={det['offsets_positive']}/"
-          f"{det['offsets_defined']} AUC={det['pooled_auc_diagnostic']:.3f}",
-          flush=True)
+                out[(int(off), rank)] = (
+                    float(probs[slot, defer_idx]),
+                    float(logits[slot, defer_idx] - logits[slot, :defer_idx].max()))
+    return out
+
+
+def judge_movement(ck0, ck50, corpus_path, json_out):
+    """Codex ② 门:分歧作业上 fc 的 ck0→ck50 signed p_hold 移动。"""
+    raw = np.load(corpus_path, allow_pickle=True)
+    data = raw["corpus"][0]
+    p0 = read_p_hold(ck0, data)
+    p5 = read_p_hold(ck50, data)
+    samples = []
+    for off, ep in data.items():
+        for rank, target_hold in ep["disagree_targets"].items():
+            key = (int(off), int(rank))
+            if key in p0 and key in p5:
+                samples.append({"offset": int(off), "job_rank": int(rank),
+                                "target_hold": bool(target_hold),
+                                "p_ck0": p0[key][0], "p_ck50": p5[key][0],
+                                "margin_ck0": p0[key][1], "margin_ck50": p5[key][1]})
+    ok, det = movement_gate_verdict(samples)
+    qs = {tag: {f"p{q}": float(np.percentile([s[f"p_{tag}"] for s in samples], q))
+                for q in (10, 50, 90)} if samples else {}
+          for tag in ("ck0", "ck50")}
+    print(f"[DIRECTION-MOVE] {'PASS' if ok else '**FAIL**'} "
+          f"pooled={det.get('pooled_movement', float('nan')):.4f} "
+          f"pos={det.get('offsets_positive', 0)}/{det.get('offsets_valid', 0)} "
+          f"n={det.get('n_samples', 0)}", flush=True)
     pathlib.Path(json_out).write_text(json.dumps(
-        {"tag": tag, "ckpt": str(ckpt), "corpus_sha256": corpus_sha(corpus_path),
-         "ok": ok, "detail": det, "samples": samples}, indent=1))
+        {"ck0": str(ck0), "ck50": str(ck50),
+         "corpus_sha256": corpus_sha(corpus_path), "ok": ok, "detail": det,
+         "p_hold_quantiles": qs, "samples": samples}, indent=1))
     return ok
 
 
@@ -259,15 +314,14 @@ def main():
     ap.add_argument("--build", action="store_true")
     ap.add_argument("--experiment", default="experiment_tb12_rl_fc_v3s50k")
     ap.add_argument("--corpus", required=True)
-    ap.add_argument("--judge-ckpt", default=None)
-    ap.add_argument("--tag", default="ck")
-    ap.add_argument("--json-out", default=None)
+    ap.add_argument("--ck0", default=None)
+    ap.add_argument("--ck50", default=None)
+    ap.add_argument("--json-out", default="direction_movement.json")
     a = ap.parse_args()
     if a.build:
         build_corpus(a.experiment, a.corpus)
-    if a.judge_ckpt:
-        ok = judge(a.judge_ckpt, a.corpus, a.json_out
-                   or f"direction_{a.tag}.json", a.tag)
+    if a.ck0 and a.ck50:
+        ok = judge_movement(a.ck0, a.ck50, a.corpus, a.json_out)
         sys.exit(0 if ok else 2)
 
 

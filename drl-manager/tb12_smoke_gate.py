@@ -182,8 +182,8 @@ def main():
     man = verify_repair_jar()
     ref = load_scaled((100, 101), 2021)
     runs = {}
-    for arm, exp in (("fc", "experiment_tb12_rl_fc_v2s50k"),
-                     ("nofc", "experiment_tb12_rl_nofc_v2s50k")):
+    for arm, exp in (("fc", "experiment_tb12_rl_fc_v3s50k"),
+                     ("nofc", "experiment_tb12_rl_nofc_v3s50k")):
         for ck in ("ck0", "ck50"):
             runs[f"{arm}_{ck}"] = run_ck(exp, getattr(a, f"{arm}_{ck}"),
                                          CALIB_OFFSETS, ref)
@@ -201,15 +201,18 @@ def main():
     g4_ok, g4 = gate4_information(
         {r["offset"]: r["carbon_kg"] for r in runs["fc_ck50"]},
         {r["offset"]: r["carbon_kg"] for r in runs["nofc_ck50"]})
+    # Codex v3 修订(2026-08-26):50k 的 argmax 坍缩门降为【诊断】,放行权
+    # 归概率方向门(tb12_direction_gate);300k 恢复行为硬门。
     verdict = {"G1_reward_physics": {"ok": g1_ok, "per_arm": g1},
                "G2_sla": {"ok": g2_ok, **g2},
-               "G3_collapse": {"ok": g3_ok, **g3},
+               "G3_collapse_diagnostic": {"ok": g3_ok, "gating": False, **g3},
                "G4_information": {"ok": g4_ok, **g4},
-               "ALL_PASS": g1_ok and g2_ok and g3_ok and g4_ok}
-    for k in ("G1_reward_physics", "G2_sla", "G3_collapse", "G4_information"):
+               "ALL_PASS": g1_ok and g2_ok and g4_ok}
+    for k in ("G1_reward_physics", "G2_sla", "G4_information"):
         print(f"[GATE] {k}: {'PASS' if verdict[k]['ok'] else '**FAIL**'}", flush=True)
-    print(f"[GATE] ALL: {'PASS -> 允许 300k' if verdict['ALL_PASS'] else 'STOP'}",
-          flush=True)
+    print(f"[GATE] G3_collapse(诊断,不拦): {'PASS' if g3_ok else 'FAIL(记录)'}", flush=True)
+    print(f"[GATE] 硬门(G1+G2+G4): {'PASS' if verdict['ALL_PASS'] else 'STOP'}"
+          f" —— 放行还需概率方向门(tb12_direction_gate)", flush=True)
     pathlib.Path(a.json_out).write_text(json.dumps(
         {"manifest": man, "checkpoints": {k: getattr(a, k) for k in
                                           ("fc_ck0", "fc_ck50", "nofc_ck0", "nofc_ck50")},

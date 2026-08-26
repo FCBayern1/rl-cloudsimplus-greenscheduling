@@ -108,3 +108,30 @@ tb12_reward_calib_v2.json sha256[:16]=4cc8fba40390a27b。
      cap=0;严格方向 **≥42/60**。次级强度指标:frozen-reference gap
      closure ≥30%(仅池化 盲>clair_ref 时有定义)。
    - **s2**:s1 正式门通过才启动预注册复刻;失败则保留负结果并停止。
+
+## v3 修订(Codex 四项,2026-08-26,读取任何 50k 数据前冻结)
+
+① smoke runner/gate 全部指向 _v3s50k,防回归测试锁死(文件内容级断言,
+   `test_smoke_chain_references_v3s50k_not_v2`)。
+② **方向门重做**:greenfollow 标签仅 3 offset 含两类(≥4/6 不可达)且不证明
+   预测载重,废弃;改为 greenfollow 固定 corpus、仅取 clair↔greenfollow
+   **分歧作业**、以 clair 为目标,判定 fc 的 ck0→ck50 **signed p_hold 移动**
+   (target=hold ⇒ +Δp / target=route ⇒ −Δp):池化 ≥ +0.05,有效 offset
+   (含 ≥1 分歧)中 ≥4 正向,有效数 <4 ⇒ undefined FAIL。实测 corpus 分歧
+   分布 {4000:1, 12000:1, 20000:0, 28000:3, 36000:1, 44000:5},**有效
+   offset = 5**,样本 11。均匀 defer 漂移在 signed 度量下自动抵消(单测锁)。
+③ 门位阶(冻结):**50k 放行 = G1+G2+G4 + 方向门**;旧 argmax 坍缩门(G3)
+   在 50k **降为诊断**只记录不拦;**300k 恢复行为硬门**(G3 原判据)。
+④ 不豁免首 defer −0.5:校准 runner 量化语义修正(计划释放落当前 600s 窗内
+   即路由,nowait 首次 eligible 立即 route),真值表+计费审计重跑
+   **PASS 全格**(同序 greenfollow 0.51425 < clair 0.56195 < nowait 1.12363
+   < always_defer 1.23340;cap 0;哨兵全过)。
+
+### 冻结哈希(v3 执行基线)
+- jar_sha256: 940078777d788d68…(source 13348ae5673d,manifest 已入库)
+- config_C.yml sha256: 2f31042f5e38adba…(与 manifest 一致,未变)
+- direction corpus: calib/tb12_direction_corpus_v3.npz
+  sha256=4c9577eb6064c6bcc…(完整值见下行哈希记录)
+- 真值表 artifact: tb12_reward_calib_v3b.json
+4c9577eb6064c6bcaa6a8b21d9ca2c51b0483b5f33498054db8bb22b53053950  drl-manager/calib/tb12_direction_corpus_v3.npz
+c5809237b017efa73ba199c9478d80d9cd8fed63ee0db64d36674181a29a4437  local_eval_rt/audit/tb12_reward_calib_v3b.json
