@@ -98,3 +98,81 @@ def test_frozen_offset_spec_is_nonoverlapping_and_uniform():
     assert sorted(o for v in blocks.values() for o in v) == sorted(offs)
     for v in blocks.values():                      # 每块时间连续
         assert v == sorted(v) and len(v) == 12
+
+
+# ---- Run 2 仪器修复:每作业等权/作业内类别平衡(Codex 冻结的四项测试)----
+
+def _idx(spec):
+    """spec: {(offset, rank): [y, y, ...]} -> (index, y)"""
+    index, y = [], []
+    for (off, rank), ys in spec.items():
+        for t, yy in enumerate(ys):
+            index.append((off, t, 0, rank))
+            y.append(float(yy))
+    return index, np.asarray(y)
+
+
+def test_weight_job_waiting_1_step_equals_job_waiting_20_steps():
+    """测试①:等 1 步与等 20 步的作业**总权重相同**。"""
+    from tb12_repr_audit import per_job_balanced_weights
+    index, y = _idx({(0, 0): [1, 0],                    # 等 1 步后释放
+                     (0, 1): [1] * 20 + [0]})           # 等 20 步后释放
+    w = per_job_balanced_weights(index, y)
+    tot = {}
+    for i, (off, _t, _s, r) in enumerate(index):
+        tot[(off, r)] = tot.get((off, r), 0.0) + w[i]
+    assert abs(tot[(0, 0)] - tot[(0, 1)]) < 1e-9
+
+
+def test_weight_within_delayed_job_hold_and_route_each_half():
+    """测试②:延迟作业内 hold/route 各占该作业总权重的一半。"""
+    from tb12_repr_audit import per_job_balanced_weights
+    index, y = _idx({(0, 0): [1] * 9 + [0]})            # H=9, R=1
+    w = per_job_balanced_weights(index, y)
+    wh = sum(w[i] for i in range(len(y)) if y[i] > 0.5)
+    wr = sum(w[i] for i in range(len(y)) if y[i] <= 0.5)
+    assert abs(wh - wr) < 1e-9
+    assert abs(w[0] * 9 - w[-1] * 1) < 1e-9             # 1/(2H)*H == 1/(2R)*R
+
+
+def test_majority_class_hold_is_not_upweighted():
+    """测试③:hold=1 是多数类,不得被错误增权(单样本权重必须更小)。"""
+    from tb12_repr_audit import per_job_balanced_weights
+    index, y = _idx({(0, 0): [1] * 19 + [0]})           # hold 占 95%
+    w = per_job_balanced_weights(index, y)
+    w_hold = w[0]
+    w_route = w[-1]
+    assert w_hold < w_route                              # 多数类单样本权重更小
+    assert abs(w_hold * 19 - w_route) < 1e-9             # 两类总权重相等
+    # 与朴素 pos_weight>1 的对比:那会让多数类总权重更大(本方案不会)
+    assert sum(w[i] for i in range(19)) <= sum(w) / 2 + 1e-9
+
+
+def test_synthetic_90_10_separable_is_learnable_and_passes_G4():
+    """测试④:90/10 可分合成数据能学出两类并通过 G4。"""
+    import torch
+    from tb12_repr_audit import per_job_balanced_weights
+    from tb12_gate_bc import degeneracy_check, train_gate
+    rng = np.random.default_rng(0)
+    # 每个"作业"9 个 hold(特征均值 −1)+1 个 route(特征均值 +3),线性可分
+    spec, feats = {}, []
+    for j in range(40):
+        ys = [1] * 9 + [0]
+        spec[(0, j)] = ys
+        for yy in ys:
+            feats.append(rng.normal(-1.0 if yy else 3.0, 0.3, size=4))
+    index, y = _idx(spec)
+    X = torch.tensor(np.asarray(feats), dtype=torch.float32)
+    Y = torch.tensor(y, dtype=torch.float32)
+    w = per_job_balanced_weights(index, y)
+    torch.manual_seed(0)
+    mlp = torch.nn.Sequential(torch.nn.Linear(4, 16), torch.nn.Tanh(),
+                              torch.nn.Linear(16, 1))
+    gate, fit = train_gate(mlp, X, Y, steps=2000, lr=1e-3, batch_size=256,
+                           seed=0, weights=w)
+    assert fit["acc"] > 0.95                             # 两类都学出来了
+    with torch.no_grad():
+        p = torch.sigmoid(gate(X).reshape(-1)).numpy()
+    ok, dg = degeneracy_check(p)
+    assert ok, f"G4 未通过: {dg}"
+    assert 0.05 <= dg["frac_hold"] <= 0.95

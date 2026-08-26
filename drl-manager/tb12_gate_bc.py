@@ -238,29 +238,44 @@ def cache_q_and_labels(ck0, data):
 
 
 # ---------------------------------------------------------------- BC 训练
-def train_gate(gate, q, y, steps, lr, batch_size, seed):
-    """在冻结 q 上以 BCE 训练 temporal_gate。两臂预算逐位相同。"""
+def train_gate(gate, q, y, steps, lr, batch_size, seed, weights=None):
+    """在冻结 q 上以 BCE 训练 temporal_gate。两臂预算逐位相同。
+    weights 给出时用**自归一化加权 BCE**(sum(w·l)/sum(w));weights 恒 None
+    时行为与 Run 1 逐位一致(append-only,不覆盖既有结果)。"""
     import torch
     g = copy.deepcopy(gate)
     for p in g.parameters():
         p.requires_grad_(True)
     opt = torch.optim.Adam(g.parameters(), lr=lr)
     lossf = torch.nn.BCEWithLogitsLoss()
+    lossf_none = torch.nn.BCEWithLogitsLoss(reduction="none")
+    w = None if weights is None else torch.as_tensor(
+        np.asarray(weights), dtype=torch.float32)
     gen = torch.Generator().manual_seed(seed)
     n = q.shape[0]
     for _ in range(steps):
         idx = torch.randint(0, n, (min(batch_size, n),), generator=gen)
         opt.zero_grad()
         logit = g(q[idx]).reshape(-1)
-        loss = lossf(logit, y[idx])
+        if w is None:
+            loss = lossf(logit, y[idx])
+        else:
+            wl = w[idx]
+            loss = (lossf_none(logit, y[idx]) * wl).sum() / wl.sum().clamp_min(1e-12)
         loss.backward()
         opt.step()
     with torch.no_grad():
         logit = g(q).reshape(-1)
+        correct = ((torch.sigmoid(logit) > 0.5).float() == y).float()
         loss = float(lossf(logit, y))
-        acc = float(((torch.sigmoid(logit) > 0.5).float() == y).float().mean())
-    return g, {"loss": loss, "acc": acc, "n": int(n),
+        acc = float(correct.mean())
+        out = {"loss": loss, "acc": acc, "n": int(n),
                "label_hold_frac": float(y.mean())}
+        if w is not None:
+            out["weighted_acc"] = float((correct * w).sum() / w.sum())
+            out["weighted_loss"] = float(
+                (lossf_none(logit, y) * w).sum() / w.sum())
+    return g, out
 
 
 def p_hold_at(gate, q, index, want):
