@@ -32,6 +32,39 @@ BLOCKS_POSITIVE_MIN = 4
 
 
 # ---------------------------------------------------------------- 纯函数
+def per_job_balanced_weights(index, y):
+    """Run 2 仪器修复(Codex 2026-08-26 冻结,无自由参数)。
+
+    **不用普通 pos_weight** —— 标签 hold=1 恰是多数类,pos_weight>1 会加剧坍缩。
+    改为**每作业等权 + 作业内类别平衡**:
+      设某作业有 H 个 hold、R 个 route 样本,
+        每个 hold  权重 1/(2H);
+        每个 route 权重 1/(2R);
+      单类别作业:该类别**总权重为 1**(每样本 1/H 或 1/R);
+      最后整体归一化到**平均权重 1**。
+    效果:每个作业贡献相同总权重(=1),等待很久的作业不会因 hold 重复出现
+    而淹没释放转移那一次。
+    index: [(offset, t, slot, rank)];作业身份 = (offset, rank)。"""
+    y = np.asarray(y, dtype=float)
+    jobs = {}
+    for i, (off, _t, _s, rank) in enumerate(index):
+        jobs.setdefault((int(off), int(rank)), []).append(i)
+    w = np.zeros(len(index), dtype=float)
+    for _key, idxs in jobs.items():
+        yy = y[idxs]
+        H = int((yy > 0.5).sum())
+        R = int((yy <= 0.5).sum())
+        for i in idxs:
+            if H > 0 and R > 0:
+                w[i] = 1.0 / (2.0 * H) if y[i] > 0.5 else 1.0 / (2.0 * R)
+            elif H > 0:
+                w[i] = 1.0 / H
+            else:
+                w[i] = 1.0 / R
+    m = w.mean()
+    return w / m if m > 0 else w
+
+
 def signed_paired_score(y_hold, p_fc, p_nofc):
     """s = (2y−1)(p_fc − p_nofc);y=1 ⟺ clair 说等。"""
     return (2.0 * float(bool(y_hold)) - 1.0) * (float(p_fc) - float(p_nofc))
@@ -84,25 +117,42 @@ def audit_verdict(samples, per_block, boot, degen_fc, degen_nofc,
 
 
 # ---------------------------------------------------------------- 执行
-def oof_predictions(ck0, data, blocks, steps, lr, batch_size, seed):
-    """时间分块 5-fold:第 k 折在其余块上训练,只对第 k 块产出 OOF p_hold。"""
+def oof_predictions(ck0, data, blocks, steps, lr, batch_size, seed,
+                    weighting="none", first_fold_sentinel=True):
+    """时间分块 5-fold:第 k 折在其余块上训练,只对第 k 块产出 OOF p_hold。
+    weighting="per_job_balanced" 启用 Run 2 的每作业等权/作业内类别平衡;
+    "none" 与 Run 1 逐位一致。
+    first_fold_sentinel:第一折若仍退化,**只停不调**立即中止(Codex 批准)。"""
     import torch
     q, y, index, gate0 = cache_q_and_labels(ck0, data)
     off_of = np.array([off for off, _, _, _ in index])
+    w = (per_job_balanced_weights(index, y.numpy())
+         if weighting == "per_job_balanced" else None)
     oof_p = np.full(len(index), np.nan)
     fold_fit = {}
-    for k, offs_k in blocks.items():
+    for n_done, (k, offs_k) in enumerate(sorted(blocks.items())):
         held = np.isin(off_of, np.asarray(offs_k))
         if held.sum() == 0 or (~held).sum() == 0:
             continue
         tr = torch.tensor(~held)
-        gate, fit = train_gate(gate0, q[tr], y[tr], steps, lr, batch_size, seed)
+        gate, fit = train_gate(gate0, q[tr], y[tr], steps, lr, batch_size, seed,
+                               weights=None if w is None else w[~held])
         with torch.no_grad():
             p = torch.sigmoid(gate(q).reshape(-1)).numpy()
         oof_p[held] = p[held]
         fold_fit[str(k)] = fit
         print(f"    fold {k}: train n={int((~held).sum())} "
-              f"held n={int(held.sum())} acc(train)={fit['acc']:.4f}", flush=True)
+              f"held n={int(held.sum())} acc(train)={fit['acc']:.4f}"
+              + (f" w_acc={fit['weighted_acc']:.4f}" if "weighted_acc" in fit else ""),
+              flush=True)
+        if first_fold_sentinel and n_done == 0:
+            ok0, dg0 = degeneracy_check(p[held])
+            if not ok0:
+                sys.exit(f"[SENTINEL] 第一折仍退化(held-out hold率 "
+                         f"{dg0.get('frac_hold', float('nan')):.3f}) —— "
+                         "只停不调,按裁定立即中止,不得更换权重或超参")
+            print(f"    [SENTINEL] 第一折非退化通过(held-out hold率 "
+                  f"{dg0['frac_hold']:.3f})", flush=True)
     return oof_p, index, y.numpy(), fold_fit
 
 
@@ -119,6 +169,9 @@ def main():
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--seed", type=int, default=20260826)
     ap.add_argument("--json-out", default="repr_audit.json")
+    ap.add_argument("--weighting", choices=("none", "per_job_balanced"),
+                    default="none",
+                    help="Run 1 = none(默认,逐位可复现);Run 2 = per_job_balanced")
     a = ap.parse_args()
 
     spec = json.loads((pathlib.Path(__file__).resolve().parent
@@ -139,7 +192,8 @@ def main():
     for tag, data in (("fc", fc), ("nofc", nofc)):
         print(f"[AUDIT {tag}] blocked 5-fold OOF", flush=True)
         p, index, yv, fold_fit = oof_predictions(
-            a.ck0, data, blocks, a.steps, a.lr, a.batch_size, a.seed)
+            a.ck0, data, blocks, a.steps, a.lr, a.batch_size, a.seed,
+            weighting=a.weighting)
         acc = float(((p > 0.5).astype(float) == yv)[~np.isnan(p)].mean())
         dg_ok, dg = degeneracy_check(p[~np.isnan(p)])
         arms[tag] = {"p": p, "index": index, "y": yv, "fold_fit": fold_fit,
@@ -185,7 +239,7 @@ def main():
         {"spec_sha256": corpus_sha(pathlib.Path(__file__).resolve().parent / a.spec),
          "fc_corpus_sha256": corpus_sha(a.fc_corpus),
          "nofc_corpus_sha256": corpus_sha(a.nofc_corpus),
-         "ck0": a.ck0, "steps": a.steps, "lr": a.lr,
+         "ck0": a.ck0, "weighting": a.weighting, "steps": a.steps, "lr": a.lr,
          "batch_size": a.batch_size, "seed": a.seed,
          "verdict": verdict, "samples": samples,
          "descriptive": {t: {"oof_acc": arms[t]["oof_acc_descriptive"],
