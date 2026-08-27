@@ -1,0 +1,48 @@
+{
+ "purpose": "EU-CRD 消融族(工单 d1e2774) — 3060 自成一体,6 臂同一 jar",
+ "frozen_at": "2026-08-27",
+ "machine": "3060 / joshua-MS-7C09",
+ "source_commit": "d1e27746fe119e227d72f968b0c62c385f38b671",
+ "jar_sha256": "940078777d788d68d49657d82320206d2955ac6d9a0d8c75e6a06d705302d4aa",
+ "runtime_config": "config_abl_runtime.yml",
+ "runtime_config_sha256": "1fb42aa4f26821c8b3bb49a15db1c3ad07045477f238dbbc772a7e757b3515e4",
+ "config_C_sha256": "2f31042f5e38adbaefb3889db7b639f6494969b23af8af0d6d426c45f4e9d24e",
+ "config_controls_sha256": "81a83129abaf725fceb18e85f348b0e5e19ed673bbb315d42b2b6379f3ff59bd",
+ "arms": [
+  "experiment_multi_5dc_carbon_v2_deferrable_gdpd_timecap_eucrd_knSV3b",
+  "experiment_ctrl_ablG",
+  "experiment_ctrl_ablW"
+ ],
+ "seeds": [
+  101,
+  102
+ ],
+ "total_timesteps": 600000,
+ "run_order": [
+  "base_s101",
+  "ablG_s101",
+  "ablW_s101",
+  "base_s102",
+  "ablG_s102",
+  "ablW_s102"
+ ],
+ "cross_campaign_comparison": "FORBIDDEN — 消融族不与主表任何数字交叉比较",
+ "tb12_java_changes_inert_here": {
+  "note": "TB12 线的三处 Java 改动在 C-regime 全部落在不执行的分支",
+  "sla_mode": "基准臂 deadline_miss,ontime_mi 分支不执行",
+  "defer_cost_mode": "基准臂未设 -> 默认 flat,incremental_urgency 的 defer-base 修复不执行",
+  "defer_deadline_force_mode": "基准臂未设 -> 默认 legacy,per-PE latest_start 修复不执行",
+  "cap_monitor": "export-only,行为中性"
+ },
+ "resource_check": {
+  "turbine_csvs_in_jar": 450,
+  "required_turbines_present": [
+   12,
+   36,
+   95,
+   91,
+   96
+  ],
+  "base_trace_in_jar": "traces/probe_C_2xjob_dl6500.csv"
+ }
+}
