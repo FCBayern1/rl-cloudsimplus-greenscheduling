@@ -443,6 +443,7 @@ def run_evaluation(
     verbose: bool = True,
     force_full_episode: bool = False,
     global_defer: bool = False,
+    reset_skip: int = 0,
 ) -> List[Dict[str, Any]]:
     """
     Run evaluation with specified Global + Local scheduler combination.
@@ -506,6 +507,20 @@ def run_evaluation(
     }
 
     all_results = []
+
+    # P0-C: advance the reset counter to the registered window before measuring.
+    # env.reset() is 1:1 with Java's resetSimulation(), so k resets put the
+    # simulator on window (1009*k) mod green_episode_offset_range. The rllib
+    # path (run_rllib_evaluation) has always done this; the heuristic path did
+    # not, so --reset-skip silently had no effect here and every window
+    # produced byte-identical results (found 2026-08-27 during T3: green_aware
+    # low/mid/high were identical to every digit). Default 0 => byte-identical
+    # to the previous behaviour for every existing caller.
+    _reset_skip = int(reset_skip or 0)
+    for _k in range(_reset_skip):
+        env.reset(seed=seed)
+    if _reset_skip:
+        print(f"[P0-C] advanced reset counter by {_reset_skip} before measuring")
 
     for ep in range(num_episodes):
         # Reset schedulers
@@ -1282,4 +1297,5 @@ if __name__ == "__main__":
             seed=args.seed,
             output_csv=args.output,
             global_defer=args.global_defer,
+            reset_skip=getattr(args, "reset_skip", 0) or 0,
         )
