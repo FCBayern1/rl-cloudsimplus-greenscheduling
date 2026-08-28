@@ -166,6 +166,52 @@ class GreenQueueBalancedGlobalScheduler(GlobalScheduler):
         return actions
 
 
+class GreenForecastQueueBalancedGlobalScheduler(GreenQueueBalancedGlobalScheduler):
+    """T3 重做(Codex 批准 2026-08-27):**容量感知的全知臂**。
+
+    与 `GreenQueueBalancedGlobalScheduler` **逐行相同**,只把绿电信号从
+    `dc_green_ratio`(当前)换成 `dc_future_long_mean`(未来)。因此
+    (green_queue_balanced, green_forecast_queue_balanced) 构成**匹配对**,
+    唯一差异 = 当前绿电 vs 未来绿电信号。
+
+    为什么需要它:T3 首轮的全知臂 `green_forecast` 走 `_green_capacity_greedy`,
+    那里的容量只是**每批算一次的软偏置**(cap_w∈[0.5,1.0],至多 2× 调制),
+    没有批内拥塞反馈 ⇒ 未来最绿的 DC 仍被压垮(完成率 67%、绿电用 350 Wh /
+    弃 7035 Wh),全知臂反而输给盲态,S_ach 只能报 undefined。
+    本类改用 green_queue_balanced 已验证的**批内动态队列反馈**。
+    """
+
+    def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
+        fut = global_obs.get('dc_future_long_mean')
+        if fut is None:
+            fut = global_obs.get('dc_future_short_mean')
+        if fut is None:                       # 无预报 -> 退回当前绿电
+            fut = global_obs.get('dc_green_ratio', [0.5] * self.num_datacenters)
+        # 2026-08-28 实测:Java 在**无绿电序列**的 DC 上返回"无数据"默认值
+        # features[2]=0.5(GreenEnergyProvider.computeFutureTrendFeatures),
+        # 而真实读数均值只有 0.242 ⇒ 无绿电且最脏的 DC3(0.75)/DC4(0.92)
+        # 反而成了 argmax 的首选。盲态臂用 dc_green_ratio(无绿电 DC 正确为 0)
+        # 不受影响。这里按"是否具备绿电能力"遮罩,使两臂回到同一基础上。
+        fut = np.asarray(fut, dtype=np.float64).reshape(-1)[:self.num_datacenters]
+        cap = np.asarray(global_obs.get('dc_current_green_power_w',
+                                        [0.0] * self.num_datacenters),
+                         dtype=np.float64).reshape(-1)[:self.num_datacenters]
+        seen = getattr(self, '_green_capable', None)
+        if seen is None or len(seen) != self.num_datacenters:
+            seen = np.zeros(self.num_datacenters, dtype=bool)
+        seen = seen | (cap > 0.0)
+        self._green_capable = seen
+        if seen.any():
+            fut = np.where(seen, fut, 0.0)
+        shim = dict(global_obs)
+        shim['dc_green_ratio'] = fut          # 唯一改动:信号换成(遮罩后的)未来绿电
+        return super().schedule(shim)
+
+    def reset(self):
+        super().reset()
+        self._green_capable = None
+
+
 class MinBrownPowerGlobalScheduler(GlobalScheduler):
     """
     Min-Brown-Power Global Scheduler:
@@ -1176,6 +1222,7 @@ class DeferringGlobalScheduler(GlobalScheduler):
 
 # === Register all global schedulers ===
 GLOBAL_SCHEDULERS = {
+    'green_forecast_queue_balanced': GreenForecastQueueBalancedGlobalScheduler,
     'random': RandomGlobalScheduler,
     'round_robin': RoundRobinGlobalScheduler,
     'min_queue': MinQueueGlobalScheduler,
