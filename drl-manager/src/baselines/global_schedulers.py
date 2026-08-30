@@ -1147,6 +1147,195 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
         return {"obs": to_tensor(obs)}
 
 
+class GreenForecastCapacityGlobalScheduler(GlobalScheduler):
+    """Clairvoyant routing with a HARD capacity constraint.
+
+    The existing green_forecast arm sends the batch to whichever site the
+    forecast likes best and only nudges for capacity through a soft weight, so
+    on the 2026-08-27 headroom probe it piled work onto one site, used 350 Wh of
+    green while wasting 7035, and finished 67% of the work. An arm that loses to
+    round-robin cannot bound what foresight is worth.
+
+    Here a site drops out of contention once its free PEs are exhausted, and the
+    batch falls through to the next-best site that still has room. Desirability
+    is future green (dc_future_long_mean, which carries the simulator's own
+    future series under green_oracle_mode=godeye) rather than current green.
+    """
+
+    def schedule(self, global_obs: Dict[str, Any]) -> List[int]:
+        n = self.num_datacenters
+        fut = global_obs.get('dc_future_long_mean')
+        if fut is None:
+            fut = global_obs.get('dc_future_short_mean')
+        if fut is None:
+            fut = global_obs.get('dc_green_ratio', [0.5] * n)
+        des = _as_np_1d(fut, n, fill=0.0, dtype=np.float64)
+        free = _as_np_1d(global_obs.get('dc_available_pes'), n, fill=0.0, dtype=np.float64)
+        free = np.maximum(free, 0.0).copy()
+        order = np.argsort(-des)                      # best forecast first
+        actions: List[int] = []
+        for _ in range(self.batch_size):
+            placed = False
+            for dc in order:
+                if free[dc] >= 1.0:
+                    free[dc] -= 1.0
+                    actions.append(int(dc))
+                    placed = True
+                    break
+            if not placed:                             # every site full: least-bad site
+                actions.append(int(order[0]))
+        return actions
+
+
+class CurveOracleGlobalScheduler(GlobalScheduler):
+    """Curve-level spatio-temporal oracle, frozen semantics (Codex 2026-08-30).
+
+    Two earlier attempts were not oracles and their failures said nothing about
+    the testbed. green_forecast ignored capacity and piled the batch onto one
+    site. green_forecast_capacity ranked sites by dc_future_long_mean, a level
+    statistic, and let the neutral default of the two turbine-free sites carry
+    them to the top of the ranking, so 93% of the work went to the dirtiest
+    datacentres. Both lost to the blind arm for reasons internal to the arm.
+
+    This one scores a placement by the carbon the job would actually draw:
+
+        J(i,d,s) = sum_tau [ c_g*min(P_i, Gres) + c_b,d*(P_i - Gres)+ ] dt
+
+    over the job's own runtime, against the residual green left after static
+    draw and everything already committed. Turbine-free sites enter with G=0 and
+    their real brown factor rather than a neutral forecast sentinel. Runtime
+    follows CloudSim per-PE semantics, capacity is decremented by the job's PES,
+    and the future is wind only: arrivals are not known in advance.
+
+    The green trace is read from the same CSVs the simulator serves, at the
+    alignment verified by p0c_step5_alignment.py (offset + 13 + per-DC tz, lag 0
+    at r=1.0000 on 18 of 18 cells).
+    """
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        import csv as _csv, pathlib as _pl, yaml as _yaml
+        # The evaluation factory constructs every scheduler with the same two
+        # arguments, so the testbed constants are read here rather than passed.
+        # ORACLE_OFFSET_ROWS must match the --reset-skip window under test.
+        cfg_path = _pl.Path(os.environ.get("EVAL_CONFIG_PATH", "config_C.yml"))
+        cfg = _yaml.safe_load(open(cfg_path))
+        exp = os.environ.get("ORACLE_EXPERIMENT", "experiment_g1eval_matchedvan")
+        blk = cfg[exp]
+        dcs = blk["datacenters"]
+        turbines = {d["datacenter_id"]: (d.get("turbine_ids") or []) for d in dcs}
+        tz_rows = {d["datacenter_id"]: int(d.get("time_zone_offset_rows", 0)) for d in dcs}
+        brown_factors = [d["brown_carbon_factor"] for d in sorted(dcs, key=lambda x: x["datacenter_id"])]
+        green_factors = [d.get("green_carbon_factor", 0.01) for d in sorted(dcs, key=lambda x: x["datacenter_id"])]
+        divisor = float(blk.get("compressed_power_divisor") or 1500.0)
+        offset_rows = int(os.environ.get("ORACLE_OFFSET_ROWS", "0"))
+        vm_pe_mips = float(dcs[0].get("vm_pe_mips", 40000))
+        hosts = [sum(v for k, v in d.items() if k.startswith("host_count_"))
+                 for d in sorted(dcs, key=lambda x: x["datacenter_id"])]
+        tot = float(sum(hosts)) or 1.0
+        static_w = [332.0 * h / tot for h in hosts]      # measured C-regime fleet draw
+        cap_pes = [h * 64.0 for h in hosts]
+        horizon = int(os.environ.get("ORACLE_HORIZON", "400"))
+        year = int(os.environ.get("ORACLE_YEAR", "2021"))
+        warmup = 13                                      # measured, not configured
+        wind_dir = os.environ.get(
+            "ORACLE_WIND_DIR",
+            str(cfg_path.parent / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
+        wd = _pl.Path(wind_dir)
+        self.G = np.zeros((num_datacenters, 20000), dtype=np.float64)
+        for d in range(num_datacenters):
+            ts = turbines.get(d) or []
+            if not ts:
+                continue                      # turbine-free site keeps G = 0
+            acc = None
+            for t in ts:
+                v = np.array([float(x["power_kw"] or 0)
+                              for x in _csv.DictReader(open(wd / f"Turbine_{t}_{year}.csv"))])
+                acc = v if acc is None else acc + v
+            base = offset_rows + warmup + tz_rows[d]
+            seg = acc[base:base + 20000]
+            self.G[d, :len(seg)] = seg * 1000.0 / divisor
+        self.cb = np.asarray(brown_factors, dtype=np.float64)
+        self.cg = np.asarray(green_factors, dtype=np.float64)
+        self.static = np.asarray(static_w, dtype=np.float64)
+        self.cap = np.asarray(cap_pes, dtype=np.float64)
+        self.mips = float(vm_pe_mips)
+        self.horizon = int(horizon)
+        self.committed = np.zeros((num_datacenters, 20000), dtype=np.float64)
+        self.t = 0
+        self.dyn_per_pe = (214.0 - 51.4) / 64.0
+        self.n_defer = 0
+
+    def _costs_all(self, d, starts, r, p):
+        """Cost of every candidate start at one site, in one pass.
+
+        The scalar form cost one slice per (start, site) pair, which at 128
+        slots x ~50 starts x 5 sites x 6105 steps is around two hundred million
+        slices and ran four times slower than the blind arm. Cumulative sums
+        turn each window into two lookups.
+        """
+        draw = p * self.dyn_per_pe
+        gres = np.maximum(0.0, self.G[d] - self.static[d]
+                          - self.committed[d] * self.dyn_per_pe)
+        green = np.minimum(draw, gres)
+        brown = draw - green
+        val = self.cg[d] * green + self.cb[d] * brown
+        cs = np.concatenate(([0.0], np.cumsum(val)))
+        ends = starts + r
+        ok = ends < len(cs)
+        out = np.full(len(starts), np.inf)
+        out[ok] = cs[ends[ok]] - cs[starts[ok]]
+        return out
+
+    def _feasible_all(self, d, starts, r, p):
+        """Which candidate starts keep committed PEs within capacity."""
+        over = (self.committed[d] + p > self.cap[d]).astype(np.int64)
+        cs = np.concatenate(([0], np.cumsum(over)))
+        ends = starts + r
+        ok = ends < len(cs)
+        res = np.zeros(len(starts), dtype=bool)
+        res[ok] = (cs[ends[ok]] - cs[starts[ok]]) == 0
+        return res
+
+    def _cost(self, d, s, r, p):
+        return float(self._costs_all(d, np.array([s]), r, p)[0])
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        mi = _as_np_1d(global_obs.get('batch_cloudlet_mi'), self.batch_size, fill=0.0, dtype=np.float64)
+        pes = _as_np_1d(global_obs.get('batch_cloudlet_pes'), self.batch_size, fill=1.0, dtype=np.float64)
+        ttd = _as_np_1d(global_obs.get('batch_cloudlet_time_to_deadline'), self.batch_size,
+                        fill=1e9, dtype=np.float64)
+        actions = []
+        for j in range(self.batch_size):
+            p = max(1.0, float(pes[j]))
+            r = max(1, int(round(float(mi[j]) / self.mips)))      # per-PE MI
+            latest = self.t + max(0, int(ttd[j]) - r)
+            hi = min(latest, self.t + self.horizon)
+            starts = np.arange(self.t, hi + 1, max(1, r // 8), dtype=np.int64)
+            starts = starts[starts + r < self.G.shape[1]]
+            best, barg = None, None
+            if len(starts):
+                for d in range(n):
+                    cost = self._costs_all(d, starts, r, p)
+                    cost[~self._feasible_all(d, starts, r, p)] = np.inf
+                    i = int(np.argmin(cost))
+                    if np.isfinite(cost[i]) and (best is None or cost[i] < best):
+                        best, barg = float(cost[i]), (d, int(starts[i]))
+            if barg is None:
+                actions.append(int(np.argmin(self.cb)))
+                continue
+            d, s = barg
+            self.committed[d, s:s + r] += p
+            if s <= self.t:
+                actions.append(int(d))
+            else:
+                actions.append(n)                                  # DEFER
+                self.n_defer += 1
+        self.t += 1
+        return actions
+
+
 class DeferringGlobalScheduler(GlobalScheduler):
     """Wraps ANY global scheduler to add the temporal DEFER capability (for a fair
     comparison with the RL's arch-B global defer).
@@ -1228,6 +1417,8 @@ GLOBAL_SCHEDULERS = {
     'min_queue': MinQueueGlobalScheduler,
     'green_aware': GreenAwareGlobalScheduler,
     'green_forecast': GreenForecastAwareGlobalScheduler,
+    'green_forecast_capacity': GreenForecastCapacityGlobalScheduler,
+    'curve_oracle': CurveOracleGlobalScheduler,
     'green_queue_balanced': GreenQueueBalancedGlobalScheduler,
     'min_brown_power': MinBrownPowerGlobalScheduler,
     'weighted_score': WeightedScoreGlobalScheduler,

@@ -545,6 +545,13 @@ def run_evaluation(
             pass
         ep_wall_t0 = time.perf_counter_ns()
 
+        # Export-only per-step trace for the demand/green/carbon realisation
+        # audit. Writes what the episode already computes and touches nothing
+        # else, so a run with AUDIT_TRACE set must be bit-identical in carbon,
+        # completion and action sequence to one without it.
+        _audit_path = os.environ.get("AUDIT_TRACE")
+        _audit_rows = []
+
         while not done:
             # Convert observation for global scheduler
             global_obs = _convert_global_obs_for_scheduler(obs['global'])
@@ -570,6 +577,26 @@ def run_evaluation(
 
             # Execute action
             action = {'global': global_action, 'local': local_actions}
+            if _audit_path:
+                g = obs['global']
+                import numpy as _np
+                _n = num_dcs
+                def _col(k):
+                    v = g.get(k)
+                    return _np.atleast_1d(_np.asarray(v, dtype=float)) if v is not None else _np.zeros(_n)
+                _ga = _np.bincount(_np.asarray(global_action, dtype=int),
+                                   minlength=_n + 1)[:_n]
+                _audit_rows.append(dict(
+                    step=steps,
+                    defers=int(_np.sum(_np.asarray(global_action, dtype=int) == _n)),
+                    **{f"green_w_dc{i}": float(_col('dc_current_green_power_w')[i]) for i in range(_n)},
+                    **{f"power_w_dc{i}": float(_col('dc_current_power_w')[i]) for i in range(_n)},
+                    **{f"greenratio_dc{i}": float(_col('dc_green_ratio')[i]) for i in range(_n)},
+                    **{f"waste_wh_dc{i}": float(_col('dc_cumulative_wasted_green_wh')[i]) for i in range(_n)},
+                    **{f"queue_dc{i}": float(_col('dc_queue_sizes')[i]) for i in range(_n)},
+                    **{f"util_dc{i}": float(_col('dc_utilizations')[i]) for i in range(_n)},
+                    **{f"routed_dc{i}": int(_ga[i]) for i in range(_n)},
+                ))
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             # When force_full_episode=True, ignore the env's natural-completion
@@ -585,6 +612,13 @@ def run_evaluation(
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         # Efficiency overhead: episode wall-clock (s) and peak memory footprint.
+        if _audit_path and _audit_rows:
+            import csv as _csv
+            _p = f"{_audit_path}_ep{ep}.csv"
+            with open(_p, "w", newline="") as _fh:
+                _w = _csv.DictWriter(_fh, fieldnames=list(_audit_rows[0]))
+                _w.writeheader(); _w.writerows(_audit_rows)
+            print(f"[AUDIT] wrote {_p} ({len(_audit_rows)} steps)")
         metrics["episode_wall_s"] = (time.perf_counter_ns() - ep_wall_t0) / 1e9
         metrics.update(_capture_memory_mb())
         all_results.append(metrics)

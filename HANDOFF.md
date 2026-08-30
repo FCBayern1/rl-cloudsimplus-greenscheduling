@@ -201,6 +201,7 @@ G_res        扣静态功率、已运行负载、已承诺作业
 **文字和结构基本定稿,缺的是数字。** 已完成的改动:
 
 - Figure 1 XML 已修(`R_forecast` 加 `C_max` 归一 + 绝对值,与 Eq.2 一致)—— **等作者在 drawio 重新导出 PNG**
+- 导师 6 组 §3.2 修订(control interval / B=128 / P̂_i 语义 / 末句只切全局通道)【已全部落地并核验】
 - Limitations 已写好但**按作者要求撤出**,存 `reports/LIMITATIONS_HELD.tex`(B 路线下需重写)
 - App F 已改成**可消失结构**(`\ifFragileNone` / `\ifFragilePattern`),判据冻结于 `reports/APPF_PREREG.md`
 - `\ifRiskSampling` 默认 false,隐藏采样表的风险基线行
