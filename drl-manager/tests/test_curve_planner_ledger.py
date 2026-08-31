@@ -668,3 +668,44 @@ def test_all_three_matching_values_pass(planner):
     obs["defer_deadline_force_mode_effective"] = "legacy"
     planner.schedule(obs)
     assert planner._cpu_util_checked
+
+
+# ── The horizon gate (Codex 2026-08-31) ──────────────────────────────────────
+# oracle144 separates "the predictor is not accurate enough" from "the horizon is too
+# short to matter". A perfect forecast truncated to 144 steps, then the frozen causal
+# tail every arm shares. If even this cannot beat the blind, no predictor can.
+
+def test_the_horizon_limited_view_is_true_then_tail():
+    from src.baselines.global_schedulers import HorizonLimitedOraclePlannerGlobalScheduler
+    arm = HorizonLimitedOraclePlannerGlobalScheduler(5, 8)
+    arm.t = 100
+    view = arm._green_view(0)
+    assert np.array_equal(view[100:244], arm.G[0, 100:244]), "the near field is not the truth"
+    assert np.all(view[244:] == arm.clim[0]), "the far field is not the shared tail"
+
+
+def test_the_tail_model_is_shared_and_selectable(monkeypatch):
+    from src.baselines.global_schedulers import HorizonLimitedOraclePlannerGlobalScheduler
+    arm = HorizonLimitedOraclePlannerGlobalScheduler(5, 8)
+    assert arm.tail_model == "climatology"
+    monkeypatch.setenv("PLANNER_TAIL_MODEL", "persistence")
+    arm2 = HorizonLimitedOraclePlannerGlobalScheduler(5, 8)
+    arm2.green_now = np.array([7.0, 0, 0, 0, 0])
+    arm2.t = 10
+    assert arm2._green_view(0)[10 + 144] == 7.0
+
+
+def test_the_horizon_length_is_configurable(monkeypatch):
+    from src.baselines.global_schedulers import HorizonLimitedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_HORIZON_STEPS", "12")
+    arm = HorizonLimitedOraclePlannerGlobalScheduler(5, 8)
+    arm.t = 0
+    view = arm._green_view(0)
+    assert np.array_equal(view[:12], arm.G[0, :12])
+    assert np.all(view[12:] == arm.clim[0])
+
+
+def test_the_full_oracle_is_unaffected_by_the_horizon_knob(planner):
+    assert planner.info_source == "curve"
+    planner.t = 100
+    assert np.array_equal(planner._green_view(0), planner.G[0]), "full oracle got truncated"

@@ -455,6 +455,17 @@ class HierarchicalMultiDCEnv(gym.Env):
         from prediction.timecap_godeye_provider import TimeCAPGodEyeProvider
 
         tc_cfg = config.get("timecap") or {}
+        # The forecast history and the wind the simulator serves must come from the same
+        # year. They were separate keys with separate defaults, so a 2020 evaluation would
+        # silently have been fed 2021 predictions: the forecast would have been of a
+        # different year's weather entirely, and nothing would have said so.
+        _tc_year = int(tc_cfg.get("csv_year", 2021))
+        _sim_year = int(config.get("wind_csv_year", 2021))
+        if _tc_year != _sim_year:
+            raise ValueError(
+                f"timecap.csv_year={_tc_year} but wind_csv_year={_sim_year}. The forecast "
+                f"would be built from a different year than the wind the simulator serves. "
+                f"Set both to the same year.")
         ckpt = tc_cfg.get("checkpoint")
         if not ckpt:
             raise ValueError(

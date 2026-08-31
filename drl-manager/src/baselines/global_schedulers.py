@@ -1238,6 +1238,8 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
 
     INFO_SOURCE = "curve"
     ALLOW_DEFER = True
+    # Steps of true curve a horizon-limited arm may see. 144 is the TimeCAP pred_len.
+    HORIZON_STEPS = 144
     # A planning arm books future capacity. A reactive arm does not: it only ever decides
     # about now, so it holds no reservation and cannot double-book.
     RESERVES = True
@@ -1376,6 +1378,10 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         # outside the ledger. 0 disables the boundary.
         self.decision_horizon = int(os.environ.get("PLANNER_DECISION_HORIZON", "0"))
         self.info_source = os.environ.get("PLANNER_INFO_SOURCE", self.INFO_SOURCE)
+        self.tail_model = os.environ.get("PLANNER_TAIL_MODEL", "climatology")
+        self.horizon_steps = int(os.environ.get(
+            "PLANNER_HORIZON_STEPS", str(self.HORIZON_STEPS)))
+        self.HORIZON_STEPS = self.horizon_steps
         self.allow_defer = os.environ.get(
             "PLANNER_ALLOW_DEFER", "1" if self.ALLOW_DEFER else "0") == "1"
         self.green_now = np.zeros(num_datacenters, dtype=np.float64)
@@ -1434,6 +1440,16 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
     def _release(self, d, s, e, p):
         self.occ[d, max(0, s):max(0, e)] -= p
 
+    def _tail_level(self, d):
+        """Green level assumed beyond the forecast horizon, shared by every arm."""
+        if self.tail_model == "climatology":
+            return self.clim[d]
+        if self.tail_model == "persistence":
+            return self.green_now[d]
+        if self.tail_model == "zero":
+            return 0.0
+        raise ValueError(f"unknown tail_model {self.tail_model!r}")
+
     def _green_view(self, d):
         """The green trace this arm is allowed to plan against at the current step.
 
@@ -1443,6 +1459,17 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         """
         if self.info_source == "curve":
             return self.G[d]
+        if self.info_source == "curve_horizon":
+            # The true curve for as far as a forecast could ever see, then the frozen
+            # causal tail every arm in this family shares. This separates "the predictor
+            # is not accurate enough" from "the horizon is too short to matter": if even a
+            # perfect forecast truncated to the horizon cannot beat the blind, no
+            # predictor can, however good.
+            view = np.empty(self.T, dtype=np.float64)
+            edge = min(self.T, self.t + self.HORIZON_STEPS)
+            view[:edge] = self.G[d, :edge]
+            view[edge:] = self._tail_level(d)
+            return view
         if self.info_source == "persistence":
             # Causal: the future is assumed to hold whatever green is on the meter now.
             view = np.empty(self.T, dtype=np.float64)
@@ -1888,6 +1915,8 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         """Counters the validity contract is checked against, for the results row."""
         return {
             "planner_info_source": self.info_source,
+            "planner_tail_model": self.tail_model,
+            "planner_horizon_steps": self.horizon_steps,
             "planner_allow_defer": int(self.allow_defer),
             "planner_reserves": int(self.RESERVES),
             "planner_backstop_slack": self.backstop_slack,
@@ -1934,6 +1963,18 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
                 f"occupancy drift max {self.drift_abs_max:.1f} PEs at step "
                 f"{self.drift_step_max}, mean "
                 f"{(self.drift_abs_sum / self.drift_n) if self.drift_n else 0.0:.2f}")
+
+
+class HorizonLimitedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """A perfect forecast truncated to the horizon a real predictor has, then a blind tail.
+
+    Codex 2026-08-31: this is the gate that separates the two ways the TimeCAP arm could
+    fail. If a perfect 144 step view plus the shared causal tail already cannot beat the
+    blind by five percent, the horizon itself is too short and no predictor can pass,
+    however accurate. Only if this clears is it worth wiring the real forecast in.
+    """
+
+    INFO_SOURCE = "curve_horizon"
 
 
 class PersistencePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
@@ -2078,6 +2119,7 @@ GLOBAL_SCHEDULERS = {
     'green_forecast_capacity': GreenForecastCapacityGlobalScheduler,
     'always_defer': AlwaysDeferGlobalScheduler,
     'curve_planner': CurveInformedPlannerGlobalScheduler,
+    'oracle144_planner': HorizonLimitedOraclePlannerGlobalScheduler,
     'persistence_planner': PersistencePlannerGlobalScheduler,
     'climatology_planner': ClimatologyPlannerGlobalScheduler,
     'reactive_wait_planner': ReactiveWaitPlannerGlobalScheduler,
