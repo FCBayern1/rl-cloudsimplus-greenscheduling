@@ -1,5 +1,16 @@
 # 2021 校准判决 —— 最强盲冻结(2026-08-31 03:05)
 
+> **LEGACY ACCELERATED-WEATHER DIAGNOSTIC (2026-08-31)**
+>
+> 本文件的全部数字产生于 `time_scaling_mode: COMPRESSED`,该映射令 `wind_row = sim_step + offset`,
+> 即**风电以 600 倍于仿真数据中心时钟的速度前进**(SDWPF 行距 10 分钟,仿真步长 1 秒)。
+> 论文正文同时声称 SDWPF 为 10 分钟 SCADA、workload 运行于 7200 仿真秒、控制间隔 1 仿真秒,
+> 三者与该映射不自洽:deadline、runtime 与能量积分按秒计,而天气按 600 倍走。
+>
+> 据此,本文件**退出物理证据链**,仅作加速天气基下的诊断保留。不得作为 C-regime 的物理判决引用。
+> 修复后的时间基为 `wind_row(t) = offset + floor(t / 600)`,须在该基上重跑。
+
+
 依 `reports/PLANNER_GATE_PREREG.md` 及 Addendum A/B/C。**写于 2020 数据被任何进程读取之前。**
 
     commit  2a86e3f

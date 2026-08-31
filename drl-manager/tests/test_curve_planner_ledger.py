@@ -192,15 +192,21 @@ def test_only_the_green_view_differs(planner_cls):
     assert not np.allclose(view[10:], curve._green_view(0)[10:]), "views must differ"
 
 
-def test_climatology_is_calibrated_before_the_window(planner_cls):
+def test_climatology_is_calibrated_before_the_window(planner_cls, monkeypatch):
     from src.baselines.global_schedulers import ClimatologyPlannerGlobalScheduler
+    # A climatology needs history to calibrate on, so the window has to start somewhere
+    # other than row zero. Every real cell sets this; at offset zero there is nothing
+    # before the window and the level is correctly left at zero.
+    monkeypatch.setenv("ORACLE_OFFSET_ROWS", "19171")
     clim = ClimatologyPlannerGlobalScheduler(5, 8)
-    windy = [d for d in range(5) if clim.G[d].any()]
+    # G is laid onto the planning grid at the first decision, once the simulator's clock
+    # is known, so the raw per-row series is what exists before any step.
+    windy = [d for d in range(5) if clim.G_rows[d].size > 1 and clim.G_rows[d].any()]
     assert windy, "expected at least one site with a turbine"
     for d in windy:
         assert clim.clim[d] > 0.0, f"DC{d} climatology never calibrated"
     for d in range(5):
-        if not clim.G[d].any():
+        if clim.G_rows[d].size <= 1:
             assert clim.clim[d] == 0.0, "a turbine-free site must stay at zero green"
 
 
@@ -709,3 +715,161 @@ def test_the_full_oracle_is_unaffected_by_the_horizon_knob(planner):
     assert planner.info_source == "curve"
     planner.t = 100
     assert np.array_equal(planner._green_view(0), planner.G[0]), "full oracle got truncated"
+
+
+# ── The weather clock is shared with Java, not guessed (Codex 2026-08-31) ─────
+# Java resolves the wind row from the absolute simulation clock. The planner counts steps
+# from zero, and at the first decision the clock already stands at the CloudSim start-up
+# cost. Under a one-second row that is whole rows of weather, which is what the hard-coded
+# `warmup = 13` was patching over; under a 600 second row it is none.
+
+def test_no_hard_coded_warmup_rows_remain(planner):
+    import inspect
+    from src.baselines import global_schedulers as gs
+    src = inspect.getsource(gs.CurveInformedPlannerGlobalScheduler)
+    assert "warmup = 13" not in src.replace("`warmup = 13`", ""), \
+        "the measured-not-configured constant is back"
+    assert planner.weather_warmup_rows == 0
+
+
+def test_the_grid_is_laid_from_the_observed_clock(planner):
+    obs = batch(8, [])
+    obs["dc_available_pes"] = np.array([480.0, 384.0, 296.0, 240.0, 144.0])
+    obs["planner"]["current_clock"] = 13.0
+    planner.schedule(obs)
+    assert planner._grid_built and planner._clock0 == 13.0
+    # One second per row here, so start-up moved the weather by whole rows. That is the
+    # defect of this time base; it is recorded rather than hidden.
+    assert planner._startup_row_shift == 13
+    d = next(i for i in range(5) if planner.G_rows[i].size > 1)
+    base = planner.row_base[d]
+    # One second per row here, so a clock of 13 means the first step reads row base + 13.
+    assert planner.G[d, 0] == planner.G_rows[d][base + 13]
+
+
+def test_a_six_hundred_second_row_absorbs_the_start_up_cost(planner_cls, monkeypatch, tmp_path):
+    import yaml
+    cfg = yaml.safe_load(open(os.environ["EVAL_CONFIG_PATH"]))
+    blk = cfg[os.environ["ORACLE_EXPERIMENT"]]
+    for dc in blk["datacenters"]:
+        dc["time_scaling_mode"] = "REAL_TIME"
+    path = tmp_path / "phys.yml"
+    path.write_text(yaml.safe_dump({os.environ["ORACLE_EXPERIMENT"]: blk}))
+    monkeypatch.setenv("EVAL_CONFIG_PATH", str(path))
+    monkeypatch.setenv("ORACLE_WIND_DIR", os.path.join(
+        REPO, "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
+    arm = planner_cls(5, 8)
+    assert arm.row_seconds == 600.0
+    obs = batch(8, [])
+    obs["dc_available_pes"] = np.array([480.0, 384.0, 296.0, 240.0, 144.0])
+    obs["planner"]["current_clock"] = 13.0
+    arm.schedule(obs)
+    d = next(i for i in range(5) if arm.G_rows[i].size > 1)
+    base = arm.row_base[d]
+    assert arm.G[d, 0] == arm.G_rows[d][base], "start-up advanced the weather by a row"
+
+
+def test_rows_change_on_absolute_boundaries_not_from_the_decision(planner_cls, monkeypatch, tmp_path):
+    """At clock 350 the current row must end at 600, not 350 + 600."""
+    import yaml
+    cfg = yaml.safe_load(open(os.environ["EVAL_CONFIG_PATH"]))
+    blk = cfg[os.environ["ORACLE_EXPERIMENT"]]
+    for dc in blk["datacenters"]:
+        dc["time_scaling_mode"] = "REAL_TIME"
+    path = tmp_path / "phys2.yml"
+    path.write_text(yaml.safe_dump({os.environ["ORACLE_EXPERIMENT"]: blk}))
+    monkeypatch.setenv("EVAL_CONFIG_PATH", str(path))
+    monkeypatch.setenv("ORACLE_WIND_DIR", os.path.join(
+        REPO, "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
+    arm = planner_cls(5, 8)
+    obs = batch(8, [])
+    obs["dc_available_pes"] = np.array([480.0, 384.0, 296.0, 240.0, 144.0])
+    obs["planner"]["current_clock"] = 350.0
+    arm.schedule(obs)
+    d = next(i for i in range(5) if arm.G_rows[i].size > 1)
+    base = arm.row_base[d]
+    assert arm.G[d, 249] == arm.G_rows[d][base], "row ended before clock 600"
+    assert arm.G[d, 250] == arm.G_rows[d][base + 1], "row did not change at clock 600"
+    assert arm.G[d, 849] == arm.G_rows[d][base + 1]
+    assert arm.G[d, 850] == arm.G_rows[d][base + 2], "row did not change at clock 1200"
+
+
+# ── Rows are enumerated, not assumed (Codex 2026-08-31) ──────────────────────
+# A 7200 step episode does not touch 7200/600 = 12 wind rows when the clock starts part
+# way into a row, and the terminal drain does not touch 20. Both are computed from the
+# shared mapping, and the start-up phase is checked rather than trusted.
+
+def _phys_arm(planner_cls, monkeypatch, tmp_path, name="ph.yml"):
+    import yaml
+    cfg = yaml.safe_load(open(os.environ["EVAL_CONFIG_PATH"]))
+    blk = cfg[os.environ["ORACLE_EXPERIMENT"]]
+    for dc in blk["datacenters"]:
+        dc["time_scaling_mode"] = "REAL_TIME"
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump({os.environ["ORACLE_EXPERIMENT"]: blk}))
+    monkeypatch.setenv("EVAL_CONFIG_PATH", str(path))
+    monkeypatch.setenv("ORACLE_WIND_DIR", os.path.join(
+        REPO, "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
+    monkeypatch.setenv("ORACLE_OFFSET_ROWS", "19171")
+    return planner_cls(5, 8)
+
+
+def _step_once(arm, clock):
+    obs = batch(8, [])
+    obs["dc_available_pes"] = np.array([480.0, 384.0, 296.0, 240.0, 144.0])
+    obs["planner"]["current_clock"] = clock
+    arm.schedule(obs)
+    return arm
+
+
+def test_the_touched_rows_are_counted_not_assumed(planner_cls, monkeypatch, tmp_path):
+    arm = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path), 13.0)
+    m = arm.metrics()
+    assert m["planner_rows_7200"], "no row span was recorded"
+    d = next(i for i in range(5) if arm.G_rows[i].size > 1)
+    first, last, count = arm._row_span[(d, 7200)]
+    # clock 13 leaves 587 s of the first row, so the episode reaches into row 12 and
+    # touches thirteen rows, not the twelve a naive 7200/600 would give.
+    assert count == 13, f"touched {count} rows over 7200 steps"
+    assert last - first == 12
+
+
+def test_the_terminal_drain_span_is_also_counted(planner_cls, monkeypatch, tmp_path):
+    arm = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path, "ph2.yml"), 13.0)
+    d = next(i for i in range(5) if arm.G_rows[i].size > 1)
+    first, last, count = arm._row_span[(d, 12000)]
+    assert count == 21, f"touched {count} rows over 12000 steps"
+
+
+def test_a_start_up_longer_than_a_row_is_refused(planner_cls, monkeypatch, tmp_path):
+    arm = _phys_arm(planner_cls, monkeypatch, tmp_path, "ph3.yml")
+    with pytest.raises(RuntimeError, match="registered offset no longer names"):
+        _step_once(arm, 601.0)
+
+
+def test_two_arms_on_the_same_window_share_a_row_signature(planner_cls, monkeypatch, tmp_path):
+    from src.baselines.global_schedulers import ClimatologyPlannerGlobalScheduler
+    a = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path, "ph4.yml"), 13.0)
+    monkeypatch.setenv("ORACLE_OFFSET_ROWS", "19171")
+    b = _step_once(ClimatologyPlannerGlobalScheduler(5, 8), 13.0)
+    assert a._rows_signature == b._rows_signature != ""
+    assert a._clock0 == b._clock0
+
+
+def test_the_signature_separates_windows_that_weight_rows_differently(
+        planner_cls, monkeypatch, tmp_path):
+    """clock 13 and clock 14 visit the same rows but spend different seconds in the first."""
+    a = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path, "sg1.yml"), 13.0)
+    b = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path, "sg2.yml"), 14.0)
+    d = next(i for i in range(5) if a.G_rows[i].size > 1)
+    assert a._row_span[(d, 12000)][:2] == b._row_span[(d, 12000)][:2], \
+        "expected the same first and last row for this comparison to be meaningful"
+    assert a._rows_signature != b._rows_signature, \
+        "the signature ignored how long each row was actually served"
+
+
+def test_the_segment_table_accounts_for_every_second(planner_cls, monkeypatch, tmp_path):
+    arm = _step_once(_phys_arm(planner_cls, monkeypatch, tmp_path, "sg3.yml"), 13.0)
+    d = next(i for i in range(5) if arm.G_rows[i].size > 1)
+    assert sum(sec for _row, sec in arm._segments[d]) == 12000
+    assert arm._segments[d][0][1] == 587, "the first row should carry 600 - 13 seconds"

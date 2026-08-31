@@ -1301,7 +1301,24 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
                 + float(d.get("initial_l_vm_count", 0)) * spe * float(d.get("large_vm_multiplier", 4)))
         horizon = int(os.environ.get("ORACLE_HORIZON", "0"))
         year = int(os.environ.get("ORACLE_YEAR", "2021"))
-        warmup = 13                                      # measured, not configured
+        # The weather clock, defined once and shared with Java rather than guessed.
+        #
+        #     weather_row(t) = registered_offset + tz + floor((t - origin) / row_seconds)
+        #
+        # row_seconds comes from the datacentre's time-scaling mode, exactly as
+        # GreenEnergyProvider.getTypicalInterval does: 600 s per row under REAL_TIME,
+        # 1 s per row under COMPRESSED. The origin is the simulation clock zero, which is
+        # what Java uses, so the two agree by construction.
+        #
+        # This replaces a hard-coded `warmup = 13`. That constant was the CloudSim start-up
+        # cost measured under COMPRESSED, where 13 seconds of VM creation advanced the
+        # weather by 13 rows. Under a 600 s row it advances the weather by none, so
+        # carrying the 13 forward would have put the planner 13 rows away from the wind
+        # the simulator actually serves.
+        _mode = str(dcs[0].get("time_scaling_mode", "COMPRESSED")).strip().upper()
+        row_seconds = 600.0 if _mode == "REAL_TIME" else 1.0
+        weather_origin = float(os.environ.get("PLANNER_WEATHER_ORIGIN_SEC", "0"))
+        warmup = int(os.environ.get("PLANNER_WEATHER_WARMUP_ROWS", "0"))
         wind_dir = os.environ.get(
             "ORACLE_WIND_DIR",
             str(cfg_path.parent / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
@@ -1311,6 +1328,13 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         # arm calibrates on this and never reads the window under test, which is what
         # keeps it causal.
         self.clim = np.zeros(num_datacenters, dtype=np.float64)
+        # Raw per-row series plus each site's first row. The step grid is built at the
+        # first decision, when the simulator's own clock is known: the planner counts
+        # steps from zero while the clock already stands at the CloudSim start-up cost,
+        # and indexing G by the step counter is exactly what the old `warmup = 13`
+        # constant was patching over.
+        self.G_rows = [np.zeros(1, dtype=np.float64) for _ in range(num_datacenters)]
+        self.row_base = [0] * num_datacenters
         for d in range(num_datacenters):
             ts = turbines.get(d) or []
             if not ts:
@@ -1321,8 +1345,11 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
                               for x in _csv.DictReader(open(wd / f"Turbine_{t}_{year}.csv"))])
                 acc = v if acc is None else acc + v
             base = offset_rows + warmup + tz_rows[d]
-            seg = acc[base:base + 20000]
-            self.G[d, :len(seg)] = seg * 1000.0 / divisor
+            # Expand rows onto the planning grid on absolute row boundaries: step t reads
+            # the row that owns it, so a row that starts mid-decision still ends where the
+            # simulator ends it rather than 600 steps after the decision.
+            self.G_rows[d] = acc * 1000.0 / divisor
+            self.row_base[d] = base
             if base > 0:
                 self.clim[d] = float(acc[:base].mean()) * 1000.0 / divisor
         self.cb = np.asarray(brown_factors, dtype=np.float64)
@@ -1342,6 +1369,9 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         self.cpu_util = cpu_util
         # Effective rate at which a cloudlet burns its own length.
         self.mips = float(vm_pe_mips) * cpu_util
+        self.row_seconds = row_seconds
+        self.weather_origin_sec = weather_origin
+        self.weather_warmup_rows = warmup
         # 0 means the only bound on how long a job may wait is its own deadline.
         self.horizon = int(horizon)
         self.T = self.G.shape[1]
@@ -1399,6 +1429,13 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         # cannot drift apart.
         self.draining = False
         self._cap_calibrated = False
+        self._grid_built = False
+        self._clock0 = None
+        self._rows_touched = {}
+        self._row_span = {}
+        self._rows_signature = ""
+        self._startup_row_shift = None
+        self._segments = {}
         self.cap = self.cap_config.copy()
         self.occ = np.zeros((self.num_datacenters, self.T), dtype=np.float64)
         self.active = {}          # job id -> [dc, start, end, pes], dispatched
@@ -1439,6 +1476,65 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
 
     def _release(self, d, s, e, p):
         self.occ[d, max(0, s):max(0, e)] -= p
+
+    def _build_step_grid(self, clock_now):
+        """Lay the per-row wind series onto the planning grid using the simulator's clock.
+
+        Java resolves the wind row from the absolute simulation clock:
+        row = base + floor(clock / row_seconds). The planner counts steps from zero, and
+        at the first decision the clock already stands at whatever CloudSim spent creating
+        VMs. Under a one-second row that offset is whole rows of weather, which is where
+        the hard-coded 13 came from; under a 600 second row it is none. Reading the clock
+        makes both cases exact and independent of how long start-up happens to take.
+        """
+        self._clock0 = clock_now
+        # Start-up phase preflight. The registered offset names a first wind row; if
+        # CloudSim ever spends a whole row creating VMs, that row silently shifts and the
+        # window is no longer the one the artifact registered.
+        phase = int(np.floor((clock_now - self.weather_origin_sec) / self.row_seconds))
+        self._startup_row_shift = phase
+        # Under a one-second row every second of start-up is a whole row, so the shift is
+        # unavoidable and is the known defect of that time base rather than a new fault.
+        # It is recorded instead of raised, and the physical base is where it must be zero.
+        if phase != 0 and self.row_seconds > 1.0:
+            raise RuntimeError(
+                f"start-up consumed {clock_now - self.weather_origin_sec:.1f}s, which is "
+                f"{phase} whole wind row(s) at {self.row_seconds:.0f}s per row. The "
+                f"registered offset no longer names the first row this cell will read. "
+                f"Refusing to shift the window silently.")
+        steps = np.arange(self.T, dtype=np.float64)
+        for d in range(self.num_datacenters):
+            acc = self.G_rows[d]
+            if acc.size <= 1:
+                continue
+            rows = self.row_base[d] + np.floor(
+                (clock_now + steps - self.weather_origin_sec) / self.row_seconds)
+            rows = np.clip(rows.astype(np.int64), 0, acc.size - 1)
+            self.G[d, :] = acc[rows]
+            self._rows_touched[d] = rows
+        # Rows actually visited, enumerated from the shared mapping rather than assumed.
+        # A 7200 step episode does not touch 7200/600 = 12 rows when the clock starts part
+        # way into a row, and the terminal drain does not touch 20; both are computed.
+        # The signature covers the whole segment table, (dc, row, seconds spent in it),
+        # not just the first and last row. A clock of 13 and a clock of 14 visit the same
+        # thirteen rows but weight the first and last differently, and two arms that
+        # differ only in that are not running the same window.
+        import hashlib as _hl
+        parts = []
+        for d in range(self.num_datacenters):
+            r = self._rows_touched.get(d)
+            if r is None or self.G_rows[d].size <= 1:
+                continue
+            for horizon in (7200, 12000):
+                seg = r[:min(horizon, len(r))]
+                self._row_span[(d, horizon)] = (int(seg[0]), int(seg[-1]),
+                                                int(len(np.unique(seg))))
+            seg = r[:min(12000, len(r))]
+            rows_u, secs = np.unique(seg, return_counts=True)
+            self._segments[d] = list(zip(rows_u.tolist(), secs.tolist()))
+            parts.append(f"{d}=" + ",".join(f"{ri}:{sc}" for ri, sc in self._segments[d]))
+        self._rows_signature = _hl.sha256("|".join(parts).encode()).hexdigest()[:16]
+        self._grid_built = True
 
     def _tail_level(self, d):
         """Green level assumed beyond the forecast horizon, shared by every arm."""
@@ -1700,6 +1796,9 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         # the persistence arm plans the whole future on it.
         gn = _as_np_1d(global_obs.get('dc_current_green_power_w'), n, fill=0.0, dtype=np.float64)
         self.green_now = gn
+        if not self._grid_built:
+            self._build_step_grid(float(planner.get('current_clock', 0.0)))
+
         self.draining = 0 < self.decision_horizon <= self.t
 
         # Compare the planner's belief about occupied PEs with the simulator's own count
@@ -1922,6 +2021,18 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
             "planner_backstop_slack": self.backstop_slack,
             "planner_backstop_slack_steps": self.backstop_slack_steps,
             "planner_timestep_sec": self.timestep_sec,
+            "planner_row_seconds": self.row_seconds,
+            "planner_weather_origin_sec": self.weather_origin_sec,
+            "planner_weather_warmup_rows": self.weather_warmup_rows,
+            "planner_clock0": self._clock0,
+            "planner_startup_row_shift": self._startup_row_shift,
+            "planner_rows_signature": self._rows_signature,
+            "planner_rows_7200": ";".join(
+                f"{d}:{v[0]}-{v[1]}({v[2]})" for (d, h), v in sorted(self._row_span.items())
+                if h == 7200),
+            "planner_rows_12000": ";".join(
+                f"{d}:{v[0]}-{v[1]}({v[2]})" for (d, h), v in sorted(self._row_span.items())
+                if h == 12000),
             "planner_backstop_mode": self.backstop_mode,
             "planner_latest_start_eps": self.eps,
             "planner_cpu_util": self.cpu_util,

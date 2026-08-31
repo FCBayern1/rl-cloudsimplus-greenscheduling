@@ -1,0 +1,60 @@
+{
+  "clock0": 13.0,
+  "disjoint": true,
+  "max_tz": 108,
+  "negative_control": {
+    "green_wh": 0.0,
+    "k": 43,
+    "offset": 43387,
+    "read_rows": [
+      43387,
+      43461
+    ],
+    "role": "mechanism-neutral, excluded from the direction gate"
+  },
+  "quantiles": [
+    10,
+    50,
+    90
+  ],
+  "range": 44950,
+  "row_seconds": 600.0,
+  "row_span": 21,
+  "rows_per_cell": 21,
+  "selection_hash": "fa8a53115b82cfbb",
+  "selection_note": "nearest to each quantile, disjoint as chosen",
+  "stride": 1009,
+  "terminal_steps": 12000,
+  "windows": {
+    "high": {
+      "green_wh": 9832.377548148148,
+      "k": 869,
+      "offset": 22771,
+      "rank_pct": 89.99499749874937,
+      "read_rows": [
+        22771,
+        22845
+      ]
+    },
+    "low": {
+      "green_wh": 332.60371851851846,
+      "k": 2528,
+      "offset": 33552,
+      "rank_pct": 10.005002501250624,
+      "read_rows": [
+        33552,
+        33626
+      ]
+    },
+    "mid": {
+      "green_wh": 3033.9160200494443,
+      "k": 3279,
+      "offset": 27161,
+      "rank_pct": 50.0,
+      "read_rows": [
+        27161,
+        27235
+      ]
+    }
+  }
+}
