@@ -1,0 +1,139 @@
+{
+  "artefacts": {
+    "config": {
+      "bytes": 1216603,
+      "path": "/home/joshua/rl-cloudsimplus-greenscheduling/config_C.yml",
+      "sha256": "4ec9b8ef6b7927d4e4d3af8c1e5200b64370662e31f759575c19ebf18e9bb414"
+    },
+    "jar": {
+      "bytes": 1089316351,
+      "path": "/home/joshua/rl-cloudsimplus-greenscheduling/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar",
+      "sha256": "824bd8573d0b328d91d344fbb7c71f6b451615932ad4c156aa3a355ade1461bb"
+    },
+    "turbine_12_2020": {
+      "rows": 32224,
+      "sha256": "162e80e50b31a720e210008729cfbfbbff6bbdc4cc399814195f4e5613291daf"
+    },
+    "turbine_12_2021": {
+      "rows": 52559,
+      "sha256": "e6512599834c352a0e831132d8ceb791ae334b63a0e08163ef5e02c69ce4962e"
+    },
+    "turbine_36_2020": {
+      "rows": 32224,
+      "sha256": "e92090af7abd76ecaba1b6f62045b4d2b788d243f49781bac74f944a525b7c1a"
+    },
+    "turbine_36_2021": {
+      "rows": 52559,
+      "sha256": "14452bd95440401e7ba775f820e16ca3073b6bb4c1e11f211503435b72443721"
+    },
+    "turbine_91_2020": {
+      "rows": 32224,
+      "sha256": "c45df4f3d2d0ba66713941e3ab94208f1a96b8a4db11f2d7bb039e958fccb61e"
+    },
+    "turbine_91_2021": {
+      "rows": 52559,
+      "sha256": "6279066901ab3053fff77e437e3ca4fb8845d9bbf81707cd113260276091acb1"
+    },
+    "turbine_95_2020": {
+      "rows": 32224,
+      "sha256": "ee5e68df0004ab1640d146b255257c87bb5635bf02cb33cf948abf6c2625f79c"
+    },
+    "turbine_95_2021": {
+      "rows": 52559,
+      "sha256": "32ac9baf98d1ac887b2b7113977774830e248ca7323ebb411e308995d1e22828"
+    },
+    "turbine_96_2020": {
+      "rows": 32224,
+      "sha256": "7ac6ce1a70321b172427edc4fe143ec188b062c34712dec3a47da86fa9d69112"
+    },
+    "turbine_96_2021": {
+      "rows": 52559,
+      "sha256": "ff5df78a51c09f1d9785ebd279b877b0015b4c3cbec793908a2cb96ce757f456"
+    }
+  },
+  "calibration_2021": {
+    "_disjoint": true,
+    "high": {
+      "fits": true,
+      "k": 34,
+      "last_row_touched": 41627,
+      "offset": 34306
+    },
+    "low": {
+      "fits": true,
+      "k": 19,
+      "last_row_touched": 26492,
+      "offset": 19171
+    },
+    "mid": {
+      "fits": true,
+      "k": 56,
+      "last_row_touched": 18875,
+      "offset": 11554
+    }
+  },
+  "configured_range_2021": 44950,
+  "confirmation_2020_candidates": {
+    "24615": {
+      "_disjoint": true,
+      "high": {
+        "fits": true,
+        "k": 13,
+        "last_row_touched": 20438,
+        "offset": 13117
+      },
+      "low": {
+        "fits": true,
+        "k": 27,
+        "last_row_touched": 9949,
+        "offset": 2628
+      },
+      "mid": {
+        "fits": true,
+        "k": 71,
+        "last_row_touched": 29730,
+        "offset": 22409
+      }
+    },
+    "24669": {
+      "_disjoint": true,
+      "high": {
+        "fits": true,
+        "k": 13,
+        "last_row_touched": 20438,
+        "offset": 13117
+      },
+      "low": {
+        "fits": true,
+        "k": 27,
+        "last_row_touched": 9895,
+        "offset": 2574
+      },
+      "mid": {
+        "fits": true,
+        "k": 71,
+        "last_row_touched": 29622,
+        "offset": 22301
+      }
+    }
+  },
+  "episode_steps": 7200,
+  "experiment": "experiment_g1eval_matchedvan",
+  "max_tz_offset_rows": 108,
+  "reserve_rows_2021": 7609,
+  "rows_per_turbine": {
+    "2020": 32224,
+    "2021": 52559,
+    "2022": 2
+  },
+  "safe_range_2020_same_reserve": 24615,
+  "stride": 1009,
+  "turbines": [
+    12,
+    36,
+    91,
+    95,
+    96
+  ],
+  "warmup_rows": 13
+}

@@ -182,6 +182,9 @@ class HierarchicalMultiDCEnv(gym.Env):
         # CRD framework: cached per-DC carbon factors and timestep duration.
         # These are stable for the simulation lifetime; populated lazily on first
         # access from Java to avoid extra Py4J round-trips per step.
+        # Evaluator-only planner inputs from the most recent observation parse; None
+        # until the first parse, and on a gateway built before getBatchCloudletIds.
+        self._planner_channel: Optional[Dict[str, Any]] = None
         self._crd_green_factors: Optional[List[float]] = None
         self._crd_brown_factors: Optional[List[float]] = None
         self._crd_timestep_hours: Optional[float] = None
@@ -1461,6 +1464,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                     value = info_java.get(key)
                     info[str(key)] = self._convert_java_value(value)
                 info["crd"] = self._collect_crd_info()
+                if self._planner_channel is not None:
+                    info["planner"] = self._planner_channel
                 return info
         except Exception:
             pass
@@ -1474,6 +1479,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 value = info_java.get(key) if hasattr(info_java, "get") else None
             info[str(key)] = self._convert_java_value(value)
         info["crd"] = self._collect_crd_info()
+        if self._planner_channel is not None:
+            info["planner"] = self._planner_channel
         return info
 
     def _pad_batch_array(self, arr: np.ndarray, target_size: int, dtype=np.int32) -> np.ndarray:
@@ -1866,6 +1873,41 @@ class HierarchicalMultiDCEnv(gym.Env):
             deadline_present=deadline_present,
         )
 
+    def _collect_planner_channel(self, global_obs_java) -> Optional[Dict[str, Any]]:
+        """Raw per-slot planner inputs, padded to the batch width, or None on an old jar.
+
+        getBatchCloudletIds landed with the reservation-ledger work. A gateway built
+        before that has every other field but not the ids, and a planner keyed on shape
+        alone double-books a deferred cloudlet, so the whole block is withheld rather
+        than served without identity.
+        """
+        try:
+            ids = np.asarray(global_obs_java.getBatchCloudletIds(), dtype=np.int64)
+        except Exception:
+            return None
+        n = self.global_routing_batch_size
+
+        def pad(arr, dtype, fill):
+            a = np.asarray(arr, dtype=dtype).ravel()
+            if a.size >= n:
+                return a[:n]
+            return np.concatenate([a, np.full(n - a.size, fill, dtype=dtype)])
+
+        return {
+            "batch_cloudlet_ids": pad(ids, np.int64, -1),
+            "batch_cloudlet_pes": pad(global_obs_java.getBatchCloudletPes(), np.int64, 0),
+            "batch_cloudlet_mi": pad(global_obs_java.getBatchCloudletMi(), np.int64, 0),
+            "batch_cloudlet_time_to_deadline": pad(
+                global_obs_java.getBatchCloudletTimeToDeadline(), np.float64, 0.0),
+            "batch_cloudlet_deadline_present": pad(
+                global_obs_java.getBatchCloudletDeadlinePresent(), np.int64, 0),
+            "batch_cloudlet_is_deferred": pad(
+                global_obs_java.getBatchCloudletIsDeferred(), np.int64, 0),
+            "batch_cloudlet_wait_age": pad(
+                global_obs_java.getBatchCloudletWaitAge(), np.float64, 0.0),
+            "current_clock": float(global_obs_java.getCurrentClock()),
+        }
+
     def _convert_global_observation(self, global_obs_java) -> Dict[str, Any]:
         """
         Convert Java GlobalObservationState to Python dict.
@@ -1905,6 +1947,15 @@ class HierarchicalMultiDCEnv(gym.Env):
             "load_imbalance": np.array([global_obs_java.getLoadImbalance()], dtype=np.float32),
             "recent_completed": np.array([min(int(global_obs_java.getRecentCompletedCloudlets()), 99999)], dtype=np.int32),
         }
+
+        # Evaluator-only planner channel. A curve planner needs raw seconds and a stable
+        # identity, neither of which the policy observation carries: the v3.1 features are
+        # normalized and gated behind obs_v31_features, and nothing in the observation
+        # survives a cloudlet being deferred out of the batch and coming back. This block
+        # is handed to the evaluator through info, never through observation_space, so no
+        # checkpoint schema changes. Absent keys are left absent rather than filled, so a
+        # planner reading them fails loudly instead of planning against a sentinel.
+        self._planner_channel = self._collect_planner_channel(global_obs_java)
 
         raw_time_to_deadline = np.zeros(
             self.global_routing_batch_size, dtype=np.float64)
@@ -2248,6 +2299,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 info["episode_step"] = self.current_step
                 info["episode_reward"] = self.episode_reward
                 info["crd"] = self._collect_crd_info()
+                if self._planner_channel is not None:
+                    info["planner"] = self._planner_channel
                 return info
         except Exception:
             pass
@@ -2263,6 +2316,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
+        if self._planner_channel is not None:
+            info["planner"] = self._planner_channel
 
         return info
 
@@ -2434,6 +2489,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
+        if self._planner_channel is not None:
+            info["planner"] = self._planner_channel
         return info
 
     def _collect_crd_info(self) -> Dict[str, Any]:

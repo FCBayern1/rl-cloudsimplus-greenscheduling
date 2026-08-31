@@ -496,9 +496,17 @@ def run_evaluation(
     # global_defer_enabled=true so the env accepts the defer action index.
     if global_defer:
         from src.baselines.global_schedulers import DeferringGlobalScheduler
-        global_scheduler = DeferringGlobalScheduler(global_scheduler, num_dcs, batch_size)
-        if verbose:
-            print(f"Global defer ENABLED — wrapped {global_scheduler_name} with forecast-driven defer rule")
+        if getattr(global_scheduler, "HANDLES_DEFER", False):
+            # The scheduler already decides when to wait. The flag stays meaningful,
+            # since the env only accepts the defer action index when it is set, but the
+            # threshold wrapper must not sit on top and rewrite those decisions.
+            if verbose:
+                print(f"Global defer ENABLED — {global_scheduler_name} emits DEFER itself, "
+                      f"threshold wrapper not applied")
+        else:
+            global_scheduler = DeferringGlobalScheduler(global_scheduler, num_dcs, batch_size)
+            if verbose:
+                print(f"Global defer ENABLED — wrapped {global_scheduler_name} with forecast-driven defer rule")
 
     # Create Local Schedulers (one per DC)
     LocalCls = LOCAL_SCHEDULERS[local_scheduler_name]
@@ -554,7 +562,7 @@ def run_evaluation(
 
         while not done:
             # Convert observation for global scheduler
-            global_obs = _convert_global_obs_for_scheduler(obs['global'])
+            global_obs = _convert_global_obs_for_scheduler(obs['global'], info)
 
             # Global scheduling: select DC for each cloudlet in batch
             t0 = time.perf_counter_ns()
@@ -595,6 +603,12 @@ def run_evaluation(
                     **{f"waste_wh_dc{i}": float(_col('dc_cumulative_wasted_green_wh')[i]) for i in range(_n)},
                     **{f"queue_dc{i}": float(_col('dc_queue_sizes')[i]) for i in range(_n)},
                     **{f"util_dc{i}": float(_col('dc_utilizations')[i]) for i in range(_n)},
+                    **{f"avail_pes_dc{i}": float(_col('dc_available_pes')[i]) for i in range(_n)},
+                    # What the planner believes is occupied right now, so predicted and
+                    # observed load can be compared offline rather than only as a scalar.
+                    **{f"pred_pes_dc{i}": (
+                        float(getattr(global_scheduler, 'occ')[i, getattr(global_scheduler, 't')])
+                        if hasattr(global_scheduler, 'occ') else 0.0) for i in range(_n)},
                     **{f"routed_dc{i}": int(_ga[i]) for i in range(_n)},
                 ))
             obs, rewards, terminated, truncated, info = env.step(action)
@@ -609,6 +623,13 @@ def run_evaluation(
         metrics = collect_metrics(info, num_dcs)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
+        # Scheduler-side counters the validity contract is checked against (stale
+        # reservations, capacity overrun, occupancy drift). Absent for schedulers that
+        # keep no ledger, which is why this is opt-in rather than assumed.
+        if hasattr(global_scheduler, 'metrics'):
+            metrics.update(global_scheduler.metrics())
+        if hasattr(global_scheduler, 'summary'):
+            print(global_scheduler.summary())
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         # Efficiency overhead: episode wall-clock (s) and peak memory footprint.
@@ -655,9 +676,18 @@ def run_evaluation(
     return all_results
 
 
-def _convert_global_obs_for_scheduler(global_obs: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert global observation to scheduler-friendly format."""
-    return {
+def _convert_global_obs_for_scheduler(
+    global_obs: Dict[str, Any],
+    info: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Convert global observation to scheduler-friendly format.
+
+    The planner block travels in info rather than in the observation, because it carries
+    raw seconds and a stable cloudlet identity that the policy observation deliberately
+    does not expose. It is forwarded verbatim when present and simply absent otherwise,
+    so a planner that needs it raises instead of scheduling against a filled sentinel.
+    """
+    converted = {
         'dc_queue_sizes': global_obs.get('dc_queue_sizes', []),
         'dc_green_ratio': global_obs.get('dc_green_ratio', []),
         'dc_utilizations': global_obs.get('dc_utilizations', []),
@@ -672,6 +702,21 @@ def _convert_global_obs_for_scheduler(global_obs: Dict[str, Any]) -> Dict[str, A
         'batch_cloudlet_mi': global_obs.get('batch_cloudlet_mi', []),
         'load_imbalance': global_obs.get('load_imbalance', [0]),
     }
+    planner = (info or {}).get('planner')
+    if planner is not None:
+        converted['planner'] = planner
+    # Execution events, the only channel that reports what the simulator actually did.
+    # dc_available_pes was tried first and is a sum of Vm.getFreePesNumber() that never
+    # recovers once a cloudlet finishes, so it can neither budget a drain nor audit a
+    # ledger. These keys carry real starts, finishes and executing PEs.
+    for key in ('exec_running_csv', 'exec_queued_csv', 'exec_started_csv',
+                'exec_finished_csv', 'dc_free_vm_pes_csv', 'dc_running_pes_csv',
+                'cloudlet_cpu_utilization_effective',
+                'defer_deadline_slack_sec_effective',
+                'defer_deadline_force_mode_effective'):
+        if info and key in info:
+            converted[key] = info[key]
+    return converted
 
 
 def _convert_local_obs_for_scheduler(local_obs: Dict[str, Any]) -> Dict[str, Any]:

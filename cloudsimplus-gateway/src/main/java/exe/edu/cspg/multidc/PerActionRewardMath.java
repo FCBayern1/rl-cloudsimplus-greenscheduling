@@ -133,13 +133,32 @@ final class PerActionRewardMath {
     static boolean deadlineForceLatestStart(double nowSec, double deadlineSec,
                                             double lengthMi, long pes,
                                             double mipsPerPe, double slackSec) {
+        return deadlineForceLatestStart(nowSec, deadlineSec, lengthMi, pes, mipsPerPe,
+                                        slackSec, 1.0);
+    }
+
+    static boolean deadlineForceLatestStart(double nowSec, double deadlineSec,
+                                            double lengthMi, long pes,
+                                            double mipsPerPe, double slackSec,
+                                            double cpuUtilization) {
         // TB12 audit 2026-08-25: CloudSim Cloudlet.getLength() is PER-PE MI, so
         // runtime = length / mipsPerPe and does NOT shrink with pes. The old
         // pes× division underestimated runtime 2x for 2-PE jobs and fired the
         // backstop ~1.8h past latest start (always_defer ontime=0 despite
         // slack 720). `pes` stays in the signature for call-site stability.
-        double runtime = lengthMi / Math.max(1.0, mipsPerPe);
+        //
+        // 2026-08-30: a cloudlet executes at cloudlet_cpu_utilization of a VM PE, so it
+        // occupies its site for length / (mips * u). Measured against the simulator's own
+        // finish events, twelve of twelve cloudlets ran 2.0166x the nominal length/mips at
+        // u = 0.5 and 4.0201x at u = 0.25. Ignoring u made this backstop believe a job was
+        // half as long as it is, so it fired about half a runtime too late.
+        double runtime = lengthMi / (Math.max(1.0, mipsPerPe) * clampUtilization(cpuUtilization));
         return nowSec + runtime + slackSec >= deadlineSec;
+    }
+
+    /** Utilisation is a fraction of a PE; a non-positive value would divide by zero. */
+    static double clampUtilization(double u) {
+        return (u > 0.0 && u <= 1.0) ? u : 1.0;
     }
 
     /**

@@ -44210,6 +44210,18 @@ experiment_g1eval_knSV3b:
 # plus green_episode_offset_range. Do not hand-edit: regenerate, and let
 # tests/test_g1_eval_blocks.py assert the difference set is exactly one key.
 experiment_g1eval_matchedvan:
+  # Frozen explicitly 2026-08-31. Java defaults these (SimulationSettings:436-437)
+  # and this block never set them, so the active backstop has always been the
+  # legacy fixed lead firing 600 s before the deadline regardless of runtime.
+  # Writing the values the runs actually used keeps the physics identical and
+  # removes the last implicit default a planner has to reverse engineer.
+  defer_deadline_slack_sec: 600.0
+  defer_deadline_force_mode: legacy
+  # Frozen explicitly 2026-08-30. Java reads this key with a 0.5 default
+  # (SimulationSettings:438) and this block never set it, so every run so far has
+  # executed at 0.5 while the surrounding notes assumed 1.0. Writing the value the
+  # runs actually used keeps the physics identical and removes the silent default.
+  cloudlet_cpu_utilization: 0.5
   carbon_mi_floor: 1.0e7
   carbon_normalization_fixed_max: 5e-05
   carbon_normalization_mode: FIXED

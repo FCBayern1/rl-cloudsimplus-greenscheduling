@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.cloudsimplus.cloudlets.Cloudlet;
+import org.cloudsimplus.cloudlets.CloudletExecution;
 import org.cloudsimplus.core.CloudSimPlus;
 import org.cloudsimplus.core.CloudSimTag;
 import org.cloudsimplus.datacenters.Datacenter;
@@ -203,6 +204,10 @@ public class MultiDatacenterSimulationCore {
     public void resetSimulation() {
         LOGGER.info("Resetting multi-datacenter simulation environment...");
         episodeIndex++;
+        // The start-event trace is a diff against the previous step. Carrying it across a
+        // reset would report every cloudlet still running at the old episode's end as
+        // having started in the new one.
+        execRunningPrev.clear();
 
         // Print cloudlet execution summary from previous episode (skip first reset).
         //
@@ -647,7 +652,8 @@ public class MultiDatacenterSimulationCore {
                         backstopFires = PerActionRewardMath.deadlineForceLatestStart(
                                 currentClock, ddl, cloudlet.getLength(),
                                 cloudlet.getPesNumber(), refMips,
-                                settings.getDeferDeadlineSlackSec());
+                                settings.getDeferDeadlineSlackSec(),
+                                settings.getCloudletCpuUtilization());
                     } else {   // legacy fixed-lead, byte-identical
                         backstopFires = currentClock + settings.getDeferDeadlineSlackSec() >= ddl;
                     }
@@ -1525,6 +1531,11 @@ public class MultiDatacenterSimulationCore {
         int[] batchCloudletDeadlinePresent = new int[batchSize];
         int[] batchCloudletIsDeferred = new int[batchSize];
         int[] batchCloudletDeferCount = new int[batchSize];
+        // Evaluator-only stable identity. -1 marks an empty slot so a planner can tell
+        // padding from a real cloudlet, and can tell a re-presented deferred cloudlet
+        // from a new arrival that happens to share its shape.
+        long[] batchCloudletIds = new long[batchSize];
+        Arrays.fill(batchCloudletIds, -1L);
 
         // Fill arrays with actual cloudlet data (0 if no cloudlet at that position)
         for (int i = 0; i < batchCloudlets.size(); i++) {
@@ -1541,6 +1552,7 @@ public class MultiDatacenterSimulationCore {
             }
             batchCloudletIsDeferred[i] = globalBroker.isCloudletDeferred(cloudlet) ? 1 : 0;
             batchCloudletDeferCount[i] = globalBroker.getCloudletDeferCount(cloudlet);
+            batchCloudletIds[i] = cloudlet.getId();
         }
         // Remaining positions stay as 0 (default array values)
 
@@ -1584,6 +1596,7 @@ public class MultiDatacenterSimulationCore {
                 batchCloudletDeadlinePresent,
                 batchCloudletIsDeferred,
                 batchCloudletDeferCount,
+                batchCloudletIds,
                 globalBroker.getGlobalDeferredCount(),
                 globalBroker.getGlobalDeferredMi(),
                 upcomingPesDistribution,
@@ -2386,6 +2399,114 @@ public class MultiDatacenterSimulationCore {
     /**
      * Build step info dictionary.
      */
+    /** Cloudlets executing at each datacentre on the previous step, for start and finish events. */
+    private final Map<Long, Cloudlet> execRunningPrev = new HashMap<>();
+
+    /**
+     * Evaluator-only execution trace, CSV encoded because the info map bridges to Python
+     * as strings. Records are separated by ';' and fields by ':'.
+     */
+    private void putExecutionTrace(Map<String, Object> info) {
+        StringBuilder running = new StringBuilder();
+        StringBuilder queued = new StringBuilder();
+        StringBuilder started = new StringBuilder();
+        StringBuilder finished = new StringBuilder();
+        int n = datacenterInstances.size();
+        long[] freeVmPes = new long[n];
+        long[] runningPes = new long[n];
+        Map<Long, Cloudlet> runningNow = new HashMap<>();
+
+        for (int i = 0; i < n; i++) {
+            DatacenterInstance dc = datacenterInstances.get(i);
+            LoadBalancingBroker broker = dc.getLocalBroker();
+            if (broker == null) continue;
+            for (Vm vm : broker.getVmCreatedList()) {
+                if (!vm.isCreated() || vm.isFailed()) continue;
+                freeVmPes[i] += vm.getFreePesNumber();
+                for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletExecList()) {
+                    Cloudlet c = ce.getCloudlet();
+                    long id = c.getId();
+                    int pes = (int) c.getPesNumber();
+                    runningPes[i] += pes;
+                    runningNow.put(id, c);
+                    if (running.length() > 0) running.append(';');
+                    running.append(id).append(':').append(i).append(':').append(pes);
+                    if (!execRunningPrev.containsKey(id)) {
+                        if (started.length() > 0) started.append(';');
+                        started.append(id).append(':').append(i).append(':').append(pes)
+                               .append(':').append(c.getStartTime());
+                    }
+                }
+                for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletWaitingList()) {
+                    if (queued.length() > 0) queued.append(';');
+                    queued.append(ce.getCloudlet().getId()).append(':').append(i);
+                }
+            }
+        }
+
+        // Finish events come from the running set falling away, not from
+        // getCloudletsFinishedLastStep: measured 2026-08-30, that list stayed empty for
+        // eight cloudlets that demonstrably ran and completed between steps 55 and 200,
+        // so a calibration keyed on it collected nothing at all.
+        for (Map.Entry<Long, Cloudlet> e : execRunningPrev.entrySet()) {
+            if (runningNow.containsKey(e.getKey())) continue;
+            Cloudlet c = e.getValue();
+            int dcIndex = indexOfDatacenterFor(c);
+            if (finished.length() > 0) finished.append(';');
+            finished.append(c.getId()).append(':').append(dcIndex).append(':')
+                    .append(c.getFinishTime()).append(':')
+                    .append(c.getFinishTime() - c.getStartTime()).append(':')
+                    .append(c.getLength()).append(':').append(c.getPesNumber());
+        }
+        execRunningPrev.clear();
+        execRunningPrev.putAll(runningNow);
+
+        info.put("exec_running_csv", running.toString());
+        info.put("exec_queued_csv", queued.toString());
+        info.put("exec_started_csv", started.toString());
+        info.put("exec_finished_csv", finished.toString());
+        info.put("dc_free_vm_pes_csv", joinLongs(freeVmPes));
+        info.put("dc_running_pes_csv", joinLongs(runningPes));
+        // What the simulator is actually applying, so the Python side can assert its own
+        // configured value reached the JVM instead of silently falling back to a default.
+        // The three physics parameters a planner has to reproduce exactly. All three used
+        // to come from Java defaults that the experiment never set, which is how every
+        // runtime came to be twice its nominal value and how the backstop came to fire on
+        // a fixed 600 s lead with nobody accounting for it. Reported so the Python side
+        // asserts agreement instead of assuming it.
+        info.put("cloudlet_cpu_utilization_effective",
+                 String.valueOf(settings.getCloudletCpuUtilization()));
+        info.put("defer_deadline_slack_sec_effective",
+                 String.valueOf(settings.getDeferDeadlineSlackSec()));
+        info.put("defer_deadline_force_mode_effective",
+                 String.valueOf(settings.getDeferDeadlineForceMode()));
+    }
+
+    /** Test seam for the CSV encoding; the separators are a contract with the planner. */
+    static String joinLongsForTest(long[] v) {
+        return joinLongs(v);
+    }
+
+    /** Datacentre index a cloudlet last ran on, or -1 when it cannot be resolved. */
+    private int indexOfDatacenterFor(Cloudlet c) {
+        Vm vm = c.getVm();
+        if (vm == null || vm == Vm.NULL) return -1;
+        for (int i = 0; i < datacenterInstances.size(); i++) {
+            LoadBalancingBroker b = datacenterInstances.get(i).getLocalBroker();
+            if (b != null && b.getVmCreatedList().contains(vm)) return i;
+        }
+        return -1;
+    }
+
+    private static String joinLongs(long[] v) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < v.length; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(v[i]);
+        }
+        return sb.toString();
+    }
+
     private Map<String, Object> buildStepInfo(int cloudletsRouted, Map<Integer, Boolean> localResults) {
         Map<String, Object> info = new HashMap<>();
         info.put("cloudlets_routed", cloudletsRouted);
@@ -2401,6 +2522,15 @@ public class MultiDatacenterSimulationCore {
         // Add global energy statistics
         Map<String, Object> globalEnergyStats = calculateGlobalEnergyStatistics();
         info.put("global_energy_stats", globalEnergyStats);
+
+        // Evaluator-only execution trace. A planner cannot be checked against
+        // dc_available_pes: that is a sum of Vm.getFreePesNumber() over created VMs, and
+        // reading it as "PEs executing right now" produced three wrong conclusions in a
+        // row. These keys report what actually happened instead of what can be inferred:
+        // which cloudlet started where and when, which finished and how long it really
+        // ran, what is executing and queued at this instant, and how much room a site
+        // genuinely has. Nothing here enters the RL observation space.
+        putExecutionTrace(info);
 
         // Tier-1 per-cloudlet credit: CSV-encode the per-slot reward vector + the valid-slot count.
         // CSV (not a raw array) because HierarchicalStepResult bridges info to Python as a STRING map

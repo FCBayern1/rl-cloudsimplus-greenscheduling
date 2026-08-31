@@ -1,7 +1,10 @@
+import logging
 import os
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from .base import GlobalScheduler
+
+logger = logging.getLogger(__name__)
 
 
 def _as_np_1d(x, n: int, fill: float = 0.0, dtype=None) -> np.ndarray:
@@ -1187,8 +1190,16 @@ class GreenForecastCapacityGlobalScheduler(GlobalScheduler):
         return actions
 
 
-class CurveOracleGlobalScheduler(GlobalScheduler):
-    """Curve-level spatio-temporal oracle, frozen semantics (Codex 2026-08-30).
+class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
+    """Curve-informed feasible planner, spatio-temporal, frozen semantics (Codex 2026-08-30).
+
+    Not an oracle and deliberately not named one. Static and dynamic power are still
+    approximations (a fleet draw split by host count, a linear per-PE slope) rather than
+    per-host-model curves with idle power-down, so this arm may only be compared against
+    blind arms that share the same planner, the same capacity ledger and the same spatial
+    carbon model, differing solely in the future information they are given. Calling any
+    number from it a headroom measurement requires aligning the power model first and
+    checking predicted carbon against simulated carbon digit by digit.
 
     Two earlier attempts were not oracles and their failures said nothing about
     the testbed. green_forecast ignored capacity and piled the batch onto one
@@ -1210,7 +1221,38 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
     The green trace is read from the same CSVs the simulator serves, at the
     alignment verified by p0c_step5_alignment.py (offset + 13 + per-DC tz, lag 0
     at r=1.0000 on 18 of 18 cells).
+
+    Three ledgers keep the plan honest. The batch shows only the first 128 queued jobs,
+    so a deferred job disappears for long stretches and comes back later. Rebuilding the
+    plan every step would lose its reservation and let a later batch book the same future
+    capacity twice, which is why reservations persist and are keyed on the stable cloudlet
+    id from the evaluator-only planner channel rather than on job shape, which collides.
+
+        scratch          this step's candidate starts, never written to the grid
+        reservations     planned but not yet dispatched, keyed by job id, kept across steps
+        active           dispatched and executing, released when the run window ends
+
+    occ is the sum of reservations and active and is the only capacity truth. A job that
+    already holds a reservation is never replanned, so its plan is stable by construction.
     """
+
+    INFO_SOURCE = "curve"
+    ALLOW_DEFER = True
+    # A planning arm books future capacity. A reactive arm does not: it only ever decides
+    # about now, so it holds no reservation and cannot double-book.
+    RESERVES = True
+    # Measured on this gateway by g1/check_route_visibility_lag.py, three routing events
+    # at different steps and different batch sizes, all agreeing exactly. A route issued
+    # at step t is executing by the state observed at t+1, and dc_available_pes reports
+    # that occupancy 7 observations later still. The ledger is held from t+1 and the
+    # sentinel compares against occupancy from t-7, so neither is aligned by taste.
+    START_LAG = 1
+    AVAIL_REPORT_LAG = 7
+    # This family emits DEFER itself and must not be wrapped by the threshold rule in
+    # DeferringGlobalScheduler. That wrapper only adds defers and never withdraws one, so
+    # it would rewrite a dispatch into a wait while the reservation stayed where it was,
+    # leaving a booking nothing will ever collect.
+    HANDLES_DEFER = True
 
     def __init__(self, num_datacenters: int, batch_size: int):
         super().__init__(num_datacenters, batch_size)
@@ -1230,12 +1272,32 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
         divisor = float(blk.get("compressed_power_divisor") or 1500.0)
         offset_rows = int(os.environ.get("ORACLE_OFFSET_ROWS", "0"))
         vm_pe_mips = float(dcs[0].get("vm_pe_mips", 40000))
+        # A cloudlet runs at cpu_util of a VM PE, so it occupies the site for
+        # length / (mips * cpu_util). Java reads this key with a 0.5 default
+        # (SimulationSettings:438) and this experiment never sets it, so every job takes
+        # twice its nominal runtime. Measured 2026-08-30 against the simulator's own
+        # finish events: 12 of 12 cloudlets gave elapsed/(length/mips) = 2.0166 with a
+        # standard deviation of 0.0156 and no dependence on PES, and forcing the key to
+        # 0.25 moved the ratio to 4.0201. The same default is used here so the planner
+        # prices a job over the window it really occupies.
+        cpu_util = float(blk.get("cloudlet_cpu_utilization", 0.5))
+        if cpu_util <= 0.0:
+            cpu_util = 0.5
         hosts = [sum(v for k, v in d.items() if k.startswith("host_count_"))
                  for d in sorted(dcs, key=lambda x: x["datacenter_id"])]
         tot = float(sum(hosts)) or 1.0
         static_w = [332.0 * h / tot for h in hosts]      # measured C-regime fleet draw
-        cap_pes = [h * 64.0 for h in hosts]
-        horizon = int(os.environ.get("ORACLE_HORIZON", "400"))
+        # Capacity is the real VM PE count, not hosts x 64. The old approximation
+        # overstated every site by 4 to 8 percent, which let the planner reserve room
+        # that does not exist and pushed the shortfall onto the Java backstop.
+        cap_pes = []
+        for d in sorted(dcs, key=lambda x: x["datacenter_id"]):
+            spe = float(d.get("small_vm_pes", 2))
+            cap_pes.append(
+                float(d.get("initial_s_vm_count", 0)) * spe
+                + float(d.get("initial_m_vm_count", 0)) * spe * float(d.get("medium_vm_multiplier", 2))
+                + float(d.get("initial_l_vm_count", 0)) * spe * float(d.get("large_vm_multiplier", 4)))
+        horizon = int(os.environ.get("ORACLE_HORIZON", "0"))
         year = int(os.environ.get("ORACLE_YEAR", "2021"))
         warmup = 13                                      # measured, not configured
         wind_dir = os.environ.get(
@@ -1243,6 +1305,10 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
             str(cfg_path.parent / "cloudsimplus-gateway/src/main/resources/windProduction/simplified"))
         wd = _pl.Path(wind_dir)
         self.G = np.zeros((num_datacenters, 20000), dtype=np.float64)
+        # Mean of everything strictly before the episode window, per site. A climatology
+        # arm calibrates on this and never reads the window under test, which is what
+        # keeps it causal.
+        self.clim = np.zeros(num_datacenters, dtype=np.float64)
         for d in range(num_datacenters):
             ts = turbines.get(d) or []
             if not ts:
@@ -1255,16 +1321,141 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
             base = offset_rows + warmup + tz_rows[d]
             seg = acc[base:base + 20000]
             self.G[d, :len(seg)] = seg * 1000.0 / divisor
+            if base > 0:
+                self.clim[d] = float(acc[:base].mean()) * 1000.0 / divisor
         self.cb = np.asarray(brown_factors, dtype=np.float64)
         self.cg = np.asarray(green_factors, dtype=np.float64)
         self.static = np.asarray(static_w, dtype=np.float64)
-        self.cap = np.asarray(cap_pes, dtype=np.float64)
-        self.mips = float(vm_pe_mips)
+        # Config arithmetic is only the starting point; the simulator's own count wins
+        # at the first step. Kept so the two can be compared and reported.
+        self.cap_config = np.asarray(cap_pes, dtype=np.float64)
+        self.cap = self.cap_config.copy()
+        # Registered effective capacity. Empty string disables the check for a testbed
+        # the gate was not preregistered against.
+        _exp = os.environ.get("PLANNER_EXPECTED_CAP", "480;384;296;240;144").strip()
+        self.expected_cap = (np.array([float(x) for x in _exp.split(";")], dtype=np.float64)
+                             if _exp else None)
+        if self.expected_cap is not None and self.expected_cap.size != num_datacenters:
+            self.expected_cap = None
+        self.cpu_util = cpu_util
+        # Effective rate at which a cloudlet burns its own length.
+        self.mips = float(vm_pe_mips) * cpu_util
+        # 0 means the only bound on how long a job may wait is its own deadline.
         self.horizon = int(horizon)
-        self.committed = np.zeros((num_datacenters, 20000), dtype=np.float64)
-        self.t = 0
+        self.T = self.G.shape[1]
         self.dyn_per_pe = (214.0 - 51.4) / 64.0
+        # Steps of slack held back from the latest feasible start so the Java deadline
+        # backstop never has to fire. deadline_forced_count == 0 is a validity gate,
+        # not a metric, so the planner must beat the backstop rather than lean on it.
+        # Latest start is derived from the backstop actually in force, not searched.
+        # The active rule is the legacy fixed lead: MultiDatacenterSimulationCore fires
+        # when now + defer_deadline_slack_sec >= deadline, with no reference to runtime,
+        # and Java defaults that slack to 600 s (SimulationSettings:436) which this
+        # experiment never overrides. A job must therefore be dispatched before both
+        # D - S and D - r. A fixed margin grid of {2..64} steps could never reach 600 and
+        # was abandoned rather than widened.
+        self.backstop_slack = float(blk.get("defer_deadline_slack_sec", 600.0))
+        # The slack is seconds and the planner counts steps. They coincide only while the
+        # timestep is one second; TB12 runs at 600 s per step, where treating 600 s as 600
+        # steps would overstate the lead by a factor of six hundred.
+        self.timestep_sec = float(blk.get("simulation_timestep", 1.0)) or 1.0
+        self.backstop_slack_steps = int(np.ceil(self.backstop_slack / self.timestep_sec))
+        self.backstop_mode = str(blk.get("defer_deadline_force_mode", "legacy")).strip()
+        self.eps = int(os.environ.get("PLANNER_LATEST_START_EPS", "2"))
+        # A reservation whose start passed this long ago belongs to a job that left the
+        # queue without this planner dispatching it. Bookkeeping hygiene, not inference.
+        self.stale_grace = int(os.environ.get("ORACLE_STALE_GRACE", "60"))
+        self.max_starts = int(os.environ.get("ORACLE_MAX_STARTS", "256"))
+        # Which future this arm may plan against, and whether it may wait at all.
+        # Class attributes so a subclass names one arm; the environment overrides only
+        # when a sweep needs to vary it without adding a registry entry.
+        # Two-timepoint contract (Codex 2026-08-30). Up to the registered decision
+        # boundary an arm may wait. After it, waiting is closed for everyone and the
+        # remainder drains to whatever each arm already committed to, so a fast arm does
+        # not burn idle carbon waiting for a slow one and a slow arm cannot park its tail
+        # outside the ledger. 0 disables the boundary.
+        self.decision_horizon = int(os.environ.get("PLANNER_DECISION_HORIZON", "0"))
+        self.info_source = os.environ.get("PLANNER_INFO_SOURCE", self.INFO_SOURCE)
+        self.allow_defer = os.environ.get(
+            "PLANNER_ALLOW_DEFER", "1" if self.ALLOW_DEFER else "0") == "1"
+        self.green_now = np.zeros(num_datacenters, dtype=np.float64)
+        self.reset()
+
+    def reset(self):
+        """Clear the clock and all three ledgers.
+
+        Without this the base-class no-op left the occupancy grid and the clock from the
+        previous episode in place, so every episode after the first planned against a
+        stale future.
+        """
+        # occ is the authoritative PE occupancy grid: active plus reservations, never
+        # scratch. Every write goes through _hold/_release so the two dicts and the grid
+        # cannot drift apart.
+        self.draining = False
+        self._cap_calibrated = False
+        self.cap = self.cap_config.copy()
+        self.occ = np.zeros((self.num_datacenters, self.T), dtype=np.float64)
+        self.active = {}          # job id -> [dc, start, end, pes], dispatched
+        self.reservations = {}    # job id -> [dc, start, end, pes], planned, not dispatched
+        self.t = 0
         self.n_defer = 0
+        self.n_dispatch = 0
+        self.n_plan = 0
+        self.n_replan_skipped = 0
+        self.n_stale_dropped = 0
+        self.n_fallback = 0
+        self.n_drain_pulled = 0
+        self.n_drain_dispatched = 0
+        self.n_drain_waited = 0
+        # Drift sentinel. occ is what the planner believes is running; the simulator
+        # reports what actually is. A gap means jobs did not start when the plan assumed,
+        # and no amount of internal consistency makes the ledger true.
+        self.drift_abs_max = 0.0
+        self.drift_abs_sum = 0.0
+        self.drift_n = 0
+        self.drift_step_max = -1
+        # Per-id closure against the simulator's own execution events. dc_available_pes
+        # cannot audit a ledger: it never recovers once a cloudlet finishes. These count
+        # disagreements between what the planner committed and what actually ran.
+        self.n_unplanned_start = 0      # started without this planner ever dispatching it
+        self.n_wrong_dc = 0             # started somewhere other than the committed site
+        self.n_missing_start = 0        # dispatched, never seen to start
+        self.n_running_unknown = 0      # executing, absent from the planner's active set
+        self.running_pes_over_cap = 0.0
+        self.dispatched_at = {}         # id -> (dc, step) for every dispatch
+        self.started_ids = set()
+        self.unknown_running_ids = set()
+        self.running_pes = None
+        self._cpu_util_checked = False
+
+    def _hold(self, d, s, e, p):
+        self.occ[d, max(0, s):max(0, e)] += p
+
+    def _release(self, d, s, e, p):
+        self.occ[d, max(0, s):max(0, e)] -= p
+
+    def _green_view(self, d):
+        """The green trace this arm is allowed to plan against at the current step.
+
+        Every arm in the family shares the planner, the capacity ledger and the spatial
+        carbon model. This method is the single place they differ, so the gap between
+        two of them is the value of the information and nothing else.
+        """
+        if self.info_source == "curve":
+            return self.G[d]
+        if self.info_source == "persistence":
+            # Causal: the future is assumed to hold whatever green is on the meter now.
+            view = np.empty(self.T, dtype=np.float64)
+            view[:self.t] = self.G[d, :self.t]
+            view[self.t:] = self.green_now[d]
+            return view
+        if self.info_source == "climatology":
+            # Causal: a calibrated level per site, no shape, no future look.
+            view = np.empty(self.T, dtype=np.float64)
+            view[:self.t] = self.G[d, :self.t]
+            view[self.t:] = self.clim[d]
+            return view
+        raise ValueError(f"unknown info_source {self.info_source!r}")
 
     def _costs_all(self, d, starts, r, p):
         """Cost of every candidate start at one site, in one pass.
@@ -1274,9 +1465,9 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
         slices and ran four times slower than the blind arm. Cumulative sums
         turn each window into two lookups.
         """
-        draw = p * self.dyn_per_pe
-        gres = np.maximum(0.0, self.G[d] - self.static[d]
-                          - self.committed[d] * self.dyn_per_pe)
+        draw = p * self.dyn_per_pe * self.cpu_util
+        gres = np.maximum(0.0, self._green_view(d) - self.static[d]
+                          - self.occ[d] * self.dyn_per_pe * self.cpu_util)
         green = np.minimum(draw, gres)
         brown = draw - green
         val = self.cg[d] * green + self.cb[d] * brown
@@ -1288,8 +1479,8 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
         return out
 
     def _feasible_all(self, d, starts, r, p):
-        """Which candidate starts keep committed PEs within capacity."""
-        over = (self.committed[d] + p > self.cap[d]).astype(np.int64)
+        """Which candidate starts keep occupied PEs within the real VM capacity."""
+        over = (self.occ[d] + p > self.cap[d]).astype(np.int64)
         cs = np.concatenate(([0], np.cumsum(over)))
         ends = starts + r
         ok = ends < len(cs)
@@ -1300,40 +1491,507 @@ class CurveOracleGlobalScheduler(GlobalScheduler):
     def _cost(self, d, s, r, p):
         return float(self._costs_all(d, np.array([s]), r, p)[0])
 
+    def _plan(self, r, p, latest):
+        """Cheapest feasible (site, start) for one job, or None when nothing fits."""
+        hi = latest
+        if self.horizon > 0:
+            hi = min(hi, self.t + self.horizon)
+        if hi < self.t + self.START_LAG:
+            hi = self.t + self.START_LAG
+        lo = self.t + self.START_LAG
+        span = max(0, hi - lo)
+        stride = max(1, r // 16, (span // self.max_starts) + 1)
+        starts = np.arange(lo, hi + 1, stride, dtype=np.int64)
+        if len(starts) and starts[-1] != hi:
+            starts = np.append(starts, hi)
+        starts = starts[starts + r < self.T]
+        if not len(starts):
+            return None
+        best, barg = None, None
+        for d in range(self.num_datacenters):
+            cost = self._costs_all(d, starts, r, p)
+            cost[~self._feasible_all(d, starts, r, p)] = np.inf
+            i = int(np.argmin(cost))
+            if np.isfinite(cost[i]) and (best is None or cost[i] < best):
+                best, barg = float(cost[i]), (d, int(starts[i]))
+        return barg
+
+    def _fallback_now(self, r, p):
+        """Cheapest site that can take the job immediately, ignoring nothing but choice.
+
+        Reached only when no feasible future start exists inside the deadline. Routing
+        now on the cheapest feasible site is strictly better than letting the backstop
+        pick, and it is recorded so the run can be judged on how often it happened.
+        """
+        starts = np.array([self.t + self.START_LAG], dtype=np.int64)
+        best, barg = None, None
+        for d in range(self.num_datacenters):
+            if not bool(self._feasible_all(d, starts, r, p)[0]):
+                continue
+            c = float(self._costs_all(d, starts, r, p)[0])
+            if np.isfinite(c) and (best is None or c < best):
+                best, barg = c, d
+        if barg is None:
+            barg = int(np.argmin(self.cb))
+        return int(barg)
+
+    def _runtime_steps(self, length):
+        """Steps a cloudlet occupies its site: ceil(length / (mips * u)), PES independent.
+
+        self.mips already carries the utilisation factor. Measured 2026-08-30 against the
+        simulator's own finish events over twelve cloudlets: the ratio to length/mips was
+        2.0166 with sd 0.0156 at u = 0.5, and 4.0201 at u = 0.25, with no dependence on
+        PES in either case.
+        """
+        return max(1, int(np.ceil(max(0.0, length) / self.mips)))
+
+    @staticmethod
+    def _records(csv_text, fields):
+        out = []
+        if not csv_text:
+            return out
+        for rec in str(csv_text).split(';'):
+            parts = rec.split(':')
+            if len(parts) >= fields:
+                out.append(parts)
+        return out
+
+    def _close_the_books(self, global_obs):
+        """Reconcile the planner's commitments with what the simulator actually ran.
+
+        Every start event must belong to a job this planner dispatched, and to the site it
+        committed to. Anything else means the backstop or some other path put work on a
+        machine the plan never accounted for, and no amount of internal consistency makes
+        the resulting carbon attributable.
+        """
+        # The configured utilisation must be the one the JVM applied. A silent fallback to
+        # Java's 0.5 default is exactly how every runtime in this testbed came to be twice
+        # its nominal value without anyone noticing for months.
+        eff = global_obs.get('cloudlet_cpu_utilization_effective')
+        if eff is not None and not self._cpu_util_checked:
+            self._cpu_util_checked = True
+            if abs(float(eff) - self.cpu_util) > 1e-9:
+                raise RuntimeError(
+                    f"cloudlet_cpu_utilization mismatch: the planner priced runtimes at "
+                    f"{self.cpu_util} but the simulator is applying {float(eff)}. Every "
+                    f"runtime, deadline and carbon integral would be wrong by the ratio.")
+            eff_slack = global_obs.get('defer_deadline_slack_sec_effective')
+            if eff_slack is not None and abs(float(eff_slack) - self.backstop_slack) > 1e-9:
+                raise RuntimeError(
+                    f"defer_deadline_slack_sec mismatch: the planner aligns latest start "
+                    f"to {self.backstop_slack}s but the simulator uses {float(eff_slack)}s. "
+                    f"Every deferred job would be force-routed on a lead nobody planned "
+                    f"for, which is exactly what the fixed margin grid ran into.")
+            eff_mode = global_obs.get('defer_deadline_force_mode_effective')
+            if eff_mode is not None and str(eff_mode).strip() != self.backstop_mode:
+                raise RuntimeError(
+                    f"defer_deadline_force_mode mismatch: the planner assumes "
+                    f"{self.backstop_mode!r} but the simulator is running "
+                    f"{str(eff_mode).strip()!r}. The two rules bind at different times.")
+
+        started = self._records(global_obs.get('exec_started_csv'), 4)
+        running = self._records(global_obs.get('exec_running_csv'), 3)
+        run_pes = self._records(global_obs.get('dc_running_pes_csv'), 1)
+
+        for rec in started:
+            jid, dc = int(rec[0]), int(rec[1])
+            self.started_ids.add(jid)
+            committed = self.dispatched_at.get(jid)
+            if committed is None:
+                self.n_unplanned_start += 1
+            elif committed[0] != dc:
+                self.n_wrong_dc += 1
+
+        # Distinct ids, not step occurrences: a single unaccounted job executing for a
+        # thousand steps is one problem, not a thousand.
+        known = set(self.active) | set(self.dispatched_at)
+        for rec in running:
+            jid = int(rec[0])
+            if jid not in known and jid not in self.unknown_running_ids:
+                self.unknown_running_ids.add(jid)
+                self.n_running_unknown += 1
+
+        if run_pes:
+            vals = np.array([float(x) for x in str(
+                global_obs.get('dc_running_pes_csv')).split(',')], dtype=np.float64)
+            if vals.size == self.num_datacenters:
+                self.running_pes = vals
+                over = float(np.max(np.maximum(0.0, vals - self.cap)))
+                self.running_pes_over_cap = max(self.running_pes_over_cap, over)
+
+    def _latest_start(self, j, r, present):
+        """Last step at which this job can start and still beat the backstop.
+
+            latest = D - max(r + eps, S + eps)
+
+        Short jobs are bound by the fixed 600 s lead, long jobs by their own runtime, and
+        no job pays an extra runtime just to dodge the backstop. eps is frozen at 2 steps
+        for action quantisation and is not searched.
+        """
+        if not present[j]:
+            return self.T - r - 1
+        deadline = self.t + int(np.floor(float(self._ttd[j])))
+        if self.backstop_mode == "legacy":
+            lead = max(r + self.eps, self.backstop_slack_steps + self.eps)
+        else:
+            lead = r + self.eps
+        return deadline - lead
+
+    def _reactive_choice(self, r, p):
+        """Cheapest site whose residual green covers this job right now, else None.
+
+        The stopping rule is causal and books nothing: either there is enough green on
+        the meter this instant to run the job without drawing brown, in which case go,
+        or there is not, in which case wait and ask again next step.
+        """
+        draw = p * self.dyn_per_pe * self.cpu_util
+        starts = np.array([self.t + self.START_LAG], dtype=np.int64)
+        best, barg = None, None
+        for d in range(self.num_datacenters):
+            if not bool(self._feasible_all(d, starts, r, p)[0]):
+                continue
+            gres = max(0.0, float(self.green_now[d]) - self.static[d]
+                       - float(self.occ[d, int(starts[0])]) * self.dyn_per_pe * self.cpu_util)
+            if gres < draw:
+                continue
+            c = float(self._costs_all(d, starts, r, p)[0])
+            if np.isfinite(c) and (best is None or c < best):
+                best, barg = c, d
+        return barg
+
     def schedule(self, global_obs):
         n = self.num_datacenters
-        mi = _as_np_1d(global_obs.get('batch_cloudlet_mi'), self.batch_size, fill=0.0, dtype=np.float64)
-        pes = _as_np_1d(global_obs.get('batch_cloudlet_pes'), self.batch_size, fill=1.0, dtype=np.float64)
-        ttd = _as_np_1d(global_obs.get('batch_cloudlet_time_to_deadline'), self.batch_size,
-                        fill=1e9, dtype=np.float64)
+        planner = global_obs.get('planner')
+        if planner is None:
+            raise RuntimeError(
+                "curve_planner needs the evaluator-only planner channel (stable cloudlet "
+                "ids and raw seconds to deadline). It was absent, which means the gateway "
+                "predates getBatchCloudletIds or the evaluator did not forward info. "
+                "Refusing to plan against filled sentinels: the previous build silently "
+                "took time_to_deadline = 1e9 for every slot and never saw a deadline.")
+        # The only live signal any arm in this family reads. The curve arm ignores it,
+        # the persistence arm plans the whole future on it.
+        gn = _as_np_1d(global_obs.get('dc_current_green_power_w'), n, fill=0.0, dtype=np.float64)
+        self.green_now = gn
+        self.draining = 0 < self.decision_horizon <= self.t
+
+        # Compare the planner's belief about occupied PEs with the simulator's own count
+        # before this step's decisions change either.
+        avail = _as_np_1d(global_obs.get('dc_available_pes'), n, fill=np.nan, dtype=np.float64)
+        if not self._cap_calibrated and not np.all(np.isnan(avail)):
+            # Capacity comes from the simulator, not from arithmetic on the config. A
+            # site's usable PEs are min(VM PEs configured, host PEs installed), and on
+            # this testbed three of five sites configure more VM PEs than their hosts
+            # can carry, so both hosts*64 and the VM total overstate them.
+            #
+            # Codex 2026-08-30 locked three conditions on this read. It happens once, at
+            # an initialisation point with nothing running, it is redone and refrozen
+            # after every reset, and the value must match the registered vector or the
+            # run stops rather than proceeding on a capacity nobody checked.
+            util = _as_np_1d(global_obs.get('dc_utilizations'), n, fill=0.0, dtype=np.float64)
+            if float(np.max(util)) > 0.0 or self.t != 0:
+                raise RuntimeError(
+                    f"planner capacity must be read at an idle initialisation point; "
+                    f"found t={self.t} and max utilisation {float(np.max(util)):.4f}. "
+                    f"A capacity read against running load silently understates the site.")
+            observed_cap = avail + self.occ[:, 0]
+            if self.expected_cap is not None and not np.array_equal(
+                    observed_cap, self.expected_cap):
+                raise RuntimeError(
+                    f"effective capacity {observed_cap.tolist()} does not match the "
+                    f"registered vector {self.expected_cap.tolist()}. Stopping: the "
+                    f"testbed is not the one the gate was preregistered against.")
+            if not np.allclose(observed_cap, self.cap_config):
+                logger.info(
+                    "planner capacity calibrated from the simulator: %s (config arithmetic "
+                    "gave %s)", observed_cap.tolist(), self.cap_config.tolist())
+            self.cap = observed_cap
+            self._cap_calibrated = True
+        # Closure runs after the capacity read, so an over-capacity check is made against
+        # the simulator's own number rather than the config guess.
+        self._close_the_books(global_obs)
+
+        if not np.all(np.isnan(avail)):
+            observed = self.cap - avail
+            back = self.t - self.AVAIL_REPORT_LAG
+            predicted = (self.occ[:, back] if 0 <= back < self.T
+                         else np.zeros(self.num_datacenters))
+            gap = float(np.max(np.abs(predicted - observed)))
+            self.drift_abs_sum += gap
+            self.drift_n += 1
+            if gap > self.drift_abs_max:
+                self.drift_abs_max = gap
+                self.drift_step_max = self.t
+
+        ids = np.asarray(planner['batch_cloudlet_ids'], dtype=np.int64)
+        mi = np.asarray(planner['batch_cloudlet_mi'], dtype=np.float64)
+        pes = np.asarray(planner['batch_cloudlet_pes'], dtype=np.float64)
+        ttd = np.asarray(planner['batch_cloudlet_time_to_deadline'], dtype=np.float64)
+        present = np.asarray(planner['batch_cloudlet_deadline_present'], dtype=np.int64)
+        self._ttd = ttd
+
+        # Shadow budget for this step: what the simulator reports free, less whatever
+        # this step has already committed. Every dispatch draws it down, so a reservation
+        # coming due and a drained backlog job compete for the same real PEs.
+        # Headroom is capacity less what is genuinely executing, from the simulator's own
+        # running-PE count. The earlier version used dc_available_pes, which is a VM
+        # allocation counter that never recovers, so it shrank monotonically and would
+        # have throttled the drain to nothing.
+        if self.running_pes is not None:
+            budget = (self.cap - self.running_pes).astype(np.float64)
+        else:
+            budget = (self.cap - self.occ[:, min(self.t, self.T - 1)]).astype(np.float64)
+        drain_queue = []
+
+        # Retire executions that have finished and reservations whose start went by
+        # without this planner dispatching them, which means the job left the queue
+        # some other way.
+        for jid, (d, s, e, pp) in list(self.active.items()):
+            if e <= self.t:
+                self._release(d, s, e, pp)
+                del self.active[jid]
+        for jid, (d, s, e, pp) in list(self.reservations.items()):
+            if self.t > s + self.stale_grace:
+                self._release(d, s, e, pp)
+                del self.reservations[jid]
+                self.n_stale_dropped += 1
+
         actions = []
         for j in range(self.batch_size):
-            p = max(1.0, float(pes[j]))
-            r = max(1, int(round(float(mi[j]) / self.mips)))      # per-PE MI
-            latest = self.t + max(0, int(ttd[j]) - r)
-            hi = min(latest, self.t + self.horizon)
-            starts = np.arange(self.t, hi + 1, max(1, r // 8), dtype=np.int64)
-            starts = starts[starts + r < self.G.shape[1]]
-            best, barg = None, None
-            if len(starts):
-                for d in range(n):
-                    cost = self._costs_all(d, starts, r, p)
-                    cost[~self._feasible_all(d, starts, r, p)] = np.inf
-                    i = int(np.argmin(cost))
-                    if np.isfinite(cost[i]) and (best is None or cost[i] < best):
-                        best, barg = float(cost[i]), (d, int(starts[i]))
-            if barg is None:
-                actions.append(int(np.argmin(self.cb)))
+            jid = int(ids[j])
+            if jid < 0:
+                actions.append(n)          # padding slot, never planned, never routed
                 continue
-            d, s = barg
-            self.committed[d, s:s + r] += p
-            if s <= self.t:
+            if jid in self.active:
+                actions.append(n)          # already executing, must not be routed twice
+                continue
+
+            p = max(1.0, float(pes[j]))
+            r = self._runtime_steps(float(mi[j]))
+
+            if not self.RESERVES:
+                # Reactive stopping rule: decide about now, never about later.
+                if self.allow_defer and not self.draining:
+                    latest = self._latest_start(j, r, present)
+                else:
+                    latest = self.t
+                d = self._reactive_choice(r, p)
+                if d is None and self.t < latest:
+                    actions.append(n)                     # not green enough yet, wait
+                    self.n_defer += 1
+                    continue
+                if d is None:
+                    d = self._fallback_now(r, p)          # margin reached, go regardless
+                    self.n_fallback += 1
+                start = self.t + self.START_LAG
+                e = start + r
+                self._hold(d, start, e, p)
+                self.active[jid] = (d, start, e, p)
+                budget[d] -= p
+                self.dispatched_at[jid] = (d, self.t)
                 actions.append(int(d))
+                self.n_dispatch += 1
+                self.n_plan += 1
+                continue
+
+            held = self.reservations.get(jid)
+            if held is not None:
+                self.n_replan_skipped += 1
+                d, s, e, pp = held
+                # A reservation frozen before the boundary is a commitment, not a
+                # decision still open. It keeps its site and its start. Pulling four
+                # thousand of them forward at the boundary destroyed a feasible plan and
+                # oversubscribed every site at once, which is why it is gone.
+                if s <= self.t + self.START_LAG:
+                    del self.reservations[jid]
+                    self.active[jid] = (d, s, e, pp)
+                    budget[d] -= pp
+                    self.dispatched_at[jid] = (d, self.t)
+                    actions.append(int(d))
+                    self.n_dispatch += 1
+                else:
+                    actions.append(n)
+                    self.n_defer += 1
+                continue
+
+            if self.draining:
+                # Past the boundary nothing new is planned and nothing is re-optimised.
+                # Unreserved backlog leaves through a drain shared by every arm, rate
+                # limited by the capacity the simulator actually reports free this step
+                # minus what this step has already committed, and ordered by latest
+                # start so the tightest deadline leaves first. A job that does not fit
+                # waits for the next step rather than being forced out.
+                drain_queue.append((self._latest_start(j, r, present), j, jid, r, p))
+                actions.append(n)
+                continue
+
+            # A job with no deadline may wait as long as the horizon allows; one with a
+            # deadline must start early enough to finish before it, minus the margin
+            # that keeps the Java backstop out of the loop.
+            if not self.allow_defer:
+                latest = self.t                        # no-wait arm: spatial choice only
             else:
+                latest = self._latest_start(j, r, present)
+            barg = self._plan(r, p, latest)
+            if barg is None:
+                d = self._fallback_now(r, p)
+                s = self.t
+                self.n_fallback += 1
+            else:
+                d, s = barg
+            e = s + r
+            self.n_plan += 1
+            self._hold(d, s, e, p)
+            if s <= self.t + self.START_LAG:
+                self.active[jid] = (d, s, e, p)
+                budget[d] -= p
+                self.dispatched_at[jid] = (d, self.t)
+                actions.append(int(d))
+                self.n_dispatch += 1
+            else:
+                self.reservations[jid] = (d, s, e, p)
                 actions.append(n)                                  # DEFER
                 self.n_defer += 1
+
+        # Shared feasibility drain. Tightest latest start goes first; a job leaves only
+        # if the site the shared cost model prefers still has real headroom this step,
+        # otherwise it waits. No fixed job count, no aggregate back-inference, and the
+        # site choice is the same current-cost model every arm uses.
+        for _latest, j, jid, r, p in sorted(drain_queue):
+            start = self.t + self.START_LAG
+            starts = np.array([start], dtype=np.int64)
+            best, barg = None, None
+            for d in range(n):
+                if budget[d] < p:
+                    continue
+                if not bool(self._feasible_all(d, starts, r, p)[0]):
+                    continue
+                c = float(self._costs_all(d, starts, r, p)[0])
+                if np.isfinite(c) and (best is None or c < best):
+                    best, barg = c, d
+            if barg is None:
+                self.n_drain_waited += 1
+                continue                       # no headroom this step, try again next
+            e = start + r
+            self._hold(barg, start, e, p)
+            self.active[jid] = (barg, start, e, p)
+            budget[barg] -= p
+            self.dispatched_at[jid] = (barg, self.t)
+            actions[j] = int(barg)
+            self.n_dispatch += 1
+            self.n_drain_dispatched += 1
+
         self.t += 1
         return actions
+
+    def metrics(self) -> Dict[str, float]:
+        """Counters the validity contract is checked against, for the results row."""
+        return {
+            "planner_info_source": self.info_source,
+            "planner_allow_defer": int(self.allow_defer),
+            "planner_reserves": int(self.RESERVES),
+            "planner_backstop_slack": self.backstop_slack,
+            "planner_backstop_slack_steps": self.backstop_slack_steps,
+            "planner_timestep_sec": self.timestep_sec,
+            "planner_backstop_mode": self.backstop_mode,
+            "planner_latest_start_eps": self.eps,
+            "planner_cpu_util": self.cpu_util,
+            "planner_effective_mips": self.mips,
+            "planner_decision_horizon": self.decision_horizon,
+            "planner_n_plan": self.n_plan,
+            "planner_n_dispatch": self.n_dispatch,
+            "planner_n_defer": self.n_defer,
+            "planner_n_fallback": self.n_fallback,
+            "planner_n_drain_pulled": self.n_drain_pulled,
+            "planner_n_drain_dispatched": self.n_drain_dispatched,
+            "planner_n_drain_waited": self.n_drain_waited,
+            "planner_n_stale_dropped": self.n_stale_dropped,
+            "planner_open_reservations": len(self.reservations),
+            "planner_active": len(self.active),
+            "planner_occ_max_over_cap": float(np.max(
+                np.maximum(0.0, self.occ.max(axis=1) - self.cap))),
+            "planner_drift_abs_max": self.drift_abs_max,
+            "planner_drift_abs_mean": (self.drift_abs_sum / self.drift_n) if self.drift_n else 0.0,
+            "planner_drift_step_max": self.drift_step_max,
+            "planner_n_unplanned_start": self.n_unplanned_start,
+            "planner_n_wrong_dc": self.n_wrong_dc,
+            "planner_n_running_unknown": self.n_running_unknown,
+            "planner_n_dispatched_never_started": len(
+                set(self.dispatched_at) - self.started_ids),
+            "planner_running_pes_over_cap": self.running_pes_over_cap,
+            "planner_cap_observed": ";".join(f"{c:.0f}" for c in self.cap),
+            "planner_cap_config": ";".join(f"{c:.0f}" for c in self.cap_config),
+        }
+
+    def summary(self) -> str:
+        return (f"CurveInformedPlannerGlobalScheduler: planned {self.n_plan}, dispatched "
+                f"{self.n_dispatch}, deferred {self.n_defer}, honoured existing "
+                f"reservations {self.n_replan_skipped}, fell back to route-now "
+                f"{self.n_fallback}, pulled forward at the boundary {self.n_drain_pulled}, "
+                f"drained {self.n_drain_dispatched} (held back {self.n_drain_waited}), "
+                f"dropped stale reservations {self.n_stale_dropped}; "
+                f"open reservations {len(self.reservations)}, active {len(self.active)}; "
+                f"occupancy drift max {self.drift_abs_max:.1f} PEs at step "
+                f"{self.drift_step_max}, mean "
+                f"{(self.drift_abs_sum / self.drift_n) if self.drift_n else 0.0:.2f}")
+
+
+class PersistencePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Same planner, same ledgers, same carbon model. The future is assumed to look like
+    the meter reading right now, which is the standard causal no-forecast reference."""
+
+    INFO_SOURCE = "persistence"
+
+
+class ClimatologyPlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Same planner. The future is a per-site level calibrated on the history strictly
+    before the episode window, so it knows the climate but not the weather."""
+
+    INFO_SOURCE = "climatology"
+
+
+class ReactiveWaitPlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Wait for green rather than plan for it, on the shared spatial cost model.
+
+    Codex 2026-08-30: persistence is not this arm. Flattening the future to the current
+    level leaves every candidate start equally priced, so persistence takes the earliest
+    one and behaves like immediate planning. This arm is a different causal rule. It
+    books no future capacity, it asks each step whether the meter already carries the
+    job, and it routes unconditionally once the frozen latest-start margin arrives.
+    Naive wait-for-green has been the strongest blind before, so leaving it out would
+    make the strongest causal blind incomplete.
+    """
+
+    INFO_SOURCE = "persistence"
+    RESERVES = False
+
+
+class NoWaitPlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Same planner and the same spatial carbon model, with the temporal lever removed.
+
+    The gap to a waiting arm is the value of waiting; the gap between two waiting arms
+    with different green views is the value of the forecast. Keeping them separate is
+    what the first smoke failed to do, since its blind arm could not wait at all.
+    """
+
+    INFO_SOURCE = "persistence"
+    ALLOW_DEFER = False
+
+
+class AlwaysDeferGlobalScheduler(GlobalScheduler):
+    """Defers every slot, so the deadline backstop becomes the only thing that routes.
+
+    Diagnostic only. It exists to exercise the legacy fixed-lead backstop, which an arm
+    that routes on arrival never touches: an A/B run with green_queue_balanced showed
+    deadline_forced_count = 0 on both sides and therefore proved nothing about the slack
+    or the mode. Under this arm every job is force-routed at D - S, so the two can be
+    compared where it matters.
+    """
+
+    HANDLES_DEFER = True
+
+    def schedule(self, global_obs):
+        return [self.num_datacenters] * self.batch_size
 
 
 class DeferringGlobalScheduler(GlobalScheduler):
@@ -1418,7 +2076,12 @@ GLOBAL_SCHEDULERS = {
     'green_aware': GreenAwareGlobalScheduler,
     'green_forecast': GreenForecastAwareGlobalScheduler,
     'green_forecast_capacity': GreenForecastCapacityGlobalScheduler,
-    'curve_oracle': CurveOracleGlobalScheduler,
+    'always_defer': AlwaysDeferGlobalScheduler,
+    'curve_planner': CurveInformedPlannerGlobalScheduler,
+    'persistence_planner': PersistencePlannerGlobalScheduler,
+    'climatology_planner': ClimatologyPlannerGlobalScheduler,
+    'reactive_wait_planner': ReactiveWaitPlannerGlobalScheduler,
+    'nowait_planner': NoWaitPlannerGlobalScheduler,
     'green_queue_balanced': GreenQueueBalancedGlobalScheduler,
     'min_brown_power': MinBrownPowerGlobalScheduler,
     'weighted_score': WeightedScoreGlobalScheduler,

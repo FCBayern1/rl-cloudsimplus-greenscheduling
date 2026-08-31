@@ -138,6 +138,13 @@ public class GlobalObservationState {
     /** Number of explicit DEFER actions previously applied to each batch cloudlet. */
     private final int[] batchCloudletDeferCount;
 
+    /**
+     * Stable simulation-wide identifier of each batch cloudlet, -1 for an empty slot.
+     * Evaluator-only. This never enters the RL observation space, so a planner can key a
+     * reservation ledger on it without changing any policy checkpoint schema.
+     */
+    private final long[] batchCloudletIds;
+
     /** Number of explicitly deferred cloudlets currently in the global queue. */
     @Getter
     private final int globalDeferredCount;
@@ -205,6 +212,7 @@ public class GlobalObservationState {
      * @param batchCloudletDeadlinePresent Deadline-present mask for each batch cloudlet
      * @param batchCloudletIsDeferred Explicitly-deferred mask for each batch cloudlet
      * @param batchCloudletDeferCount Explicit defer count for each batch cloudlet
+     * @param batchCloudletIds Stable cloudlet id for each batch slot, -1 when the slot is empty
      * @param globalDeferredCount Number of explicitly deferred cloudlets in the global queue
      * @param globalDeferredMi Total MI of explicitly deferred cloudlets in the global queue
      * @param upcomingCloudletsPesDistribution Distribution of PEs in upcoming cloudlets [small, medium, large]
@@ -234,6 +242,7 @@ public class GlobalObservationState {
             int[] batchCloudletDeadlinePresent,
             int[] batchCloudletIsDeferred,
             int[] batchCloudletDeferCount,
+            long[] batchCloudletIds,
             int globalDeferredCount,
             long globalDeferredMi,
             int[] upcomingCloudletsPesDistribution,
@@ -265,6 +274,7 @@ public class GlobalObservationState {
         Objects.requireNonNull(batchCloudletDeadlinePresent, "batchCloudletDeadlinePresent");
         Objects.requireNonNull(batchCloudletIsDeferred, "batchCloudletIsDeferred");
         Objects.requireNonNull(batchCloudletDeferCount, "batchCloudletDeferCount");
+        Objects.requireNonNull(batchCloudletIds, "batchCloudletIds");
         Objects.requireNonNull(upcomingCloudletsPesDistribution, "upcomingCloudletsPesDistribution");
 
         if (dcCurrentGreenPowerW.length != numDatacenters
@@ -287,7 +297,8 @@ public class GlobalObservationState {
                 || batchCloudletTimeToDeadline.length != batchLength
                 || batchCloudletDeadlinePresent.length != batchLength
                 || batchCloudletIsDeferred.length != batchLength
-                || batchCloudletDeferCount.length != batchLength) {
+                || batchCloudletDeferCount.length != batchLength
+                || batchCloudletIds.length != batchLength) {
             throw new IllegalArgumentException("All per-batch arrays must have the same length");
         }
         if (upcomingCloudletsPesDistribution.length != 3) {
@@ -324,6 +335,7 @@ public class GlobalObservationState {
                 batchCloudletIsDeferred, batchCloudletIsDeferred.length);
         this.batchCloudletDeferCount = Arrays.copyOf(
                 batchCloudletDeferCount, batchCloudletDeferCount.length);
+        this.batchCloudletIds = Arrays.copyOf(batchCloudletIds, batchCloudletIds.length);
         this.globalDeferredCount = globalDeferredCount;
         this.globalDeferredMi = globalDeferredMi;
         this.upcomingCloudletsPesDistribution = Arrays.copyOf(
@@ -415,6 +427,10 @@ public class GlobalObservationState {
 
     public int[] getBatchCloudletDeferCount() {
         return Arrays.copyOf(batchCloudletDeferCount, batchCloudletDeferCount.length);
+    }
+
+    public long[] getBatchCloudletIds() {
+        return Arrays.copyOf(batchCloudletIds, batchCloudletIds.length);
     }
 
     public int[] getUpcomingCloudletsPesDistribution() {
@@ -553,6 +569,8 @@ public class GlobalObservationState {
         Arrays.fill(defaultLongMean, 0.5);
         Arrays.fill(defaultLongPeakTiming, 0.5);
 
+        long[] emptyIds = new long[batchSize];
+        Arrays.fill(emptyIds, -1L);
         return new GlobalObservationState(
                 new double[numDatacenters],  // dcCurrentGreenPowerW
                 new double[numDatacenters],  // dcCurrentPowerW
@@ -574,6 +592,7 @@ public class GlobalObservationState {
                 new int[batchSize],          // batchCloudletDeadlinePresent
                 new int[batchSize],          // batchCloudletIsDeferred
                 new int[batchSize],          // batchCloudletDeferCount
+                emptyIds,                    // batchCloudletIds
                 0,                           // globalDeferredCount
                 0L,                          // globalDeferredMi
                 new int[3],                  // upcomingCloudletsPesDistribution
