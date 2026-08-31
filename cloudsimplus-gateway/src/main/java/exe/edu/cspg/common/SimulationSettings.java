@@ -275,6 +275,10 @@ public class SimulationSettings {
      *  fixed. 0 (default) keeps the historical fixed-window behaviour. */
     private final int greenEpisodeOffsetRange;
 
+    /** Wind year the turbine resolver prefers; 2021 keeps the historical behaviour. */
+    @Getter
+    private final int windCsvYear;
+
     /**
      * Controls how the global carbon penalty signal is computed in multi-DC mode.
      *
@@ -433,6 +437,7 @@ public class SimulationSettings {
         this.localDispatchMode = getStringParam(params, "local_dispatch_mode", "vm_placement").trim();
         this.globalDeferEnabled = getBoolParam(params, "global_defer_enabled", false);
         this.deferDeadlineForceEnabled = getBoolParam(params, "defer_deadline_force_enabled", true);
+        this.windCsvYear = getIntParam(params, "wind_csv_year", 2021);
         this.deferDeadlineSlackSec = getDoubleParam(params, "defer_deadline_slack_sec", 600.0);
         this.deferDeadlineForceMode = getStringParam(params, "defer_deadline_force_mode", "legacy").trim();
         this.cloudletCpuUtilization = getDoubleParam(params, "cloudlet_cpu_utilization", 0.5);

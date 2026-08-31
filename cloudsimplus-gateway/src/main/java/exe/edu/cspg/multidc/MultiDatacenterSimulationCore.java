@@ -182,6 +182,11 @@ public class MultiDatacenterSimulationCore {
         this.datacenterConfigs = new ArrayList<>(datacenterConfigs);
         this.timestepSize = settings.getSimulationTimestep();
         this.datacenterInstances = new ArrayList<>();
+        // Set before any GreenEnergyProvider is constructed. The resolver used to put
+        // 2021 first unconditionally, so a cross-year set was unreachable whatever the
+        // configuration said. The default is still 2021, so an unchanged configuration
+        // resolves to exactly the file it resolved to before.
+        exe.edu.cspg.energy.GreenEnergyProvider.setPreferredWindYear(settings.getWindCsvYear());
 
         LOGGER.info("Initialising MultiDatacenterSimulationCore with {} datacenters",
                 datacenterConfigs.size());
@@ -2480,6 +2485,8 @@ public class MultiDatacenterSimulationCore {
                  String.valueOf(settings.getDeferDeadlineSlackSec()));
         info.put("defer_deadline_force_mode_effective",
                  String.valueOf(settings.getDeferDeadlineForceMode()));
+        info.put("wind_csv_year_effective",
+                 String.valueOf(exe.edu.cspg.energy.GreenEnergyProvider.getPreferredWindYear()));
     }
 
     /** Test seam for the CSV encoding; the separators are a contract with the planner. */

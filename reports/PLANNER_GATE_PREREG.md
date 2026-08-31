@@ -338,3 +338,86 @@ drain 每步每 DC 预算改为 `cap − dc_running_pes − 本步 shadow`。
     论文若声称使用 1.0                   配置—描述不一致,需改正文或降级证据
 
 暂不重跑历史实验。
+
+---
+
+# Addendum D —— 2026-08-31,风电年份可选(held-out 运行期间补写的文档)
+
+## D.0 时间口径,如实记录
+
+    03:07:12   源码 diff 落盘(GreenEnergyProvider.java, SimulationSettings.java)
+    03:09:42   jar 构建完成
+    03:20:33   2021 冻结格回归证据落盘
+    09:58      2020 六格启动
+    10:2x      本 addendum 撰写
+
+**实现修复先于 held-out 运行,正式文档在启动后补齐。** 实现证据(源码、jar、回归结果)在
+09:58 之前全部落盘,但**当时尚未提交 git**,且本文档在六格启动后才写。
+
+期间未查看任何碳结果。启动后仅读取过:逐格步数、gateway 日志中的 CSV 解析行、
+以及一次独立的绿电序列相关性哨兵(单独的 env,非六格之一)。
+
+**本轮结果不得因结果不利而重跑。** 六格一次跑到底,无论结论如何。
+
+## D.1 为何需要这次改动
+
+`GreenEnergyProvider.findTurbineFile` 的模式列表把 `Turbine_<id>_2021.csv` 写在首位,
+而该文件恒存在,故任何配置都无法解析到其他年份。`csv_year` 只属于 timecap 预报器,
+Java 侧不存在该键。**预注册的 2020 跨年确认集在旧实现下无法运行。**
+这是执行能力缺口,不是判据变更。
+
+## D.2 精确 diff
+
+新增 `SimulationSettings.windCsvYear`(键 `wind_csv_year`,**默认 2021**),
+`GreenEnergyProvider` 增静态 `preferredYear`(默认 2021)与 setter/getter,
+模式列表首位改为首选年份、原有顺序整体后移作为回退,fallback 串同步。
+`MultiDatacenterSimulationCore` 构造时在任何 provider 构造前设置该偏好,
+并在 info 中回报 `wind_csv_year_effective`。
+
+    SimulationSettings.java     +5
+    GreenEnergyProvider.java    +23 −2
+
+默认 2021 时,模式列表首位与原列表首位相同,解析结果逐位不变。
+
+## D.3 兼容性证据
+
+**回归格**:用新 jar 重跑已冻结的 2021 格 `nowait_planner_low`(k=19, offset 19171),
+与旧 jar 结果比对 **82 个物理列全部逐位相同**,含
+`total_carbon_kg = 0.1259849089118572`。仅墙钟与内存仪表不同。
+
+**Java 测试** 117 项,0 失败,含新增 `WindYearSelectionTest`(默认为 2021、偏好被采纳)。
+
+## D.4 哈希
+
+    旧 jar   e1aeba94e154eb01152482da097df5cbcb1f4018b4e32497596aae96684067d5
+    新 jar   6d23d8790d3a4d997eb5867c180c0030c5ced264b794d18e32b39ed10de261b5
+    构建自   commit 2a86e3f + 上述两文件未提交改动(见 D.0)
+    config   2021 校准 ca4fcf76ed4b97b8d972613e604dadd5453fef8cb90f0a90b285fe6f17a84d73
+    config   2020 确认 g1/config_C_2020.yml(由前者派生,仅改 wind_csv_year=2020
+             与 green_episode_offset_range=24669)
+
+    2020 涡轮文件 SHA256
+      T12  162e80e50b31a720e210008729cfbfbbff6bbdc4cc399814195f4e5613291daf
+      T36  e92090af7abd76ecaba1b6f62045b4d2b788d243f49781bac74f944a525b7c1a
+      T91  c45df4f3d2d0ba66713941e3ab94208f1a96b8a4db11f2d7bb039e958fccb61e
+      T95  ee5e68df0004ab1640d146b255257c87bb5635bf02cb33cf948abf6c2625f79c
+      T96  7ac6ce1a70321b172427edc4fe143ec188b062c34712dec3a47da86fa9d69112
+
+## D.5 六格启动时的接线
+
+    jar        6d23d879…(runner 硬校验)
+    year       wind_csv_year = 2020
+    offsets    low k=27 off 2574 / mid k=71 off 22301 / high k=13 off 13117(Addendum A)
+    arms       curve_planner 对冻结最强盲 nowait_planner
+    contract   Addendum B.6 逐 ID 闭合,不变
+
+**相关性哨兵**:以 2020 配置取仿真器 600 步绿电序列,与两年轨迹分别求最大相关 ——
+2020 得 **1.0000**,2021 仅 0.7813。接线确认正确。
+
+该哨兵曾出现一次单点比对不符,查明为探针自身的 off-by-one(`--reset-skip k` 的被测集是
+索引 k,而探针循环 k 次后测的是索引 k−1,差一个 1009 步长)。runner 无误。
+
+## D.6 结论范围(预先声明)
+
+即使 2020 三格全部通过 5% 判据,**只能**证明「完美未来信息在 C-regime 上可兑现」。
+下一步仍须换成真实 TimeCAP 预测重验,**不得**据此声称预测器或 EU-CRD 已经有效。

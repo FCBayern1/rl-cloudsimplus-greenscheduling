@@ -274,7 +274,8 @@ public class GreenEnergyProvider {
         }
 
         // Default fallback
-        String fallback = "windProduction/simplified/Turbine_" + turbineId + "_2021.csv";
+        String fallback = "windProduction/simplified/Turbine_" + turbineId + "_"
+                + preferredYear + ".csv";
         LOGGER.warn("Could not find CSV for turbine {}, using fallback: {}", turbineId, fallback);
         isSimplifiedFormat = true;
         return fallback;
@@ -283,12 +284,30 @@ public class GreenEnergyProvider {
     /**
      * Try to find a turbine CSV file with various naming patterns.
      */
+    /**
+     * Wind year the resolver prefers. The year used to be hard coded in the pattern list,
+     * with 2021 always first and therefore always winning, so a cross-year confirmation
+     * set was unreachable no matter what the configuration said. 2021 remains the default
+     * so every existing run resolves to exactly the file it resolved to before.
+     */
+    private static volatile int preferredYear = 2021;
+
+    public static void setPreferredWindYear(int year) {
+        preferredYear = year;
+    }
+
+    public static int getPreferredWindYear() {
+        return preferredYear;
+    }
+
     private String findTurbineFile(String baseDir, int turbineId) {
+        int y = preferredYear;
         String[] patterns = {
+            baseDir + "/Turbine_" + turbineId + "_" + y + ".csv",
             baseDir + "/Turbine_" + turbineId + "_2021.csv",
             baseDir + "/Turbine_" + turbineId + "_2020.csv",
             baseDir + "/Turbine_" + turbineId + "_2022.csv",
-            baseDir + "/turbine_" + turbineId + "_2021.csv",
+            baseDir + "/turbine_" + turbineId + "_" + y + ".csv",
             baseDir + "/Turbine_" + turbineId + ".csv",
         };
 
