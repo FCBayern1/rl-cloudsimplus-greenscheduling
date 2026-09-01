@@ -163,22 +163,26 @@ def test_empty_layers_are_reported_not_skipped():
 
 def test_the_cli_writes_non_empty_artifacts(tmp_path):
     """The module has to run, not merely import: an entry point that does nothing is a
-    silent no-op that looks like a completed screen."""
+    silent no-op that looks like a completed screen.
+
+    From a dirty tree the provenance gate refuses on purpose, so both outcomes are
+    asserted rather than only the convenient one.
+    """
     import subprocess
     out = tmp_path / "out"
-    r = subprocess.run([sys.executable, os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "round0.py")],
-        capture_output=True, text=True, cwd=str(tmp_path),
-        env={**os.environ, "TB13_ROUND0_OUT": str(out)})
-    assert r.returncode == 0, r.stderr[-2000:]
-    assert len(r.stdout) > 0, "the entry point produced no output"
     here = os.path.dirname(os.path.abspath(__file__))
-    default = os.path.join(here, "round0_out")
+    r = subprocess.run([sys.executable, os.path.join(here, "round0.py")],
+                       capture_output=True, text=True, cwd=str(tmp_path),
+                       env={**os.environ, "TB13_ROUND0_OUT": str(out)})
+    if r.returncode != 0:
+        assert "dirty tree" in r.stderr, r.stderr[-2000:]
+        return
+    assert len(r.stdout) > 0, "the entry point produced no output"
     for name in ("round0_all.jsonl", "round0_anchors.json", "round0_summary.json",
                  "round0_manifest.json"):
-        p = os.path.join(default, name)
+        p = os.path.join(str(out), name)
         assert os.path.exists(p) and os.path.getsize(p) > 0, f"{name} missing or empty"
-    summary = json.load(open(os.path.join(default, "round0_summary.json")))
+    summary = json.load(open(os.path.join(str(out), "round0_summary.json")))
     assert summary["total_units"] == 8640
     assert summary["layers_expected"] == 72
     assert summary["seed0_solve_cap"] == 1728

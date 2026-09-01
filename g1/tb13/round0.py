@@ -308,6 +308,8 @@ def main(out_dir=None):
 
 
 if __name__ == "__main__":
-    s = main()
+    # TB13_ROUND0_OUT lets a test drive the entry point without overwriting the official
+    # artifacts, which a smoke test did once and restamped their provenance.
+    s = main(os.environ.get("TB13_ROUND0_OUT"))
     print(json.dumps({k: v for k, v in s.items() if k != "survivors_per_layer"},
                      sort_keys=True, indent=2))
