@@ -1,0 +1,23 @@
+{
+  "arrival_spread_is_one": 18,
+  "by_horizon": {
+    "36": 52,
+    "48": 32
+  },
+  "by_wait_cap": {
+    "12": 27,
+    "24": 33,
+    "6": 24
+  },
+  "capacity_span_le_zero": 18,
+  "clipped": 84,
+  "clipped_and_accepted": 81,
+  "clipped_and_rejected": 3,
+  "keys": 99,
+  "offered_concurrency": {
+    "max": 120.0,
+    "median": 7.091,
+    "min": 2.069
+  },
+  "unclipped_and_rejected": 0
+}
