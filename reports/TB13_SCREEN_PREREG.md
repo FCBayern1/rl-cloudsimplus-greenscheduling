@@ -166,3 +166,126 @@ RL 样本量由**增加独立 episode** 获得,不得靠提高单 episode 并发
     轮 4   对通过格检查 §8 稳定区域(邻域 + 涡轮三元组 + 季节)
 
 每轮判据在本文件中已冻结,不得按中间结果调整。
+
+---
+
+# Addendum A —— 2026-09-01,冻结前的七项修正与正式 Round 0
+
+依 Codex 2026-09-01 两轮复核。本 addendum 与主文冲突处**以 addendum 为准**。
+
+## A.0 已隔离的 PREFREEZE_DIAGNOSTIC
+
+冻结前曾用 DISCOVERY 涡轮跑过一次存活率预筛,带有事后选定的 ρ 截断 `[0.2, 3.0]`。
+该进程已终止,**输出未读取**,全部归档于 `g1/tb13/prefreeze_diagnostic/`,
+**不进入正式筛选**。其中发现并已修复的三处逻辑错误:取绝对值使强负相关通过、
+"同时贫风"实测的是"至少一站无绿"、最优 DC 不变时写 `pass` 而未淘汰。
+
+**正式 Round 0 不设任何 ρ 截断。**
+
+## A.1 容量必须绑定
+
+    每站可调度容量   16 PE = 2 台 8-PE VM(仿真器侧须机械复现这两台 VM)
+    作业             4 PE → 占站 25%    8 PE → 占站 50%
+    2 PE             占站 12.5%,保留为【流体负控】,pes_share < 0.25 故不得成为正式通过格
+
+不得把 host 的 64 PE 当作调度容量。
+
+## A.2 runtime 对齐注册规格
+
+    一级精确筛   {6, 12} 行 = 1–2 小时
+    二级扩展     {6, 12, 24} 行 = 1–4 小时
+
+runtime 自冻结集合抽取,**不得为塞进视界而缩短**;arrival 与 deadline 按可达性生成。
+
+## A.3 延迟预算按运行总量在线结算
+
+    floor_if_wait = Σ_已派出 (s_i − a_i) + Σ_已到达仍 pending ((t+1) − a_j)
+    floor_if_wait > B  ⟹  该作业必须立即派出
+
+修复了一处 off-by-one(原实现允许总等待到达 `B+1`)。回归测试覆盖:两作业同时等待不超预算、
+容量在线遵守、deadline 遵守、**未来突变不变性**(只改决策触及不到的尾部,决策必须逐位不变)。
+
+`persistence` 与 `immediate_current_only` 行为等价(平坦未来下每个起点同价),已由测试断言。
+
+`strongest_blind` 更名 `blind_class_diagnostic`,**不是可部署策略**(逐实例事后择臂),
+仅作盲臂类的保守下包络诊断。正式最强盲由 `pooled_strongest()` 在 **DISCOVERY 上按池化碳冻结单一臂**,
+任一实例履约失败即取消资格,**CONFIRMATION 不重选**。
+
+## A.4 climatology 口径统一
+
+`instance_gen._climatology()` 聚合站内**全部**涡轮(原实现只读 `ts[:1]`,双涡轮站低估约一半),
+用同一 divisor、同一历史窗口,并**在此处且仅在此处**扣除静态,返回 **residual green**。
+`causal_blinds.climatology()` 直接用该值,成本为
+
+    cb · max(draw − clim_residual, 0) + cg · min(draw, clim_residual)
+
+不再二次扣除静态。数值测试:双涡轮站等于两台之和;静态只被扣一次。
+
+## A.5 主轴与动态功率更正
+
+    dyn_w_per_pe = (214 − 51.4)/64 × 0.5 = 1.2703 W/PE
+    ρ = concurrency × pes_per_job × dyn_w_per_pe / mean(max(G − P_static, 0))
+
+主文中的 2.5406 是满载值,算术矛盾已消除。
+
+## A.6 triplet × season 改为笛卡尔
+
+6 个涡轮三元组 × 6 个季节窗口 = **36 层**,不再一对一配对,以区分涡轮效应与季节效应。
+
+## A.7 正式 Round 0:物理单元去重全扫
+
+预筛只依赖物理键,与 workload/budget 无关。唯一物理单元数:
+
+    3 pes × 4 concurrency × 2 turbines/site × 5 divisor × 2 T × 6 triples × 6 seasons
+    = 8,640 个物理单元
+
+纯 NumPy,**不求解**,全部扫完并记录:
+
+    rho_residual
+    pes_share
+    pairwise correlation      要求【正相关】0.70 ≤ r ≤ 0.95,不取绝对值
+    simultaneous-poor fraction  三站【同时】低于冻结阈值的时刻占比,非退化(不得为 0 或 1)
+    best-DC change fraction   ≥ 10%,否则淘汰(用 continue,不是 pass)
+
+结果映射回 36 个 workload/budget 组合。
+
+## A.8 固定求解预算:36 层 × 4 anchor
+
+不写"存活多少跑多少",也不按文件顺序截断。
+
+    每个 triplet × season 为一层,共 36 层
+    每层内按【冻结 SHA】排序,选 4 个 anchor,最多 144 个 anchor
+    每个 anchor 携带完整邻域:3 个相邻 installed_divisor × 全部 4 个 budget fraction
+
+    seed 0 求解实例上限 = 144 × 3 × 4 = 1,728
+
+如此每个候选天然带有 3 load × 4 budget 的完整邻域,不会因随机抽点而无法判断稳定区域。
+
+**无 anchor 的层如实记录,不跨层找替补。**
+
+## A.9 固定晋级顺序
+
+    Round 0   8,640 个物理单元全扫,不求解
+    Round 1   通过物理门的单元,层内 SHA 选 anchor,至多 1,728 个 seed 0 求解
+    Round 2   OPTIMAL + EVPI ≥ 15% + 基础分布门 的【整个邻域】才补 seed 1/2
+    Round 3   三 seed 后检查完整 EU-CRD 门与 §8 稳定区域
+
+**不按 EVPI 排名截半。** 主文 §12 的"按 EVPI 排名前 50%"作废。
+主文 §10 的"连续 200 格无通过即停"**作废** —— 搜索顺序未冻结,退化区排前会错误早停;
+空手结论只能在跑完 Round 0 全部单元与全部 anchor 的 seed 0 之后宣布。
+
+## A.10 机时(承诺预算,非存活率估算)
+
+    最坏      1,728 × 30 s ≈ 14.4 CPU-hours 串行
+    本机      每个 CP-SAT 用 4 线程,8 核最多并行 2 个 ⟹ 最坏约 7.2 小时墙钟
+    实际      多数实例秒级完成,预计明显更短
+
+平均机时的估算只能引用 DESIGN_PILOT 数据,且**不得改变 144 anchor 上限**。
+
+## A.11 冻结哈希
+
+    grid_hash                4a24e7f3e6d8ffdd
+    axes combinations        8,640
+    physical units (Round 0) 8,640
+    workload/budget per unit 36
+    seed 0 solve cap         1,728
