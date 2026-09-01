@@ -1,0 +1,2216 @@
+{
+  "admissible_pairs": 12,
+  "base_block_sha": "d3d47223e4696c7e",
+  "base_experiment": "experiment_g1eval_matchedvan",
+  "cells": 108,
+  "config_s2_sha": "f17e5fdb510662ee",
+  "cpu_utilization": 1.0,
+  "overridden_keys": [
+    "experiment_name",
+    "simulation_name",
+    "cloudlet_trace_file",
+    "defer_deadline_force_mode",
+    "cloudlet_cpu_utilization"
+  ],
+  "pes_per_job": 2,
+  "reports": {
+    "s2_r24_w120_c1_n20": {
+      "arrival_span": 450,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 606,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0148,
+      "runtime_rows": 24,
+      "service_span": 480,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c1_n35": {
+      "arrival_span": 817,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 962,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0,
+      "runtime_rows": 24,
+      "service_span": 840,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c1_n50": {
+      "arrival_span": 1164,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 1325,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.011,
+      "runtime_rows": 24,
+      "service_span": 1200,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c3_n20": {
+      "arrival_span": 152,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 302,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.7429,
+      "runtime_rows": 24,
+      "service_span": 160,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c3_n35": {
+      "arrival_span": 271,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 418,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8571,
+      "runtime_rows": 24,
+      "service_span": 280,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c3_n50": {
+      "arrival_span": 389,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 539,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.9126,
+      "runtime_rows": 24,
+      "service_span": 400,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c5_n20": {
+      "arrival_span": 92,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 235,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.1739,
+      "runtime_rows": 24,
+      "service_span": 96,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c5_n35": {
+      "arrival_span": 162,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 307,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.5405,
+      "runtime_rows": 24,
+      "service_span": 168,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w120_c5_n50": {
+      "arrival_span": 235,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "closure_ok": true,
+      "deadline_max": 379,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.6512,
+      "runtime_rows": 24,
+      "service_span": 240,
+      "wait_cap_rows": 120
+    },
+    "s2_r24_w24_c1_n20": {
+      "arrival_span": 453,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 505,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0084,
+      "runtime_rows": 24,
+      "service_span": 480,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c1_n35": {
+      "arrival_span": 829,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 877,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9859,
+      "runtime_rows": 24,
+      "service_span": 840,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c1_n50": {
+      "arrival_span": 1193,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 1243,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9868,
+      "runtime_rows": 24,
+      "service_span": 1200,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c3_n20": {
+      "arrival_span": 155,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 207,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.6966,
+      "runtime_rows": 24,
+      "service_span": 160,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c3_n35": {
+      "arrival_span": 266,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 320,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.9066,
+      "runtime_rows": 24,
+      "service_span": 280,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c3_n50": {
+      "arrival_span": 397,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 445,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8571,
+      "runtime_rows": 24,
+      "service_span": 400,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c5_n20": {
+      "arrival_span": 95,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 143,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.0678,
+      "runtime_rows": 24,
+      "service_span": 96,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c5_n35": {
+      "arrival_span": 162,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 211,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.5405,
+      "runtime_rows": 24,
+      "service_span": 168,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w24_c5_n50": {
+      "arrival_span": 233,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 283,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.6875,
+      "runtime_rows": 24,
+      "service_span": 240,
+      "wait_cap_rows": 24
+    },
+    "s2_r24_w48_c1_n20": {
+      "arrival_span": 456,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 540,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0021,
+      "runtime_rows": 24,
+      "service_span": 480,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c1_n35": {
+      "arrival_span": 797,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 889,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0244,
+      "runtime_rows": 24,
+      "service_span": 840,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c1_n50": {
+      "arrival_span": 1188,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 1269,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9909,
+      "runtime_rows": 24,
+      "service_span": 1200,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c3_n20": {
+      "arrival_span": 155,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 227,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.6966,
+      "runtime_rows": 24,
+      "service_span": 160,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c3_n35": {
+      "arrival_span": 275,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 350,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8188,
+      "runtime_rows": 24,
+      "service_span": 280,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c3_n50": {
+      "arrival_span": 388,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 465,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.9197,
+      "runtime_rows": 24,
+      "service_span": 400,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c5_n20": {
+      "arrival_span": 95,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 167,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.0678,
+      "runtime_rows": 24,
+      "service_span": 96,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c5_n35": {
+      "arrival_span": 165,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 236,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.4681,
+      "runtime_rows": 24,
+      "service_span": 168,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w48_c5_n50": {
+      "arrival_span": 233,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 307,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.6875,
+      "runtime_rows": 24,
+      "service_span": 240,
+      "wait_cap_rows": 48
+    },
+    "s2_r24_w72_c1_n20": {
+      "arrival_span": 454,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 556,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0063,
+      "runtime_rows": 24,
+      "service_span": 480,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c1_n35": {
+      "arrival_span": 830,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 927,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9848,
+      "runtime_rows": 24,
+      "service_span": 840,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c1_n50": {
+      "arrival_span": 1178,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 1277,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9992,
+      "runtime_rows": 24,
+      "service_span": 1200,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c3_n20": {
+      "arrival_span": 154,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 255,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.7119,
+      "runtime_rows": 24,
+      "service_span": 160,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c3_n35": {
+      "arrival_span": 270,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 370,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8669,
+      "runtime_rows": 24,
+      "service_span": 280,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c3_n50": {
+      "arrival_span": 398,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 495,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8504,
+      "runtime_rows": 24,
+      "service_span": 400,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c5_n20": {
+      "arrival_span": 96,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 191,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.0336,
+      "runtime_rows": 24,
+      "service_span": 96,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c5_n35": {
+      "arrival_span": 163,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 259,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.5161,
+      "runtime_rows": 24,
+      "service_span": 168,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w72_c5_n50": {
+      "arrival_span": 237,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 334,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.6154,
+      "runtime_rows": 24,
+      "service_span": 240,
+      "wait_cap_rows": 72
+    },
+    "s2_r24_w96_c1_n20": {
+      "arrival_span": 450,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 580,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 1.0148,
+      "runtime_rows": 24,
+      "service_span": 480,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c1_n35": {
+      "arrival_span": 822,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 954,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9941,
+      "runtime_rows": 24,
+      "service_span": 840,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c1_n50": {
+      "arrival_span": 1178,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 1310,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 0.9992,
+      "runtime_rows": 24,
+      "service_span": 1200,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c3_n20": {
+      "arrival_span": 147,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 272,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8235,
+      "runtime_rows": 24,
+      "service_span": 160,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c3_n35": {
+      "arrival_span": 279,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 399,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.7815,
+      "runtime_rows": 24,
+      "service_span": 280,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c3_n50": {
+      "arrival_span": 391,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 516,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 2.8986,
+      "runtime_rows": 24,
+      "service_span": 400,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c5_n20": {
+      "arrival_span": 91,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 213,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.2105,
+      "runtime_rows": 24,
+      "service_span": 96,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c5_n35": {
+      "arrival_span": 166,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 285,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.4444,
+      "runtime_rows": 24,
+      "service_span": 168,
+      "wait_cap_rows": 96
+    },
+    "s2_r24_w96_c5_n50": {
+      "arrival_span": 234,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 356,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 960000,
+      "offered_concurrency": 4.6693,
+      "runtime_rows": 24,
+      "service_span": 240,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w24_c1_n20": {
+      "arrival_span": 922,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 1004,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 0.9907,
+      "runtime_rows": 48,
+      "service_span": 960,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c1_n35": {
+      "arrival_span": 1652,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 1735,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 0.9888,
+      "runtime_rows": 48,
+      "service_span": 1680,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c1_n50": {
+      "arrival_span": 2340,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 2432,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0054,
+      "runtime_rows": 48,
+      "service_span": 2400,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c3_n20": {
+      "arrival_span": 318,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 389,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.6301,
+      "runtime_rows": 48,
+      "service_span": 320,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c3_n35": {
+      "arrival_span": 544,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 618,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8426,
+      "runtime_rows": 48,
+      "service_span": 560,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c3_n50": {
+      "arrival_span": 793,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 870,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8571,
+      "runtime_rows": 48,
+      "service_span": 800,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c5_n20": {
+      "arrival_span": 191,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 262,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.0336,
+      "runtime_rows": 48,
+      "service_span": 192,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c5_n35": {
+      "arrival_span": 331,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 404,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.4444,
+      "runtime_rows": 48,
+      "service_span": 336,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w24_c5_n50": {
+      "arrival_span": 478,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 551,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.5714,
+      "runtime_rows": 48,
+      "service_span": 480,
+      "wait_cap_rows": 24
+    },
+    "s2_r48_w48_c1_n20": {
+      "arrival_span": 892,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 1018,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0224,
+      "runtime_rows": 48,
+      "service_span": 960,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c1_n35": {
+      "arrival_span": 1601,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 1730,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0194,
+      "runtime_rows": 48,
+      "service_span": 1680,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c1_n50": {
+      "arrival_span": 2364,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 2493,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 0.9954,
+      "runtime_rows": 48,
+      "service_span": 2400,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c3_n20": {
+      "arrival_span": 307,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 404,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.7119,
+      "runtime_rows": 48,
+      "service_span": 320,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c3_n35": {
+      "arrival_span": 537,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 647,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8767,
+      "runtime_rows": 48,
+      "service_span": 560,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c3_n50": {
+      "arrival_span": 783,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 885,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8916,
+      "runtime_rows": 48,
+      "service_span": 800,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c5_n20": {
+      "arrival_span": 181,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 278,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.2105,
+      "runtime_rows": 48,
+      "service_span": 192,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c5_n35": {
+      "arrival_span": 326,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 425,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.504,
+      "runtime_rows": 48,
+      "service_span": 336,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w48_c5_n50": {
+      "arrival_span": 468,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 569,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.6602,
+      "runtime_rows": 48,
+      "service_span": 480,
+      "wait_cap_rows": 48
+    },
+    "s2_r48_w72_c1_n20": {
+      "arrival_span": 912,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 1071,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.001,
+      "runtime_rows": 48,
+      "service_span": 960,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c1_n35": {
+      "arrival_span": 1611,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 1764,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0133,
+      "runtime_rows": 48,
+      "service_span": 1680,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c1_n50": {
+      "arrival_span": 2373,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 2518,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 0.9917,
+      "runtime_rows": 48,
+      "service_span": 2400,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c3_n20": {
+      "arrival_span": 300,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 427,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.7666,
+      "runtime_rows": 48,
+      "service_span": 320,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c3_n35": {
+      "arrival_span": 541,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 671,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8571,
+      "runtime_rows": 48,
+      "service_span": 560,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c3_n50": {
+      "arrival_span": 797,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 917,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8436,
+      "runtime_rows": 48,
+      "service_span": 800,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c5_n20": {
+      "arrival_span": 187,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 309,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.1026,
+      "runtime_rows": 48,
+      "service_span": 192,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c5_n35": {
+      "arrival_span": 327,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 450,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.492,
+      "runtime_rows": 48,
+      "service_span": 336,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w72_c5_n50": {
+      "arrival_span": 469,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 594,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.6512,
+      "runtime_rows": 48,
+      "service_span": 480,
+      "wait_cap_rows": 72
+    },
+    "s2_r48_w96_c1_n20": {
+      "arrival_span": 925,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 1102,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 0.9877,
+      "runtime_rows": 48,
+      "service_span": 960,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c1_n35": {
+      "arrival_span": 1610,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 1797,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0139,
+      "runtime_rows": 48,
+      "service_span": 1680,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c1_n50": {
+      "arrival_span": 2328,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 2511,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 1.0105,
+      "runtime_rows": 48,
+      "service_span": 2400,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c3_n20": {
+      "arrival_span": 312,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 463,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.6741,
+      "runtime_rows": 48,
+      "service_span": 320,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c3_n35": {
+      "arrival_span": 540,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 695,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.862,
+      "runtime_rows": 48,
+      "service_span": 560,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c3_n50": {
+      "arrival_span": 789,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 943,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 2.8708,
+      "runtime_rows": 48,
+      "service_span": 800,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c5_n20": {
+      "arrival_span": 181,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 328,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.2105,
+      "runtime_rows": 48,
+      "service_span": 192,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c5_n35": {
+      "arrival_span": 326,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 471,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.504,
+      "runtime_rows": 48,
+      "service_span": 336,
+      "wait_cap_rows": 96
+    },
+    "s2_r48_w96_c5_n50": {
+      "arrival_span": 473,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "closure_ok": true,
+      "deadline_max": 622,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 1920000,
+      "offered_concurrency": 4.6154,
+      "runtime_rows": 48,
+      "service_span": 480,
+      "wait_cap_rows": 96
+    },
+    "s2_r72_w24_c1_n20": {
+      "arrival_span": 1310,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 1474,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 1.0427,
+      "runtime_rows": 72,
+      "service_span": 1440,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c1_n35": {
+      "arrival_span": 2480,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 2613,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 0.9878,
+      "runtime_rows": 72,
+      "service_span": 2520,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c1_n50": {
+      "arrival_span": 3570,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 3686,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 0.9887,
+      "runtime_rows": 72,
+      "service_span": 3600,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c3_n20": {
+      "arrival_span": 477,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 573,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.6277,
+      "runtime_rows": 72,
+      "service_span": 480,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c3_n35": {
+      "arrival_span": 829,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 934,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8,
+      "runtime_rows": 72,
+      "service_span": 840,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c3_n50": {
+      "arrival_span": 1184,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 1286,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8685,
+      "runtime_rows": 72,
+      "service_span": 1200,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c5_n20": {
+      "arrival_span": 273,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 378,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.186,
+      "runtime_rows": 72,
+      "service_span": 288,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c5_n35": {
+      "arrival_span": 489,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 597,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.5,
+      "runtime_rows": 72,
+      "service_span": 504,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w24_c5_n50": {
+      "arrival_span": 698,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "closure_ok": true,
+      "deadline_max": 806,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.6814,
+      "runtime_rows": 72,
+      "service_span": 720,
+      "wait_cap_rows": 24
+    },
+    "s2_r72_w48_c1_n20": {
+      "arrival_span": 1324,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 1498,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 1.0323,
+      "runtime_rows": 72,
+      "service_span": 1440,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c1_n35": {
+      "arrival_span": 2457,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 2586,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 0.9968,
+      "runtime_rows": 72,
+      "service_span": 2520,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c1_n50": {
+      "arrival_span": 3522,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 3663,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 1.0019,
+      "runtime_rows": 72,
+      "service_span": 3600,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c3_n20": {
+      "arrival_span": 466,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 586,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.6816,
+      "runtime_rows": 72,
+      "service_span": 480,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c3_n35": {
+      "arrival_span": 824,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 951,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8156,
+      "runtime_rows": 72,
+      "service_span": 840,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c3_n50": {
+      "arrival_span": 1175,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 1302,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8892,
+      "runtime_rows": 72,
+      "service_span": 1200,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c5_n20": {
+      "arrival_span": 270,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 402,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.2229,
+      "runtime_rows": 72,
+      "service_span": 288,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c5_n35": {
+      "arrival_span": 481,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 613,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.5652,
+      "runtime_rows": 72,
+      "service_span": 504,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w48_c5_n50": {
+      "arrival_span": 709,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "closure_ok": true,
+      "deadline_max": 833,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.6154,
+      "runtime_rows": 72,
+      "service_span": 720,
+      "wait_cap_rows": 48
+    },
+    "s2_r72_w72_c1_n20": {
+      "arrival_span": 1388,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 1581,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 0.987,
+      "runtime_rows": 72,
+      "service_span": 1440,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c1_n35": {
+      "arrival_span": 2454,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 2627,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 0.998,
+      "runtime_rows": 72,
+      "service_span": 2520,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c1_n50": {
+      "arrival_span": 3510,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 3687,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 1.0053,
+      "runtime_rows": 72,
+      "service_span": 3600,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c3_n20": {
+      "arrival_span": 446,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 600,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.7853,
+      "runtime_rows": 72,
+      "service_span": 480,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c3_n35": {
+      "arrival_span": 817,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 973,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8378,
+      "runtime_rows": 72,
+      "service_span": 840,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c3_n50": {
+      "arrival_span": 1171,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 1327,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 2.8986,
+      "runtime_rows": 72,
+      "service_span": 1200,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c5_n20": {
+      "arrival_span": 270,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 423,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.2229,
+      "runtime_rows": 72,
+      "service_span": 288,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c5_n35": {
+      "arrival_span": 495,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 641,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.4523,
+      "runtime_rows": 72,
+      "service_span": 504,
+      "wait_cap_rows": 72
+    },
+    "s2_r72_w72_c5_n50": {
+      "arrival_span": 711,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "closure_ok": true,
+      "deadline_max": 857,
+      "deadline_reachable": true,
+      "fits_episode": true,
+      "mi_per_job": 2880000,
+      "offered_concurrency": 4.6036,
+      "runtime_rows": 72,
+      "service_span": 720,
+      "wait_cap_rows": 72
+    }
+  },
+  "seed_namespace": "s2v1",
+  "trace_shas": {
+    "traces/s2/s2_r24_w120_c1_n20.csv": "442fbd864d859cd1",
+    "traces/s2/s2_r24_w120_c1_n35.csv": "707fe3b1e201c130",
+    "traces/s2/s2_r24_w120_c1_n50.csv": "0c74b4f1a6eeca88",
+    "traces/s2/s2_r24_w120_c3_n20.csv": "cbe4c4340895ef3b",
+    "traces/s2/s2_r24_w120_c3_n35.csv": "371d623d7cad7c43",
+    "traces/s2/s2_r24_w120_c3_n50.csv": "448a5a55f61fbda2",
+    "traces/s2/s2_r24_w120_c5_n20.csv": "fda01efe5db2f78d",
+    "traces/s2/s2_r24_w120_c5_n35.csv": "af9cf360a67be59d",
+    "traces/s2/s2_r24_w120_c5_n50.csv": "c829ffbcbaf474ed",
+    "traces/s2/s2_r24_w24_c1_n20.csv": "4293d33ddedc8c41",
+    "traces/s2/s2_r24_w24_c1_n35.csv": "02954021f7c941e2",
+    "traces/s2/s2_r24_w24_c1_n50.csv": "2f44c0c291b0e3f8",
+    "traces/s2/s2_r24_w24_c3_n20.csv": "cf197212e89cb892",
+    "traces/s2/s2_r24_w24_c3_n35.csv": "54ee8a5efda97df1",
+    "traces/s2/s2_r24_w24_c3_n50.csv": "cccf45572d2dfffa",
+    "traces/s2/s2_r24_w24_c5_n20.csv": "90a38b29a7a715d1",
+    "traces/s2/s2_r24_w24_c5_n35.csv": "c7b0d292fc6d4eea",
+    "traces/s2/s2_r24_w24_c5_n50.csv": "78d8bee56e04287a",
+    "traces/s2/s2_r24_w48_c1_n20.csv": "e3c675d47156699e",
+    "traces/s2/s2_r24_w48_c1_n35.csv": "890ca8d8b63580b6",
+    "traces/s2/s2_r24_w48_c1_n50.csv": "d6f03b0810a1beb5",
+    "traces/s2/s2_r24_w48_c3_n20.csv": "e23a23b1cd02e53d",
+    "traces/s2/s2_r24_w48_c3_n35.csv": "83d166f0811fe7e6",
+    "traces/s2/s2_r24_w48_c3_n50.csv": "7ab1d83e66e2bc71",
+    "traces/s2/s2_r24_w48_c5_n20.csv": "51b3800fa3ea77a3",
+    "traces/s2/s2_r24_w48_c5_n35.csv": "11358e30e93eb075",
+    "traces/s2/s2_r24_w48_c5_n50.csv": "0aadce383bcff93d",
+    "traces/s2/s2_r24_w72_c1_n20.csv": "956e32e6499c9322",
+    "traces/s2/s2_r24_w72_c1_n35.csv": "079a3caa3a4488bd",
+    "traces/s2/s2_r24_w72_c1_n50.csv": "01eb1ab7ac73976d",
+    "traces/s2/s2_r24_w72_c3_n20.csv": "74da933067e814ea",
+    "traces/s2/s2_r24_w72_c3_n35.csv": "713769964780bc8a",
+    "traces/s2/s2_r24_w72_c3_n50.csv": "f602a88103f28487",
+    "traces/s2/s2_r24_w72_c5_n20.csv": "28a3f679bc548b6c",
+    "traces/s2/s2_r24_w72_c5_n35.csv": "f7d06b7f13ec316e",
+    "traces/s2/s2_r24_w72_c5_n50.csv": "f1bce7b23cad4b16",
+    "traces/s2/s2_r24_w96_c1_n20.csv": "d2880f493e003a87",
+    "traces/s2/s2_r24_w96_c1_n35.csv": "67474f0a40dbac63",
+    "traces/s2/s2_r24_w96_c1_n50.csv": "391605135b4b6afc",
+    "traces/s2/s2_r24_w96_c3_n20.csv": "8f26359ea865de87",
+    "traces/s2/s2_r24_w96_c3_n35.csv": "42a60d605a91e17a",
+    "traces/s2/s2_r24_w96_c3_n50.csv": "5116b8200ae879ad",
+    "traces/s2/s2_r24_w96_c5_n20.csv": "1db461030fc8e464",
+    "traces/s2/s2_r24_w96_c5_n35.csv": "4ed963b80192d155",
+    "traces/s2/s2_r24_w96_c5_n50.csv": "b5e22c3380698ba5",
+    "traces/s2/s2_r48_w24_c1_n20.csv": "9d946d889eceb30e",
+    "traces/s2/s2_r48_w24_c1_n35.csv": "08cd52fe73dec935",
+    "traces/s2/s2_r48_w24_c1_n50.csv": "ec26bdecd2a13670",
+    "traces/s2/s2_r48_w24_c3_n20.csv": "d6ad4a941d07eb85",
+    "traces/s2/s2_r48_w24_c3_n35.csv": "74f5763503d1050a",
+    "traces/s2/s2_r48_w24_c3_n50.csv": "1675722f6f7959c2",
+    "traces/s2/s2_r48_w24_c5_n20.csv": "3896eccd17b6e3f1",
+    "traces/s2/s2_r48_w24_c5_n35.csv": "94be7e78ef83817d",
+    "traces/s2/s2_r48_w24_c5_n50.csv": "0c56659105b1580d",
+    "traces/s2/s2_r48_w48_c1_n20.csv": "00e535365dc76203",
+    "traces/s2/s2_r48_w48_c1_n35.csv": "3a1c58abf7f09593",
+    "traces/s2/s2_r48_w48_c1_n50.csv": "7294935f97a03165",
+    "traces/s2/s2_r48_w48_c3_n20.csv": "81f9591ea8887798",
+    "traces/s2/s2_r48_w48_c3_n35.csv": "c3afae5a66fdb83c",
+    "traces/s2/s2_r48_w48_c3_n50.csv": "5ba1b9787dfcdb02",
+    "traces/s2/s2_r48_w48_c5_n20.csv": "31b10d6159ad35f6",
+    "traces/s2/s2_r48_w48_c5_n35.csv": "d07f27fb23483cce",
+    "traces/s2/s2_r48_w48_c5_n50.csv": "a201bbcaf85bf2b1",
+    "traces/s2/s2_r48_w72_c1_n20.csv": "6964917a994b2abc",
+    "traces/s2/s2_r48_w72_c1_n35.csv": "3b899cff453fff63",
+    "traces/s2/s2_r48_w72_c1_n50.csv": "e8eebab10f0392a7",
+    "traces/s2/s2_r48_w72_c3_n20.csv": "0fa67239e5f7c603",
+    "traces/s2/s2_r48_w72_c3_n35.csv": "e85a208d204c89ba",
+    "traces/s2/s2_r48_w72_c3_n50.csv": "98339e0730f9ea3c",
+    "traces/s2/s2_r48_w72_c5_n20.csv": "8eea30e509c45718",
+    "traces/s2/s2_r48_w72_c5_n35.csv": "17f4c7dfbe5dede4",
+    "traces/s2/s2_r48_w72_c5_n50.csv": "9e28de2f7eb332b5",
+    "traces/s2/s2_r48_w96_c1_n20.csv": "2f9744abd4d91d59",
+    "traces/s2/s2_r48_w96_c1_n35.csv": "2b992ad34db982a7",
+    "traces/s2/s2_r48_w96_c1_n50.csv": "6e42e5b27c6a2d7e",
+    "traces/s2/s2_r48_w96_c3_n20.csv": "03f6ed0acad99ea7",
+    "traces/s2/s2_r48_w96_c3_n35.csv": "7cf40f48bf3c8124",
+    "traces/s2/s2_r48_w96_c3_n50.csv": "2fc58e92335b42c9",
+    "traces/s2/s2_r48_w96_c5_n20.csv": "dee9d534bf882c2f",
+    "traces/s2/s2_r48_w96_c5_n35.csv": "589268fbed6448b1",
+    "traces/s2/s2_r48_w96_c5_n50.csv": "1ff5697ee8344fb6",
+    "traces/s2/s2_r72_w24_c1_n20.csv": "a9117e207269edaa",
+    "traces/s2/s2_r72_w24_c1_n35.csv": "6b2d4bc3c33b3583",
+    "traces/s2/s2_r72_w24_c1_n50.csv": "0b7cb9f557e369f3",
+    "traces/s2/s2_r72_w24_c3_n20.csv": "fcf83acdd1385353",
+    "traces/s2/s2_r72_w24_c3_n35.csv": "61f7fe5c2c42446d",
+    "traces/s2/s2_r72_w24_c3_n50.csv": "c61cc0a0e15b0bbf",
+    "traces/s2/s2_r72_w24_c5_n20.csv": "46872dd82eece17b",
+    "traces/s2/s2_r72_w24_c5_n35.csv": "c45953b7933fbac2",
+    "traces/s2/s2_r72_w24_c5_n50.csv": "b91d55798f36ace2",
+    "traces/s2/s2_r72_w48_c1_n20.csv": "f54cc4fff0b2b034",
+    "traces/s2/s2_r72_w48_c1_n35.csv": "82d064455722ebc6",
+    "traces/s2/s2_r72_w48_c1_n50.csv": "f072c1ce96f348df",
+    "traces/s2/s2_r72_w48_c3_n20.csv": "cf26dfdaac148e86",
+    "traces/s2/s2_r72_w48_c3_n35.csv": "16b17ca7aefea65b",
+    "traces/s2/s2_r72_w48_c3_n50.csv": "66545cf92bf4de6a",
+    "traces/s2/s2_r72_w48_c5_n20.csv": "6719a5658131ac6b",
+    "traces/s2/s2_r72_w48_c5_n35.csv": "ffaece9bc0704e30",
+    "traces/s2/s2_r72_w48_c5_n50.csv": "3d058c5bfdb95440",
+    "traces/s2/s2_r72_w72_c1_n20.csv": "49ebbcf2960d6fe9",
+    "traces/s2/s2_r72_w72_c1_n35.csv": "5858753df4e41c2a",
+    "traces/s2/s2_r72_w72_c1_n50.csv": "68995dccd1cb7ed8",
+    "traces/s2/s2_r72_w72_c3_n20.csv": "6489ab1d6fd276f8",
+    "traces/s2/s2_r72_w72_c3_n35.csv": "d61f3098c47f11e5",
+    "traces/s2/s2_r72_w72_c3_n50.csv": "97632ed792251472",
+    "traces/s2/s2_r72_w72_c5_n20.csv": "4524445a4e4aa07d",
+    "traces/s2/s2_r72_w72_c5_n35.csv": "37df8df796b6f7d7",
+    "traces/s2/s2_r72_w72_c5_n50.csv": "3e7af0bee6ed21e1"
+  },
+  "vm_pe_mips": 40000.0,
+  "windows": {
+    "confirmation": [
+      [
+        25,
+        25225
+      ],
+      [
+        33,
+        33297
+      ],
+      [
+        41,
+        41369
+      ]
+    ],
+    "discovery": [
+      [
+        1,
+        1009
+      ],
+      [
+        9,
+        9081
+      ],
+      [
+        17,
+        17153
+      ]
+    ],
+    "episode_rows_max": 7200,
+    "k0_quarantined": true,
+    "offset_range": 44950,
+    "spacing": 7300
+  }
+}
