@@ -165,7 +165,7 @@ def main(round0_dir=None, out_dir=None):
             r.get("wait_spent") for r in per_cell)),
         "source_violations": {k: v for k, v in src_violations.items() if v},
         "cohort_integrity": integrity,
-        "cohort_commit": cohort["commit"], "grid_hash_v3": cohort["grid_hash_v3"],
+        "cohort_commit": cohort["commit"], "grid_hash_v4": cohort["grid_hash_v4"],
         "wall_seconds": round(time.time() - t0, 2),
     }
     r0._atomic_write(os.path.join(out_dir, "zero_emission_v4_cells.jsonl"),
