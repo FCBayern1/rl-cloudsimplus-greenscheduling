@@ -1,5 +1,14 @@
 # 视界门 —— 判据冻结(2026-08-31 12:02,写于读取 oracle144 数字之前)
 
+> **LEGACY ACCELERATED-WEATHER DIAGNOSTIC (2026-08-31)**
+>
+> 本文件的判据与窗口属于 `time_scaling_mode: COMPRESSED` 的加速天气考场,
+> 其中 `wind_row = sim_step + offset`,风电以 600 倍于仿真时钟前进。
+> 该考场已被时间基审计判为与论文语义不自洽,相关判决已退出物理证据链。
+> 保留作历史记录,不得作为 C-regime 的物理依据。物理时间基的预注册见
+> `reports/PHYS_GATE_PREREG.md`,判决见 `reports/C_REGIME_PHYSICAL_TIMEBASE_VERDICT.md`。
+
+
 依 Codex 2026-08-31 裁定。本文件在 `oracle144_planner` 三格结果被读取之前写定,
 之后只做机械读取,不得修改分母、公式或合同。
 
