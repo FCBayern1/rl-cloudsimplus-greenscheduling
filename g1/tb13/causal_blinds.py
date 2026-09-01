@@ -21,7 +21,7 @@ import numpy as np
 from exact_oracle import EPOCH_HOURS, Scenario
 
 
-def _out(carbon, assign, diagnose, reason, at_t, job, n_pending):
+def _out(carbon, assign, diagnose, reason, at_t, job, n_pending, **detail):
     """Uniform return. Without `diagnose` the pair is exactly what it always was.
 
     The diagnostic channel tells a scenario that was never schedulable apart from a blind
@@ -29,8 +29,10 @@ def _out(carbon, assign, diagnose, reason, at_t, job, n_pending):
     """
     if not diagnose:
         return carbon, assign
-    return carbon, assign, {"reason": reason, "at_epoch": at_t, "job": job,
-                            "pending_at_failure": n_pending}
+    d = {"reason": reason, "at_epoch": at_t, "job": job,
+         "pending_at_failure": n_pending}
+    d.update(detail)
+    return carbon, assign, d
 
 
 def _residual(sc: Scenario, load, d, t):
@@ -86,12 +88,24 @@ def _run(sc: Scenario, decide, climatology=None, diagnose=False):
             # lower bound. Exceeding the budget means the job has to leave now.
             floor_if_wait = spent_dispatched + sum(
                 (t + 1) - int(sc.a[j]) for j in pending if sc.a[j] <= t)
-            must = t >= latest or floor_if_wait > sc.B
+            by_deadline = t >= latest
+            by_budget = floor_if_wait > sc.B
+            must = by_deadline or by_budget
 
             if not feasible:
                 if must:
+                    # Why the job could not wait matters as much as that it could not be
+                    # placed: a deadline and an exhausted delay budget are different
+                    # scenario faults, and "no feasible site" alone conflates them.
+                    free = [int(sc.cap[d] - ((load[d, t] - sc.static[d]) / sc.dyn))
+                            for d in range(sc.n_dc)]
                     return _out(None, None, diagnose, "no_feasible_site_when_forced",
-                                t, i, len(pending))
+                                t, i, len(pending),
+                                must_reason=("both" if by_deadline and by_budget
+                                             else "deadline" if by_deadline else "budget"),
+                                floor_if_wait=int(floor_if_wait), budget=int(sc.B),
+                                latest=int(latest), free_pes=free,
+                                need_pes=int(sc.p[i]), runtime=int(sc.r[i]))
                 continue
             site = decide(i, t, load, ctx, feasible, draw, must)
             if site is None:

@@ -17,6 +17,7 @@ design. It cannot revive the STOP, and it computes no value-of-information ratio
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import os
 import sys
@@ -72,11 +73,16 @@ def _one(ax):
     row = {"axes": {k: v for k, v in ax.items() if k != "runtime_set"}, "blinds": {}}
     for name, fn in cbl.BLINDS.items():
         c, a, diag = fn(sc, prov["clim_residual_green"], diagnose=True)
-        row["blinds"][name] = {"ok": c is not None, "reason": diag["reason"],
-                               "at_epoch": diag["at_epoch"],
-                               "pending_at_failure": diag["pending_at_failure"]}
+        row["blinds"][name] = {"ok": c is not None, **{k: v for k, v in diag.items()}}
     row["feasibility"] = feasibility_only(sc)
     row["rho_residual"] = prov["rho_residual"]
+    # A workload signature over what the jobs actually are, with every green field removed.
+    # Grid cells are not independent loads: the same arrivals and runtimes may recur under
+    # several divisors, and whether they also recur across seasons depends on the seeding.
+    row["workload_sig"] = hashlib.sha256(json.dumps(
+        {"arrival": sc.a.tolist(), "runtime": sc.r.tolist(), "pes": sc.p.tolist(),
+         "deadline": sc.dl.tolist(), "budget": int(sc.B), "wait_cap": int(sc.wmax),
+         "cap": sc.cap.tolist()}, sort_keys=True).encode()).hexdigest()[:16]
     return row
 
 
@@ -119,6 +125,17 @@ def main(out_dir=None):
         "infeasible_and_blind_failed": len(
             {i for i, r in enumerate(rows) if r["feasibility"] == "INFEASIBLE"}
             & set.union(*fail_sets.values())) if names else 0,
+        "must_reasons": {n: dict(collections.Counter(
+            r["blinds"][n].get("must_reason") for r in rows if not r["blinds"][n]["ok"]))
+            for n in names},
+        "grid_cells": len(rows),
+        "unique_workloads": len({r["workload_sig"] for r in rows}),
+        "infeasible_grid_cells": sum(1 for r in rows if r["feasibility"] == "INFEASIBLE"),
+        "infeasible_unique_workloads": len(
+            {r["workload_sig"] for r in rows if r["feasibility"] == "INFEASIBLE"}),
+        "all_blinds_failed_unique_workloads": len(
+            {rows[i]["workload_sig"] for i in set.intersection(*fail_sets.values())})
+            if names else 0,
         "feasible_but_all_blinds_failed": len(
             {i for i, r in enumerate(rows) if r["feasibility"] == "FEASIBLE"}
             & set.intersection(*fail_sets.values())) if names else 0,
