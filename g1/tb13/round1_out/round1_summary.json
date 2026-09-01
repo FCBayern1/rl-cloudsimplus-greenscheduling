@@ -1,0 +1,23 @@
+{
+  "provenance": {
+    "commit": "2d391e0f2735ed070ebe7c586bee6dcdd4dc3acb",
+    "evpi_gate": 0.15,
+    "expected_instances": 1296,
+    "file_shas": {
+      "g1/tb13/causal_blinds.py": "87b02b6171e32078bb0a7eed9f25dccc09fd257e3d96e972c7a1f599c5b35fdb",
+      "g1/tb13/data_split.txt": "37330ba298b67056b10e1e2e0e002ed880e4ab78477fa6e39a015db1a369c1d4",
+      "g1/tb13/exact_oracle.py": "c6825877ba47767d88d9d7bec0d0c732cccc086ca764708f0a1cedf8ac1a5dd1",
+      "g1/tb13/instance_gen.py": "9a880480699e3931c1a85f2d2f81bda7a768651b40ff1a8fb00763d0b66dcb54",
+      "g1/tb13/round0.py": "ba8efe27e306f464f22e1d2aa7fcf21926d1b3b656d7fc1430dc6c063f71d69e",
+      "g1/tb13/round1.py": "0437f6264a8028d323f2688237e8fd487f50ca397a9735420731c5747f09b91b",
+      "reports/TB13_SCREEN_PREREG.md": "7b40b9b2da389588089121446bc0f88b810b33d74bf879a1695a1d5c15745a01"
+    },
+    "round0_manifest": {
+      "round0_all.jsonl": "fae947c8b80104b9377a6dc3611b69204a642e271cdf0c334f54fb1e4b6c8a86",
+      "round0_anchors.json": "d2ed5f0bd68344805f2230aaffe00d4078afac2c4e36f89da7a0b12656cab063",
+      "round0_summary.json": "77827ec8569912d0406ca903eaffa159bd5f00d998c16a89417d51a9ac52350c"
+    },
+    "time_limit_s": 30.0
+  },
+  "status": "STOP_NO_VALID_BLIND"
+}
