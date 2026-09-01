@@ -89,3 +89,20 @@ def test_preflight_refuses_a_dirty_tree(monkeypatch):
                         lambda *a, **k: " M g1/tb13/round1.py\n")
     with pytest.raises(RuntimeError, match="dirty tree"):
         r1.preflight(R0)
+
+
+def test_the_poststop_diagnostic_never_reads_carbon():
+    """The diagnostic must not be able to smuggle in a value-of-information number."""
+    src = open(os.path.join(HERE, "poststop_feasibility.py")).read()
+    for banned in ("carbon_of", "_costs_all", "evpi", "EVPI", "blind_carbon"):
+        assert banned not in src, f"the diagnostic references {banned}"
+    assert "feasibility_only" in src
+
+
+def test_the_feasibility_model_has_no_objective():
+    """A constant objective is what makes this a contract audit, not an optimisation."""
+    src = open(os.path.join(HERE, "poststop_feasibility.py")).read()
+    body = src[src.index("def feasibility_only"):src.index("def _one")]
+    assert "Minimize" not in body and "Maximize" not in body
+    for term in ("green", "brown", "cb[", "cg["):
+        assert term not in body, f"the feasibility model refers to {term}"

@@ -12,7 +12,7 @@ nothing else.
                with a constant objective
 
 The result decides whether TB13 failed at scenario generation or at causal-baseline
-design. It cannot revive the STOP, and it produces no EVPI.
+design. It cannot revive the STOP, and it computes no value-of-information ratio.
 """
 from __future__ import annotations
 
