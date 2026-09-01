@@ -76,6 +76,8 @@ def test_pinned_keys_and_values():
     base = g.base_block()
     blk = g.derived_block(g.cells()[0], base)
     assert blk["defer_deadline_force_mode"] == "latest_start"
+    assert blk["defer_deadline_slack_sec"] == 0.0, \
+        "an inherited 600 s slack fires the backstop before any defer decision"
     assert blk["cloudlet_cpu_utilization"] == 1.0
     assert blk["cloudlet_trace_file"].startswith("traces/s2/")
     # Inherited untouched, on purpose: the frozen episode length and offset schedule.

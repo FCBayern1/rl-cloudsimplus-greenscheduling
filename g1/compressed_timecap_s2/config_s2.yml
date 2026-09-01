@@ -246,7 +246,7 @@ s2_r24_w120_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c1_n20
@@ -539,7 +539,7 @@ s2_r24_w120_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c1_n35
@@ -832,7 +832,7 @@ s2_r24_w120_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c1_n50
@@ -1125,7 +1125,7 @@ s2_r24_w120_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c3_n20
@@ -1418,7 +1418,7 @@ s2_r24_w120_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c3_n35
@@ -1711,7 +1711,7 @@ s2_r24_w120_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c3_n50
@@ -2004,7 +2004,7 @@ s2_r24_w120_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c5_n20
@@ -2297,7 +2297,7 @@ s2_r24_w120_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c5_n35
@@ -2590,7 +2590,7 @@ s2_r24_w120_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w120_c5_n50
@@ -2883,7 +2883,7 @@ s2_r24_w24_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c1_n20
@@ -3176,7 +3176,7 @@ s2_r24_w24_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c1_n35
@@ -3469,7 +3469,7 @@ s2_r24_w24_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c1_n50
@@ -3762,7 +3762,7 @@ s2_r24_w24_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c3_n20
@@ -4055,7 +4055,7 @@ s2_r24_w24_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c3_n35
@@ -4348,7 +4348,7 @@ s2_r24_w24_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c3_n50
@@ -4641,7 +4641,7 @@ s2_r24_w24_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c5_n20
@@ -4934,7 +4934,7 @@ s2_r24_w24_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c5_n35
@@ -5227,7 +5227,7 @@ s2_r24_w24_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w24_c5_n50
@@ -5520,7 +5520,7 @@ s2_r24_w48_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c1_n20
@@ -5813,7 +5813,7 @@ s2_r24_w48_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c1_n35
@@ -6106,7 +6106,7 @@ s2_r24_w48_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c1_n50
@@ -6399,7 +6399,7 @@ s2_r24_w48_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c3_n20
@@ -6692,7 +6692,7 @@ s2_r24_w48_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c3_n35
@@ -6985,7 +6985,7 @@ s2_r24_w48_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c3_n50
@@ -7278,7 +7278,7 @@ s2_r24_w48_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c5_n20
@@ -7571,7 +7571,7 @@ s2_r24_w48_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c5_n35
@@ -7864,7 +7864,7 @@ s2_r24_w48_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w48_c5_n50
@@ -8157,7 +8157,7 @@ s2_r24_w72_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c1_n20
@@ -8450,7 +8450,7 @@ s2_r24_w72_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c1_n35
@@ -8743,7 +8743,7 @@ s2_r24_w72_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c1_n50
@@ -9036,7 +9036,7 @@ s2_r24_w72_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c3_n20
@@ -9329,7 +9329,7 @@ s2_r24_w72_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c3_n35
@@ -9622,7 +9622,7 @@ s2_r24_w72_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c3_n50
@@ -9915,7 +9915,7 @@ s2_r24_w72_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c5_n20
@@ -10208,7 +10208,7 @@ s2_r24_w72_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c5_n35
@@ -10501,7 +10501,7 @@ s2_r24_w72_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w72_c5_n50
@@ -10794,7 +10794,7 @@ s2_r24_w96_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c1_n20
@@ -11087,7 +11087,7 @@ s2_r24_w96_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c1_n35
@@ -11380,7 +11380,7 @@ s2_r24_w96_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c1_n50
@@ -11673,7 +11673,7 @@ s2_r24_w96_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c3_n20
@@ -11966,7 +11966,7 @@ s2_r24_w96_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c3_n35
@@ -12259,7 +12259,7 @@ s2_r24_w96_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c3_n50
@@ -12552,7 +12552,7 @@ s2_r24_w96_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c5_n20
@@ -12845,7 +12845,7 @@ s2_r24_w96_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c5_n35
@@ -13138,7 +13138,7 @@ s2_r24_w96_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r24_w96_c5_n50
@@ -13431,7 +13431,7 @@ s2_r48_w24_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c1_n20
@@ -13724,7 +13724,7 @@ s2_r48_w24_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c1_n35
@@ -14017,7 +14017,7 @@ s2_r48_w24_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c1_n50
@@ -14310,7 +14310,7 @@ s2_r48_w24_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c3_n20
@@ -14603,7 +14603,7 @@ s2_r48_w24_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c3_n35
@@ -14896,7 +14896,7 @@ s2_r48_w24_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c3_n50
@@ -15189,7 +15189,7 @@ s2_r48_w24_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c5_n20
@@ -15482,7 +15482,7 @@ s2_r48_w24_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c5_n35
@@ -15775,7 +15775,7 @@ s2_r48_w24_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w24_c5_n50
@@ -16068,7 +16068,7 @@ s2_r48_w48_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c1_n20
@@ -16361,7 +16361,7 @@ s2_r48_w48_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c1_n35
@@ -16654,7 +16654,7 @@ s2_r48_w48_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c1_n50
@@ -16947,7 +16947,7 @@ s2_r48_w48_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c3_n20
@@ -17240,7 +17240,7 @@ s2_r48_w48_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c3_n35
@@ -17533,7 +17533,7 @@ s2_r48_w48_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c3_n50
@@ -17826,7 +17826,7 @@ s2_r48_w48_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c5_n20
@@ -18119,7 +18119,7 @@ s2_r48_w48_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c5_n35
@@ -18412,7 +18412,7 @@ s2_r48_w48_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w48_c5_n50
@@ -18705,7 +18705,7 @@ s2_r48_w72_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c1_n20
@@ -18998,7 +18998,7 @@ s2_r48_w72_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c1_n35
@@ -19291,7 +19291,7 @@ s2_r48_w72_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c1_n50
@@ -19584,7 +19584,7 @@ s2_r48_w72_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c3_n20
@@ -19877,7 +19877,7 @@ s2_r48_w72_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c3_n35
@@ -20170,7 +20170,7 @@ s2_r48_w72_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c3_n50
@@ -20463,7 +20463,7 @@ s2_r48_w72_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c5_n20
@@ -20756,7 +20756,7 @@ s2_r48_w72_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c5_n35
@@ -21049,7 +21049,7 @@ s2_r48_w72_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w72_c5_n50
@@ -21342,7 +21342,7 @@ s2_r48_w96_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c1_n20
@@ -21635,7 +21635,7 @@ s2_r48_w96_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c1_n35
@@ -21928,7 +21928,7 @@ s2_r48_w96_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c1_n50
@@ -22221,7 +22221,7 @@ s2_r48_w96_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c3_n20
@@ -22514,7 +22514,7 @@ s2_r48_w96_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c3_n35
@@ -22807,7 +22807,7 @@ s2_r48_w96_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c3_n50
@@ -23100,7 +23100,7 @@ s2_r48_w96_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c5_n20
@@ -23393,7 +23393,7 @@ s2_r48_w96_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c5_n35
@@ -23686,7 +23686,7 @@ s2_r48_w96_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r48_w96_c5_n50
@@ -23979,7 +23979,7 @@ s2_r72_w24_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c1_n20
@@ -24272,7 +24272,7 @@ s2_r72_w24_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c1_n35
@@ -24565,7 +24565,7 @@ s2_r72_w24_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c1_n50
@@ -24858,7 +24858,7 @@ s2_r72_w24_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c3_n20
@@ -25151,7 +25151,7 @@ s2_r72_w24_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c3_n35
@@ -25444,7 +25444,7 @@ s2_r72_w24_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c3_n50
@@ -25737,7 +25737,7 @@ s2_r72_w24_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c5_n20
@@ -26030,7 +26030,7 @@ s2_r72_w24_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c5_n35
@@ -26323,7 +26323,7 @@ s2_r72_w24_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w24_c5_n50
@@ -26616,7 +26616,7 @@ s2_r72_w48_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c1_n20
@@ -26909,7 +26909,7 @@ s2_r72_w48_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c1_n35
@@ -27202,7 +27202,7 @@ s2_r72_w48_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c1_n50
@@ -27495,7 +27495,7 @@ s2_r72_w48_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c3_n20
@@ -27788,7 +27788,7 @@ s2_r72_w48_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c3_n35
@@ -28081,7 +28081,7 @@ s2_r72_w48_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c3_n50
@@ -28374,7 +28374,7 @@ s2_r72_w48_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c5_n20
@@ -28667,7 +28667,7 @@ s2_r72_w48_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c5_n35
@@ -28960,7 +28960,7 @@ s2_r72_w48_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w48_c5_n50
@@ -29253,7 +29253,7 @@ s2_r72_w72_c1_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c1_n20
@@ -29546,7 +29546,7 @@ s2_r72_w72_c1_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c1_n35
@@ -29839,7 +29839,7 @@ s2_r72_w72_c1_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c1_n50
@@ -30132,7 +30132,7 @@ s2_r72_w72_c3_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c3_n20
@@ -30425,7 +30425,7 @@ s2_r72_w72_c3_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c3_n35
@@ -30718,7 +30718,7 @@ s2_r72_w72_c3_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c3_n50
@@ -31011,7 +31011,7 @@ s2_r72_w72_c5_n20:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c5_n20
@@ -31304,7 +31304,7 @@ s2_r72_w72_c5_n35:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c5_n35
@@ -31597,7 +31597,7 @@ s2_r72_w72_c5_n50:
     wind_data_file: windProduction/simplified
   defer_base_cost: 0.5
   defer_deadline_force_mode: latest_start
-  defer_deadline_slack_sec: 600.0
+  defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 2.0
   defer_urgency_window_sec: 3600.0
   experiment_name: s2_r72_w72_c5_n50

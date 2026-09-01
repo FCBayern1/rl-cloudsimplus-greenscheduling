@@ -49,8 +49,16 @@ WINDOW_SPACING = 7300            # > EPISODE_ROWS_MAX so windows cannot touch
 
 # The ONLY keys a derived block may change, with their values or value factories.
 OVERRIDDEN_KEYS = ("experiment_name", "simulation_name", "cloudlet_trace_file",
-                   "defer_deadline_force_mode", "cloudlet_cpu_utilization")
+                   "defer_deadline_force_mode", "defer_deadline_slack_sec",
+                   "cloudlet_cpu_utilization")
 FORCE_MODE = "latest_start"
+# The Java latest_start rule is now + runtime + slack >= deadline, and the base block
+# carries slack 600 s. Deadline headroom here is at most 120 s, so an inherited slack
+# would fire the backstop on every defer attempt before the scheduler ever decided —
+# the exact failure the work order names. The smoke run caught it: 8 of 35 jobs
+# force-routed, 8 stale reservations, 8 unplanned starts. Slack is therefore pinned to
+# zero and the closure semantics is purely runtime-aware.
+BACKSTOP_SLACK_SEC = 0.0
 
 
 def admissible_pairs():
@@ -162,6 +170,7 @@ def derived_block(cell, base):
     blk["simulation_name"] = f"S2_{name}"
     blk["cloudlet_trace_file"] = f"traces/s2/{name}.csv"
     blk["defer_deadline_force_mode"] = FORCE_MODE
+    blk["defer_deadline_slack_sec"] = BACKSTOP_SLACK_SEC
     blk["cloudlet_cpu_utilization"] = CPU_UTILISATION
     return blk
 
