@@ -1,3 +1,81 @@
+common:
+  algorithm: PPO
+  base_log_dir: logs
+  batch_size: 64
+  clear_created_lists: true
+  clip_range: 0.2
+  cloudlet_trace_file: traces/LLNL-Atlas-2006-2.1-cln-test.swf
+  device: auto
+  early_stop:
+    enabled: false
+    eval_freq: 5000
+    min_evals: 5
+    n_eval_episodes: 5
+    patience: 5
+    type: no_improvement
+  ent_coef: 0.01
+  env_id: LoadBalancingScaling-v0
+  experiment_type_dir: DefaultType
+  future_energy_forecast:
+    long_term_rows: 144
+    short_term_rows: 3
+  gae_lambda: 0.95
+  gamma: 0.99
+  green_energy:
+    enabled: true
+    prediction:
+      cache_duration_seconds: 600
+      enabled: false
+      horizon: 8
+      model_path: ../SWF_Prediction/saved_models/best_model.pth
+    turbine_id: 57
+  host_bw: 50000
+  host_pe_mips: 50000
+  host_pes: 16
+  host_ram: 65536
+  host_storage: 100000
+  hosts_count: 32
+  initial_l_vm_count: 5
+  initial_m_vm_count: 10
+  initial_s_vm_count: 20
+  large_vm_multiplier: 4
+  learning_rate: 0.0003
+  log_interval: 1
+  max_cloudlet_pes: 8
+  max_cloudlets_to_create_from_workload_file: 2147483647
+  max_episode_length: 500
+  max_grad_norm: 0.5
+  medium_vm_multiplier: 2
+  min_time_between_events: 0.1
+  mode: train
+  n_epochs: 10
+  n_steps: 2048
+  paying_for_the_full_hour: false
+  policy: MultiInputPolicy
+  reward_cost_coef: 0.35
+  reward_invalid_action_coef: 1.0
+  reward_queue_penalty_coef: 0.55
+  reward_unutilization_coef: 0.25
+  reward_wait_time_coef: 0.75
+  save_experiment: true
+  save_replay_buffer: false
+  seed: 4567
+  simulation_name: DefaultSimRun
+  simulation_timestep: 1.0
+  small_vm_bw: 10000
+  small_vm_hourly_cost: 0.086
+  small_vm_pes: 2
+  small_vm_ram: 8192
+  small_vm_storage: 10000
+  split_large_cloudlets: true
+  timesteps: 1000
+  train_model_dir: ''
+  verbose: 0
+  vf_coef: 0.5
+  vm_shutdown_delay: 0.0
+  vm_startup_delay: 0.0
+  workload_mode: SWF
+  workload_reader_mips: 50000
 s2_r24_w120_c1_n20:
   carbon_mi_floor: 1.0e7
   carbon_normalization_fixed_max: 5e-05

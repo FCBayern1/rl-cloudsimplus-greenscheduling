@@ -3,7 +3,7 @@
   "base_block_sha": "d3d47223e4696c7e",
   "base_experiment": "experiment_g1eval_matchedvan",
   "cells": 108,
-  "config_s2_sha": "f17e5fdb510662ee",
+  "config_s2_sha": "17fe47b31d443f0f",
   "cpu_utilization": 1.0,
   "overridden_keys": [
     "experiment_name",

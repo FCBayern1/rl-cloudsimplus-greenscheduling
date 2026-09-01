@@ -189,7 +189,12 @@ def generate(out_dir=None, trace_dir=None):
         reports[name] = rep
         shas[f"traces/s2/{name}.csv"] = content_sha(text)
 
-    cfg_text = yaml.safe_dump(blocks, sort_keys=True, default_flow_style=False)
+    # The eval loader merges `common` under the experiment block; without carrying the
+    # base file's common section verbatim, the derived experiments would silently lose
+    # every key only common provides.
+    common = yaml.safe_load(open(BASE_CONFIG)).get("common", {})
+    cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
+                              default_flow_style=False)
     with open(os.path.join(out_dir, "config_s2.yml"), "w") as f:
         f.write(cfg_text)
     manifest = {

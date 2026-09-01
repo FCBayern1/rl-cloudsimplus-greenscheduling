@@ -118,3 +118,12 @@ def test_offered_concurrency_is_reported_near_target():
         _rows, rep = g.trace(cell, mips)
         assert 0.5 * cell["concurrency"] <= rep["offered_concurrency"] \
             <= 1.5 * cell["concurrency"], (cell, rep["offered_concurrency"])
+
+
+def test_config_s2_carries_the_base_common_section_verbatim(tmp_path):
+    import yaml
+    g.generate(out_dir=str(tmp_path), trace_dir=str(tmp_path / "traces"))
+    ours = yaml.safe_load(open(tmp_path / "config_s2.yml"))
+    base = yaml.safe_load(open(g.BASE_CONFIG))
+    assert ours["common"] == base["common"]
+    assert len([k for k in ours if k != "common"]) == 108
