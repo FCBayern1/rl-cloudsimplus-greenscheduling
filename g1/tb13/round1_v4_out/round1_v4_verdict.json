@@ -1,0 +1,31 @@
+{
+  "all_fully_advancing_block_shas": [],
+  "cohort_sha": "b22a5d79d79b66c6c7cac8ca",
+  "item1_cells_and_ids": {
+    "cells": 1728,
+    "cells_is_1728": true,
+    "duplicates": 0,
+    "ids_match_cohort_exactly": true
+  },
+  "item2_optimal_unresolved": {
+    "optimal": 1550,
+    "unresolved": 178
+  },
+  "item3_evpi_quantiles": {
+    "cells_with_evpi": 1728,
+    "max": 0.5696640595953164,
+    "p50": 0.055709673664277856,
+    "p75": 0.10899132996969152,
+    "p90": 0.17232649241298373
+  },
+  "item4_advancing": {
+    "advancing_cells": 149,
+    "evpi_ge_15_alone": 235
+  },
+  "item5_complete_block": {
+    "blocks_fully_advancing": 0,
+    "complete_advancing_block_exists": false
+  },
+  "representative_block": null,
+  "verdict": "STOP_EVPI_GATE_NOT_MET"
+}

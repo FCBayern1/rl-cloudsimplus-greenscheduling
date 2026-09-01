@@ -1,0 +1,48 @@
+{
+  "advancing_blocks": 48,
+  "advancing_cells": 149,
+  "blocks_fully_advancing": 0,
+  "cells": 1728,
+  "evpi_ge_15": 235,
+  "evpi_quantiles": {
+    "0": -1.6654683382352205e-16,
+    "10": 0.003933712868894571,
+    "25": 0.022149057145861347,
+    "50": 0.055709673664277856,
+    "75": 0.10899132996969152,
+    "90": 0.17232649241298373,
+    "100": 0.5696640595953164
+  },
+  "frozen_blind": "immediate_current_only",
+  "optimal": 1550,
+  "provenance": {
+    "arms": [
+      "immediate_current_only",
+      "persistence",
+      "climatology",
+      "reactive_wait",
+      "reservation_edf_blind"
+    ],
+    "cohort_sha": "b22a5d79d79b66c6c7cac8ca",
+    "commit": "192a085d035663bd0e02d80367b17cf0726679fb",
+    "evpi_gate": 0.15,
+    "file_shas": {
+      "g1/tb13/causal_blinds.py": "6ec44be0ade4e95731ffc913fe66f5262f9fe5513868f23d09dcecf457b18891",
+      "g1/tb13/constants_v4.py": "a734455551008d748dd07cd2a436f019c6e67bc82feee181e3eb4871ba5311c1",
+      "g1/tb13/data_split.txt": "37330ba298b67056b10e1e2e0e002ed880e4ab78477fa6e39a015db1a369c1d4",
+      "g1/tb13/exact_oracle.py": "c6825877ba47767d88d9d7bec0d0c732cccc086ca764708f0a1cedf8ac1a5dd1",
+      "g1/tb13/instance_gen.py": "9a880480699e3931c1a85f2d2f81bda7a768651b40ff1a8fb00763d0b66dcb54",
+      "g1/tb13/round0_v4.py": "f8984990ced8e27fed8306f1f83d693d1ae330e1a3b8294311952ce72f3e215d",
+      "g1/tb13/round1_v4.py": "7b1bda36349260a1dbef896800a25bd62da9db85c1dbf2675dcbe1adb176034e",
+      "g1/tb13/schedule_feasibility.py": "1ff1347b146486b52fb73ed9dcee22bf353efc095ae163a74f8dea64858c0aee",
+      "g1/tb13/v3_windows.json": "5020453eddb89213ebc69136f4e1a1f2b8346844fc60aee81680a3a21e241027",
+      "g1/tb13/workload_v4.py": "9cbd58fa2a02800d4c5a3675008afd1beedc2c91544e8484e1e8326b0c89cc69",
+      "g1/tb13/zero_emission_v4.py": "adf4497dad794d92948ff3f66ec854a368af80a693c16ca1c5ab84ef4050ce92",
+      "reports/TB13_V4_PREREG.md": "cb96459a4fdd933e3e48e4dfe4bd7e16564e3e260b8dc727512d099f9e5438e2"
+    },
+    "time_limit_s": 30.0,
+    "zero_emission_verdict": "PASS"
+  },
+  "unresolved": 178,
+  "wall_seconds": 2656.24
+}
