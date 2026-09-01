@@ -1,0 +1,49 @@
+{
+  "file_shas": {
+    "cloudsimplus-gateway/src/main/java/exe/edu/cspg/common/DatacenterSetup.java": "a0da5c6bc897a4121641b90ce3140a52ac70e7516d4c873c7fb60ca710abe182",
+    "cloudsimplus-gateway/src/main/java/exe/edu/cspg/common/HostProfile.java": "5c8a887d33cf0d0628ce4a1e9876e2b96ca62ff2d6ce1c31d6f17f54feff4663",
+    "cloudsimplus-gateway/src/test/java/exe/edu/cspg/common/HostPowerWiringTest.java": "606339b90eaba496a8814bec5f933bf94b491cff0d07e818ad4ac665572ccc9d",
+    "cloudsimplus-gateway/src/test/java/exe/edu/cspg/common/PowerSentinelTest.java": "bbf102e32c4e143b1c5b074903e5ba62e8549e28b84b36b6157b2f36d957ed9e",
+    "reports/TB13_V4_PREREG.md": "cb96459a4fdd933e3e48e4dfe4bd7e16564e3e260b8dc727512d099f9e5438e2"
+  },
+  "gate": "TB13-v4 power gate, frozen before Round 0-v4",
+  "jar": {
+    "bytes": 1089320911,
+    "path": "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar",
+    "sha256": "4ed0f35a85f68a51862342ea4e38abc16ee94b556f1be6b5e203a22128b21f66"
+  },
+  "java_verification": {
+    "compileJava": "OK",
+    "errors": 0,
+    "failures": 0,
+    "tests": 124
+  },
+  "layers": {
+    "layer_1_construction_path": {
+      "measured_w": {
+        "0_busy_pes": 51.4,
+        "32_busy_pes": 132.7,
+        "64_busy_pes": 214.0
+      },
+      "test": "exe.edu.cspg.common.HostPowerWiringTest",
+      "tolerance_w": 1e-09
+    },
+    "layer_2_real_simulation": {
+      "artifact": "g1/tb13/sentinel_v4_out/power_sentinel_layer2.json",
+      "artifact_sha256": "b2f37343798efb52e58abd66b7d5438b00abff24dbf02af61ec9de0e4a487873",
+      "test": "exe.edu.cspg.common.PowerSentinelTest"
+    }
+  },
+  "rs500a_static_percent": 24.018691588785046,
+  "side_conditions": {
+    "cloudlet_cpu_utilization": 1.0,
+    "idle_host_power_down": false,
+    "utilization_plateaus_flat": true,
+    "vm_pes_each": 32,
+    "vm_pes_total": 64,
+    "vms": 2
+  },
+  "source_commit": "2d0f8dd44c645d7e14e50f5034204574a1efbc1b",
+  "spec_source": "https://www.spec.org/power_ssj2008/results/res2020q1/power_ssj2008-20191125-01011.html",
+  "verdict": "PASS"
+}

@@ -1,0 +1,19 @@
+{
+  "gate": "TB13-v4 power sentinel, layer 2 (real simulation)",
+  "host_profile": "SPEC_ASUS_RS500A",
+  "host_pes": 64,
+  "vms": 2,
+  "vm_pes_each": 32,
+  "vm_pes_total": 64,
+  "cloudlet_cpu_utilization": 1.0,
+  "idle_host_power_down": false,
+  "plateau_window_s": [20.0, 60.0],
+  "phases": [
+    {"busy_pes": 0,  "mean_utilization": 0.000000000, "utilization_spread": 0.000e+00, "samples": 40, "mean_power_w": 51.400000000, "registered_w": 51.4},
+    {"busy_pes": 32, "mean_utilization": 0.500000000, "utilization_spread": 0.000e+00, "samples": 40, "mean_power_w": 132.700000000, "registered_w": 132.7},
+    {"busy_pes": 64, "mean_utilization": 1.000000000, "utilization_spread": 0.000e+00, "samples": 40, "mean_power_w": 214.000000000, "registered_w": 214.0}
+  ],
+  "method": "energy accumulated as power x dt on every clock tick, divided by the plateau length",
+  "tolerance_w": 1e-9,
+  "verdict": "PASS"
+}
