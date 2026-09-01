@@ -439,3 +439,125 @@ Stage A 通过而 Stage C 失败 = 完美 144 行未来有价值，但当前 Tim
 Stage C 通过而 RL 失败 = 断点在学习 / 信用分配。
 
 这个三段定位是本工单最重要的产出，任何一段的 STOP 都是有效结果。
+
+---
+
+# 附录 A：Stage A′ 加扰 oracle 预测质量阶梯（冻结）
+
+追加时间：2026-09-01，GPU 侧。
+来源：`reports/WORKORDER_S2_ADDENDUM_A_PERTURBED_ORACLE.md`（origin/main `ed4e449`）。
+
+**追加时已看到的结果：无。** 截至本附录提交，本线尚未运行任何碳评测，Stage A 未开跑。
+因此本附录不受"看到结果后放宽判据"条款的限制。
+
+## A.0 动机（抄自修正案 §1）
+
+原结构把两个命题捆在一起：RL 能否使用质量为 q 的预测（命题 A），与 TimeCAP 能否产出质量 q
+（命题 B）。Stage B 重训只给一个 q 点，失败时分不清死因。加扰 oracle 把预测质量做成受控自变量，
+先拿到整条剂量–响应曲线。
+
+## A.1 冻结阶梯
+
+    tier          语义
+    godeye        sigma = 0，与 oracle144 逐位相同（阶梯零点，有测试钉死）
+    s05/s15/s30/s60   相对噪声 5% / 15% / 30% / 60%
+    timecap_cal   sigma/rho/alpha 取自现有 TimeCAP checkpoint 验证残差的标定产物
+    shuffle       整段冻结置换：边缘分布保留，时序摧毁（负控）
+    anti          时间反转：边缘分布保留，相位反转（负控）
+
+臂：`perturbed_oracle_planner`（`PerturbedOraclePlannerGlobalScheduler`），
+只覆写 `_green_view` 一个方法，与 `oracle144_planner` 之差纯粹是信息质量之差。
+
+## A.2 误差模型（执行前冻结，不得看碳后调）
+
+    view[tau] = max(0, G[tau] + lead_scale(tau-t) * sigma_rel * scale_ref * eps[tau])
+    eps         每 (site, tier, episode) 一个冻结 AR(1) 场，rho = 0.8
+                误差模式跨决策步持续，不逐步重采样
+    lead_scale  alpha + (1-alpha) * lead / H，alpha = 0.25
+    scale_ref   该站真值序列在 **本 episode 内** 的平均绝对值
+    确定性      一切由 (序列字节, site, tier) 经 sha256 域分离派生
+    结算        永远用真值曲线；只有规划器的眼睛被腐蚀
+
+### A.2.1 GPU 侧对交付代码所做的三处修正（本附录一并冻结）
+
+交付的 `forecast_perturb.py` 是对长度 600 的序列写并测的，而 planner 实际传入的是
+`self.G[d]`——`CurveInformedPlanner` 无论 episode 多长都把它填满 20000 个网格步
+（本网格 episode 实际只有 242 ~ 3361 步）。在这个形状下有三个问题，已修复并各配测试：
+
+1. **剂量轴被 episode 之外的行设定。** `scale_ref` 原先取整条 20000 行的均值。本方案六窗
+   间距只有 8072 行，20000 行的量程会跨过其余五个窗口——DISCOVERY 窗的噪声幅度会部分由
+   CONFIRMATION 的天气决定。在 2020 数据上实测（**未读取任何 2021 评测行**），
+   episode 均值 / 20000 行均值的比值在 0.49 ~ 1.15 之间，31% 的 offset 偏差超过 20%，
+   最差接近 2 倍。这会让单调性判据比较的几档根本不在同一条剂量轴上。
+   现固定为 `scale_ref = mean(|series[:span]|)`，`span = 该 cell 的 max_episode_length`。
+2. **shuffle / anti 的语义与注册不符。** 原实现在整条 20000 行上置换 / 反转，于是
+   `anti` 返回的是约 20000 行之外的天气而不是"本 episode 反转"，且实际读取远超本窗口的
+   注册读取区间。现全部约束在 `extent = span + horizon` 内，边缘分布保留的对象就是本 episode。
+3. **速度：Stage A′ 原本跑不动。** `_costs_all` 每 (作业, 站点) 调一次 `_green_view`，
+   而原实现每次调用都重建 AR(1) 场（对整条序列的 Python 循环）并重算一次 160 KB 的 sha256，
+   生产形状下实测 **5.732 ms/次**，五个站点即每个被规划作业 28 ms，一个 episode 光造噪声就是小时级。
+   现改为每 (site, tier, episode) 构建一次 `FrozenField`（`reset()` 时清空，绝不跨 episode 复用），
+   实测 **0.0068 ms/次，加速约 847 倍**，数值逐位不变。
+
+修正只改变可运行性与"腐蚀被约束在本 episode"这一条，不改变阶梯语义、不改变任何判据。
+新增 9 个测试（共 26 个），`PLANNER_PERTURB_SPAN` 可显式覆盖 span，
+telemetry 增加 `planner_perturb_tier / span / cal / sigma_rel / cal_sha`，
+每份 Stage A′ 产物必须回写这些字段。
+
+## A.3 Stage A′ 判据（执行前冻结）
+
+在 Stage A 的**同一冻结网格、同一合同、同一冻结盲臂**上，每格增跑八个 tier。
+pooled 与 capture 的定义沿用正文第 7.5 节（和之比，不是比之均值）。
+
+    单调性     pooled 收益（相对冻结盲臂）沿 godeye -> s05 -> s15 -> s30 -> s60 不增
+               允许相邻两档打平，不允许任何一档反超 godeye
+    负控归零   shuffle 与 anti 各自回吐 godeye 收益的 >= 50%，且不得优于 godeye
+    现实档     timecap_cal 保留 godeye 收益的 >= 50%  -> RL 值得做
+               < 50% 但 > 0                          -> 记边缘
+               <= 0                                  -> STOP_REALISTIC_QUALITY
+    合同       全部 tier 每格合同全绿（正文第 7.1 节七项，与 Stage A 相同）
+
+`STOP_REALISTIC_QUALITY` 的含义：完美预报有价值，但已知可达的预测质量兑现不了它。
+此时不训 TimeCAP、不跑 RL，负结果照常提交。这是花 CPU 小时就能买到的最值钱的负结果。
+
+## A.4 对正文的影响
+
+- **正文第 6.2 节的 Stage C 阻塞解除。** 负控从 gateway 移到规划器：shuffle / anti 由
+  `forecast_perturb` 在 Python 侧实现并已测，不再需要 Java 的 `timecap.forecast_perturbation`。
+  正文中"Stage C 不得在 gateway 实现该开关前启动"一条，改由本附录的阶梯替代；
+  若日后仍要走真 TimeCAP 输入，原条款照常生效。
+- **Stage B 推迟条款不在本附录冻结。** 修正案标注"待 Codex 批准"，工单是冻结文件，
+  GPU 侧不单方面改阶段结构。本附录只冻结 Stage A′ 的基建与判据，它对原工单是纯增量。
+- **正文第 7、8 节不变**，Stage A 仍先跑，Stage A′ 紧随其后，纯 CPU。
+
+## A.5 窗口读取范围的澄清（正文第 3.4 节补充）
+
+正文称六窗"互不重叠"，指的是**碳被结算的那些行**，即仿真器实际读取的
+`footprint_rows = 3977`。规划器另有一套前瞻网格：`CurveInformedPlanner` 把 `self.G` 建满
+20000 步，因此它读取的行远超 footprint。这是整个 planner 家族**共有且相同**的行为，
+不由 Stage A′ 引入，且这些行从不参与结算。
+
+本附录把加扰限制在 `span + horizon` 内，就是为了不让这条前瞻通道把其他窗口的天气
+带进剂量轴。`self.G` 的建表宽度本身不在本轮修改范围内；若后续要求规划器前瞻也严格落在窗口内，
+需另开修正案并重选窗口。
+
+## A.6 运行规模（预算申报）
+
+    Stage A'   108 cells x 3 DISCOVERY 窗 x 8 tier = 2592 次仿真
+
+其中 `godeye` 与 Stage A 的 `oracle144` 逐位相同（有测试钉死），因此那 324 次同时充当
+两批运行之间的完整性交叉校验；若两者不一致，说明环境或窗口寻址发生了漂移，该批作废。
+
+## A.7 措辞约束（加严）
+
+一切产物只能称 **synthetic forecast-quality ladder**（合成预测质量阶梯），
+**不得**写成 TimeCAP 实验。`timecap_cal` 档只能称"标定到现有 checkpoint 已测残差水平的合成档"，
+不得称为"TimeCAP 的表现"。正文第 0 节与第 12 节的措辞约束继续适用。
+
+## A.8 Stage A′ 开跑前仍缺的
+
+1. **残差标定未做。** `timecap_cal` 档需要 `residual_calibration.py` 产出的
+   `timecap_cal.json`。修正案 §5 第 3 步标注 label-offset 是审计点（工单 §6 的 k=0 语义），
+   必须先审计再定值。在该产物存在并提交 SHA 之前，`timecap_cal` 档不可运行；
+   其余七档不受影响，可先跑。
+2. 正文第 6 节的两项 Stage A 前置（clock zero 复核、冻结盲臂）仍然有效，且优先于 Stage A′。

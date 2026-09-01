@@ -181,3 +181,144 @@ def test_timecap_cal_arm_needs_the_artifact(monkeypatch):
     monkeypatch.delenv("PLANNER_PERTURB_CAL", raising=False)
     with pytest.raises(ValueError, match="PLANNER_PERTURB_CAL"):
         PerturbedOraclePlannerGlobalScheduler(5, 8)
+
+
+# ---------------------------------------------------------------------------------------
+# Scheme-2 Stage A' hardening. The ladder above was written and tested against a 600-row
+# series. In the planner the series it is handed is self.G[d], which CurveInformedPlanner
+# fills for all 20000 grid steps regardless of how long the episode actually is (242 to
+# 3361 steps in the frozen scheme-2 grid). Every property below fails on that shape.
+# ---------------------------------------------------------------------------------------
+
+def _grid_series(span=300, extent=20000, seed=3):
+    """What the planner actually passes: an episode, then a long unrelated continuation."""
+    rng = np.random.default_rng(seed)
+    head = np.abs(rng.normal(100.0, 10.0, span))          # the episode's own weather
+    tail = np.abs(rng.normal(900.0, 10.0, extent - span))  # nine times windier, elsewhere
+    return np.concatenate([head, tail])
+
+
+def test_noise_scale_comes_from_the_episode_not_the_whole_grid():
+    """sigma_rel is dimensionless against the site's own level DURING the episode.
+
+    Taking the mean over the whole 20000-step grid lets weather from rows the episode
+    never touches set the dose. In the frozen scheme-2 layout the grid runs 20000 rows
+    past the offset while consecutive windows are 8072 rows apart, so the noise amplitude
+    of a DISCOVERY window would be set partly by CONFIRMATION rows.
+    """
+    span, horizon = 300, 144
+    g = _grid_series(span=span)
+    v = fp.perturbed_future(g, 10, horizon, 0, "s30", span=span)
+    err = np.abs(v - g[10:10 + horizon])
+    # The dose must scale with the episode's own level (~100), not the grid mean (~888).
+    assert err.max() < 3.0 * 0.30 * 100.0, "noise amplitude is set by rows outside the episode"
+
+
+def test_view_does_not_change_when_rows_outside_the_episode_change():
+    span, horizon = 300, 144
+    g = _grid_series(span=span)
+    a = fp.perturbed_future(g, 20, horizon, 1, "s15", span=span)
+    g2 = g.copy()
+    g2[span + horizon:] = 0.0            # rows this episode can never plan against
+    b = fp.perturbed_future(g2, 20, horizon, 1, "s15", span=span)
+    assert np.array_equal(a, b), "the corruption reads rows outside the episode"
+
+
+def test_anti_reverses_the_episode_not_the_grid():
+    span, horizon = 300, 144
+    g = _grid_series(span=span)
+    v = fp.perturbed_future(g, 10, horizon, 0, "anti", span=span)
+    extent = g[:span + horizon]
+    assert set(np.round(v, 9)) <= set(np.round(extent, 9)), \
+        "anti pulled values from outside the episode"
+
+
+def test_shuffle_keeps_the_episode_marginals():
+    span, horizon = 300, 144
+    g = _grid_series(span=span)
+    v = fp.perturbed_future(g, 10, horizon, 0, "shuffle", span=span)
+    extent = g[:span + horizon]
+    assert set(np.round(v, 9)) <= set(np.round(extent, 9)), \
+        "shuffle pulled values from outside the episode"
+
+
+def test_repeated_views_are_cheap_enough_to_run():
+    """_costs_all calls _green_view once per (job, site); a 5 ms rebuild is unrunnable.
+
+    The AR(1) field is a Python loop over the whole series and was rebuilt, together with
+    a sha256 of 160 KB, on every single call. Measured 5.7 ms per call at the production
+    shape, which at five sites per planned job puts hours of pure noise generation into
+    one episode.
+    """
+    import time
+    span, horizon = 3361, 144
+    g = _grid_series(span=span)
+    fp.perturbed_future(g, 0, horizon, 0, "s30", span=span)      # warm the frozen field
+    t0 = time.perf_counter()
+    for t in range(200):
+        fp.perturbed_future(g, t, horizon, 0, "s30", span=span)
+    per_call_ms = (time.perf_counter() - t0) / 200 * 1000.0
+    assert per_call_ms < 0.5, f"{per_call_ms:.3f} ms per view is too slow to run Stage A'"
+
+
+def _armed(arm, g, t=40, n=5):
+    arm.G = np.tile(g, (n, 1))
+    arm.T = arm.G.shape[1]
+    arm.t = t
+    arm.clim = np.full(n, 12.0)
+    arm.green_now = np.full(n, g[t])
+    return arm
+
+
+def test_arm_confines_the_corruption_to_the_registered_episode(monkeypatch):
+    """The span must come from the block, not from the 20000-step planning grid."""
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "s30")
+    monkeypatch.setenv("PLANNER_PERTURB_SPAN", "300")
+    a = _armed(PerturbedOraclePlannerGlobalScheduler(5, 8), _grid_series(span=300))
+    assert a.perturb_span == 300
+    field = a._perturb_field(0)
+    assert field.span == 300
+    assert field.extent == 300 + a.HORIZON_STEPS
+
+
+def test_arm_rebuilds_its_field_every_episode(monkeypatch):
+    """Carrying a field across reset would replay one window's errors in the next."""
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "s30")
+    monkeypatch.setenv("PLANNER_PERTURB_SPAN", "300")
+    a = _armed(PerturbedOraclePlannerGlobalScheduler(5, 8), _grid_series(span=300))
+    first = a._perturb_field(0)
+    assert a._perturb_field(0) is first, "within one episode the field must be reused"
+    a.reset()
+    assert a._perturb_fields == {}
+    _armed(a, _grid_series(span=300, seed=9))
+    assert a._perturb_field(0) is not first
+
+
+def test_arm_reports_which_rung_it_ran(monkeypatch):
+    """Every Stage A' artifact has to say which tier produced it."""
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "s15")
+    monkeypatch.setenv("PLANNER_PERTURB_SPAN", "300")
+    m = _armed(PerturbedOraclePlannerGlobalScheduler(5, 8),
+               _grid_series(span=300)).metrics()
+    assert m["planner_perturb_tier"] == "s15"
+    assert m["planner_perturb_span"] == 300
+    assert m["planner_info_source"] == "curve_horizon_perturbed"
+
+
+def test_arm_view_is_fast_enough_at_the_production_shape(monkeypatch):
+    """_costs_all calls _green_view once per (job, site); 5.7 ms per call is unrunnable."""
+    import time
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "s30")
+    monkeypatch.setenv("PLANNER_PERTURB_SPAN", "3361")
+    a = _armed(PerturbedOraclePlannerGlobalScheduler(5, 8),
+               _grid_series(span=3361), t=100)
+    a._green_view(0)                                    # build the frozen field
+    t0 = time.perf_counter()
+    for _ in range(200):
+        a._green_view(0)
+    per_call_ms = (time.perf_counter() - t0) / 200 * 1000.0
+    assert per_call_ms < 1.0, f"{per_call_ms:.3f} ms per view is too slow for Stage A'"

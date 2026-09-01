@@ -2157,8 +2157,37 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
                              f"registered: {sorted(_fp.TIERS)}")
         cal_path = os.environ.get("PLANNER_PERTURB_CAL", "")
         self.perturb_calibration = _fp.load_calibration(cal_path) if cal_path else None
+        self.perturb_cal_path = cal_path
         if self.perturb_tier == "timecap_cal" and self.perturb_calibration is None:
             raise ValueError("tier timecap_cal needs PLANNER_PERTURB_CAL")
+        # How much of the 20000-step planning grid this episode actually occupies. The
+        # corruption is derived from these rows and no others: the family fills G for the
+        # whole grid whatever the episode's length, and the frozen scheme-2 windows are
+        # 8072 rows apart, so a grid-wide statistic would set a DISCOVERY window's noise
+        # amplitude from CONFIRMATION weather and would make `anti` return rows twenty
+        # thousand steps away instead of the episode reversed.
+        import pathlib as _pl, yaml as _yaml
+        _cfg = _yaml.safe_load(open(_pl.Path(
+            os.environ.get("EVAL_CONFIG_PATH", "config_C.yml"))))
+        _blk = _cfg[os.environ.get("ORACLE_EXPERIMENT", "experiment_g1eval_matchedvan")]
+        self.perturb_span = int(os.environ.get(
+            "PLANNER_PERTURB_SPAN", _blk.get("max_episode_length", 0) or 0)) or None
+        self._perturb_fields = {}
+
+    def reset(self):
+        super().reset()
+        # One frozen field per (site, tier) per EPISODE. Holding it across episodes would
+        # reuse another window's error pattern; rebuilding it per call costs 5.7 ms and
+        # _costs_all asks once per (job, site).
+        self._perturb_fields = {}
+
+    def _perturb_field(self, d):
+        f = self._perturb_fields.get(d)
+        if f is None:
+            f = self._fp.FrozenField(self.G[d], d, self.perturb_tier, self.HORIZON_STEPS,
+                                     self.perturb_calibration, self.perturb_span)
+            self._perturb_fields[d] = f
+        return f
 
     def _green_view(self, d):
         if self.info_source != "curve_horizon_perturbed":
@@ -2168,11 +2197,21 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         view = np.empty(self.T, dtype=np.float64)
         view[:self.t] = self.G[d, :self.t]
         edge = min(self.T, self.t + self.HORIZON_STEPS)
-        view[self.t:edge] = self._fp.perturbed_future(
-            self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
-            self.perturb_calibration)[:edge - self.t]
+        view[self.t:edge] = self._perturb_field(d).view(
+            self.t, self.HORIZON_STEPS)[:edge - self.t]
         view[edge:] = self._tail_level(d)
         return view
+
+    def metrics(self):
+        m = super().metrics()
+        m["planner_perturb_tier"] = self.perturb_tier
+        m["planner_perturb_span"] = self.perturb_span or 0
+        m["planner_perturb_cal"] = self.perturb_cal_path or ""
+        if self.perturb_calibration:
+            m["planner_perturb_sigma_rel"] = float(self.perturb_calibration["sigma_rel"])
+            m["planner_perturb_cal_sha"] = str(
+                self.perturb_calibration.get("source_checkpoint_sha", ""))
+        return m
 
 
 class AlwaysDeferGlobalScheduler(GlobalScheduler):
