@@ -245,3 +245,64 @@ def test_reservation_arm_reads_capacity_from_the_scenario():
         assert 0 <= d < 3
     ok, why = validate_assignment(sc, a, budget=sc.B)
     assert ok, why
+
+
+# ── verdict reader (frozen before the Phase B artifact exists) ──────────────
+
+import round1_v4_verdict as v4v                  # noqa: E402
+
+
+def _fake_rows(n_blocks=3, advancing_blocks=(), unresolved=0):
+    rows, cohort = [], []
+    for b in range(n_blocks):
+        sha = f"block{b:02d}"
+        for i in range(12):
+            cid = f"c{b:02d}_{i:02d}"
+            adv = b in advancing_blocks
+            rows.append({"cell_id": cid, "block_sha": sha,
+                         "physical": {"horizon": 144}, "n_jobs": 8, "wait_cap": 6,
+                         "evpi": 0.2 if adv else 0.01,
+                         "gates": {"optimal": True, "evpi_ge_15": adv,
+                                   "wait_and_route_both_20pc": True,
+                                   "pes_share_ge_25pc": True},
+                         "advances": adv})
+            cohort.append({"cell_id": cid})
+    for i in range(unresolved):
+        rows[i]["gates"]["optimal"] = False
+        rows[i]["advances"] = False
+    return rows, cohort
+
+
+def test_verdict_stops_without_a_complete_block():
+    rows, cohort = _fake_rows(3, advancing_blocks=())
+    v = v4v.read_verdict(rows, cohort)
+    assert v["verdict"] == "STOP_EVPI_GATE_NOT_MET"
+    assert v["representative_block"] is None
+
+
+def test_verdict_passes_with_one_complete_block_and_freezes_by_sha():
+    rows, cohort = _fake_rows(4, advancing_blocks=(2, 1))
+    v = v4v.read_verdict(rows, cohort)
+    assert v["verdict"] == "PASS_V4_SCENARIO_GATE"
+    assert v["item5_complete_block"]["blocks_fully_advancing"] == 2
+    assert v["representative_block"]["block_sha"] == "block01", \
+        "the representative is the smallest SHA, not the strongest effect"
+
+
+def test_an_unresolved_cell_breaks_its_block():
+    rows, cohort = _fake_rows(2, advancing_blocks=(0,), unresolved=1)
+    v = v4v.read_verdict(rows, cohort)
+    assert v["item2_optimal_unresolved"]["unresolved"] == 1
+    assert v["verdict"] == "STOP_EVPI_GATE_NOT_MET", \
+        "an UNRESOLVED cell never counts as advancing"
+
+
+def test_rows_must_match_the_cohort_exactly():
+    rows, cohort = _fake_rows(2, advancing_blocks=(0,))
+    v = v4v.read_verdict(rows[:-1], cohort)
+    assert v["verdict"] == "INVALID_ROWS_DO_NOT_MATCH_COHORT"
+
+
+def test_verdict_refuses_before_phase_b_has_written(tmp_path):
+    with pytest.raises(RuntimeError, match="Phase B"):
+        v4v.main(round1_dir=str(tmp_path))
