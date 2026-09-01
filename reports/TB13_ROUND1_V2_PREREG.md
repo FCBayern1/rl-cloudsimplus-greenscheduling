@@ -98,3 +98,74 @@ preflight 不读碳、不算 EVPI、不选盲臂。
 
 v1 的 STOP、诊断与全部产物永久保留,不删不改。v2 是独立注册,其结果不得回溯解释 v1,
 亦不得用 v1 的数字替代 v2 的判决。
+
+---
+
+# Addendum A(append-only)—— 2026-09-01,四处机械歧义与两条追加门
+
+本节只增不改。上文任何与本节冲突之处,以本节为准。
+
+## A.1 冻结 seed 的精确字节语义
+
+    payload = json.dumps(key, sort_keys=True, separators=(",", ":"))
+    digest  = sha256((payload + ":" + str(k)).encode()).digest()
+    seed    = int.from_bytes(digest[:8], "big") % 2**31
+
+`key` 为 §2 的 workload key。`runtime_set` 固定序列化为 JSON list(非 tuple、非 set),
+以免解释器版本或容器类型改变字节串。`k` 自 0 递增,以十进制无前导零写入。
+
+## A.2 一致性哈希必须覆盖实际内容
+
+只哈希 key 不足以证明复用 —— key 相同而生成过程有隐藏依赖时,内容仍可能不同。
+内容哈希的 payload 至少包含有序的:
+
+    arrival, runtime, pes, deadline, horizon
+
+preflight 必须机械得到:
+
+    99   个不同的内容哈希
+    1,296 个引用(每格引用其 workload 的内容哈希)
+    同一 key 在不同 budget_fraction 与不同风电配置下,内容哈希【完全相同】
+
+## A.3 可行性验收必须与墙钟无关
+
+否则"第一个被接受的 retry"会随机器而变,冻结的 seed 序列失去意义。冻结:
+
+    num_search_workers      = 1
+    CP-SAT random_seed      = 固定常数
+    max_deterministic_time  = 固定值(不使用 max_time_in_seconds)
+    模型                     无目标,纯约束
+    FEASIBLE 或 OPTIMAL(即存在 witness)统一记为通过
+    UNKNOWN 进入下一个 retry,【不得】当作不可行
+
+## A.4 `reservation_edf_blind` 的精确语义
+
+    同一时刻到达者按 (deadline, job_id) 升序处理
+    到达时【立即】建立不可撤销的预约,此后不再改动
+    搜索 start ∈ [arrival, latest_start]
+    优先最早可行 start;同一 start 取最小 DC index
+    总预约等待包含此前全部已建立的预约
+    找不到任何可行预约即【立即失败】,不回溯、不重排
+    源码不得出现 green / cb / cg / climatology / carbon 的读取
+
+## A.5 零碳 preflight 追加两门
+
+在 §6 五门之外,另加:
+
+    CONFIRMATION 涡轮零触碰
+    验收与预约代码在【源码层】禁止读取任何绿电或碳字段(由测试断言)
+
+七门全过之前,**不运行任何盲臂碳比较,也不运行 exact carbon oracle**。
+
+## A.6 实现顺序(冻结)
+
+    workload 内容生成与缓存
+    → schedule-only 可行性验收
+    → reservation EDF
+    → 99 / 1,296 零碳 preflight
+    → Phase A
+
+## A.7 仓库卫生
+
+`g1/tb13/__pycache__/` 的 10 个 `.pyc` 此前虽被 `.gitignore` 命中,却仍是 tracked 文件,
+导致运行测试后 provenance 变脏。已从索引移除(commit 836840f)。
