@@ -1,0 +1,60 @@
+{
+  "H_max": 144,
+  "N": 52559,
+  "W": 144,
+  "shift_map": {
+    "0": 0,
+    "1": 0,
+    "2": 0
+  },
+  "windows": [
+    {
+      "L": 0,
+      "R": 8759,
+      "base_offset": 4307,
+      "foot_end": 4451,
+      "foot_start": 4307,
+      "j": 0
+    },
+    {
+      "L": 8759,
+      "R": 17519,
+      "base_offset": 13067,
+      "foot_end": 13211,
+      "foot_start": 13067,
+      "j": 1
+    },
+    {
+      "L": 17519,
+      "R": 26279,
+      "base_offset": 21827,
+      "foot_end": 21971,
+      "foot_start": 21827,
+      "j": 2
+    },
+    {
+      "L": 26279,
+      "R": 35039,
+      "base_offset": 30587,
+      "foot_end": 30731,
+      "foot_start": 30587,
+      "j": 3
+    },
+    {
+      "L": 35039,
+      "R": 43799,
+      "base_offset": 39347,
+      "foot_end": 39491,
+      "foot_start": 39347,
+      "j": 4
+    },
+    {
+      "L": 43799,
+      "R": 52559,
+      "base_offset": 48107,
+      "foot_end": 48251,
+      "foot_start": 48107,
+      "j": 5
+    }
+  ]
+}
