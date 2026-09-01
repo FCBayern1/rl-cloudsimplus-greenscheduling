@@ -181,9 +181,13 @@ public class DatacenterSetup {
                 .setBwProvisioner(new ResourceProvisionerSimple())
                 .setVmScheduler(new VmSchedulerSpaceShared());
 
-        // Set power model based on real server characteristics
-        // PowerModelHostSimple(maxPowerW, staticPowerPercent)
-        host.setPowerModel(new PowerModelHostSimple(profile.getMaxPowerW(), profile.getStaticPowerPercent()));
+        // Set power model based on real server characteristics.
+        // PowerModelHostSimple takes static power in WATTS, not as a percentage: its own
+        // constructor rejects a static value above maxPower and getStaticPower returns the
+        // argument unchanged. HostProfile keeps idle as a percentage, so the watt value has
+        // to come from getIdlePowerW(); passing the percentage gave an RS500A a 24 W idle
+        // floor instead of its SPEC 51.4 W. See HostPowerWiringTest.
+        host.setPowerModel(new PowerModelHostSimple(profile.getMaxPowerW(), profile.getIdlePowerW()));
         host.setStateHistoryEnabled(true);
 
         LOGGER.debug("Created host with profile: {}", profile);
