@@ -24,19 +24,25 @@ RANDOM_SEED = 20260901
 MAX_DETERMINISTIC_TIME = 30.0
 
 
+def _cap(cap):
+    """Per-site PE capacity. Defaults to the v1-v3 site, v4 passes its own 64."""
+    return CAP if cap is None else int(cap)
+
+
 def latest_start(w, i):
     return int(min(w["deadline"][i] - w["runtime"][i],
                    w["horizon"] - w["runtime"][i],
                    w["arrival"][i] + w["wait_cap"]))
 
 
-def capacity_ok(w, budget):
+def capacity_ok(w, budget, cap=None):
     """Is there ANY schedule meeting capacity, deadlines, wait caps and the budget?
 
     Pure constraints, no objective. FEASIBLE or OPTIMAL both mean a witness exists.
     UNKNOWN means the search ran out of deterministic budget and says nothing either way.
     """
     n, T = len(w["arrival"]), w["horizon"]
+    cap = _cap(cap)
     m = cp_model.CpModel()
     x = {}
     for i in range(n):
@@ -55,7 +61,7 @@ def capacity_ok(w, budget):
             active = [int(w["pes"][i]) * x[(i, d, s)] for (i, dd, s) in x
                       if dd == d and s <= t < s + w["runtime"][i]]
             if active:
-                m.Add(sum(active) <= CAP)
+                m.Add(sum(active) <= cap)
     m.Add(sum((s - int(w["arrival"][i])) * v for (i, _d, s), v in x.items()) <= int(budget))
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
@@ -69,7 +75,7 @@ def capacity_ok(w, budget):
     return "UNKNOWN"
 
 
-def reservation_edf(w, budget):
+def reservation_edf(w, budget, cap=None):
     """Earliest-deadline-first with a persistent, irrevocable capacity reservation.
 
     On arrival a job takes the earliest start it can hold, on the lowest-indexed site that
@@ -78,6 +84,7 @@ def reservation_edf(w, budget):
     at once; it does not backtrack or reorder.
     """
     n, T = len(w["arrival"]), w["horizon"]
+    cap = _cap(cap)
     used = np.zeros((N_DC, T), dtype=int)
     assign, spent = {}, 0
     order = sorted(range(n), key=lambda i: (int(w["arrival"][i]),
@@ -89,7 +96,7 @@ def reservation_edf(w, budget):
             if spent + (s - lo) > budget:
                 break                      # any later start overruns the shared budget
             for d in range(N_DC):
-                if np.all(used[d, s:s + r] + p <= CAP):
+                if np.all(used[d, s:s + r] + p <= cap):
                     placed = (d, s)
                     break
             if placed:
