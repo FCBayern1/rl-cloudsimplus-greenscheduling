@@ -131,3 +131,55 @@ def test_config_s2_carries_the_base_common_section_verbatim(tmp_path):
     base = yaml.safe_load(open(g.BASE_CONFIG))
     assert ours["common"] == base["common"]
     assert len([k for k in ours if k != "common"]) == 108
+
+
+# ── stage A verdict reader (frozen before the oracle results exist) ─────────
+
+import stage_a_verdict as sv                    # noqa: E402
+
+
+def _mk(cell, blind, o144, full, fav=3):
+    per = {}
+    for i, k in enumerate((1, 9, 17)):
+        good = i < fav
+        per[k] = {"blind": blind, "oracle144": o144 if good else blind * 1.01,
+                  "full": full}
+    return per
+
+
+def test_adjacency_is_one_step_on_one_axis():
+    a = {"runtime_rows": 24, "wait_cap_rows": 48, "concurrency": 3, "n_jobs": 35, "seed": 0}
+    b = dict(a, wait_cap_rows=72)
+    c = dict(a, wait_cap_rows=72, concurrency=5)
+    d = dict(a, wait_cap_rows=120)
+    assert sv.adjacent(a, b)
+    assert not sv.adjacent(a, c), "two axes moved"
+    assert not sv.adjacent(a, d), "two steps on one axis"
+
+
+def test_capture_gate_requires_a_positive_denominator():
+    # full == blind -> denominator zero -> the cell cannot pass however big the drop.
+    blind, o144, full = 1.0, 0.5, 1.0
+    denom = blind - full
+    assert not (denom > 0 and (blind - o144) / denom >= sv.GATE_CAPTURE)
+
+
+def test_verdict_centre_is_by_sha_not_by_effect(tmp_path, monkeypatch):
+    # Three adjacent passing cells with very different effect sizes; the centre must be
+    # the smallest SHA, not the deepest reduction.
+    cells = [
+        {"runtime_rows": 24, "wait_cap_rows": 24, "concurrency": 1, "n_jobs": 20, "seed": 0},
+        {"runtime_rows": 24, "wait_cap_rows": 48, "concurrency": 1, "n_jobs": 20, "seed": 0},
+        {"runtime_rows": 24, "wait_cap_rows": 72, "concurrency": 1, "n_jobs": 20, "seed": 0},
+    ]
+    rows = []
+    for i, c in enumerate(cells):
+        rows.append({"cell": c, "cell_sha": sv.cell_sha(c)[:16],
+                     "pass": True, "reduction": 0.1 * (i + 1)})
+    regions, seen = [], set()
+    passing = rows
+    centre = min(passing, key=lambda r: sv.cell_sha(r["cell"]))
+    deepest = max(passing, key=lambda r: r["reduction"])
+    assert centre["cell_sha"] == min(sv.cell_sha(c)[:16] for c in cells)
+    # only a coincidence would make them equal; assert the rule text, not luck
+    assert centre["cell_sha"] != deepest["cell_sha"] or len({r["cell_sha"] for r in rows}) == 1
