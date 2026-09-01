@@ -1,0 +1,36 @@
+{
+  "axis_gate": {
+    "assertion_failures": [],
+    "compatible_axes": 89,
+    "count_ok": true,
+    "expected_axes": 89,
+    "pass": true,
+    "workload_key_cap": 267,
+    "workload_keys": 267
+  },
+  "verdict": "PASS",
+  "window_gate": {
+    "base_offsets": [
+      4307,
+      13067,
+      21827,
+      30587,
+      39347,
+      48107
+    ],
+    "pass": true,
+    "row_counts_unique": [
+      52559
+    ],
+    "rows_ok": true,
+    "slice_failures": [],
+    "slices_ok": true,
+    "turbines_checked": 24,
+    "windows_disjoint": true,
+    "windows_file_sha": "5020453eddb89213",
+    "windows_in_bounds": true,
+    "windows_payload_sha": "e1574c954c85dd0f",
+    "windows_payload_sha_registered": "e1574c954c85dd0f",
+    "zero_timezone": true
+  }
+}
