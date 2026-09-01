@@ -1,0 +1,8 @@
+axis sweep: demand/green ratio (job dynamic power scaled), 3 DC, n=10, T=36
+  dyn_W/PE  mean_green_W  demand/green   status      EVPI%%   wait  p_wait
+       2.5         400.0         0.010   OPTIMAL      0.00      0   0.00
+      25.0         400.0         0.097   OPTIMAL      0.00      0   0.00
+     100.0         400.0         0.403   OPTIMAL      1.62      2   0.10
+     250.0         400.0         1.111   OPTIMAL     23.52     11   0.30
+     500.0         400.0         2.222   UNRESOLVED   6.04     16   0.30
+     900.0         400.0         4.000   OPTIMAL     11.80     10   0.30

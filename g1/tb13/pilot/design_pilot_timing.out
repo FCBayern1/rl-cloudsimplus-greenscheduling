@@ -1,0 +1,6 @@
+exact stage timing, 3 DC, real SDWPF slices
+  n=  8 T= 36  OPTIMAL      0.06s  exact=True  EVPI=  0.00%  wait=0
+  n= 10 T= 36  OPTIMAL      0.08s  exact=True  EVPI=  0.00%  wait=0
+  n= 12 T= 36  OPTIMAL      0.09s  exact=True  EVPI=  0.00%  wait=0
+  n= 12 T= 48  OPTIMAL      0.10s  exact=True  EVPI= -0.00%  wait=0
+  n= 16 T= 36  OPTIMAL      0.14s  exact=True  EVPI= -0.00%  wait=0
