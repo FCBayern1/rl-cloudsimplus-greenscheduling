@@ -289,3 +289,74 @@ runtime 自冻结集合抽取,**不得为塞进视界而缩短**;arrival 与 dea
     physical units (Round 0) 8,640
     workload/budget per unit 36
     seed 0 solve cap         1,728
+
+---
+
+# Addendum B —— 2026-09-01,四项机械定义与 Round 0 执行器
+
+## B.1 「同时贫风」的定义
+
+    G_res[d,t] = max(G[d,t] − P_static[d], 0)
+    P_job      = pes_per_job × dyn_w_per_pe
+    poor(t)    ⟺ max_d G_res[d,t] < P_job
+    simultaneous_poor_fraction = mean(poor(t))     要求严格落在 (0, 1)
+
+含义:该时刻没有任何站点能用剩余绿电完整覆盖一个当前规格的作业。
+
+## B.2 「最优 DC 变化占比」的定义
+
+    m[d,t]  = cb_d · max(P_job − G_res[d,t], 0) + cg_d · min(P_job, G_res[d,t])
+    best(t) = argmin_d m[d,t]                      平局取较小的 DC index
+    best_dc_change_fraction = 1 − max_d #{t : best(t)=d} / T     要求 ≥ 0.10
+
+含义:最佳站点不得在超过 90% 的时刻恒为同一站。
+
+## B.3 anchor SHA 的精确 payload
+
+    canonical = json.dumps({grid_hash, year, triplet, season_offset, pes_per_job,
+                            concurrency, turbines_per_site, installed_divisor, horizon},
+                           sort_keys=True, separators=(",", ":"))
+    anchor_sha = sha256(canonical)
+
+每层在**通过物理门者**中取哈希最小的 4 个。`triplet_index` 与 `season_index` 不入 payload
+(它们是 `triplet` 与 `season_offset` 的冗余编号),已由测试断言改动它们不改哈希。
+
+**邻域**固定为 `installed_divisor` 有序表中 anchor 的前一个、自身、后一个;
+边界处取最近的三个连续值(1500 → [1500,3000,6000];24000 → [6000,12000,24000])。
+重叠实例取并集,**只求解一次**。
+
+## B.4 Round 1 最强盲的冻结时点
+
+    1  对全部 seed-0 Round 1 实例运行四个因果盲
+    2  在任何 EVPI 判决之前,以所有【合同有效】的 DISCOVERY 实例做 pooled_strongest()
+    3  冻结【单一】盲臂
+    4  用该臂重新计算全部 seed-0 EVPI
+    5  再执行 ≥15% 晋级门
+    6  CONFIRMATION 永不重选
+
+`blind_class_diagnostic()` 只进附表,**不得作为正式 EVPI 分母**。
+
+## B.5 Round 0 执行器与防错
+
+`g1/tb13/round0.py` 独立实现 `round0_physical_keys()`。
+
+`axes_grid()` 与 Round 0 物理单元**都恰好是 8,640,这是轴长的巧合而非同一集合**:
+前者含 `n_jobs / wait_cap / budget_fraction` 且不含 triplet 与 season,后者相反。
+两者分别构造并分别测试。防错测试(共 15 项):
+
+    恰好 8,640 个唯一物理 key
+    不含 n_jobs / wait_cap / budget_fraction / seed / runtime_set
+    覆盖 6 triplet × 6 season = 36 层
+    从不触及 CONFIRMATION 涡轮,且只用 DISCOVERY 池
+    物理门源码中不出现 rho(载荷比记录但不作淘汰)
+    源码中不出现 cp_model / exact_oracle / solve( —— Round 0 不求解
+    同输入重复运行输出 SHA 一致
+    simultaneous_poor 与 best_dc_change 各自与 B.1/B.2 的公式逐位相符
+    恒为同一最优站被拒;强负相关被拒(不取绝对值);贫风占比为 0 或 1 被拒
+    anchor SHA 对冗余编号不敏感,对 divisor 敏感
+    邻域恒为三个连续 divisor 且含 anchor 自身
+    层内取哈希最小的四个
+
+## B.6 提交卫生
+
+`__pycache__/` 与 `*.pyc` 已从索引移除并加入 `.gitignore`。
