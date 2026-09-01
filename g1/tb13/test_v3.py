@@ -213,3 +213,58 @@ def test_accepted_returns_a_capacity_feasible_reservation_edf_load():
     assert w3.assertions(a["workload"], key)[1]
     b = w3.accepted(w3.workload_key(0, 144, 4, 3, 8, 24))
     assert a["content_hash"] == b["content_hash"]
+
+
+# ── zero-emissions preflight ────────────────────────────────────────────────
+
+import zero_emission_v3 as z3                   # noqa: E402
+
+
+def _cohort_dir():
+    return os.path.join(HERE, "round0_v3_out")
+
+
+def test_cohort_digest_and_manifest_agree():
+    _cohort, integrity = z3.load_cohort(_cohort_dir())
+    assert integrity["cohort_sha_matches"]
+    assert integrity["manifest_sha_matches"]
+
+
+def test_a_tampered_cohort_is_detected(tmp_path):
+    import shutil
+    src = _cohort_dir()
+    for f in ("cohort_v3.json", "round0_v3_manifest.json"):
+        shutil.copy(os.path.join(src, f), tmp_path / f)
+    c = json.load(open(tmp_path / "cohort_v3.json"))
+    c["blocks"][0]["cells"][0]["budget_fraction"] = 0.99
+    (tmp_path / "cohort_v3.json").write_text(json.dumps(c, sort_keys=True, indent=2))
+    _cohort, integrity = z3.load_cohort(str(tmp_path))
+    assert not integrity["cohort_sha_matches"]
+    assert not integrity["manifest_sha_matches"]
+
+
+def test_preflight_reads_the_cohort_and_never_re_enumerates():
+    src = open(os.path.join(HERE, "zero_emission_v3.py")).read()
+    for banned in ("physical_keys(", "select_cohort(", "build_block(", "compatible_axes("):
+        assert banned not in src, banned
+
+
+def test_cohort_cells_are_1728_and_in_block_order():
+    cohort, _i = z3.load_cohort(_cohort_dir())
+    cells = z3.cohort_cells(cohort)
+    assert len(cells) == 1728
+    assert len({c["cell_id"] for c in cells}) == 1728
+    assert cells[0]["block_sha"] == cohort["blocks"][0]["block_sha"]
+
+
+def test_cell_maps_to_a_registered_workload_key():
+    cohort, _i = z3.load_cohort(_cohort_dir())
+    for c in z3.cohort_cells(cohort)[:200]:
+        k = z3.key_of(c)
+        assert k["seed"] == 0 and k["runtime_set"] == list(w3.RUNTIME_HALVES)
+        assert w3.compatible(k["horizon"], k["n_jobs"], k["concurrency"], k["wait_cap"])
+
+
+def test_guarded_sources_carry_no_banned_token():
+    for name in z3.GUARDED_SOURCES:
+        assert z3._scan_source(name) == [], name
