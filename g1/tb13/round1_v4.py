@@ -58,7 +58,11 @@ def preflight(round0_dir, zero_dir):
     cohort, integrity = z4.load_cohort(round0_dir)
     if not (integrity["cohort_sha_matches"] and integrity["manifest_sha_matches"]):
         raise RuntimeError(f"cohort digest does not check out: {integrity}")
-    zero = json.load(open(os.path.join(zero_dir, "zero_emission_v4_summary.json")))
+    zero_path = os.path.join(zero_dir, "zero_emission_v4_summary.json")
+    if not os.path.exists(zero_path):
+        raise RuntimeError(
+            "the zero-emissions preflight has not run: no " + zero_path)
+    zero = json.load(open(zero_path))
     if zero["verdict"] != "PASS":
         raise RuntimeError(f"zero-emissions preflight is {zero['verdict']}, not PASS")
     if zero["cohort_integrity"]["cohort_sha_recorded"] != integrity["cohort_sha_recorded"]:
