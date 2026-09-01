@@ -50,7 +50,7 @@ WINDOW_SPACING = 7300            # > EPISODE_ROWS_MAX so windows cannot touch
 # The ONLY keys a derived block may change, with their values or value factories.
 OVERRIDDEN_KEYS = ("experiment_name", "simulation_name", "cloudlet_trace_file",
                    "defer_deadline_force_mode", "defer_deadline_slack_sec",
-                   "cloudlet_cpu_utilization")
+                   "cloudlet_cpu_utilization", "green_oracle_mode")
 FORCE_MODE = "latest_start"
 # The Java latest_start rule is now + runtime + slack >= deadline, and the base block
 # carries slack 600 s. Deadline headroom here is at most 120 s, so an inherited slack
@@ -59,6 +59,11 @@ FORCE_MODE = "latest_start"
 # force-routed, 8 stale reservations, 8 unplanned starts. Slack is therefore pinned to
 # zero and the closure semantics is purely runtime-aware.
 BACKSTOP_SLACK_SEC = 0.0
+# The base block builds a TimeCAP observation provider (23.8M parameters, rebuilt on
+# every reset at ~27 s each, plus inference every six steps). No planner arm reads those
+# observation features and the simulated physics is identical either way, so Stage A/A'
+# run the cheap godeye provider. Stage D (RL) re-decides this knob in its own prereg.
+GREEN_ORACLE_MODE = "godeye"
 
 
 def admissible_pairs():
@@ -172,6 +177,7 @@ def derived_block(cell, base):
     blk["defer_deadline_force_mode"] = FORCE_MODE
     blk["defer_deadline_slack_sec"] = BACKSTOP_SLACK_SEC
     blk["cloudlet_cpu_utilization"] = CPU_UTILISATION
+    blk["green_oracle_mode"] = GREEN_ORACLE_MODE
     return blk
 
 

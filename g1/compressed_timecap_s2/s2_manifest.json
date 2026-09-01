@@ -3,7 +3,7 @@
   "base_block_sha": "d3d47223e4696c7e",
   "base_experiment": "experiment_g1eval_matchedvan",
   "cells": 108,
-  "config_s2_sha": "a5b509455bf4825a",
+  "config_s2_sha": "5693a787dcce0681",
   "cpu_utilization": 1.0,
   "overridden_keys": [
     "experiment_name",
@@ -11,7 +11,8 @@
     "cloudlet_trace_file",
     "defer_deadline_force_mode",
     "defer_deadline_slack_sec",
-    "cloudlet_cpu_utilization"
+    "cloudlet_cpu_utilization",
+    "green_oracle_mode"
   ],
   "pes_per_job": 2,
   "reports": {

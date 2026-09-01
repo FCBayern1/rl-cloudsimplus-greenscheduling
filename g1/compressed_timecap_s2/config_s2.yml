@@ -268,7 +268,7 @@ s2_r24_w120_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -561,7 +561,7 @@ s2_r24_w120_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -854,7 +854,7 @@ s2_r24_w120_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -1147,7 +1147,7 @@ s2_r24_w120_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -1440,7 +1440,7 @@ s2_r24_w120_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -1733,7 +1733,7 @@ s2_r24_w120_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -2026,7 +2026,7 @@ s2_r24_w120_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -2319,7 +2319,7 @@ s2_r24_w120_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -2612,7 +2612,7 @@ s2_r24_w120_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -2905,7 +2905,7 @@ s2_r24_w24_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -3198,7 +3198,7 @@ s2_r24_w24_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -3491,7 +3491,7 @@ s2_r24_w24_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -3784,7 +3784,7 @@ s2_r24_w24_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -4077,7 +4077,7 @@ s2_r24_w24_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -4370,7 +4370,7 @@ s2_r24_w24_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -4663,7 +4663,7 @@ s2_r24_w24_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -4956,7 +4956,7 @@ s2_r24_w24_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -5249,7 +5249,7 @@ s2_r24_w24_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -5542,7 +5542,7 @@ s2_r24_w48_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -5835,7 +5835,7 @@ s2_r24_w48_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -6128,7 +6128,7 @@ s2_r24_w48_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -6421,7 +6421,7 @@ s2_r24_w48_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -6714,7 +6714,7 @@ s2_r24_w48_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -7007,7 +7007,7 @@ s2_r24_w48_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -7300,7 +7300,7 @@ s2_r24_w48_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -7593,7 +7593,7 @@ s2_r24_w48_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -7886,7 +7886,7 @@ s2_r24_w48_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -8179,7 +8179,7 @@ s2_r24_w72_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -8472,7 +8472,7 @@ s2_r24_w72_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -8765,7 +8765,7 @@ s2_r24_w72_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -9058,7 +9058,7 @@ s2_r24_w72_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -9351,7 +9351,7 @@ s2_r24_w72_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -9644,7 +9644,7 @@ s2_r24_w72_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -9937,7 +9937,7 @@ s2_r24_w72_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -10230,7 +10230,7 @@ s2_r24_w72_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -10523,7 +10523,7 @@ s2_r24_w72_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -10816,7 +10816,7 @@ s2_r24_w96_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -11109,7 +11109,7 @@ s2_r24_w96_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -11402,7 +11402,7 @@ s2_r24_w96_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -11695,7 +11695,7 @@ s2_r24_w96_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -11988,7 +11988,7 @@ s2_r24_w96_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -12281,7 +12281,7 @@ s2_r24_w96_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -12574,7 +12574,7 @@ s2_r24_w96_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -12867,7 +12867,7 @@ s2_r24_w96_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -13160,7 +13160,7 @@ s2_r24_w96_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -13453,7 +13453,7 @@ s2_r48_w24_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -13746,7 +13746,7 @@ s2_r48_w24_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -14039,7 +14039,7 @@ s2_r48_w24_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -14332,7 +14332,7 @@ s2_r48_w24_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -14625,7 +14625,7 @@ s2_r48_w24_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -14918,7 +14918,7 @@ s2_r48_w24_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -15211,7 +15211,7 @@ s2_r48_w24_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -15504,7 +15504,7 @@ s2_r48_w24_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -15797,7 +15797,7 @@ s2_r48_w24_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -16090,7 +16090,7 @@ s2_r48_w48_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -16383,7 +16383,7 @@ s2_r48_w48_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -16676,7 +16676,7 @@ s2_r48_w48_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -16969,7 +16969,7 @@ s2_r48_w48_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -17262,7 +17262,7 @@ s2_r48_w48_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -17555,7 +17555,7 @@ s2_r48_w48_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -17848,7 +17848,7 @@ s2_r48_w48_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -18141,7 +18141,7 @@ s2_r48_w48_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -18434,7 +18434,7 @@ s2_r48_w48_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -18727,7 +18727,7 @@ s2_r48_w72_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -19020,7 +19020,7 @@ s2_r48_w72_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -19313,7 +19313,7 @@ s2_r48_w72_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -19606,7 +19606,7 @@ s2_r48_w72_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -19899,7 +19899,7 @@ s2_r48_w72_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -20192,7 +20192,7 @@ s2_r48_w72_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -20485,7 +20485,7 @@ s2_r48_w72_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -20778,7 +20778,7 @@ s2_r48_w72_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -21071,7 +21071,7 @@ s2_r48_w72_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -21364,7 +21364,7 @@ s2_r48_w96_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -21657,7 +21657,7 @@ s2_r48_w96_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -21950,7 +21950,7 @@ s2_r48_w96_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -22243,7 +22243,7 @@ s2_r48_w96_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -22536,7 +22536,7 @@ s2_r48_w96_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -22829,7 +22829,7 @@ s2_r48_w96_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -23122,7 +23122,7 @@ s2_r48_w96_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -23415,7 +23415,7 @@ s2_r48_w96_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -23708,7 +23708,7 @@ s2_r48_w96_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -24001,7 +24001,7 @@ s2_r72_w24_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -24294,7 +24294,7 @@ s2_r72_w24_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -24587,7 +24587,7 @@ s2_r72_w24_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -24880,7 +24880,7 @@ s2_r72_w24_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -25173,7 +25173,7 @@ s2_r72_w24_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -25466,7 +25466,7 @@ s2_r72_w24_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -25759,7 +25759,7 @@ s2_r72_w24_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -26052,7 +26052,7 @@ s2_r72_w24_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -26345,7 +26345,7 @@ s2_r72_w24_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -26638,7 +26638,7 @@ s2_r72_w48_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -26931,7 +26931,7 @@ s2_r72_w48_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -27224,7 +27224,7 @@ s2_r72_w48_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -27517,7 +27517,7 @@ s2_r72_w48_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -27810,7 +27810,7 @@ s2_r72_w48_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -28103,7 +28103,7 @@ s2_r72_w48_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -28396,7 +28396,7 @@ s2_r72_w48_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -28689,7 +28689,7 @@ s2_r72_w48_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -28982,7 +28982,7 @@ s2_r72_w48_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -29275,7 +29275,7 @@ s2_r72_w72_c1_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -29568,7 +29568,7 @@ s2_r72_w72_c1_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -29861,7 +29861,7 @@ s2_r72_w72_c1_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -30154,7 +30154,7 @@ s2_r72_w72_c3_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -30447,7 +30447,7 @@ s2_r72_w72_c3_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -30740,7 +30740,7 @@ s2_r72_w72_c3_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -31033,7 +31033,7 @@ s2_r72_w72_c5_n20:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -31326,7 +31326,7 @@ s2_r72_w72_c5_n35:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192
@@ -31619,7 +31619,7 @@ s2_r72_w72_c5_n50:
   global_routing_batch_size: 128
   global_throughput_mi_coef: 0.0
   green_episode_offset_range: 44950
-  green_oracle_mode: timecap
+  green_oracle_mode: godeye
   gtrxl:
     critic_separate_trunk: true
     d_ff: 192

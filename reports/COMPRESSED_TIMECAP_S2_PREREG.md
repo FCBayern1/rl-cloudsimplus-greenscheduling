@@ -86,3 +86,17 @@ label-offset 先过 k=0 语义审计)。
 
 产物目录 g1/compressed_timecap_s2/,不触碰 TB13 的任何目录;不编辑 drl-manager/Code/;
 只提交本任务产生的文件。
+
+## Addendum A(append-only,先于任何 Stage A 门读数)
+
+派生 block 的允许差异键从五个改为七个,新增两键均在首个 Stage A 数字被读取之前提交:
+
+    defer_deadline_slack_sec: 0.0    smoke 抓到基座隐性 600 s lead:Java latest_start 公式
+                                     为 now + runtime + slack >= deadline,而 deadline 余量
+                                     最多 120 s,继承 600 会让任何 defer 当场被强派
+                                     (即工单 §4 点名的失效);闭合语义因此为纯 runtime-aware
+    green_oracle_mode: godeye        基座的 timecap 观测 provider(23.8M 参数,每次 reset
+                                     重建 ~27 s,每 6 步推理一次)不被任何规划器臂读取,
+                                     物理完全相同;Stage D(RL)的观测配置由其自身预注册另定
+
+精确差分测试同步收紧为断言恰好这七键。其余条款不变。

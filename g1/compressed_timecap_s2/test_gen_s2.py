@@ -78,6 +78,8 @@ def test_pinned_keys_and_values():
     assert blk["defer_deadline_force_mode"] == "latest_start"
     assert blk["defer_deadline_slack_sec"] == 0.0, \
         "an inherited 600 s slack fires the backstop before any defer decision"
+    assert blk["green_oracle_mode"] == "godeye", \
+        "the TimeCAP obs provider is dead weight for planner arms"
     assert blk["cloudlet_cpu_utilization"] == 1.0
     assert blk["cloudlet_trace_file"].startswith("traces/s2/")
     # Inherited untouched, on purpose: the frozen episode length and offset schedule.
