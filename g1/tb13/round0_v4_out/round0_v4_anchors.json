@@ -1,0 +1,1608 @@
+{
+  "anchors": [
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 72,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 72,
+      "installed_divisor": 6000,
+      "pes_per_job": 8,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          110
+        ],
+        [
+          122
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          25
+        ],
+        [
+          32
+        ],
+        [
+          128
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          25
+        ],
+        [
+          32
+        ],
+        [
+          128
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 8,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 72,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 8,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          2
+        ],
+        [
+          55
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 72,
+      "installed_divisor": 3000,
+      "pes_per_job": 8,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          62
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 72,
+      "installed_divisor": 3000,
+      "pes_per_job": 8,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          62
+        ],
+        [
+          88
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 96,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 72,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          99
+        ],
+        [
+          104
+        ],
+        [
+          132
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 32,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 8,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 8,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 4,
+      "season_offset": 39347,
+      "triplet": [
+        [
+          5
+        ],
+        [
+          17
+        ],
+        [
+          83
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 1,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 8,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 24000,
+      "pes_per_job": 16,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 72,
+      "installed_divisor": 12000,
+      "pes_per_job": 32,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 8,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          55,
+          86
+        ],
+        [
+          99,
+          110
+        ],
+        [
+          119,
+          128
+        ]
+      ],
+      "triplet_index": 0,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 3000,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 12000,
+      "pes_per_job": 32,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 32,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2,
+          13
+        ],
+        [
+          62,
+          68
+        ],
+        [
+          88,
+          110
+        ]
+      ],
+      "triplet_index": 1,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 24000,
+      "pes_per_job": 16,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 8,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          68,
+          83
+        ],
+        [
+          119,
+          122
+        ]
+      ],
+      "triplet_index": 2,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 72,
+      "installed_divisor": 1500,
+      "pes_per_job": 8,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 24000,
+      "pes_per_job": 8,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 72,
+      "installed_divisor": 12000,
+      "pes_per_job": 8,
+      "season_index": 3,
+      "season_offset": 30587,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 16,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          2,
+          25
+        ],
+        [
+          83,
+          88
+        ],
+        [
+          125,
+          128
+        ]
+      ],
+      "triplet_index": 3,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 3,
+      "horizon": 144,
+      "installed_divisor": 12000,
+      "pes_per_job": 8,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 24000,
+      "pes_per_job": 16,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 96,
+      "installed_divisor": 24000,
+      "pes_per_job": 16,
+      "season_index": 2,
+      "season_offset": 21827,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 96,
+      "installed_divisor": 3000,
+      "pes_per_job": 32,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 1,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 16,
+      "season_index": 5,
+      "season_offset": 48107,
+      "triplet": [
+        [
+          5,
+          17
+        ],
+        [
+          25,
+          32
+        ],
+        [
+          62,
+          110
+        ]
+      ],
+      "triplet_index": 4,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 16,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          13,
+          32
+        ],
+        [
+          119,
+          122
+        ],
+        [
+          125,
+          129
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 6000,
+      "pes_per_job": 32,
+      "season_index": 0,
+      "season_offset": 4307,
+      "triplet": [
+        [
+          13,
+          32
+        ],
+        [
+          119,
+          122
+        ],
+        [
+          125,
+          129
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 2,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          13,
+          32
+        ],
+        [
+          119,
+          122
+        ],
+        [
+          125,
+          129
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 2,
+      "year": 2021
+    },
+    {
+      "concurrency": 5,
+      "horizon": 144,
+      "installed_divisor": 1500,
+      "pes_per_job": 32,
+      "season_index": 1,
+      "season_offset": 13067,
+      "triplet": [
+        [
+          13,
+          32
+        ],
+        [
+          119,
+          122
+        ],
+        [
+          125,
+          129
+        ]
+      ],
+      "triplet_index": 5,
+      "turbines_per_site": 2,
+      "year": 2021
+    }
+  ]
+}

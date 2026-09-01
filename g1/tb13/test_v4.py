@@ -156,3 +156,80 @@ def test_round0_refuses_without_a_passing_power_gate(tmp_path, monkeypatch):
     monkeypatch.setattr(r4, "HERE", str(tmp_path))
     with pytest.raises(RuntimeError, match="power gate"):
         r4._provenance(os.path.abspath(os.path.join(HERE, "..", "..")))
+
+
+# ── zero-emissions preflight and round 1-v4 ─────────────────────────────────
+
+import causal_blinds as cbl                      # noqa: E402
+import round1_v4 as r1v4                         # noqa: E402
+import zero_emission_v4 as z4                    # noqa: E402
+from exact_oracle import validate_assignment     # noqa: E402
+
+
+def _cohort_dir():
+    return os.path.join(HERE, "round0_v4_out")
+
+
+def _cells(k=None):
+    cohort, _i = z4.load_cohort(_cohort_dir())
+    cells = z4.cohort_cells(cohort)
+    return cells if k is None else cells[:k]
+
+
+def test_cohort_v4_digest_and_manifest_agree():
+    _c, integrity = z4.load_cohort(_cohort_dir())
+    assert integrity["cohort_sha_matches"] and integrity["manifest_sha_matches"]
+
+
+def test_cohort_v4_is_1728_unique_cells():
+    cells = _cells()
+    assert len(cells) == 1728
+    assert len({c["cell_id"] for c in cells}) == 1728
+
+
+def test_preflight_v4_never_re_enumerates():
+    src = open(os.path.join(HERE, "zero_emission_v4.py")).read()
+    for banned in ("physical_keys(", "select_cohort(", "build_block("):
+        assert banned not in src, banned
+
+
+def test_preflight_v4_guarded_sources_are_blind():
+    for name in z4.GUARDED_SOURCES:
+        assert z4._scan_source(name) == [], name
+
+
+def test_scenario_v4_carries_the_registered_site():
+    sc, prov = r1v4.build_scenario(_cells(1)[0])
+    assert sc.cap.tolist() == [64, 64, 64]
+    assert sc.dyn == c4.DYN_W_PER_PE
+    assert sc.static.tolist() == [51.4, 51.4, 51.4]
+    assert prov["pes_share"] in (0.125, 0.25, 0.5)
+
+
+def test_scenario_v4_power_matches_the_registered_curve():
+    """A site running 32 of its 64 PEs draws the sentinel's midpoint."""
+    sc, _p = r1v4.build_scenario(_cells(1)[0])
+    assert sc.static[0] + 32 * sc.dyn == pytest.approx(132.7, abs=1e-9)
+    assert sc.static[0] + 64 * sc.dyn == pytest.approx(214.0, abs=1e-9)
+
+
+def test_every_arm_reports_a_valid_schedule_or_none():
+    for cell in _cells(2):
+        row = r1v4._blinds_one(cell)
+        assert set(row["carbon"]) == set(cbl.BLINDS)
+        for name, c in row["carbon"].items():
+            assert (c is None) == (not row["valid"][name])
+
+
+def test_reservation_arm_is_contract_safe_on_the_64_pe_site():
+    for cell in _cells(3):
+        sc, prov = r1v4.build_scenario(cell)
+        c, a = cbl.BLINDS["reservation_edf_blind"](sc, prov["clim_residual_green"])
+        assert c is not None
+        ok, why = validate_assignment(sc, a, budget=sc.B)
+        assert ok, why
+
+
+def test_phase_b_v4_refuses_without_a_freeze_artifact(tmp_path):
+    with pytest.raises(RuntimeError, match="Phase A"):
+        r1v4.main(phase="b", out_dir=str(tmp_path))
