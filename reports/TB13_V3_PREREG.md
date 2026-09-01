@@ -113,3 +113,80 @@ n_jobs 取偶数以使"一半 6 行、一半 12 行"精确成立:`{8, 10, 12}`�
 
 v1 的 `STOP_NO_VALID_BLIND`、v2 的 `STOP_GENERATOR_EXHAUSTED` 及其全部产物与诊断永久保留。
 v3 的结果不得回溯解释前两轮,前两轮的数字亦不得替代 v3 的判决。
+
+---
+
+# Addendum B(append-only)—— 2026-09-01,规模上限与四项冻结
+
+本节只增不改。上文与本节冲突处以本节为准。
+
+## B.0 v3 的最坏规模(机械核实)
+
+    Round 0 物理单元
+      3 pes × 4 concurrency × 2 turbines/site × 5 divisor × 3 horizon
+      × 6 triplet × 6 season                                    = 12,960
+    Round 0 展开上限
+      72 layers × 2 anchors × 3 divisor 邻域                     =    432
+    Round 1 最坏
+      432 × 最多 9 个相容 (n_jobs, wait_cap) × 4 budget          = 15,552
+
+主文沿用的"1,728 上限"**漏乘了 n_jobs × wait_cap**,不得再用;且 horizon 上限已由 48 涨到 144,
+直接全跑会超出机时预算。
+
+## B.1 零时区是场景语义,不是实现细节
+
+> TB13-v3 的三个 DC 注册为**共享天气时钟**,`shift_map = {0:0, 1:0, 2:0}`。
+> 最终仿真器配置必须同样为零,并由接线哨兵验证。
+> 将来若加入地理时差,视为**新场景**,必须重跑全部阶梯。
+
+## B.2 分区到达算法(写死)
+
+    lo_i = floor(i·S / n)
+    hi_i = floor((i+1)·S / n)
+    arrival_i ∈ [lo_i, hi_i)                     i = 0 … n−1
+
+arrival 与 runtime 置换使用**域分离 seed**,以免代码调用顺序改变负载:
+
+    seed_arrival  = sha256(payload + ":arrival:"  + str(k))[:8]  % 2**31
+    seed_runtime  = sha256(payload + ":runtime:" + str(k))[:8]  % 2**31
+
+`payload` 为 v2 Addendum A.1 的 canonical JSON。两条流互不影响。
+
+## B.3 数据完整性门
+
+    全部 DISCOVERY 涡轮的 2021 文件行数必须均等于 52,559
+      已核实:24 个涡轮,唯一行数 {52559}
+    六个窗口 × 三个 horizon 的真实切片必须逐文件不越界
+    v3 workload key 上限 = 3 pes × 89 相容组合 = 267
+      【不再断言 99】;正式数量按 Round 0 之后的 cohort 对 key 的投影机械计算
+
+## B.4 Phase A / B 的机时 cohort(冻结)
+
+保持旧预算 **1,728 cells**,但以**完整 block** 为抽样单位:
+
+    一个 block = 同一 anchor + 同一 (n_jobs, wait_cap)
+                 × 3 个 divisor 邻域 × 4 个 budget
+               = 12 cells
+
+    最多选择 144 个 block,即 144 × 12 = 1,728 cells
+
+选择规则:
+
+    只在 Round 0 通过的 anchor 上构造
+    按 72 个 layer 轮转,保证层覆盖
+    层内按 canonical block SHA 排序
+    不拆 divisor 邻域,不拆四个 budget
+    不读取绿电数值、盲臂碳或 EVPI
+    少于 144 个 block 时全部使用
+    零碳 preflight、Phase A、Phase B 使用【完全相同】的冻结 cohort
+
+如此既保住完整的 3 load × 4 budget 邻域,又把最坏机时锁回 1,728 格。
+
+## B.5 执行顺序(冻结)
+
+    v3 轴 / 窗口门
+    → Round 0-v3
+    → 冻结最多 144 个完整 block
+    → 零碳 preflight
+    → Phase A
+    → Phase B
