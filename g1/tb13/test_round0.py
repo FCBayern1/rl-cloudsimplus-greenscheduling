@@ -133,12 +133,12 @@ def test_neighbourhoods_are_three_consecutive_divisors():
         assert d in nb
 
 
-def test_anchor_selection_takes_the_four_smallest_hashes_per_layer(keys):
+def test_anchor_selection_takes_the_smallest_hashes_per_layer(keys):
     subset = [k for k in keys if k["triplet_index"] < 2 and k["season_index"] < 2]
     chosen, empty = r0.select_anchors(subset)
     layers = {(k["triplet_index"], k["season_index"], k["turbines_per_site"])
               for k in subset}
-    assert len(chosen) == 4 * len(layers)
+    assert len(chosen) == r0.ANCHORS_PER_LAYER * len(layers)
     for lid in layers:
         mine = sorted([k for k in subset
                        if (k["triplet_index"], k["season_index"],
@@ -146,7 +146,8 @@ def test_anchor_selection_takes_the_four_smallest_hashes_per_layer(keys):
         got = [k for k in chosen
                if (k["triplet_index"], k["season_index"],
                    k["turbines_per_site"]) == lid]
-        assert [r0.anchor_sha(k) for k in got] == [r0.anchor_sha(k) for k in mine[:4]]
+        assert ([r0.anchor_sha(k) for k in got]
+                == [r0.anchor_sha(k) for k in mine[:r0.ANCHORS_PER_LAYER]])
 
 
 def test_the_layer_design_is_seventy_two_not_thirty_six():
