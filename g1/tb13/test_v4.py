@@ -233,3 +233,15 @@ def test_reservation_arm_is_contract_safe_on_the_64_pe_site():
 def test_phase_b_v4_refuses_without_a_freeze_artifact(tmp_path):
     with pytest.raises(RuntimeError, match="Phase A"):
         r1v4.main(phase="b", out_dir=str(tmp_path))
+
+
+def test_reservation_arm_reads_capacity_from_the_scenario():
+    """A 64-PE scenario must not be scheduled against the module's 16-PE default."""
+    cell = next(c for c in _cells() if c["physical"]["pes_per_job"] == 32)
+    sc, prov = r1v4.build_scenario(cell)
+    c, a = cbl.BLINDS["reservation_edf_blind"](sc, prov["clim_residual_green"])
+    assert c is not None, "a 32-PE job fits a 64-PE site"
+    for _i, (d, s) in a.items():
+        assert 0 <= d < 3
+    ok, why = validate_assignment(sc, a, budget=sc.B)
+    assert ok, why

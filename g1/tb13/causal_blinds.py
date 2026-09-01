@@ -192,9 +192,14 @@ def reservation_edf_blind(sc: Scenario, diagnose=False):
     """
     import schedule_feasibility as sf
 
+    caps = set(int(c) for c in sc.cap)
+    if len(caps) != 1:
+        raise ValueError(f"the reservation arm assumes one site capacity, got {caps}")
     w = {"arrival": sc.a, "runtime": sc.r, "pes": sc.p, "deadline": sc.dl,
          "horizon": sc.T, "wait_cap": sc.wmax}
-    assign, _spent = sf.reservation_edf(w, sc.B)
+    # The capacity has to come from the scenario: taking the module default scheduled a
+    # 64-PE site as if it held 16 PEs and disqualified the arm on 753 of 1,728 v4 cells.
+    assign, _spent = sf.reservation_edf(w, sc.B, cap=caps.pop())
     if assign is None or len(assign) != sc.n:
         return _out(None, None, diagnose, "reservation_edf_found_no_schedule",
                     sc.T, None, sc.n)
