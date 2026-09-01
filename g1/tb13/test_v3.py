@@ -268,3 +268,81 @@ def test_cell_maps_to_a_registered_workload_key():
 def test_guarded_sources_carry_no_banned_token():
     for name in z3.GUARDED_SOURCES:
         assert z3._scan_source(name) == [], name
+
+
+# ── round 1-v3 ──────────────────────────────────────────────────────────────
+
+import causal_blinds as cbl                     # noqa: E402
+import round1_v3 as r1v3                        # noqa: E402
+from exact_oracle import validate_assignment    # noqa: E402
+
+
+def _first_cells(k=3):
+    cohort, _i = z3.load_cohort(_cohort_dir())
+    return z3.cohort_cells(cohort)[:k]
+
+
+def test_reservation_edf_arm_is_registered_and_contract_safe():
+    assert "reservation_edf_blind" in cbl.BLINDS
+    for cell in _first_cells(3):
+        sc, prov = r1v3.build_scenario(cell)
+        c, a = cbl.BLINDS["reservation_edf_blind"](sc, prov["clim_residual_green"])
+        assert c is not None
+        ok, why = validate_assignment(sc, a, budget=sc.B)
+        assert ok, why
+
+
+def test_build_scenario_is_deterministic_and_uses_the_cohort_budget():
+    cell = _first_cells(1)[0]
+    a, pa = r1v3.build_scenario(cell)
+    b, _pb = r1v3.build_scenario(cell)
+    assert np.array_equal(a.a, b.a) and np.array_equal(a.r, b.r)
+    assert a.B == b.B == pa["budget_rows"]
+    wl = w3.accepted(z3.key_of(cell))["workload"]
+    assert a.B == w3.budget_for(wl, cell["budget_fraction"])
+
+
+def test_scenario_window_matches_the_frozen_offset():
+    cell = _first_cells(1)[0]
+    sc, _p = r1v3.build_scenario(cell)
+    p = cell["physical"]
+    assert sc.T == p["horizon"]
+    expected = ig._series(int(p["triplet"][0][0]), 2021)[
+        p["season_offset"]:p["season_offset"] + p["horizon"]] * 1000.0 / p["installed_divisor"]
+    assert np.allclose(sc.green[0], expected)
+
+
+def test_phase_b_refuses_without_a_freeze_artifact(tmp_path):
+    with pytest.raises(RuntimeError, match="Phase A"):
+        r1v3.main(phase="b", out_dir=str(tmp_path))
+
+
+def test_preflight_refuses_a_failed_zero_emissions_verdict(tmp_path):
+    import shutil
+    z = tmp_path / "zero"
+    z.mkdir()
+    s = json.load(open(os.path.join(HERE, "zero_emission_v3_out",
+                                    "zero_emission_v3_summary.json")))
+    s["verdict"] = "STOP"
+    (z / "zero_emission_v3_summary.json").write_text(json.dumps(s))
+    with pytest.raises(RuntimeError, match="not PASS"):
+        r1v3.preflight(_cohort_dir(), str(z))
+
+
+def test_preflight_refuses_a_cohort_the_preflight_did_not_see(tmp_path):
+    z = tmp_path / "zero"
+    z.mkdir()
+    s = json.load(open(os.path.join(HERE, "zero_emission_v3_out",
+                                    "zero_emission_v3_summary.json")))
+    s["cohort_integrity"]["cohort_sha_recorded"] = "0" * 24
+    (z / "zero_emission_v3_summary.json").write_text(json.dumps(s))
+    with pytest.raises(RuntimeError, match="different cohort"):
+        r1v3.preflight(_cohort_dir(), str(z))
+
+
+def test_every_arm_produces_a_valid_schedule_or_reports_none():
+    for cell in _first_cells(2):
+        row = r1v3._blinds_one(cell)
+        assert set(row["carbon"]) == set(cbl.BLINDS)
+        for name, c in row["carbon"].items():
+            assert (c is None) == (not row["valid"][name])

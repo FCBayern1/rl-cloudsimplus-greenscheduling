@@ -183,11 +183,30 @@ def reactive_wait(sc: Scenario, diagnose=False):
     return _run(sc, decide, diagnose=diagnose)
 
 
+def reservation_edf_blind(sc: Scenario, diagnose=False):
+    """Earliest-deadline-first with irrevocable reservations, registered in v2 section 5.
+
+    The policy is the one `schedule_feasibility.reservation_edf` implements, whose source
+    may not read a weather or an emissions field at all. It is in the candidate set to
+    guarantee at least one contract-safe member, and it wins only if pooled carbon says so.
+    """
+    import schedule_feasibility as sf
+
+    w = {"arrival": sc.a, "runtime": sc.r, "pes": sc.p, "deadline": sc.dl,
+         "horizon": sc.T, "wait_cap": sc.wmax}
+    assign, _spent = sf.reservation_edf(w, sc.B)
+    if assign is None or len(assign) != sc.n:
+        return _out(None, None, diagnose, "reservation_edf_found_no_schedule",
+                    sc.T, None, sc.n)
+    return _out(sc.carbon_of(assign), assign, diagnose, None, None, None, 0)
+
+
 BLINDS = {
     "immediate_current_only": lambda sc, clim, **kw: immediate_current_only(sc, **kw),
     "persistence": lambda sc, clim, **kw: persistence(sc, **kw),
     "climatology": lambda sc, clim, **kw: climatology(sc, clim, **kw),
     "reactive_wait": lambda sc, clim, **kw: reactive_wait(sc, **kw),
+    "reservation_edf_blind": lambda sc, clim, **kw: reservation_edf_blind(sc, **kw),
 }
 
 
