@@ -127,3 +127,48 @@ v3 的 1,728 个已解格在可移动碳口径下 EVPI 中位 29.05%、p75 51.81
     → Phase B exact 模型与 EVPI
 
 产物目录独立:`round0_v4_out/`、`zero_emission_v4_out/`、`round1_v4_out/`,不覆盖 v1/v2/v3。
+
+## Addendum A:RS500A 空载功率常数的精确派生(append-only)
+
+本 addendum 写在**任何 v4 碳结果产生之前**,commit 与哨兵产物可核。这不是按结果调功率常数。
+
+官方 SPECpower_ssj2008 记录的原始测量值是
+
+    idle  51.4 W
+    peak  214 W
+    来源  https://www.spec.org/power_ssj2008/results/res2020q1/power_ssj2008-20191125-01011.html
+          (ASUSTeK RS500A-E10-PS4, AMD EPYC 7742, 提交号 20191125-01011)
+
+`HostProfile.SPEC_ASUS_RS500A()` 存的 `24.0` 是 `51.4 / 214` 四舍五入后的**派生值**,
+按它回算得 51.36 W,与原始记录差 0.04 W。修正为由原始值精确派生:
+
+    staticPowerPercent = 100 * 51.4 / 214 = 24.018691588785046
+
+修正后
+
+    getIdlePowerW()        51.4 W
+    50% 利用率             132.7 W
+    满载                   214.0 W
+
+判据不放宽。§7 的"实测与 51.4 / 132.7 / 214 W 一致"保持字面相等,代码测试里只允许
+`1e-9 W` 的浮点表示容差,这是数值表示容差,不是 ±0.05 W 的判据容差。
+
+只修 RS500A 一个常数。其余 profile 的同类舍入问题另开审计,不在本轮顺手改。
+
+## Addendum B:功率硬门的两层结构(append-only)
+
+§7 的哨兵必须同时通过两层,缺一即 STOP:
+
+    第一层  构造路径测试
+            经 DatacenterSetup 的建主机路径拿到的 PowerModelHostSimple
+            在 0 / 32 / 64 个繁忙 PE 上给出 51.4 / 132.7 / 214.0 W
+
+    第二层  真实仿真微测
+            在真实 CloudSimPlus 仿真里实际跑出 0 / 32 / 64 个繁忙 PE
+            由能量增量除以时间反算平均功率,而不是直接调用功率模型函数
+            同时确认  2 x 32-PE VM,合计 64 PE
+                      cloudlet utilization 确为 1.0
+                      idle_host_power_down 确为 false
+                      32 PE 与 64 PE 阶段确实形成稳定利用率平台
+
+两层全过后冻结:source commit、jar SHA、配置 SHA、哨兵原始输出,然后才进入 Round 0-v4。

@@ -20,13 +20,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * straight through gives an RS500A a 24 W idle floor instead of its SPEC 51.4 W.
  *
  * TB13-v4 registers the RS500A curve as 51.4 / 132.7 / 214.0 W at 0 / 32 / 64 busy PEs of
- * 64. The profile stores idle as 24.0% of 214 W, which is 51.36 W, so the wired curve is
- * 51.36 / 132.68 / 214.00. These tests assert the profile-derived curve; whether the
- * registered values should be met exactly is a question for the sentinel, not for here.
+ * 64, and the profile now derives its percentage from the SPEC idle and peak watts rather
+ * than from a rounded 24.0, so the wired curve meets those values exactly. This is the
+ * first of the two layers the power gate requires: the construction path. The second layer
+ * runs a real simulation and is in PowerSentinelTest.
  */
 public class HostPowerWiringTest {
 
-    private static final double EPS = 1e-6;
+    /** Floating-point representation tolerance only, not a widening of the criterion. */
+    private static final double EPS = 1e-9;
     private static final double IDLE_W = 51.4;
     private static final double PEAK_W = 214.0;
     private static final int PES = 64;
@@ -48,12 +50,16 @@ public class HostPowerWiringTest {
     }
 
     @Test
-    public void idlePowerIsTheProfileIdleNotThePercentage() {
+    public void profileIdleIsTheSpecIdleWatts() {
+        assertEquals(IDLE_W, HostProfile.SPEC_ASUS_RS500A().getIdlePowerW(), EPS,
+                "the percentage is derived from SPEC idle 51.4 W over peak 214 W");
+    }
+
+    @Test
+    public void idlePowerIsTheSpecIdleNotThePercentage() {
         Host h = rs500a();
-        double idle = HostProfile.SPEC_ASUS_RS500A().getIdlePowerW();
-        assertEquals(51.36, idle, EPS, "24.0% of 214 W is 51.36 W");
-        assertEquals(idle, h.getPowerModel().getPower(0.0), EPS,
-                "an idle RS500A draws its idle watts, not its idle percentage");
+        assertEquals(IDLE_W, h.getPowerModel().getPower(0.0), EPS,
+                "an idle RS500A draws its SPEC idle power, not its idle percentage");
         // The wiring defect this test was written for: the percentage went through as
         // watts, so the floor was 24 W.
         assertTrue(h.getPowerModel().getPower(0.0) > 50.0,
@@ -61,13 +67,12 @@ public class HostPowerWiringTest {
     }
 
     @Test
-    public void halfTheCoresBusyDrawsTheMidpointOfTheProfileCurve() {
+    public void halfTheCoresBusyDrawsTheRegisteredMidpoint() {
         Host h = rs500a();
-        double idle = HostProfile.SPEC_ASUS_RS500A().getIdlePowerW();
-        double expected = idle + 32 * (PEAK_W - idle) / PES;
-        assertEquals(132.68, expected, EPS, "the midpoint follows from the profile");
+        double expected = IDLE_W + 32 * (PEAK_W - IDLE_W) / PES;
+        assertEquals(132.7, expected, EPS, "the registered midpoint is arithmetic");
         assertEquals(expected, h.getPowerModel().getPower(32.0 / PES), EPS,
-                "32 of 64 busy PEs draw the midpoint of the profile curve");
+                "32 of 64 busy PEs draw the registered midpoint");
     }
 
     @Test

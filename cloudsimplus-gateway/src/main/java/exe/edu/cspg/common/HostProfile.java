@@ -180,7 +180,10 @@ public class HostProfile {
             25000,      // 25 Gbps
             1000000,    // 1 TB storage
             214,        // 214W peak power (SPEC)
-            24.0        // 51.4W idle / 214W = 24.0%
+            // SPECpower_ssj2008 20191125-01011 records idle 51.4 W and peak 214 W. The
+            // stored percentage is derived from those two, not the other way round: the
+            // rounded 24.0 gives back 51.36 W, so the exact ratio is kept instead.
+            100.0 * 51.4 / 214.0    // = 24.018691588785046% -> idle 51.4 W
         );
     }
 
