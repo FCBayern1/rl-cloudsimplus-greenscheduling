@@ -1,0 +1,42 @@
+{
+  "all_gates_pass": true,
+  "blocks": 144,
+  "breaching_cell_count": 0,
+  "breaching_cells": [],
+  "cells": 1728,
+  "cohort_commit": "bb6e119a53c721834eedcc25497910683d41a2e8",
+  "cohort_integrity": {
+    "cohort_sha_derived": "241764512eb5c658591f3a46",
+    "cohort_sha_matches": true,
+    "cohort_sha_recorded": "241764512eb5c658591f3a46",
+    "manifest_sha_matches": true
+  },
+  "distinct_content_hashes": 114,
+  "gates": {
+    "all_workloads_accepted": true,
+    "blocks_is_144": true,
+    "cells_is_1728": true,
+    "cohort_digest_intact": true,
+    "confirmation_turbines_untouched": true,
+    "content_hash_consistent_across_budget_and_weather": true,
+    "every_block_has_twelve_cells": true,
+    "guarded_sources_committed": true,
+    "no_duplicate_cell": true,
+    "reservation_meets_every_cell": true,
+    "sources_cannot_read_weather_or_ledger": true
+  },
+  "grid_hash_v3": "44523847c3b7ee8d",
+  "inconsistent_keys": {},
+  "rejected_keys": [],
+  "retry_histogram": {
+    "0": 114
+  },
+  "source_violations": {},
+  "unique_keys": 114,
+  "verdict": "PASS",
+  "wait_spent_histogram": {
+    "0": 1704,
+    "2": 24
+  },
+  "wall_seconds": 4.41
+}
