@@ -252,7 +252,9 @@ def test_reservation_arm_reads_capacity_from_the_scenario():
 import round1_v4_verdict as v4v                  # noqa: E402
 
 
-def _fake_rows(n_blocks=3, advancing_blocks=(), unresolved=0):
+def _fake_rows(n_blocks=144, advancing_blocks=(), unresolved=0):
+    # item 1 requires exactly 144 x 12 = 1,728 rows, so the fixture builds the
+    # full cohort shape and the tests vary only which blocks advance.
     rows, cohort = [], []
     for b in range(n_blocks):
         sha = f"block{b:02d}"
@@ -274,14 +276,14 @@ def _fake_rows(n_blocks=3, advancing_blocks=(), unresolved=0):
 
 
 def test_verdict_stops_without_a_complete_block():
-    rows, cohort = _fake_rows(3, advancing_blocks=())
+    rows, cohort = _fake_rows(advancing_blocks=())
     v = v4v.read_verdict(rows, cohort)
     assert v["verdict"] == "STOP_EVPI_GATE_NOT_MET"
     assert v["representative_block"] is None
 
 
 def test_verdict_passes_with_one_complete_block_and_freezes_by_sha():
-    rows, cohort = _fake_rows(4, advancing_blocks=(2, 1))
+    rows, cohort = _fake_rows(advancing_blocks=(2, 1))
     v = v4v.read_verdict(rows, cohort)
     assert v["verdict"] == "PASS_V4_SCENARIO_GATE"
     assert v["item5_complete_block"]["blocks_fully_advancing"] == 2
@@ -290,7 +292,7 @@ def test_verdict_passes_with_one_complete_block_and_freezes_by_sha():
 
 
 def test_an_unresolved_cell_breaks_its_block():
-    rows, cohort = _fake_rows(2, advancing_blocks=(0,), unresolved=1)
+    rows, cohort = _fake_rows(advancing_blocks=(0,), unresolved=1)
     v = v4v.read_verdict(rows, cohort)
     assert v["item2_optimal_unresolved"]["unresolved"] == 1
     assert v["verdict"] == "STOP_EVPI_GATE_NOT_MET", \
@@ -298,7 +300,7 @@ def test_an_unresolved_cell_breaks_its_block():
 
 
 def test_rows_must_match_the_cohort_exactly():
-    rows, cohort = _fake_rows(2, advancing_blocks=(0,))
+    rows, cohort = _fake_rows(advancing_blocks=(0,))
     v = v4v.read_verdict(rows[:-1], cohort)
     assert v["verdict"] == "INVALID_ROWS_DO_NOT_MATCH_COHORT"
 
