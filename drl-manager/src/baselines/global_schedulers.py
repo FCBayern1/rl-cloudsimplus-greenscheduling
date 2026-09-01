@@ -2130,6 +2130,51 @@ class NoWaitPlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
     ALLOW_DEFER = False
 
 
+class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """The oracle144 arm with its eyes degraded by a registered corruption tier.
+
+    Same planner, same ledgers, same tail, same carbon model as the whole family; the
+    only change is that the next HORIZON_STEPS rows of the green view pass through the
+    frozen perturbation ladder in `forecast_perturb`. The gap to `oracle144_planner` is
+    therefore the cost of that quality loss and nothing else, and the curve over tiers is
+    the dose-response of forecast value in this scenario. Settlement always uses the true
+    trace; only the planning view is corrupted.
+
+    Tier comes from PLANNER_PERTURB_TIER (default godeye, which must equal oracle144
+    bit for bit). Tier timecap_cal additionally needs PLANNER_PERTURB_CAL pointing at the
+    calibration artifact measured on the existing TimeCAP checkpoint's residuals.
+    """
+
+    INFO_SOURCE = "curve_horizon_perturbed"
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        from . import forecast_perturb as _fp
+        self._fp = _fp
+        self.perturb_tier = os.environ.get("PLANNER_PERTURB_TIER", "godeye")
+        if self.perturb_tier not in _fp.TIERS:
+            raise ValueError(f"unknown perturb tier {self.perturb_tier!r}; "
+                             f"registered: {sorted(_fp.TIERS)}")
+        cal_path = os.environ.get("PLANNER_PERTURB_CAL", "")
+        self.perturb_calibration = _fp.load_calibration(cal_path) if cal_path else None
+        if self.perturb_tier == "timecap_cal" and self.perturb_calibration is None:
+            raise ValueError("tier timecap_cal needs PLANNER_PERTURB_CAL")
+
+    def _green_view(self, d):
+        if self.info_source != "curve_horizon_perturbed":
+            return super()._green_view(d)
+        # Measured past, corrupted forecast window, then the frozen causal tail every arm
+        # in the family shares, exactly as curve_horizon splices its perfect window.
+        view = np.empty(self.T, dtype=np.float64)
+        view[:self.t] = self.G[d, :self.t]
+        edge = min(self.T, self.t + self.HORIZON_STEPS)
+        view[self.t:edge] = self._fp.perturbed_future(
+            self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
+            self.perturb_calibration)[:edge - self.t]
+        view[edge:] = self._tail_level(d)
+        return view
+
+
 class AlwaysDeferGlobalScheduler(GlobalScheduler):
     """Defers every slot, so the deadline backstop becomes the only thing that routes.
 
@@ -2231,6 +2276,7 @@ GLOBAL_SCHEDULERS = {
     'always_defer': AlwaysDeferGlobalScheduler,
     'curve_planner': CurveInformedPlannerGlobalScheduler,
     'oracle144_planner': HorizonLimitedOraclePlannerGlobalScheduler,
+    'perturbed_oracle_planner': PerturbedOraclePlannerGlobalScheduler,
     'persistence_planner': PersistencePlannerGlobalScheduler,
     'climatology_planner': ClimatologyPlannerGlobalScheduler,
     'reactive_wait_planner': ReactiveWaitPlannerGlobalScheduler,
