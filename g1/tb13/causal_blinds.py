@@ -21,6 +21,18 @@ import numpy as np
 from exact_oracle import EPOCH_HOURS, Scenario
 
 
+def _out(carbon, assign, diagnose, reason, at_t, job, n_pending):
+    """Uniform return. Without `diagnose` the pair is exactly what it always was.
+
+    The diagnostic channel tells a scenario that was never schedulable apart from a blind
+    that was simply too weak. It never touches carbon.
+    """
+    if not diagnose:
+        return carbon, assign
+    return carbon, assign, {"reason": reason, "at_epoch": at_t, "job": job,
+                            "pending_at_failure": n_pending}
+
+
 def _residual(sc: Scenario, load, d, t):
     """Green left at site d and epoch t after everything already placed there."""
     return max(0.0, sc.green[d, t] - load[d, t])
@@ -35,7 +47,7 @@ def _instant_rate(sc: Scenario, load, d, t, draw):
     return sc.cb[d] * d_brown + sc.cg[d] * d_green
 
 
-def _run(sc: Scenario, decide, climatology=None):
+def _run(sc: Scenario, decide, climatology=None, diagnose=False):
     """Drive one policy forward. `decide(job, t, load, ctx, feasible, draw, must) -> site|None`.
 
     The delay budget is settled on the running total, not on each job at the moment it
@@ -78,7 +90,8 @@ def _run(sc: Scenario, decide, climatology=None):
 
             if not feasible:
                 if must:
-                    return None, None
+                    return _out(None, None, diagnose, "no_feasible_site_when_forced",
+                                t, i, len(pending))
                 continue
             site = decide(i, t, load, ctx, feasible, draw, must)
             if site is None:
@@ -90,20 +103,21 @@ def _run(sc: Scenario, decide, climatology=None):
         if not pending:
             break
     if pending:
-        return None, None
+        return _out(None, None, diagnose, "pending_at_horizon_end",
+                    sc.T, int(pending[0]), len(pending))
     if sum(s - int(sc.a[i]) for i, (_d, s) in assign.items()) > sc.B:
-        return None, None            # the contract was not honoured, not a free schedule
-    return sc.carbon_of(assign), assign
+        return _out(None, None, diagnose, "budget_exceeded_at_end", sc.T, None, 0)
+    return _out(sc.carbon_of(assign), assign, diagnose, None, None, None, 0)
 
 
-def immediate_current_only(sc: Scenario):
+def immediate_current_only(sc: Scenario, diagnose=False):
     """Dispatch on arrival, ranking sites by the carbon rate visible at this instant."""
     def decide(i, t, load, ctx, feasible, draw, must):
         return min(feasible, key=lambda d: (_instant_rate(sc, load, d, t, draw), d))
-    return _run(sc, decide)
+    return _run(sc, decide, diagnose=diagnose)
 
 
-def persistence(sc: Scenario):
+def persistence(sc: Scenario, diagnose=False):
     """Assume the wind stays at what it reads now, and plan against that flat future.
 
     Under a flat future every start is priced alike, so waiting can never help and this
@@ -117,10 +131,10 @@ def persistence(sc: Scenario):
             return now_best
         # Under persistence the future looks exactly like now, so waiting can never help.
         return now_best
-    return _run(sc, decide)
+    return _run(sc, decide, diagnose=diagnose)
 
 
-def climatology(sc: Scenario, clim_residual_green):
+def climatology(sc: Scenario, clim_residual_green, diagnose=False):
     """Believe the wind returns to a level calibrated strictly before the window.
 
     The level passed in is RESIDUAL green, with the site's static draw already removed by
@@ -140,10 +154,10 @@ def climatology(sc: Scenario, clim_residual_green):
                         + sc.cg[d] * min(draw, max(0.0, clim[d]))
                         for d in range(sc.n_dc))
         return None if best_clim < rate_now - 1e-12 else now
-    return _run(sc, decide, climatology=clim)
+    return _run(sc, decide, climatology=clim, diagnose=diagnose)
 
 
-def reactive_wait(sc: Scenario):
+def reactive_wait(sc: Scenario, diagnose=False):
     """Go when the green already on the meter covers the job, otherwise wait."""
     def decide(i, t, load, ctx, feasible, draw, must):
         covered = [d for d in feasible if _residual(sc, load, d, t) >= draw - 1e-12]
@@ -152,14 +166,14 @@ def reactive_wait(sc: Scenario):
         if must:
             return min(feasible, key=lambda d: (_instant_rate(sc, load, d, t, draw), d))
         return None
-    return _run(sc, decide)
+    return _run(sc, decide, diagnose=diagnose)
 
 
 BLINDS = {
-    "immediate_current_only": lambda sc, clim: immediate_current_only(sc),
-    "persistence": lambda sc, clim: persistence(sc),
-    "climatology": lambda sc, clim: climatology(sc, clim),
-    "reactive_wait": lambda sc, clim: reactive_wait(sc),
+    "immediate_current_only": lambda sc, clim, **kw: immediate_current_only(sc, **kw),
+    "persistence": lambda sc, clim, **kw: persistence(sc, **kw),
+    "climatology": lambda sc, clim, **kw: climatology(sc, clim, **kw),
+    "reactive_wait": lambda sc, clim, **kw: reactive_wait(sc, **kw),
 }
 
 

@@ -173,3 +173,26 @@ def test_the_static_draw_is_removed_exactly_once():
     raw = ig._climatology([[2]], off, div, np.array([0.0]), 2021)[0]
     with_static = ig._climatology([[2]], off, div, np.array([30.0]), 2021)[0]
     assert with_static == pytest.approx(max(raw - 30.0, 0.0), rel=1e-9)
+
+
+def test_the_diagnostic_channel_does_not_change_any_result():
+    """Adding diagnose must leave carbon and assignment bit-identical."""
+    rng = np.random.default_rng(11)
+    for _ in range(8):
+        T = 20
+        green = np.stack([STATIC + rng.uniform(0, 400, T) for _ in range(2)])
+        n = 4
+        sc = mk(green, rng.integers(0, 6, n), [3] * n, [8] * n, [T] * n, [16, 16],
+                wmax=6, budget=10)
+        for name, fn in BLINDS.items():
+            plain = fn(sc, [STATIC + 50.0] * 2)
+            withdiag = fn(sc, [STATIC + 50.0] * 2, diagnose=True)
+            assert withdiag[0] == plain[0], f"{name} carbon changed"
+            assert withdiag[1] == plain[1], f"{name} assignment changed"
+            assert isinstance(withdiag[2], dict)
+            if plain[0] is None:
+                assert withdiag[2]["reason"] in (
+                    "no_feasible_site_when_forced", "pending_at_horizon_end",
+                    "budget_exceeded_at_end")
+            else:
+                assert withdiag[2]["reason"] is None
