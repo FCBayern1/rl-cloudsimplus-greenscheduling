@@ -7,6 +7,7 @@ regenerated from the frozen axes and a seed.
 from __future__ import annotations
 
 import csv
+import functools
 import hashlib
 import os
 
@@ -53,9 +54,17 @@ BROWN_FACTORS = (0.30, 0.50, 0.70)
 GREEN_FACTORS = (0.02, 0.02, 0.02)
 
 
+@functools.lru_cache(maxsize=None)
 def _series(turbine, year):
+    """One turbine-year, parsed once. Callers must treat the array as read only.
+
+    Round 0 visits 8,640 physical units over a handful of turbines; re-parsing a 52,559
+    row CSV each time would dominate the run. Caching changes only the speed.
+    """
     with open(f"{WD}/Turbine_{turbine}_{year}.csv") as f:
-        return np.array([float(r["power_kw"] or 0.0) for r in csv.DictReader(f)])
+        a = np.array([float(r["power_kw"] or 0.0) for r in csv.DictReader(f)])
+    a.setflags(write=False)
+    return a
 
 
 def turbine_triples(pool, per_site, n_triples, seed=20260901):

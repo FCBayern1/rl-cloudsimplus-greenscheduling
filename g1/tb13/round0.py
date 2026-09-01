@@ -30,7 +30,10 @@ CORR_BAND = (0.70, 0.95)          # positive correlation only, never an absolute
 BEST_DC_CHANGE_MIN = 0.10
 N_TRIPLETS = 6
 N_SEASONS = 6
-ANCHORS_PER_LAYER = 4
+# A layer is one (turbines_per_site, triplet, season). Both turbine counts produce their
+# own six triplets, so there are 2 x 6 x 6 = 72 layers, not 36. Two anchors each keeps the
+# budget at 72 x 2 x 3 divisors x 4 budgets = 1,728 seed-0 instances.
+ANCHORS_PER_LAYER = 2
 
 
 def discovery_pool():
@@ -160,17 +163,151 @@ def neighbourhood(div):
     return order[i - 1:i + 2]
 
 
+def expected_layers():
+    """Every layer the design promises, whether or not anything survives in it."""
+    return [(tps, ti, si) for tps in ig.TURBINES_PER_SITE
+            for ti in range(N_TRIPLETS) for si in range(N_SEASONS)]
+
+
+def layer_of(key):
+    return (key["turbines_per_site"], key["triplet_index"], key["season_index"])
+
+
 def select_anchors(passing):
-    """Four smallest hashes per triplet-season layer, among physical-gate passers."""
-    layers = {}
+    """Smallest hashes per layer. Layers with no survivor are reported, not skipped.
+
+    Enumerating only the layers that happen to contain a passer would make an empty layer
+    invisible, which is exactly the case the protocol asks to record.
+    """
+    by_layer = {lid: [] for lid in expected_layers()}
     for k in passing:
-        layers.setdefault((k["triplet_index"], k["season_index"], k["turbines_per_site"]),
-                          []).append(k)
+        by_layer[layer_of(k)].append(k)
     chosen, empty = [], []
-    for lid in sorted(layers):
-        ranked = sorted(layers[lid], key=lambda k: anchor_sha(k))
+    for lid in expected_layers():
+        ranked = sorted(by_layer[lid], key=anchor_sha)
         if not ranked:
             empty.append(lid)
             continue
         chosen.extend(ranked[:ANCHORS_PER_LAYER])
     return chosen, empty
+
+
+# ── executable entry point ───────────────────────────────────────────────────
+
+def _sha_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _atomic_write(path, text):
+    """Write through a temporary file so a half-finished run is never mistaken for output."""
+    tmp = path + ".partial"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+TRACKED = ("g1/tb13/round0.py", "g1/tb13/instance_gen.py",
+           "g1/tb13/data_split.txt", "reports/TB13_SCREEN_PREREG.md")
+
+
+def _provenance(repo):
+    """Refuse to run from a dirty tree, and record exactly what was executed.
+
+    A screen run from uncommitted code cannot be reproduced from its own manifest: the
+    first attempt recorded a commit whose round0.py had no entry point at all.
+    """
+    import subprocess
+    dirty = subprocess.check_output(
+        ["git", "-C", repo, "status", "--porcelain", "--"] + list(TRACKED),
+        text=True).strip()
+    if dirty:
+        raise RuntimeError(
+            "refusing to run Round 0 from a dirty tree; commit these first:\n" + dirty)
+    commit = subprocess.check_output(["git", "-C", repo, "rev-parse", "HEAD"],
+                                     text=True).strip()
+    return commit, {f: _sha_file(os.path.join(repo, f)) for f in TRACKED}
+
+
+def main(out_dir=None):
+    import collections
+    import time
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    out_dir = out_dir or os.path.join(here, "round0_out")
+    os.makedirs(out_dir, exist_ok=True)
+
+    t0 = time.time()
+    keys = round0_physical_keys()
+    assert len(keys) == 8640, f"expected 8,640 physical units, built {len(keys)}"
+
+    rows, passing = [], []
+    reasons = collections.Counter()
+    for k in keys:
+        m = physical_metrics(k)
+        ok, why = passes_physical_gate(m)
+        if ok:
+            passing.append(k)
+        else:
+            reasons[why.split(" ")[0] + " " + why.split(" ")[1] if " " in why else why] += 1
+        rows.append({"key": {kk: k[kk] for kk in
+                             ("pes_per_job", "concurrency", "turbines_per_site",
+                              "installed_divisor", "horizon", "triplet_index",
+                              "season_index", "triplet", "season_offset", "year")},
+                     "metrics": m, "pass": ok, "reason": why,
+                     "anchor_sha": anchor_sha(k)})
+
+    anchors, empty = select_anchors(passing)
+    expanded = {}
+    for a in anchors:
+        for div in neighbourhood(a["installed_divisor"]):
+            e = dict(a)
+            e["installed_divisor"] = div
+            expanded[anchor_sha(e)] = e          # union: an overlap is solved once
+
+    per_layer = collections.Counter(layer_of(k) for k in passing)
+    repo = os.path.abspath(os.path.join(here, "..", ".."))
+    commit, file_shas = _provenance(repo)
+
+    summary = {
+        "total_units": len(keys), "passed": len(passing),
+        "failed": len(keys) - len(passing),
+        "reject_reasons": dict(reasons),
+        "layers_expected": len(expected_layers()),
+        "layers_with_survivors": sum(1 for lid in expected_layers() if per_layer[lid]),
+        "empty_layers": [list(x) for x in empty],
+        "survivors_per_layer": {str(list(lid)): int(per_layer[lid])
+                                for lid in expected_layers()},
+        "anchors": len(anchors), "anchors_per_layer": ANCHORS_PER_LAYER,
+        "expanded_unique_instances": len(expanded),
+        "seed0_solve_cap": len(expected_layers()) * ANCHORS_PER_LAYER * 3
+                           * len(ig.BUDGET_FRACTION),
+        "grid_hash": ig.grid_hash(), "year": YEAR,
+        "corr_band": list(CORR_BAND), "best_dc_change_min": BEST_DC_CHANGE_MIN,
+        "commit": commit, "file_shas": file_shas,
+        "wall_seconds": round(time.time() - t0, 2),
+    }
+
+    _atomic_write(os.path.join(out_dir, "round0_all.jsonl"),
+                  "\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
+    _atomic_write(os.path.join(out_dir, "round0_anchors.json"),
+                  json.dumps({"anchors": anchors,
+                              "expanded": list(expanded.values())},
+                             sort_keys=True, indent=2))
+    _atomic_write(os.path.join(out_dir, "round0_summary.json"),
+                  json.dumps(summary, sort_keys=True, indent=2))
+    manifest = {name: _sha_file(os.path.join(out_dir, name))
+                for name in ("round0_all.jsonl", "round0_anchors.json",
+                             "round0_summary.json")}
+    _atomic_write(os.path.join(out_dir, "round0_manifest.json"),
+                  json.dumps(manifest, sort_keys=True, indent=2))
+    return summary
+
+
+if __name__ == "__main__":
+    s = main()
+    print(json.dumps({k: v for k, v in s.items() if k != "survivors_per_layer"},
+                     sort_keys=True, indent=2))

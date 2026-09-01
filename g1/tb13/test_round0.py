@@ -147,3 +147,37 @@ def test_anchor_selection_takes_the_four_smallest_hashes_per_layer(keys):
                if (k["triplet_index"], k["season_index"],
                    k["turbines_per_site"]) == lid]
         assert [r0.anchor_sha(k) for k in got] == [r0.anchor_sha(k) for k in mine[:4]]
+
+
+def test_the_layer_design_is_seventy_two_not_thirty_six():
+    """Both turbine counts get their own six triplets, so the layers double."""
+    assert len(r0.expected_layers()) == 72
+    assert r0.ANCHORS_PER_LAYER * 72 * 3 * len(ig.BUDGET_FRACTION) == 1728
+
+
+def test_empty_layers_are_reported_not_skipped():
+    chosen, empty = r0.select_anchors([])
+    assert chosen == [] and len(empty) == 72, "a layer with no survivor went unreported"
+
+
+def test_the_cli_writes_non_empty_artifacts(tmp_path):
+    """The module has to run, not merely import: an entry point that does nothing is a
+    silent no-op that looks like a completed screen."""
+    import subprocess
+    out = tmp_path / "out"
+    r = subprocess.run([sys.executable, os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "round0.py")],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "TB13_ROUND0_OUT": str(out)})
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert len(r.stdout) > 0, "the entry point produced no output"
+    here = os.path.dirname(os.path.abspath(__file__))
+    default = os.path.join(here, "round0_out")
+    for name in ("round0_all.jsonl", "round0_anchors.json", "round0_summary.json",
+                 "round0_manifest.json"):
+        p = os.path.join(default, name)
+        assert os.path.exists(p) and os.path.getsize(p) > 0, f"{name} missing or empty"
+    summary = json.load(open(os.path.join(default, "round0_summary.json")))
+    assert summary["total_units"] == 8640
+    assert summary["layers_expected"] == 72
+    assert summary["seed0_solve_cap"] == 1728

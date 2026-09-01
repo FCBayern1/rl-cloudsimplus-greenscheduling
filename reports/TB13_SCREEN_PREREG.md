@@ -360,3 +360,72 @@ runtime 自冻结集合抽取,**不得为塞进视界而缩短**;arrival 与 dea
 ## B.6 提交卫生
 
 `__pycache__/` 与 `*.pyc` 已从索引移除并加入 `.gitignore`。
+
+---
+
+# Addendum C —— 2026-09-01,层数更正、可执行入口与作废的首跑
+
+## C.1 先前的 no-op
+
+Addendum B 提交后曾宣称"现在跑 Round 0",实际上 `round0.py` 当时只有函数库、没有 `main()`,
+直接执行在 0.1 秒内以 code 0 退出、零输出。**该次没有读取 DISCOVERY 数据,不构成污染。**
+
+## C.2 层数由 36 更正为 72
+
+`turbines_per_site ∈ {1, 2}` 各自产生 6 组 triplet,故层数为
+
+    2 × 6 triplet × 6 season = 72 层
+
+两种 turbines/site **不得混入同一层**,否则可能只选中其中一种。为保持 anchor 预算不变:
+
+    每层 anchor 数   4 → 2
+    seed-0 上限      72 × 2 × 3 divisor × 4 budget = 1,728     不变
+
+Addendum A.8 中"36 层 × 4 anchor"作废。
+
+## C.3 空层必须枚举后报告
+
+`select_anchors()` 原先只遍历已有存活者的层,完全无存活的层根本不会进入字典,`empty` 永远漏报。
+改为先枚举全部 72 个预期层,再分别取候选,无候选者显式进入 `empty_layers`。
+
+## C.4 可执行入口与原子产物
+
+`round0.py` 增加 `main()`,产出四个文件,均经临时文件后 `os.replace` 原子改名:
+
+    round0_all.jsonl        逐单元 metrics、PASS/FAIL 与 reason、anchor_sha
+    round0_anchors.json     anchors 与展开去重后的实例
+    round0_summary.json     总数/通过/失败、各拒绝原因计数、72 层逐层存活数、
+                            空层清单、anchor 数、展开唯一实例数、provenance
+    round0_manifest.json    前三者的 SHA256
+
+CLI smoke test 断言执行后四个产物存在且非空,并核对 `total_units=8640`、
+`layers_expected=72`、`seed0_solve_cap=1728` —— 而不是只测内部函数。
+
+## C.5 启动前硬门
+
+`main()` 先调 `_provenance()`:
+
+    git status --porcelain 检查 round0.py / instance_gen.py / data_split.txt /
+                           TB13_SCREEN_PREREG.md,任一 dirty 即抛错拒绝运行
+    manifest 记录实际 HEAD 与上述四个文件各自的 SHA256
+
+已实测:脏树下运行被拒绝并列出脏文件。
+
+## C.6 首次执行作废
+
+在此硬门加入之前的那次执行使用了**未提交的工作树代码**:HEAD 为 `c743c56`,而该 commit 中的
+`round0.py` 并无可执行 `main()`;`round0.py`、`instance_gen.py`、`test_round0.py` 当时均为
+modified;Addendum C 尚未进入 prereg;summary 却把执行 commit 记为 `c743c56`。
+
+该次产物全部保留于 `g1/tb13/round0_INVALID_UNCOMMITTED_RUN/`,哈希不删。
+其数字(180 通过、6 个非空层、12 anchor、36 展开实例)**不进入任何判决**。
+
+**未因看到该结果而调整任何判据** —— correlation band、poor 门、best-DC 门、
+72 层 × 2 anchor、SHA 规则、triplet/season、以及全部实例轴均保持不变。
+代码与数据均确定性,故在冻结 commit 上机械复跑应逐位重现数据内容
+(除 commit 与 provenance 字段外)。
+
+## C.7 性能补丁(不改判据)
+
+`instance_gen._series()` 加 `functools.lru_cache`,数组置为只读。Round 0 在少数涡轮上访问
+8,640 次,不缓存会重复解析 52,559 行的 CSV。仅改速度。
