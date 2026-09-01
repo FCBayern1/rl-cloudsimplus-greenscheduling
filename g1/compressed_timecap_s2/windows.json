@@ -1,0 +1,176 @@
+{
+  "base_block": "experiment_g1eval_matchedvan",
+  "base_config": "g1/config_C_2020.yml",
+  "blind": "row counts, years, time zones and footprint only; no power value read",
+  "block_rows": 8097,
+  "clock0_sec": 13.0,
+  "confirmation": [
+    "w1",
+    "w3",
+    "w5"
+  ],
+  "discovery": [
+    "w0",
+    "w2",
+    "w4"
+  ],
+  "disjoint": true,
+  "footprint": {
+    "clock0_rows": 13,
+    "drain_steps": 120,
+    "episode_rows": 3792,
+    "footprint_rows": 3977,
+    "guard_rows": 64,
+    "max_episode_steps": 3792,
+    "max_tz_rows": 108,
+    "warmup_rows": 0
+  },
+  "green_episode_offset_range": 48582,
+  "identity": "accelerated-weather synthetic mechanism positive control (scheme 2)",
+  "in_bounds": true,
+  "k_max_no_wrap": 48,
+  "longest_cell": {
+    "concurrency": 1,
+    "n_jobs": 50,
+    "runtime_rows": 72,
+    "wait_cap_rows": 72
+  },
+  "n_cells": 108,
+  "n_rows_eval_year": 52559,
+  "row_seconds": 1.0,
+  "row_semantics": "one wind CSV row = one synthetic control epoch = one simulation second under COMPRESSED; not ten minutes, not an hour",
+  "selection_hash": "e216d4d35f0a7320e523335ae42bbed27138b451b51daa3bbc9f6c8e67bb793f",
+  "stride": 1009,
+  "turbine_row_counts": {
+    "Turbine_12_2020": 32224,
+    "Turbine_12_2021": 52559,
+    "Turbine_12_2022": 2,
+    "Turbine_36_2020": 32224,
+    "Turbine_36_2021": 52559,
+    "Turbine_36_2022": 2,
+    "Turbine_91_2020": 32224,
+    "Turbine_91_2021": 52559,
+    "Turbine_91_2022": 2,
+    "Turbine_95_2020": 32224,
+    "Turbine_95_2021": 52559,
+    "Turbine_95_2022": 2,
+    "Turbine_96_2020": 32224,
+    "Turbine_96_2021": 52559,
+    "Turbine_96_2022": 2
+  },
+  "turbines_used": [
+    12,
+    36,
+    91,
+    95,
+    96
+  ],
+  "tz_rows": {
+    "0": 0,
+    "1": 18,
+    "2": 54,
+    "3": 72,
+    "4": 108
+  },
+  "windows": {
+    "w0": {
+      "block": [
+        0,
+        8096
+      ],
+      "block_centre": 4048,
+      "centre_error_rows": -12,
+      "k": 4,
+      "offset": 4036,
+      "position": 0,
+      "read_rows": [
+        4036,
+        8012
+      ],
+      "split": "DISCOVERY"
+    },
+    "w1": {
+      "block": [
+        8097,
+        16193
+      ],
+      "block_centre": 12145,
+      "centre_error_rows": -37,
+      "k": 12,
+      "offset": 12108,
+      "position": 1,
+      "read_rows": [
+        12108,
+        16084
+      ],
+      "split": "CONFIRMATION"
+    },
+    "w2": {
+      "block": [
+        16194,
+        24290
+      ],
+      "block_centre": 20242,
+      "centre_error_rows": -62,
+      "k": 20,
+      "offset": 20180,
+      "position": 2,
+      "read_rows": [
+        20180,
+        24156
+      ],
+      "split": "DISCOVERY"
+    },
+    "w3": {
+      "block": [
+        24291,
+        32387
+      ],
+      "block_centre": 28339,
+      "centre_error_rows": -87,
+      "k": 28,
+      "offset": 28252,
+      "position": 3,
+      "read_rows": [
+        28252,
+        32228
+      ],
+      "split": "CONFIRMATION"
+    },
+    "w4": {
+      "block": [
+        32388,
+        40484
+      ],
+      "block_centre": 36436,
+      "centre_error_rows": -112,
+      "k": 36,
+      "offset": 36324,
+      "position": 4,
+      "read_rows": [
+        36324,
+        40300
+      ],
+      "split": "DISCOVERY"
+    },
+    "w5": {
+      "block": [
+        40485,
+        48581
+      ],
+      "block_centre": 44533,
+      "centre_error_rows": -137,
+      "k": 44,
+      "offset": 44396,
+      "position": 5,
+      "read_rows": [
+        44396,
+        48372
+      ],
+      "split": "CONFIRMATION"
+    }
+  },
+  "year_forbidden": 2022,
+  "year_scheduler_eval": 2021,
+  "year_timecap_train": 2020
+}
