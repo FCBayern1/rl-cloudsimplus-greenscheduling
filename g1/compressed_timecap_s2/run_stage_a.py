@@ -27,6 +27,7 @@ OUT = os.path.join(HERE, "stage_a_out")
 BLINDS = ("persistence_planner", "climatology_planner", "reactive_wait_planner",
           "nowait_planner", "always_defer")
 ORACLES = ("curve_planner", "oracle144_planner")
+TIERS = ("godeye", "s05", "s15", "s30", "s60", "timecap_cal", "shuffle", "anti")
 WORKERS = int(os.environ.get("S2_WORKERS", "5"))
 SEED = 42
 CONTRACT = {"completion_rate_mi": 0.995, "ontime_mi_share": 0.995}
@@ -39,18 +40,26 @@ def windows():
     return g.windows(44950)["discovery"]
 
 
-def jobs(arms):
+def jobs(arms, cell_names=None):
     out = []
+    names = cell_names or [g.cell_name(c) for c in g.cells()]
     for arm in arms:
-        for cell in g.cells():
-            name = g.cell_name(cell)
+        for name in names:
             for k, off in windows():
                 out.append({"arm": arm, "cell": name, "k": k, "offset": off})
     return out
 
 
+def stable_region_cells():
+    """The cells Stage A froze; A-prime may not enumerate its own."""
+    v = json.load(open(os.path.join(OUT, "stage_a_verdict.json")))
+    if v.get("verdict") != "PASS_STAGE_A":
+        raise RuntimeError("stage A did not pass; there is no region to ladder")
+    return [g.cell_name(r["cell"]) for r in v["rows"] if r.get("pass")]
+
+
 def _paths(j):
-    d = os.path.join(OUT, j["arm"])
+    d = os.path.join(OUT, j.get("dir", j["arm"]))
     os.makedirs(d, exist_ok=True)
     stem = f"{j['cell']}_k{j['k']}"
     return os.path.join(d, stem + ".csv"), os.path.join(d, stem + ".log")
@@ -69,6 +78,7 @@ def run_one(j):
     if _done(csv_path):
         return "cached"
     env = dict(os.environ)
+    env.update(j.get("env", {}))
     env.update({
         "GATEWAY_LIBS": os.path.join(
             REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib"),
@@ -90,8 +100,8 @@ def run_one(j):
     return "ok" if r.returncode == 0 and _done(csv_path) else "failed"
 
 
-def sweep(arms):
-    todo = jobs(arms)
+def sweep(arms, todo=None):
+    todo = todo or jobs(arms)
     t0 = time.time()
     counts = collections.Counter()
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
@@ -161,6 +171,22 @@ def main():
         print(json.dumps(sweep(BLINDS), indent=2))
     elif phase == "freeze":
         print(json.dumps(freeze_blind(), indent=2))
+    elif phase == "aprime":
+        vp = os.path.join(OUT, "stage_a_verdict.json")
+        if not os.path.exists(vp):
+            raise RuntimeError("no stage A verdict; the ladder runs on its region only")
+        names = stable_region_cells()
+        cal = os.path.join(HERE, "timecap_cal.json")
+        todo = []
+        for tier in TIERS:
+            e = {"PLANNER_PERTURB_TIER": tier}
+            if tier == "timecap_cal":
+                e["PLANNER_PERTURB_CAL"] = cal
+            for j in jobs(("perturbed_oracle_planner",), cell_names=names):
+                todo.append({**j, "dir": f"tier_{tier}", "env": e})
+        print(f"ladder: {len(names)} cells x {len(TIERS)} tiers x 3 windows "
+              f"= {len(todo)} runs")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "oracles":
         fp = os.path.join(OUT, "blind_freeze.json")
         if not os.path.exists(fp):
