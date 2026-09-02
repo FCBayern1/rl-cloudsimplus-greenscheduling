@@ -1,0 +1,41 @@
+{
+  "cells_per_tier": {
+    "anti": 97,
+    "checkpoint_residual_surrogate_v2": 97,
+    "godeye": 97,
+    "s05": 97,
+    "s15": 97,
+    "s30": 97,
+    "s60": 97,
+    "shuffle": 97
+  },
+  "excluded_fraction": 0.0,
+  "excluded_nonpositive_denominator": [],
+  "frozen_blind": "nowait_planner",
+  "gates": {
+    "anti_destroys_half": false,
+    "complete_and_contract_green": true,
+    "exclusions_within_cap": true,
+    "monotone_noise_axis": false,
+    "shuffle_destroys_half": false,
+    "surrogate_retains_half": true
+  },
+  "median_retention": {
+    "anti": 0.7055731371651375,
+    "checkpoint_residual_surrogate_v2": 0.9388466329197164,
+    "godeye": 1.0,
+    "s05": 1.0005861517729533,
+    "s15": 1.0000142184412724,
+    "s30": 1.0159923763790046,
+    "s60": 1.0217069549037017,
+    "shuffle": 1.0628585942774287
+  },
+  "problems": [],
+  "region_cells": 97,
+  "verdict": "STOP_LADDER_V2",
+  "windows": [
+    25,
+    33,
+    41
+  ]
+}
