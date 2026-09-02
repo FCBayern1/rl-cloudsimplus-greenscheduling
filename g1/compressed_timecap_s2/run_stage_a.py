@@ -173,6 +173,23 @@ def main():
         print(json.dumps(sweep(BLINDS), indent=2))
     elif phase == "freeze":
         print(json.dumps(freeze_blind(), indent=2))
+    elif phase == "pilot_shrink":
+        # DESIGN_PILOT (2026-09-02): amplitude-shrinkage tiers on the DISCOVERY window
+        # k=1 only. Exploratory, outside every prereg; results may not enter any verdict.
+        # Blind reference = stage A nowait k1; godeye reference = A-prime tier_godeye k1
+        # (sigma zero, semantics-invariant between v1 and v2).
+        names = stable_region_cells()
+        todo = []
+        for tier in ("shrink75", "shrink50", "shrink25", "shrink0"):
+            e = {"PLANNER_PERTURB_TIER": tier, "PLANNER_PERTURB_V2": "1",
+                 "PLANNER_PERTURB_PILOT": "1"}
+            for j in jobs(("perturbed_oracle_planner",), cell_names=names,
+                          which="discovery"):
+                if j["k"] != 1:
+                    continue
+                todo.append({**j, "dir": f"pilot_tier_{tier}", "env": e})
+        print(f"pilot_shrink: {len(todo)} runs (DESIGN_PILOT, discovery k=1 only)")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "ladder_v2":
         # One-shot CONFIRMATION sweep (k=25/33/41): the frozen blind re-run beside the
         # eight v2 tiers on the frozen region. No partial reads; the verdict reader is

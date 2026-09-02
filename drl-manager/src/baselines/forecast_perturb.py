@@ -126,6 +126,20 @@ TIERS_V2 = {
 }
 
 
+# DESIGN_PILOT tiers (2026-09-02, not part of any registered ladder): amplitude
+# shrinkage toward the flat level, view = m + lam * (truth - m). The confirmation run
+# showed phase corruption is harmless because the planner's value comes from daring to
+# wait and spreading starts; the property that should carry the value is the AMPLITUDE
+# of the future profile, and a predictor regressing to the mean (as the deployed
+# checkpoint does) loses exactly that. These tiers test that mechanism directly.
+TIERS_PILOT = {
+    "shrink75": {"kind": "shrink", "lam": 0.75},
+    "shrink50": {"kind": "shrink", "lam": 0.50},
+    "shrink25": {"kind": "shrink", "lam": 0.25},
+    "shrink0": {"kind": "shrink", "lam": 0.0},
+}
+
+
 def perturbed_future_v2(series, t, horizon, site, tier, calibration=None,
                         common_key=None):
     """The v2 view of rows [t, t+horizon): lead 0 is the measured present, always.
@@ -144,12 +158,15 @@ def perturbed_future_v2(series, t, horizon, site, tier, calibration=None,
     hand-rounded. eps_common comes from `common_key`, an episode-level key every site
     shares, so the common mode is genuinely common across sites.
     """
-    spec = TIERS_V2[tier]
+    spec = TIERS_V2.get(tier) or TIERS_PILOT[tier]
     lo, hi = t, min(len(series), t + horizon)
     truth = np.asarray(series[lo:hi], dtype=np.float64)
     if len(truth) == 0:
         return truth
-    if spec["kind"] == "shuffle":
+    if spec["kind"] == "shrink":
+        m = float(np.mean(series))
+        out = np.maximum(0.0, m + spec["lam"] * (truth - m))
+    elif spec["kind"] == "shuffle":
         rng = np.random.default_rng(domain_seed(series_key(series, site, tier), "perm"))
         perm = rng.permutation(len(series))
         out = np.maximum(0.0, np.asarray(series, dtype=np.float64)[perm][lo:hi])

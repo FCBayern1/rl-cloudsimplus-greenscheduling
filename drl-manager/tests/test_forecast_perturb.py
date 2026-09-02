@@ -280,3 +280,26 @@ def test_v2_arm_lead0_matches_truth(monkeypatch):
     v = arm._green_view(0)
     assert v[40] == g[40], "the present row must be the measured truth"
     assert not np.array_equal(v[41:184], g[41:184])
+
+
+# ── DESIGN_PILOT shrink tiers (amplitude corruption) ────────────────────────
+
+def test_shrink_lead0_is_truth_and_lam1_equivalent():
+    g = _series()
+    v = fp.perturbed_future_v2(g, 37, 144, 0, "shrink0")
+    assert v[0] == g[37], "lead 0 stays an observation even at full shrinkage"
+    m = float(np.mean(g))
+    assert np.allclose(v[1:], np.maximum(0.0, m), atol=1e-12), \
+        "lam=0 flattens the future to the level"
+
+
+def test_shrink_is_monotone_in_amplitude():
+    g = _series()
+    m = float(np.mean(g))
+    spans = {}
+    for tier in ("shrink75", "shrink50", "shrink25", "shrink0"):
+        v = fp.perturbed_future_v2(g, 20, 144, 0, tier)
+        spans[tier] = float(np.std(v[1:]))
+    assert spans["shrink75"] > spans["shrink50"] > spans["shrink25"] > spans["shrink0"]
+    full = float(np.std(g[21:164]))
+    assert spans["shrink75"] < full

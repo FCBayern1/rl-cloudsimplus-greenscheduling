@@ -2158,6 +2158,8 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         # recorded A-prime run remains reproducible bit for bit.
         self.perturb_v2 = os.environ.get("PLANNER_PERTURB_V2", "0") == "1"
         tiers = _fp.TIERS_V2 if self.perturb_v2 else _fp.TIERS
+        if os.environ.get("PLANNER_PERTURB_PILOT", "0") == "1" and self.perturb_v2:
+            tiers = {**tiers, **_fp.TIERS_PILOT}
         if self.perturb_tier not in tiers:
             raise ValueError(f"unknown perturb tier {self.perturb_tier!r}; "
                              f"registered: {sorted(tiers)}")
