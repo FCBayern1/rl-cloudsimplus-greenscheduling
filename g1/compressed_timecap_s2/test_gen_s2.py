@@ -203,7 +203,8 @@ def test_v2_tier_list_matches_the_prereg():
 
 
 def test_v2_calibration_artifact_is_measured_not_rounded():
-    cal = json.load(open(os.path.join(HERE, "dc_residual_cal.json")))
+    here = os.path.dirname(os.path.abspath(__file__))
+    cal = json.load(open(os.path.join(here, "dc_residual_cal.json")))
     assert cal["c"] != 0.8, "c must be the measured median, never a hand-rounded value"
     off = cal["off_diagonals"]
     assert cal["c"] == sorted(off)[1], "c is the median off-diagonal"
