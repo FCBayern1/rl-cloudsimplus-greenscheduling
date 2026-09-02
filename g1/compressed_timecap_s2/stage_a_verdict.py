@@ -47,7 +47,7 @@ def _row(arm, cell_name, k):
 def _contract_ok(r):
     return (float(r["completion_rate_mi"]) >= ra.CONTRACT["completion_rate_mi"]
             and float(r["ontime_mi_share"]) >= ra.CONTRACT["ontime_mi_share"]
-            and all(float(r[z]) == 0.0 for z in ra.ZERO_FIELDS))
+            and all(float(r.get(z, 0) or 0) == 0.0 for z in ra.ZERO_FIELDS))
 
 
 def _axis_pos(cell):

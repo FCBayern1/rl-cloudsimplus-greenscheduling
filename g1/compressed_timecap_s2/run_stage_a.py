@@ -109,12 +109,19 @@ def read_cell(j):
     if not _done(csv_path):
         return None
     r = list(csv.DictReader(open(csv_path)))[-1]
+    # always_defer is not a planner-family arm and emits no planner ledger columns; an
+    # absent ledger has nothing to corrupt, so a missing field reads as zero. The env
+    # level fields (completion, ontime, deadline_forced_count) exist for every arm and
+    # stay mandatory.
+    def _z(key):
+        return float(r.get(key, 0) or 0)
     ok = all(float(r[k]) >= v for k, v in CONTRACT.items()) and \
-        all(float(r[z]) == 0.0 for z in ZERO_FIELDS)
+        all(_z(z) == 0.0 for z in ZERO_FIELDS)
     return {"carbon": float(r["total_carbon_kg"]), "contract_ok": bool(ok),
             "completion_rate_mi": float(r["completion_rate_mi"]),
             "ontime_mi_share": float(r["ontime_mi_share"]),
-            "violations": {z: float(r[z]) for z in ZERO_FIELDS if float(r[z]) != 0.0}}
+            "ledger_columns_absent": [z for z in ZERO_FIELDS if z not in r],
+            "violations": {z: _z(z) for z in ZERO_FIELDS if _z(z) != 0.0}}
 
 
 def freeze_blind():
