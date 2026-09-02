@@ -82,3 +82,30 @@ corrupt)另立 50k 预注册;健康门与三配对种子长训条款按工单 §
     → 门 1–5 判读(判读器先于数据冻结提交)
     → 全过 → 一次性 CONFIRMATION → 门 6/7
     → 双过 → Stage D 预注册
+
+## Addendum A(append-only,主误差数值冻结,先于任何 E 碳数字)
+
+参数来源:`timecap_error_audit.json`(file sha 475793a6c036c801,commit 480783f),整块机械消费。
+
+**主误差 `calibrated_shrink_v1` 生成式**(全部逐 DC 逐 lead,lead-0 保真,截零):
+
+    view_d[t+l] = max(0, mu'_d + lambda_d(l)·(truth_d[t+l] − mu'_d) + b'_d(l) + sigma'_d(l)·eps_d[t+l])
+    view_d[t]   = truth_d[t]
+
+    lambda_d(l)   审计的 144 点 lead 曲线(近场 ~0.88,lead 11 ~0.45,lead 47+ ~0.1),无量纲直用
+    截距          b_ols(裁定采纳;mean-bias 在 lambda<1 时重复计入偏置,弃用)
+    残差          eps 为冻结 AR(1) 场,rho_d = 审计逐 DC 值(~0.9986-0.9991,持久漂移),
+                  跨 DC 单因子 c = 0.8646(审计中位非对角;与 ladder-v2 独立测得的 0.8601 互证)
+    迁移归一      审计量纲量(b、sigma)按 mu 比例迁移到新风机:
+                  scale_d = mean(新 DC 全序列真值) / mu_audit_d;lambda 无量纲不迁移;
+                  DC 映射按序号(审计 DC0/1/2 → E DC0/1/2)
+
+**按审计裁定不进入污染器的项**(记录,非按碳挑选):相位偏移(中位 +3~+5.5 行但 IQR ±35、
+25-27% 锚点顶边界,系相关成分缺失下的噪声 argmax,不构成参数);假峰项(命中/漏报/假峰率
+全部在随机基准 ±0.02 内,峰值信号缺失而非系统性造假,①的强收缩已内含此效果)。
+**次级误差 optimistic hallucination 依据审计 Q2 撤销**——荒时乐观(P=81-86%)已由
+lambda 曲线 + b_ols 生成式内生产生,单列假峰项无实证依据。
+
+**工单判据偏离记录(待 Codex 终审)**:Q3 空间排名的参照由"均匀随机 1/3"改为
+"常数-mu 预报器"(0.564 vs 0.714,判 yes 主动损坏);理由:三站 mu 差两倍时,
+均匀随机参照会把静态知识误报为天气知识。
