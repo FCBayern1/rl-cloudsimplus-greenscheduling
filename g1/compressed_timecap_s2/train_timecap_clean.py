@@ -165,14 +165,13 @@ def main():
     print("使用 GPU" if args.use_gpu else "使用 CPU")
     print(f"files: {[f.name for f in args.clean_files]}")
 
-    res = Path(args.res_dir)
-    model_dir, test_dir, log_dir = res / "TimeCAP/model", res / "TimeCAP/test", res / "TimeCAP/log"
-    for d in (model_dir, test_dir, log_dir):
-        make_dir(str(d))
-    logger = init_logger(str(log_dir))
+    # make_dir takes the args namespace and derives res_dir/<model>/{test,model,log}
+    # itself; the stock entry point calls it exactly this way.
+    test_dir, model_dir, log_dir = make_dir(args)
+    logger = init_logger(log_dir)
     setting = get_setting_str(args)
 
-    exp = CleanExpTimeCAP(args, logger, str(model_dir), str(test_dir), setting)
+    exp = CleanExpTimeCAP(args, logger, model_dir, test_dir, setting)
     for split in ("train", "val", "test"):
         print(f"[audit] {split}: " + ", ".join(
             f"{k}={v}" for k, v in CleanDatasetAdapter(

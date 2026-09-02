@@ -158,3 +158,34 @@ class TestWiring:
         x_sc, _, _, _ = sc[2]
         back = sc.inverse_transform(x_sc.numpy())
         assert np.allclose(back, x_raw.numpy(), atol=1e-3)
+
+
+class TestEntryPointWiring:
+    """The smoke path itself. These fail on argument-shape mistakes that no unit test of
+    the dataset can reach, and the first smoke run died on exactly one of them:
+    `make_dir` takes the args namespace and derives res_dir/<model>/{test,model,log},
+    it does not take a path."""
+
+    def test_make_dir_accepts_the_args_namespace(self, tmp_path):
+        from utils.tools import make_dir
+        d = str(tmp_path / "src")
+        os.makedirs(d)
+        _write(d, 1, 2020, 400, 0.0)
+        args = tc.build_clean_args([1], [2020], res_dir=str(tmp_path / "res"), epochs=1,
+                                   batch_size=4, lr=5e-5, patience=5, use_gpu=False,
+                                   gpu=0, num_workers=0, split_dir=d)
+        test_dir, model_dir, log_dir = make_dir(args)
+        for p in (test_dir, model_dir, log_dir):
+            assert os.path.isdir(p), p
+        assert os.path.basename(test_dir) == "test"
+        assert args.model in model_dir
+
+    def test_setting_string_builds_from_the_clean_args(self, tmp_path):
+        from Arguments.load_setting import get_setting_str
+        d = str(tmp_path / "src")
+        os.makedirs(d)
+        _write(d, 1, 2020, 400, 0.0)
+        args = tc.build_clean_args([1], [2020], res_dir=str(tmp_path / "res"), epochs=1,
+                                   batch_size=4, lr=5e-5, patience=5, use_gpu=False,
+                                   gpu=0, num_workers=0, split_dir=d)
+        assert isinstance(get_setting_str(args), str)

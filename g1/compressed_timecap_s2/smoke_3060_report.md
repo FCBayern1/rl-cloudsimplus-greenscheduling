@@ -141,14 +141,67 @@ device="cpu")`，`reset()` 后喂满 `seq_len = 96` 步真实历史，再调 `pr
 形状、dtype、有限性全部符合契约，**回读通过**。
 输出近乎常数是 1 epoch 模型的预期表现，**不构成任何关于预测质量的证据**。
 
-### 2.4 验收判定
+### 2.4 任务 A′：驱动补上之后的真 GPU 重跑
 
-    CUDA 可用                                  FAIL   （见 §1.1，环境问题，非代码问题）
+`sudo apt install linux-modules-nvidia-580-open-7.0.0-30-generic` 之后，本机 CUDA 可用：
+
+    nvidia-smi        NVIDIA-SMI 580.173.02   Driver 580.173.02   CUDA 13.0
+    device            NVIDIA GeForce RTX 3060   compute capability (8, 6)   12.49 GB
+    torch             cuda.is_available() = True
+
+按**同一条命令**重跑（只改 `--res-dir` 为 `smoke_3060_gpu`）：
+
+    使用 GPU
+    [finetune] AMP mixed precision: ENABLED
+    train 110139 / val 15626 / test 31393
+
+    Autoregressive loss: 0.1131
+    One-shot loss: 0.8281
+    Autoregressive loss: 0.0708
+    One-shot loss: 0.5693
+    Epoch: 1  Spend: 368 s | Train Loss: 0.7703147  Vali Loss: 0.6101305  Test Loss: 0.4132595
+    Validation loss decreased (inf --> 0.610131).  Saving model of epoch 1
+
+    >>> 开始推理评估 ...
+    Test shape: (31393, 144, 1) (31393, 144, 1)
+    96-pred-144, MSE: 0.5832, MAE: 0.5497
+
+    训练完成！
+      Checkpoint : .../smoke_3060_gpu/TimeCAP/model/finetune_TimeCAP_custom_sl96/ckpt_best.pth
+      Args JSON  : .../smoke_3060_gpu/TimeCAP/model/finetune_TimeCAP_custom_sl96/model_args.json
+
+单 epoch 耗时对比：
+
+    CPU（i7-9700K，8 线程）     7101 s
+    GPU（RTX 3060）              368 s        19.3x
+
+显存占用：训练期间峰值采样 **1477 MiB / 12288 MiB**（利用率 95%）。
+batch_size 32 下还有大量余量，正式重训可以显著加大 batch。
+
+**注意一处非受控差异**：CPU 那次日志是 `AMP mixed precision: disabled`，GPU 这次是
+`ENABLED`。这是训练脚本按设备自动决定的，不是我改的参数。因此 CPU 与 GPU 两次的
+损失数字**不是逐位可比**（GPU: vali 0.6101 / MSE 0.5832；CPU: vali 0.6198 / MSE 0.6009）。
+两者都只证明管道通，本来也不该被比较。
+
+产物 SHA256：
+
+    ckpt_best.pth      0217aca302259fdea657bbac7ffb233655da661905142aeb124d33657eb4572f
+    model_args.json    70348b059062addcb0096de4c67a9c37b5a3adcd3e44050992155779d63d5515
+
+（`model_args.json` 与 CPU 那次逐字节相同——超参没变，只有设备变了。）
+
+predictor 在 `device="cuda"` 上回读该 checkpoint：
+
+    predict() -> (144,) float32   finite: True   min/mean/max 497.104 / 497.106 / 497.109
+
+### 2.5 验收判定
+
+    CUDA 可用                                  PASS   （A′ 之后；A 首次执行时为 FAIL，见 §1.1）
     checkpoint 与 model_args.json 落盘          PASS
-    predictor 能加载并出一次 144 行预测          PASS
+    predictor 能加载并出一次 144 行预测          PASS   （CPU 与 CUDA 两条路径各验一次）
 
-GPU 修好后我会按同一条命令重跑，并把 GPU 版日志尾部与 `nvidia-smi` 型号补进本节；
-届时本次 CPU 结果只作为"管道通"的旁证保留。
+CPU 那一轮作为"驱动缺失下管道仍然通"的旁证保留。
+两轮的数字都只证明管道通，**不得被任何判据引用**。
 
 ---
 
@@ -247,9 +300,72 @@ GPU 修好后我会按同一条命令重跑，并把 GPU 版日志尾部与 `nvi
 
 ---
 
-## 5. 未完成 / 待定
+## 5. 第二轮任务（D1 / D2 / D3 / A′，起点 `7a40df7`）
 
-1. **CUDA**：等 `sudo apt install linux-modules-nvidia-580-open-7.0.0-30-generic`，
-   之后重跑 GPU 版 smoke 并补 §2。
-2. **B② 的冻结纪律**：等 5080 侧在 A / B 两案中选一，再决定是否重生成 `timecap_cal.json`。
-3. `clean_dataset.py` **不得**用于启动训练——训练要等本机 Stage A′ 判决与独立预注册。
+### 5.1 D1：k=0 语义审计
+
+完整报告见 `g1/compressed_timecap_s2/k0_semantics_audit.md`，探针
+`k0_semantics_probe.py`，数据 `k0_probe.json`。要点：
+
+- **训练侧**：`label_len = 0` ⇒ `r_begin = s_end`，`pred[0]` 指 history 末行的下一行，无歧义。
+- **部署侧**：Java `computeFutureTrendFeatures` 的循环 `for (i = currentIdx; ...)`
+  **含当前行**；`TimeCAPGodEyeProvider` 在 `update(t)` 之后取 `forecast[:short]`，
+  按训练语义那是 `[t+1, t+1+short)`。**TimeCAP 侧的窗整体晚一行。**
+- **网络是否学出位移**：判定为**否**。lead-0 在 offset=0 有干净 V 形极小，
+  但逐 lead 的 argmin 漂移（`0, −1, −2, −2, −2, +2, −2, +2, −2`），
+  按探针执行前写定的判别规则属持续性伪影而非系统性位移。
+- **另查出第二处不一致**：`peak_timing` 分母，Java 用 `longAvailable`（N），
+  Python 用 `max(lt-1, 1)`（N−1）。与行对齐无关，建议一并修。
+- **对已有标定**：`timecap_cal.json`（label-offset 0）**不作废**——它测的正是
+  Java 消费约定下的部署态质量，那一行偏斜已计入残差。
+
+### 5.2 D2：v2 语义跨机复核
+
+    .venv/bin/python -m pytest drl-manager/tests/test_forecast_perturb.py -q
+    26 passed in 18.84s
+
+**26/26 通过**（含新增的 9 个 ladder-v2 测试）。
+
+### 5.3 D3：干净重训包装器
+
+`train_timecap_clean.py` + `test_train_timecap_clean.py`（14 测试全绿）。
+`CleanExpTimeCAP` 只覆写 `Exp_TimeCAP._get_data` 一个方法，模型、优化器、训练循环
+全部沿用 `Code/` 原样；**未改动 `Code/` 任何文件**。
+
+1-epoch 端到端 smoke（GPU，风机 12/36，2020）：
+
+    [audit] train: n_windows=44634, cross_file_windows=0, cross_split_windows=0,
+                   split_row_overlaps=[], scaler_fit_is_train_only=True
+    [audit] val:   n_windows=5966,  同上全绿
+    [audit] test:  n_windows=12414, 同上全绿
+
+    Epoch: 1  Spend: 173 s | Train Loss: 0.8658407  Vali Loss: 0.7800640  Test Loss: 0.7596312
+    96-pred-144, MSE: 1.1236, MAE: 0.7384
+    Checkpoint : .../smoke_clean_gpu/TimeCAP/model/finetune_TimeCAP_clean_per_file_sl96/ckpt_best.pth
+    Args JSON  : 同目录 model_args.json
+
+**包装器能端到端出 checkpoint，这是本任务要证明的全部。**
+setting 串因 `args.data = "clean_per_file"` 而变为
+`finetune_TimeCAP_clean_per_file_sl96`，产物目录因此天然与 stock 跑分开，不会互相覆盖。
+
+**这些数字不可与 §2 的 stock smoke 比较**，理由不止一条：本次只用了 2 台风机
+（stock 用的是 5 台合并的 `turbines_merged.csv`），训练样本 44634 对 110139，
+scaler 是逐文件而不是全局，split 边界也不同。**任何一项都足以让损失不可比。**
+照例：smoke 数字只证明管道通，不得被任何判据引用。
+
+首次 smoke 崩在入口接线上（`make_dir` 收的是 args namespace 而不是路径字符串）。
+按项目规则先补了能复现该错的测试（`TestEntryPointWiring`）再修。
+
+### 5.4 A′：见 §2.4
+
+## 6. 未完成 / 待定
+
+1. **B② 的冻结纪律**：`7a40df7` 已定案为「线程钉死向前生效，两件既有标定产物原样冻结、
+   降格声明」。本机的三方 SHA 分歧结论不变，见 §3.2；无需再动。
+2. **k=0 的修法**：D1 §6 给了甲/乙两案（推荐甲案：改标签贴合 Java，只动新写的训练数据
+   构造，不碰已冻结的观测通道），**由 5080 侧在重训预注册里二选一并用测试钉死**。
+   `peak_timing` 分母的 N vs N−1 要一并修，并加 Java/Python 逐位对拍测试。
+3. **超出 k=0 范围的发现**：现有 checkpoint 在 lead 1–23 多数不优于持续性基线
+   （D1 §4）。这不影响本轮任何交付，但 5080 侧判读 `timecap_cal` 档时应当知道。
+4. `clean_dataset.py` / `train_timecap_clean.py` **不得**用于启动正式训练——
+   要等本机 ladder-v2 判决与独立预注册。
