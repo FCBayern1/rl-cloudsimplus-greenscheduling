@@ -2202,6 +2202,73 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         return view
 
 
+class LoadSmoothingGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Forecast-free load smoothing (Scheme 2-E blind family, Codex 2026-09-02).
+
+    Same chassis, ledgers and commitment semantics as the whole family, but a slot is
+    priced ONLY by the reservation-ledger occupancy it would overlap, ties to the
+    earliest start; queue, capacity and deadlines are the only inputs. The arm never
+    reads a green value, present or future, and a test drives a decision with the green
+    view rigged to explode to prove it. Its role is adversarial: if spreading alone
+    captures the forecast arms' benefit, the clean-vs-blind gate must fail honestly.
+    """
+
+    INFO_SOURCE = "occupancy_only"
+
+    def _green_view(self, d):
+        raise RuntimeError("load_smoothing must never price a slot from green")
+
+    def _tail_level(self, d):
+        raise RuntimeError("load_smoothing must never price a slot from green")
+
+    def _costs_all(self, d, starts, r, p):
+        occ = self.occ[d]
+        cs = np.concatenate(([0.0], np.cumsum(occ)))
+        ends = starts + r
+        ok = ends < len(cs)
+        out = np.full(len(starts), np.inf)
+        overlap = cs[np.minimum(ends, len(cs) - 1)] - cs[np.minimum(starts, len(cs) - 1)]
+        # Tie-break to the earliest start with a strictly monotone epsilon so equal
+        # overlap never leaves the choice to argmin ordering accidents.
+        out[ok] = overlap[ok] + 1e-9 * starts[ok]
+        return out
+
+    def _reactive_choice(self, r, p):
+        raise RuntimeError("load_smoothing has no reactive green rule")
+
+
+class ReservationEDFGlobalScheduler(CurveInformedPlannerGlobalScheduler):
+    """Online reservation-EDF (Scheme 2-E blind family, Codex 2026-09-02).
+
+    The TB13 A.4 contract policy transplanted onto the online chassis: on arrival a job
+    takes the EARLIEST start any site can hold on the reservation ledger, ties to the
+    lower site index, and the reservation is irrevocable like every arm's. No green value
+    is ever read.
+    """
+
+    INFO_SOURCE = "earliest_feasible"
+
+    def _green_view(self, d):
+        raise RuntimeError("reservation_edf must never price a slot from green")
+
+    def _tail_level(self, d):
+        raise RuntimeError("reservation_edf must never price a slot from green")
+
+    def _costs_all(self, d, starts, r, p):
+        occ = self.occ[d]
+        cs = np.concatenate(([0.0], np.cumsum(occ)))
+        ends = starts + r
+        ok = ends < len(cs)
+        out = np.full(len(starts), np.inf)
+        # Earliest start dominates; the site index separates exact ties so the lower
+        # site wins, matching the registered EDF tie order.
+        out[ok] = starts[ok].astype(np.float64) + 1e-6 * d
+        return out
+
+    def _reactive_choice(self, r, p):
+        raise RuntimeError("reservation_edf has no reactive green rule")
+
+
 class AlwaysDeferGlobalScheduler(GlobalScheduler):
     """Defers every slot, so the deadline backstop becomes the only thing that routes.
 
@@ -2304,6 +2371,8 @@ GLOBAL_SCHEDULERS = {
     'curve_planner': CurveInformedPlannerGlobalScheduler,
     'oracle144_planner': HorizonLimitedOraclePlannerGlobalScheduler,
     'perturbed_oracle_planner': PerturbedOraclePlannerGlobalScheduler,
+    'load_smoothing': LoadSmoothingGlobalScheduler,
+    'reservation_edf': ReservationEDFGlobalScheduler,
     'persistence_planner': PersistencePlannerGlobalScheduler,
     'climatology_planner': ClimatologyPlannerGlobalScheduler,
     'reactive_wait_planner': ReactiveWaitPlannerGlobalScheduler,
