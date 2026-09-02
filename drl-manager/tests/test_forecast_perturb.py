@@ -303,3 +303,101 @@ def test_shrink_is_monotone_in_amplitude():
     assert spans["shrink75"] > spans["shrink50"] > spans["shrink25"] > spans["shrink0"]
     full = float(np.std(g[21:164]))
     assert spans["shrink75"] < full
+
+
+# ── Scheme 2-E calibrated primary error ─────────────────────────────────────
+
+def _eparams():
+    L = 144
+    lam = [0.88 * (0.9 ** i) + 0.06 for i in range(L)]
+    return {"lambda_lead_per_dc": {str(d): lam for d in range(3)},
+            "b_ols_lead_per_dc": {str(d): [50.0] * L for d in range(3)},
+            "resid_var_lead_per_dc": {str(d): [10000.0] * L for d in range(3)},
+            "resid_ar1_along_lead_per_dc": {str(d): 0.9986 for d in range(3)},
+            "resid_corr_median_off_diagonal": 0.8646,
+            "mu_per_dc": {"0": 733.3, "1": 656.2, "2": 273.2}}
+
+
+def test_calibrated_tier_lead0_truth_and_deterministic():
+    g = _series(800)
+    a = fp.perturbed_future_e(g, 30, 144, 0, "calibrated_shrink_v1",
+                              eparams=_eparams(), common_key="ep")
+    b = fp.perturbed_future_e(g.copy(), 30, 144, 0, "calibrated_shrink_v1",
+                              eparams=_eparams(), common_key="ep")
+    assert np.array_equal(a, b)
+    assert a[0] == g[30]
+    assert not np.array_equal(a[1:], g[31:174])
+
+
+def test_calibrated_tier_shrinks_more_at_far_leads():
+    g = _series(2000)
+    ep = _eparams()
+    ep["resid_var_lead_per_dc"] = {str(d): [0.0] * 144 for d in range(3)}
+    ep["b_ols_lead_per_dc"] = {str(d): [0.0] * 144 for d in range(3)}
+    v = fp.perturbed_future_e(g, 10, 144, 0, "calibrated_shrink_v1",
+                              eparams=ep, common_key="ep")
+    m = float(np.mean(g))
+    dev_near = abs(v[2] - m) / max(abs(g[12] - m), 1e-9)
+    dev_far = abs(v[120] - m) / max(abs(g[130] - m), 1e-9)
+    assert dev_far < dev_near, "amplitude must attenuate with lead"
+
+
+def test_calibrated_tier_rescales_dimensioned_params_by_mu_ratio():
+    ep = _eparams()
+    ep["resid_var_lead_per_dc"] = {str(d): [0.0] * 144 for d in range(3)}
+    g_small = np.full(600, 73.33)           # target mu is a tenth of the audited 733.3
+    v = fp.perturbed_future_e(g_small, 0, 144, 0, "calibrated_shrink_v1",
+                              eparams=ep, common_key="ep")
+    # flat truth: view = mu' + b*scale; b=50 at mu-ratio 0.1 adds 5, not 50
+    assert abs(v[5] - (73.33 + 5.0)) < 0.2
+
+
+def test_calibrated_tier_cross_site_residuals_are_correlated():
+    rng = np.random.default_rng(3)
+    ep = _eparams()
+    errs = {}
+    for d in range(3):
+        g = np.abs(rng.normal(700, 100, 3000))
+        v = fp.perturbed_future_e(g, 0, 2900, d, "calibrated_shrink_v1",
+                                  eparams=ep, common_key="ep")
+        lam = np.asarray(ep["lambda_lead_per_dc"][str(d)])
+        L = 2900
+        leads = np.minimum(np.arange(L), 143)
+        m = float(np.mean(g))
+        det = m + lam[leads] * (g[:L] - m) + 50.0
+        errs[d] = (v - det)[1:]
+    import itertools
+    for a, b in itertools.combinations(range(3), 2):
+        r = np.corrcoef(errs[a], errs[b])[0, 1]
+        assert r > 0.6, f"cross-site residual corr {r:.2f} should be near c=0.86"
+
+
+def test_calibrated_tier_requires_params_and_key():
+    g = _series()
+    with pytest.raises(ValueError):
+        fp.perturbed_future_e(g, 0, 144, 0, "calibrated_shrink_v1")
+
+
+def test_e_arm_loads_audit_params_and_uses_the_e_tiers(monkeypatch):
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_E", "1")
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "timecap_cal")   # not an E tier
+    with pytest.raises(ValueError, match="unknown perturb tier"):
+        PerturbedOraclePlannerGlobalScheduler(5, 8)
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "calibrated_shrink_v1")
+    monkeypatch.delenv("PLANNER_PERTURB_CAL", raising=False)
+    with pytest.raises(ValueError, match="error-audit"):
+        PerturbedOraclePlannerGlobalScheduler(5, 8)
+    monkeypatch.setenv("PLANNER_PERTURB_CAL", os.path.join(
+        REPO, "g1/compressed_timecap_s2/timecap_error_audit.json"))
+    arm = PerturbedOraclePlannerGlobalScheduler(5, 8)
+    assert "lambda_lead_per_dc" in arm.perturb_calibration
+    g = _series(1200)
+    arm.G = np.tile(g, (5, 1))
+    arm.T = arm.G.shape[1]
+    arm.t = 40
+    arm.clim = np.full(5, 12.0)
+    arm.green_now = np.full(5, g[40])
+    v = arm._green_view(0)
+    assert v[40] == g[40]
+    assert not np.array_equal(v[41:184], g[41:184])

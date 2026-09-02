@@ -2157,14 +2157,22 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         # calibrated tier is the DC-level one-factor surrogate. v1 stays available so the
         # recorded A-prime run remains reproducible bit for bit.
         self.perturb_v2 = os.environ.get("PLANNER_PERTURB_V2", "0") == "1"
-        tiers = _fp.TIERS_V2 if self.perturb_v2 else _fp.TIERS
+        # Scheme 2-E mode: the E tier set, with the audit-calibrated primary error.
+        self.perturb_e = os.environ.get("PLANNER_PERTURB_E", "0") == "1"
+        if self.perturb_e:
+            tiers = _fp.TIERS_E
+        else:
+            tiers = _fp.TIERS_V2 if self.perturb_v2 else _fp.TIERS
         if os.environ.get("PLANNER_PERTURB_PILOT", "0") == "1" and self.perturb_v2:
             tiers = {**tiers, **_fp.TIERS_PILOT}
         if self.perturb_tier not in tiers:
             raise ValueError(f"unknown perturb tier {self.perturb_tier!r}; "
                              f"registered: {sorted(tiers)}")
         cal_path = os.environ.get("PLANNER_PERTURB_CAL", "")
-        if cal_path and self.perturb_v2:
+        if cal_path and self.perturb_e:
+            audit = _json.load(open(cal_path))
+            self.perturb_calibration = audit["primary_error_params"]
+        elif cal_path and self.perturb_v2:
             self.perturb_calibration = _json.load(open(cal_path))
         elif cal_path:
             self.perturb_calibration = _fp.load_calibration(cal_path)
@@ -2175,6 +2183,10 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         if self.perturb_tier == "checkpoint_residual_surrogate_v2" \
                 and self.perturb_calibration is None:
             raise ValueError("the surrogate tier needs PLANNER_PERTURB_CAL")
+        if self.perturb_tier == "calibrated_shrink_v1" \
+                and self.perturb_calibration is None:
+            raise ValueError("calibrated_shrink_v1 needs PLANNER_PERTURB_CAL "
+                             "(the error-audit json)")
 
     def _green_view(self, d):
         if self.info_source != "curve_horizon_perturbed":
@@ -2184,15 +2196,22 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         view = np.empty(self.T, dtype=np.float64)
         view[:self.t] = self.G[d, :self.t]
         edge = min(self.T, self.t + self.HORIZON_STEPS)
-        if self.perturb_v2:
+        if self.perturb_v2 or self.perturb_e:
             if getattr(self, "_episode_key_T", None) != self.T:
                 import hashlib as _hl
                 self._episode_key = _hl.sha256(
                     np.ascontiguousarray(self.G, dtype=np.float64).tobytes()).hexdigest()
                 self._episode_key_T = self.T
-            fut = self._fp.perturbed_future_v2(
-                self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
-                self.perturb_calibration, common_key=self._episode_key)
+            if self.perturb_e:
+                fut = self._fp.perturbed_future_e(
+                    self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
+                    eparams=(self.perturb_calibration
+                             if self.perturb_tier == "calibrated_shrink_v1" else None),
+                    common_key=self._episode_key)
+            else:
+                fut = self._fp.perturbed_future_v2(
+                    self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
+                    self.perturb_calibration, common_key=self._episode_key)
         else:
             fut = self._fp.perturbed_future(
                 self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,

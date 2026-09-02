@@ -205,6 +205,71 @@ def perturbed_future_v2(series, t, horizon, site, tier, calibration=None,
     return out
 
 
+# Scheme 2-E tier set. The primary error is generated wholesale from the real-error
+# audit's parameter block (SCHEME2_ERROR_REGRET_PREREG Addendum A): per-DC per-lead
+# amplitude gain and OLS intercept, a persistent AR(1) residual with the audited
+# single-factor cross-DC structure, dimensioned quantities rescaled to the target DC by
+# its mean level. Lead 0 is the measured present in every tier.
+TIERS_E = {
+    "godeye": {"kind": "noise", "sigma_rel": 0.0},
+    "calibrated_shrink_v1": {"kind": "audit"},
+    "s30": {"kind": "noise", "sigma_rel": 0.30},
+    "shuffle": {"kind": "shuffle"},
+    "anti": {"kind": "anti"},
+}
+
+
+def audited_future(series, t, horizon, site, eparams, common_key):
+    """The calibrated_shrink_v1 view of rows [t, t+horizon), lead 0 exact.
+
+        view[l] = max(0, mu' + lambda(l)(truth - mu') + b'(l) + sigma'(l) eps)
+
+    lambda is dimensionless and transfers as measured; b and sigma carry kW and are
+    rescaled by mu'_target / mu_audit. eps is one frozen AR(1) field per site and
+    episode with the audited rho, mixed with a shared common field at the audited
+    single-factor weight, so the drift is persistent and cross-site correlated the way
+    the deployed model's residuals are.
+    """
+    key = str(site)
+    lam = np.asarray(eparams["lambda_lead_per_dc"][key], dtype=np.float64)
+    b = np.asarray(eparams["b_ols_lead_per_dc"][key], dtype=np.float64)
+    var = np.asarray(eparams["resid_var_lead_per_dc"][key], dtype=np.float64)
+    rho = float(eparams["resid_ar1_along_lead_per_dc"][key])
+    c = float(eparams["resid_corr_median_off_diagonal"])
+    mu_audit = float(eparams["mu_per_dc"][key])
+
+    lo, hi = t, min(len(series), t + horizon)
+    truth = np.asarray(series[lo:hi], dtype=np.float64)
+    if len(truth) == 0:
+        return truth
+    mu_t = float(np.mean(series))
+    scale = mu_t / max(mu_audit, 1e-9)
+
+    common = ar1_field(f"{common_key}:calibrated_shrink_v1", len(series), rho)[lo:hi]
+    indep = ar1_field(series_key(series, site, "calibrated_shrink_v1"),
+                      len(series), rho)[lo:hi]
+    eps = np.sqrt(c) * common + np.sqrt(1.0 - c) * indep
+
+    L = len(truth)
+    leads = np.arange(L)
+    lamv = lam[np.minimum(leads, len(lam) - 1)]
+    bv = b[np.minimum(leads, len(b) - 1)] * scale
+    sv = np.sqrt(np.maximum(var[np.minimum(leads, len(var) - 1)], 0.0)) * scale
+    out = np.maximum(0.0, mu_t + lamv * (truth - mu_t) + bv + sv * eps)
+    out[0] = truth[0]
+    return out
+
+
+def perturbed_future_e(series, t, horizon, site, tier, eparams=None, common_key=None):
+    """Dispatch for the Scheme 2-E tier set; non-audit tiers reuse the v2 semantics."""
+    if TIERS_E[tier]["kind"] == "audit":
+        if eparams is None or common_key is None:
+            raise ValueError("calibrated_shrink_v1 needs the audit params and a "
+                             "common_key")
+        return audited_future(series, t, horizon, site, eparams, common_key)
+    return perturbed_future_v2(series, t, horizon, site, tier)
+
+
 def load_calibration(path: str) -> dict:
     cal = json.load(open(path))
     for field in ("sigma_rel", "ar1_rho", "lead_alpha", "source_checkpoint_sha"):
