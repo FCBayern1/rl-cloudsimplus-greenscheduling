@@ -47,6 +47,14 @@ SPLIT_DIR = os.path.join(_REPO, "cloudsimplus-gateway/src/main/resources/windPro
 
 SEQ_LEN = 96
 PRED_LEN = 144
+# Construction-side knob, retrain prereg §2.1/§2.2. 0 keeps the stock convention
+# (y[0] = the row after the last history row); 1 is plan A (y[0] = the last history row
+# itself, matching what the deployed consumer treats forecast[0] as).
+#
+# This is NOT residual_calibration.py's --label-offset. That one is consumption-side:
+# which true row pred[0] is scored against. Under plan A the two end up naming the same
+# row, but they stay two independent knobs and neither may be inferred from the other.
+LABEL_START_OFFSET = 0
 RATIOS = (0.7, 0.1, 0.2)
 SPLITS = ("train", "val", "test")
 
@@ -110,7 +118,8 @@ class CleanWindowDataset:
     def __init__(self, files: Sequence[FileSpec], split: str,
                  seq_len: int = SEQ_LEN, pred_len: int = PRED_LEN,
                  ratios: Sequence[float] = RATIOS, scale: bool = True,
-                 forbid_years: Sequence[int] = (2022,)):
+                 forbid_years: Sequence[int] = (2022,),
+                 label_start_offset: int = LABEL_START_OFFSET):
         if split not in SPLITS:
             raise ValueError(f"unknown split {split!r}; expected one of {SPLITS}")
         bad = [f.name for f in files if f.year in tuple(forbid_years)]
@@ -119,6 +128,13 @@ class CleanWindowDataset:
                              f"split; refused: {bad}")
         self.files = list(files)
         self.split, self.seq_len, self.pred_len = split, int(seq_len), int(pred_len)
+        self.label_start_offset = int(label_start_offset)
+        if not 0 <= self.label_start_offset < self.seq_len:
+            raise ValueError(
+                f"label_start_offset must lie in [0, seq_len); got "
+                f"{self.label_start_offset}. A value of seq_len or more would make the "
+                f"label window start before the history window ends by more than the "
+                f"history itself.")
         self.ratios, self.scale = tuple(ratios), bool(scale)
         self.columns = feature_columns()
 
@@ -127,7 +143,9 @@ class CleanWindowDataset:
         self.scalers: Dict[str, Dict[str, np.ndarray]] = {}
         self.index: List[Tuple[str, int]] = []          # (file name, absolute start row)
 
-        span = self.seq_len + self.pred_len
+        # Plan A pulls the label window back by one row, so a window occupies
+        # seq_len + pred_len - label_start_offset rows rather than seq_len + pred_len.
+        span = self.span
         for f in self.files:
             df = pd.read_csv(f.path)
             missing = [c for c in self.columns if c not in df.columns]
@@ -150,6 +168,11 @@ class CleanWindowDataset:
                 if start + span <= hi:
                     self.index.append((f.name, start))
 
+    @property
+    def span(self) -> int:
+        """Rows one window occupies, history and label together."""
+        return self.seq_len + self.pred_len - self.label_start_offset
+
     def __len__(self) -> int:
         return len(self.index)
 
@@ -160,17 +183,28 @@ class CleanWindowDataset:
             s = self.scalers[name]
             arr = (arr - s["mean"]) / s["std"]
         x = arr[start:start + self.seq_len]
-        y = arr[start + self.seq_len:start + self.seq_len + self.pred_len]
+        y0 = start + self.seq_len - self.label_start_offset
+        y = arr[y0:y0 + self.pred_len]
         return x.astype(np.float32), y.astype(np.float32)
 
     # -- auditing ------------------------------------------------------------------
     def window_rows(self, i: int) -> Tuple[str, int, int]:
         name, start = self.index[i]
-        return name, start, start + self.seq_len + self.pred_len
+        return name, start, start + self.span
+
+    def label_first_row(self, i: int) -> Tuple[str, int]:
+        """Absolute row the label window starts at. Under plan A this equals the LAST
+        history row, which is the row the deployed consumer treats forecast[0] as."""
+        name, start = self.index[i]
+        return name, start + self.seq_len - self.label_start_offset
+
+    def history_last_row(self, i: int) -> Tuple[str, int]:
+        name, start = self.index[i]
+        return name, start + self.seq_len - 1
 
     def audit(self) -> Dict:
         """The counters the legacy pipeline failed, recomputed against this loader."""
-        span = self.seq_len + self.pred_len
+        span = self.span
         cross_file = 0                       # impossible by construction; counted anyway
         cross_split = 0
         for i in range(len(self)):
@@ -200,6 +234,8 @@ class CleanWindowDataset:
             "patv_is_last": self.columns[-1] == "Patv",
             "seq_len": self.seq_len,
             "pred_len": self.pred_len,
+            "label_start_offset": self.label_start_offset,
+            "span": self.span,
             "files": sorted(self.borders),
         }
 

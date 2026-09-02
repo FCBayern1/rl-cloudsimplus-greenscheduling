@@ -59,10 +59,13 @@ FLAG_TO_SPLIT = {"train": "train", "val": "val", "test": "test", "inference": "t
 class CleanDatasetAdapter(torch.utils.data.Dataset):
     """`CleanWindowDataset` in the tuple shape the stock finetune loop consumes."""
 
-    def __init__(self, files, split, seq_len, pred_len, ratios=cd.RATIOS, scale=True):
+    def __init__(self, files, split, seq_len, pred_len, ratios=cd.RATIOS, scale=True,
+                 label_start_offset=cd.LABEL_START_OFFSET):
         self.inner = cd.CleanWindowDataset(files, split, seq_len, pred_len,
-                                           ratios=ratios, scale=scale)
+                                           ratios=ratios, scale=scale,
+                                           label_start_offset=label_start_offset)
         self.seq_len, self.pred_len, self.split = seq_len, pred_len, split
+        self.label_start_offset = self.inner.label_start_offset
         # Set by the tests to record which items a real DataLoader pass actually fetched.
         self.fetched = None
 
@@ -81,6 +84,12 @@ class CleanDatasetAdapter(torch.utils.data.Dataset):
     # -- provenance, for the batch-boundary test and for any audit artifact -------------
     def window_rows(self, i):
         return self.inner.window_rows(i)
+
+    def label_first_row(self, i):
+        return self.inner.label_first_row(i)
+
+    def history_last_row(self, i):
+        return self.inner.history_last_row(i)
 
     def borders(self, name):
         return self.inner.borders[name][self.split]
@@ -109,9 +118,11 @@ class CleanExpTimeCAP(Exp_TimeCAP):
 
     def _get_data(self, flag):
         split = FLAG_TO_SPLIT[flag]
-        ds = CleanDatasetAdapter(self.clean_files, split,
-                                 self.args.seq_len, self.args.pred_len,
-                                 scale=getattr(self.args, "scale", True))
+        ds = CleanDatasetAdapter(
+            self.clean_files, split, self.args.seq_len, self.args.pred_len,
+            scale=getattr(self.args, "scale", True),
+            label_start_offset=getattr(self.args, "label_start_offset",
+                                       cd.LABEL_START_OFFSET))
         shuffle = flag not in ("test", "inference")
         loader = torch.utils.data.DataLoader(
             ds, batch_size=self.args.batch_size, shuffle=shuffle,
@@ -122,7 +133,8 @@ class CleanExpTimeCAP(Exp_TimeCAP):
 
 
 def build_clean_args(turbine_ids, years, res_dir, epochs, batch_size, lr, patience,
-                     use_gpu, gpu, num_workers=4, split_dir=cd.SPLIT_DIR):
+                     use_gpu, gpu, num_workers=4, split_dir=cd.SPLIT_DIR,
+                     label_start_offset=cd.LABEL_START_OFFSET):
     """The stock args, with the data source replaced by a file list.
 
     build_args is reused rather than restated so the model, optimiser and schedule stay
@@ -137,6 +149,9 @@ def build_clean_args(turbine_ids, years, res_dir, epochs, batch_size, lr, patien
     args.clean_files = files
     args.data = "clean_per_file"          # inert: _get_data never consults data_dict
     args.scale = True
+    # Construction-side knob only. args.label_len stays 0: plan A's shift is carried by
+    # the dataset, because moving label_len would change the LENGTH of y, not its start.
+    args.label_start_offset = int(label_start_offset)
     return args
 
 
@@ -154,16 +169,23 @@ def main():
     ap.add_argument("--no-gpu", action="store_true")
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=20260901)
+    ap.add_argument("--label-start-offset", type=int, default=cd.LABEL_START_OFFSET,
+                    help="0 = stock label convention; 1 = plan A (y[0] is the last "
+                         "history row, matching deployed consumption). Retrain prereg "
+                         "§2.1; NOT residual_calibration.py's --label-offset.")
     a = ap.parse_args()
 
     args = build_clean_args(a.turbine_id, a.year, a.res_dir, a.epochs, a.batch_size,
                             a.lr, a.patience, use_gpu=not a.no_gpu, gpu=a.gpu,
-                            num_workers=a.num_workers)
+                            num_workers=a.num_workers,
+                            label_start_offset=a.label_start_offset)
     set_seed(a.seed)
     args.use_gpu = args.use_gpu and torch.cuda.is_available()
     args.device = torch.device(f"cuda:{args.gpu}") if args.use_gpu else torch.device("cpu")
     print("使用 GPU" if args.use_gpu else "使用 CPU")
     print(f"files: {[f.name for f in args.clean_files]}")
+    print(f"label_start_offset: {args.label_start_offset} "
+          f"({'plan A, y[0] = last history row' if args.label_start_offset == 1 else 'stock'})")
 
     # make_dir takes the args namespace and derives res_dir/<model>/{test,model,log}
     # itself; the stock entry point calls it exactly this way.
@@ -177,7 +199,8 @@ def main():
             f"{k}={v}" for k, v in CleanDatasetAdapter(
                 args.clean_files, split, args.seq_len, args.pred_len).audit().items()
             if k in ("n_windows", "cross_file_windows", "cross_split_windows",
-                     "split_row_overlaps", "scaler_fit_is_train_only")))
+                     "split_row_overlaps", "scaler_fit_is_train_only",
+                     "label_start_offset", "span")))
     exp.finetune()
     mse, mae = exp.Inference()
     print(f"\n评估结果 — MSE: {mse:.4f}  MAE: {mae:.4f}   (smoke only; not evidence)")
