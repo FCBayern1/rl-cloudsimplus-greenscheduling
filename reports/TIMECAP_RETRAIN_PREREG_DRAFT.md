@@ -148,6 +148,7 @@ k=0 审计（`k0_semantics_audit.md`）确认的事实：
       --turbine-id 12 --turbine-id 36 --turbine-id 91 --turbine-id 95 --turbine-id 96 \
       --year 2020 \
       --res-dir drl-manager/timecap_prediction/TimeCAP/model/retrain_clean_v3 \
+      --label-start-offset 1 \
       --epochs 30 --batch-size 32 --lr 5e-5 --patience 5 --gpu 0 --seed 20260901
 
 **不启用 `--multi-gpu`**：本机单卡，且分布式入口尚未做 1-epoch `torchrun` smoke 与
@@ -296,3 +297,8 @@ test MSE / MAE（**只报告，不用来回调任何下游**）。
 修完之前 provider 不得声称 drop-in / byte-for-byte。
 
 本裁定为代行;Codex 复核若推翻任何一条,以 Codex 为准,已产生的产物按其裁定处置。
+
+**9.6 §4 命令行更正(裁定,先于任何训练):**§4 的命令补上 `--label-start-offset 1`。
+该参数在 E2 起草时尚不存在,漏掉它会静默训出 stock 标签约定,与 §2 冻结的甲案相悖,
+且要到 G1′ 验收才暴露。这是让命令与正文自身的冻结条款一致的更正,不改任何判据;
+情形 B 触发时以 §4 更正后的命令为准。
