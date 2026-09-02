@@ -1,0 +1,38 @@
+{
+  "arms": {
+    "always_defer": {
+      "invalid_cells": 324,
+      "pooled": null,
+      "valid_cells": 0
+    },
+    "climatology_planner": {
+      "invalid_cells": 0,
+      "pooled": 0.0027408203542299346,
+      "valid_cells": 324
+    },
+    "nowait_planner": {
+      "invalid_cells": 0,
+      "pooled": 0.0016160248161372548,
+      "valid_cells": 324
+    },
+    "persistence_planner": {
+      "invalid_cells": 0,
+      "pooled": 0.0016419413774408443,
+      "valid_cells": 324
+    },
+    "reactive_wait_planner": {
+      "invalid_cells": 0,
+      "pooled": 0.0023489574173247946,
+      "valid_cells": 324
+    }
+  },
+  "expected_cells": 324,
+  "frozen_blind": "nowait_planner",
+  "status": "FROZEN",
+  "valid_everywhere": [
+    "persistence_planner",
+    "climatology_planner",
+    "reactive_wait_planner",
+    "nowait_planner"
+  ]
+}

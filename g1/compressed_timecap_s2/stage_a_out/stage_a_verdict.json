@@ -1,0 +1,4884 @@
+{
+  "cells": 108,
+  "centre": {
+    "cell": {
+      "concurrency": 3,
+      "n_jobs": 50,
+      "runtime_rows": 24,
+      "seed": 0,
+      "wait_cap_rows": 96
+    },
+    "cell_sha": "00a27549015e5e0a",
+    "largest_region": 97,
+    "selection_rule": "smallest canonical cell SHA among stable regions"
+  },
+  "frozen_blind": "nowait_planner",
+  "passing_cells": 97,
+  "regions": [
+    97
+  ],
+  "rows": [
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "7aebc0811ac6bf44",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.000298669299768518,
+        "full": 0.00026110717160493806,
+        "oracle144": 0.00026110717160493806
+      },
+      "reduction": 0.125764945351572,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00011276117222222181,
+          "full": 0.00012144241863425884,
+          "oracle144": 0.00012144241863425884
+        },
+        "9": {
+          "blind": 0.00040255413611111035,
+          "full": 0.00013872678888888853,
+          "oracle144": 0.00013872678888888853
+        },
+        "17": {
+          "blind": 0.00038069259097222175,
+          "full": 0.0005231523072916668,
+          "oracle144": 0.0005231523072916668
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "e5703007c7acf666",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0005070037072145069,
+        "full": 0.0003173379597012345,
+        "oracle144": 0.0003173379597012345
+      },
+      "reduction": 0.37409144117565046,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00019373624629629742,
+          "full": 0.00015700918240740664,
+          "oracle144": 0.00015700918240740664
+        },
+        "9": {
+          "blind": 0.0005500015241898154,
+          "full": 0.00037078487337962956,
+          "oracle144": 0.00037078487337962956
+        },
+        "17": {
+          "blind": 0.000777273351157408,
+          "full": 0.0004242198233166673,
+          "oracle144": 0.0004242198233166673
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "e06ff61e2be8a4c7",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0011447885405092581,
+        "full": 0.0005960181945216045,
+        "oracle144": 0.0005960181945216045
+      },
+      "reduction": 0.47936394064840454,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006721460379629626,
+          "full": 0.00030611682696759314,
+          "oracle144": 0.00030611682696759314
+        },
+        "9": {
+          "blind": 0.0011426291268518498,
+          "full": 0.0007106254556712949,
+          "oracle144": 0.0007106254556712949
+        },
+        "17": {
+          "blind": 0.0016195904567129617,
+          "full": 0.0007713123009259253,
+          "oracle144": 0.0007713123009259253
+        }
+      }
+    },
+    {
+      "capture": null,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "ef7b826bd2fcfed0",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": false,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": false,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0002540631637345677,
+        "full": 0.000344813896969753,
+        "oracle144": 0.000344813896969753
+      },
+      "reduction": -0.3571975248249568,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00017503341666666659,
+          "full": 0.0001510008019675927,
+          "oracle144": 0.0001510008019675927
+        },
+        "9": {
+          "blind": 0.0001173249112268516,
+          "full": 9.617514097222221e-05,
+          "oracle144": 9.617514097222221e-05
+        },
+        "17": {
+          "blind": 0.0004698311633101849,
+          "full": 0.0007872657479694441,
+          "oracle144": 0.0007872657479694441
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "70aa1aa9b2d07e57",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007659826133487657,
+        "full": 0.0006118366684027775,
+        "oracle144": 0.0006118366684027775
+      },
+      "reduction": 0.20123948280246767,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000399180223726852,
+          "full": 0.0006199287341435184,
+          "oracle144": 0.0006199287341435184
+        },
+        "9": {
+          "blind": 0.0005726304991898143,
+          "full": 0.00028049157129629576,
+          "oracle144": 0.00028049157129629576
+        },
+        "17": {
+          "blind": 0.0013261371171296307,
+          "full": 0.0009350896997685184,
+          "oracle144": 0.0009350896997685184
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "06fcc674877405c2",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0009859117583719144,
+        "full": 0.000829221466028395,
+        "oracle144": 0.000829221466028395
+      },
+      "reduction": 0.15892932710557175,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00045907452465277887,
+          "full": 0.0009871677241898155,
+          "oracle144": 0.0009871677241898155
+        },
+        "9": {
+          "blind": 0.0006023823363425917,
+          "full": 0.0005169828703703697,
+          "oracle144": 0.0005169828703703697
+        },
+        "17": {
+          "blind": 0.0018962784141203723,
+          "full": 0.000983513803525,
+          "oracle144": 0.000983513803525
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "a20ffa50663e8de3",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0004570986354938272,
+        "full": 0.00033137738427685176,
+        "oracle144": 0.00033137738427685176
+      },
+      "reduction": 0.27504184317057145,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 7.128572222222211e-05,
+          "full": 7.17592222222221e-05,
+          "oracle144": 7.17592222222221e-05
+        },
+        "9": {
+          "blind": 0.000203266955324074,
+          "full": 0.0004091758870370372,
+          "oracle144": 0.0004091758870370372
+        },
+        "17": {
+          "blind": 0.0010967432289351853,
+          "full": 0.000513197043571296,
+          "oracle144": 0.000513197043571296
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "b8c11499674d2cdb",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.001262791545640432,
+        "full": 0.0010810727219311726,
+        "oracle144": 0.0010810727219311726
+      },
+      "reduction": 0.14390247094749092,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005069854638888886,
+          "full": 0.0007356852759259259,
+          "oracle144": 0.0007356852759259259
+        },
+        "9": {
+          "blind": 0.00025370120798611114,
+          "full": 0.0004605981946759258,
+          "oracle144": 0.0004605981946759258
+        },
+        "17": {
+          "blind": 0.0030276879650462966,
+          "full": 0.002046934695191666,
+          "oracle144": 0.002046934695191666
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "04d5e1d2e05a09b0",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0014645734347993825,
+        "full": 0.001248526265951235,
+        "oracle144": 0.001248526265951235
+      },
+      "reduction": 0.14751542238490875,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001083369933680555,
+          "full": 0.0012094952842592592,
+          "oracle144": 0.0012094952842592592
+        },
+        "9": {
+          "blind": 0.00042260716759259293,
+          "full": 0.000622601389467593,
+          "oracle144": 0.000622601389467593
+        },
+        "17": {
+          "blind": 0.002887743203125,
+          "full": 0.0019134821241268524,
+          "oracle144": 0.0019134821241268524
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "d2c0b6e35762b291",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00021777696114969134,
+        "full": 9.230409259259231e-05,
+        "oracle144": 9.230409259259231e-05
+      },
+      "reduction": 0.576153087519914,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00011541447835648108,
+          "full": 7.8992783333333e-05,
+          "oracle144": 7.8992783333333e-05
+        },
+        "9": {
+          "blind": 0.00019995957037037112,
+          "full": 9.436525185185154e-05,
+          "oracle144": 9.436525185185154e-05
+        },
+        "17": {
+          "blind": 0.0003379568347222218,
+          "full": 0.00010355424259259242,
+          "oracle144": 0.00010355424259259242
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "09e8677c60f3f352",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0004651583540123464,
+        "full": 0.00025583520158178994,
+        "oracle144": 0.00025583520158178994
+      },
+      "reduction": 0.450004069850588,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005827185519675926,
+          "full": 0.0001400548981481475,
+          "oracle144": 0.0001400548981481475
+        },
+        "9": {
+          "blind": 0.0005510767932870382,
+          "full": 0.0002988409967592591,
+          "oracle144": 0.0002988409967592591
+        },
+        "17": {
+          "blind": 0.0002616797167824085,
+          "full": 0.00032860970983796325,
+          "oracle144": 0.00032860970983796325
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "2bd6266bca8d3d4a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.001015406587384259,
+        "full": 0.0005242428906635805,
+        "oracle144": 0.0005242428906635805
+      },
+      "reduction": 0.4837113554541163,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0003810254453703701,
+          "full": 0.000248976698148149,
+          "oracle144": 0.000248976698148149
+        },
+        "9": {
+          "blind": 0.0008390684728009254,
+          "full": 0.0006255421932870372,
+          "oracle144": 0.0006255421932870372
+        },
+        "17": {
+          "blind": 0.001826125843981482,
+          "full": 0.0006982097805555553,
+          "oracle144": 0.0006982097805555553
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "0b0f80187423cf38",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00047658117565586383,
+        "full": 0.0004181953205037037,
+        "oracle144": 0.0004181953205037037
+      },
+      "reduction": 0.12250978035758628,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00018124693518518513,
+          "full": 0.000958891041666667,
+          "oracle144": 0.000958891041666667
+        },
+        "9": {
+          "blind": 0.00013105052986111084,
+          "full": 8.449332407407398e-05,
+          "oracle144": 8.449332407407398e-05
+        },
+        "17": {
+          "blind": 0.0011174460619212956,
+          "full": 0.0002112015957703702,
+          "oracle144": 0.0002112015957703702
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "087d5a6cb231b669",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0008314134385030864,
+        "full": 0.0004077437964891975,
+        "oracle144": 0.0004077437964891975
+      },
+      "reduction": 0.509577572833899,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00039291180706018547,
+          "full": 0.0006232225703703703,
+          "oracle144": 0.0006232225703703703
+        },
+        "9": {
+          "blind": 0.00058708732037037,
+          "full": 0.00020698561666666638,
+          "oracle144": 0.00020698561666666638
+        },
+        "17": {
+          "blind": 0.001514241188078704,
+          "full": 0.0003930232024305558,
+          "oracle144": 0.0003930232024305558
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "dab0fafab1a9bbeb",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010659722150848762,
+        "full": 0.0006707250242459876,
+        "oracle144": 0.0006707250242459876
+      },
+      "reduction": 0.37078564079404047,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010232294915509263,
+          "full": 0.0006829530472222225,
+          "oracle144": 0.0006829530472222225
+        },
+        "9": {
+          "blind": 0.0010911660030092575,
+          "full": 0.0006326595879629626,
+          "oracle144": 0.0006326595879629626
+        },
+        "17": {
+          "blind": 0.0010835211506944448,
+          "full": 0.0006965624375527776,
+          "oracle144": 0.0006965624375527776
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "10da1e6409ce47f8",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0003378307656635802,
+        "full": 0.00011290921047283949,
+        "oracle144": 0.00011290921047283949
+      },
+      "reduction": 0.6657817405970742,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 7.503181944444431e-05,
+          "full": 7.42614722222221e-05,
+          "oracle144": 7.42614722222221e-05
+        },
+        "9": {
+          "blind": 0.00021489361527777772,
+          "full": 8.979607129629635e-05,
+          "oracle144": 8.979607129629635e-05
+        },
+        "17": {
+          "blind": 0.0007235668622685184,
+          "full": 0.00017467008790000003,
+          "oracle144": 0.00017467008790000003
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "99f38fb6f3e16f50",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010199465880015436,
+        "full": 0.000682104732617901,
+        "oracle144": 0.000682104732617901
+      },
+      "reduction": 0.33123485029309324,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0003357290425925925,
+          "full": 0.0010515242731481483,
+          "oracle144": 0.0010515242731481483
+        },
+        "9": {
+          "blind": 0.0002592856061342593,
+          "full": 0.000153872514814815,
+          "oracle144": 0.000153872514814815
+        },
+        "17": {
+          "blind": 0.002464825115277779,
+          "full": 0.0008409174098907399,
+          "oracle144": 0.0008409174098907399
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "05a2718d5535f497",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0014884747209104943,
+        "full": 0.0008804713214296297,
+        "oracle144": 0.0008804713214296297
+      },
+      "reduction": 0.4084741184646732,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010273211103009256,
+          "full": 0.0010913472870370373,
+          "oracle144": 0.0010913472870370373
+        },
+        "9": {
+          "blind": 0.00042300649918981494,
+          "full": 0.00031791660277777784,
+          "oracle144": 0.00031791660277777784
+        },
+        "17": {
+          "blind": 0.003015096553240742,
+          "full": 0.001232150074474074,
+          "oracle144": 0.001232150074474074
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "9f370894d73c9847",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0002290440920524691,
+        "full": 8.612314074074049e-05,
+        "oracle144": 8.612314074074049e-05
+      },
+      "reduction": 0.6239888138175093,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00010518105185185145,
+          "full": 8.326924537037005e-05,
+          "oracle144": 8.326924537037005e-05
+        },
+        "9": {
+          "blind": 0.00022033002777777815,
+          "full": 8.794210648148122e-05,
+          "oracle144": 8.794210648148122e-05
+        },
+        "17": {
+          "blind": 0.0003616211965277777,
+          "full": 8.71580703703702e-05,
+          "oracle144": 8.71580703703702e-05
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "c3283ce657c83d4a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0004394294082561733,
+        "full": 0.0002821665116302463,
+        "oracle144": 0.0002821665116302463
+      },
+      "reduction": 0.3578797724303599,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00016321892777777756,
+          "full": 0.00014030066296296206,
+          "oracle144": 0.00014030066296296206
+        },
+        "9": {
+          "blind": 0.0006552435324074081,
+          "full": 0.0005144971803240734,
+          "oracle144": 0.0005144971803240734
+        },
+        "17": {
+          "blind": 0.0004998257645833343,
+          "full": 0.00019170169160370328,
+          "oracle144": 0.00019170169160370328
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "7d2b8b1ebc7aab80",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0008944318515046297,
+        "full": 0.0008282070080604936,
+        "oracle144": 0.0008282070080604936
+      },
+      "reduction": 0.07404124007070122,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005786698157407427,
+          "full": 0.00021854342742222397,
+          "oracle144": 0.00021854342742222397
+        },
+        "9": {
+          "blind": 0.0007697006846064813,
+          "full": 0.0008505950129629609,
+          "oracle144": 0.0008505950129629609
+        },
+        "17": {
+          "blind": 0.0013349250541666653,
+          "full": 0.001415482583796296,
+          "oracle144": 0.001415482583796296
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "f2b7502e728692d4",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0003640392653549382,
+        "full": 0.0001034950632716049,
+        "oracle144": 0.0001034950632716049
+      },
+      "reduction": 0.7157035706829667,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005534660972222222,
+          "full": 8.795352777777774e-05,
+          "oracle144": 8.795352777777774e-05
+        },
+        "9": {
+          "blind": 0.00014998763344907396,
+          "full": 8.152886574074073e-05,
+          "oracle144": 8.152886574074073e-05
+        },
+        "17": {
+          "blind": 0.00038866406539351844,
+          "full": 0.00014100279629629622,
+          "oracle144": 0.00014100279629629622
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "b41ba1d19fac83f8",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007842359849537037,
+        "full": 0.00022145764969135808,
+        "oracle144": 0.00022145764969135808
+      },
+      "reduction": 0.7176135067247245,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005006134589120373,
+          "full": 0.00014446342129629638,
+          "oracle144": 0.00014446342129629638
+        },
+        "9": {
+          "blind": 0.0005837487167824067,
+          "full": 0.0002417640138888886,
+          "oracle144": 0.0002417640138888886
+        },
+        "17": {
+          "blind": 0.0012683457791666673,
+          "full": 0.00027814551388888917,
+          "oracle144": 0.00027814551388888917
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "add62bccf4f8be09",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010331940639660502,
+        "full": 0.00031648967065802487,
+        "oracle144": 0.00031648967065802487
+      },
+      "reduction": 0.6936783885080234,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005567518802083345,
+          "full": 0.00020446633425926005,
+          "oracle144": 0.00020446633425926005
+        },
+        "9": {
+          "blind": 0.0008077454289351849,
+          "full": 0.00035657256203703707,
+          "oracle144": 0.00035657256203703707
+        },
+        "17": {
+          "blind": 0.0017350848827546311,
+          "full": 0.0003884301156777775,
+          "oracle144": 0.0003884301156777775
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "b7ca2d86d155d7b0",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00022133728375771597,
+        "full": 0.0001117058194234568,
+        "oracle144": 0.0001117058194234568
+      },
+      "reduction": 0.4953140405132371,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 7.08235138888888e-05,
+          "full": 7.113165277777768e-05,
+          "oracle144": 7.113165277777768e-05
+        },
+        "9": {
+          "blind": 0.0001892050435185185,
+          "full": 8.711250462962963e-05,
+          "oracle144": 8.711250462962963e-05
+        },
+        "17": {
+          "blind": 0.00040398329386574067,
+          "full": 0.00017687330086296307,
+          "oracle144": 0.00017687330086296307
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "c26fc720e4761b74",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010041312862654323,
+        "full": 0.0002111452730500001,
+        "oracle144": 0.0002111452730500001
+      },
+      "reduction": 0.7897234396158572,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005185881305555555,
+          "full": 0.00017477039259259264,
+          "oracle144": 0.00017477039259259264
+        },
+        "9": {
+          "blind": 0.00026257240243055566,
+          "full": 0.00012242463888888897,
+          "oracle144": 0.00012242463888888897
+        },
+        "17": {
+          "blind": 0.0022312333258101853,
+          "full": 0.0003362407876685187,
+          "oracle144": 0.0003362407876685187
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "bf125eed7e6dcee2",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0014375020018132713,
+        "full": 0.00028607113724753093,
+        "oracle144": 0.00028607113724753093
+      },
+      "reduction": 0.8009942686085448,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0012574430275462958,
+          "full": 0.00021240792037037043,
+          "oracle144": 0.00021240792037037043
+        },
+        "9": {
+          "blind": 0.0004987679023148146,
+          "full": 0.00023827000000000017,
+          "oracle144": 0.00023827000000000017
+        },
+        "17": {
+          "blind": 0.002556295075578704,
+          "full": 0.0004075354913722221,
+          "oracle144": 0.0004075354913722221
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "fabdc987198a261a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00021079409718364185,
+        "full": 8.931187067901208e-05,
+        "oracle144": 8.931187067901208e-05
+      },
+      "reduction": 0.5763075348300459,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00011776335740740699,
+          "full": 7.533995833333292e-05,
+          "oracle144": 7.533995833333292e-05
+        },
+        "9": {
+          "blind": 0.00019685348703703717,
+          "full": 0.00010945175925925904,
+          "oracle144": 0.00010945175925925904
+        },
+        "17": {
+          "blind": 0.0003177654471064814,
+          "full": 8.314389444444426e-05,
+          "oracle144": 8.314389444444426e-05
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "1055059f7fe69a83",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0005307023052469141,
+        "full": 0.0004041278527777775,
+        "oracle144": 0.0004041278527777775
+      },
+      "reduction": 0.2385036794031763,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0002982383136574089,
+          "full": 0.0001371247268518511,
+          "oracle144": 0.0001371247268518511
+        },
+        "9": {
+          "blind": 0.00048335384768518567,
+          "full": 0.000909471138888889,
+          "oracle144": 0.000909471138888889
+        },
+        "17": {
+          "blind": 0.0008105147543981476,
+          "full": 0.0001657876925925924,
+          "oracle144": 0.0001657876925925924
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "b58a072a6c0b815f",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0013395593668595691,
+        "full": 0.0011357184641203756,
+        "oracle144": 0.0011357184641203756
+      },
+      "reduction": 0.15217011487671,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00045816550092592727,
+          "full": 0.0002155701064814823,
+          "oracle144": 0.0002155701064814823
+        },
+        "9": {
+          "blind": 0.0011850818884259267,
+          "full": 0.0018351485592592739,
+          "oracle144": 0.0018351485592592739
+        },
+        "17": {
+          "blind": 0.002375430711226853,
+          "full": 0.0013564367266203704,
+          "oracle144": 0.0013564367266203704
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "d660d5bb1ba20b47",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0004969972842592591,
+        "full": 9.457561419753083e-05,
+        "oracle144": 9.457561419753083e-05
+      },
+      "reduction": 0.8097059738696774,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0002563439814814815,
+          "full": 7.472368055555555e-05,
+          "oracle144": 7.472368055555555e-05
+        },
+        "9": {
+          "blind": 0.00013883302696759232,
+          "full": 6.569945370370371e-05,
+          "oracle144": 6.569945370370371e-05
+        },
+        "17": {
+          "blind": 0.0010958148443287034,
+          "full": 0.00014330370833333324,
+          "oracle144": 0.00014330370833333324
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "f1d6080811f9b8f9",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007166833672839506,
+        "full": 0.0002277693672629628,
+        "oracle144": 0.0002277693672629628
+      },
+      "reduction": 0.6821896842309159,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00039076672175925953,
+          "full": 0.00012581983333333313,
+          "oracle144": 0.00012581983333333313
+        },
+        "9": {
+          "blind": 0.00034393915023148055,
+          "full": 0.0002686899953703701,
+          "oracle144": 0.0002686899953703701
+        },
+        "17": {
+          "blind": 0.0014153442298611115,
+          "full": 0.0002887982730851851,
+          "oracle144": 0.0002887982730851851
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "00a27549015e5e0a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007335994741898153,
+        "full": 0.0003035306505962966,
+        "oracle144": 0.0003035306505962966
+      },
+      "reduction": 0.5862447271632591,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004967289184027788,
+          "full": 0.0001862376388888895,
+          "oracle144": 0.0001862376388888895
+        },
+        "9": {
+          "blind": 0.0009241778851851852,
+          "full": 0.0003261520203703705,
+          "oracle144": 0.0003261520203703705
+        },
+        "17": {
+          "blind": 0.0007798916189814817,
+          "full": 0.00039820229252962976,
+          "oracle144": 0.00039820229252962976
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "df3a3a9d64d5d1bc",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.000334073649228395,
+        "full": 0.00010097498609012345,
+        "oracle144": 0.00010097498609012345
+      },
+      "reduction": 0.6977463313154333,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 7.1593861111111e-05,
+          "full": 7.410740277777768e-05,
+          "oracle144": 7.410740277777768e-05
+        },
+        "9": {
+          "blind": 0.00021150491446759255,
+          "full": 6.532030092592596e-05,
+          "oracle144": 6.532030092592596e-05
+        },
+        "17": {
+          "blind": 0.0007191221721064814,
+          "full": 0.00016349725456666676,
+          "oracle144": 0.00016349725456666676
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "14000e440313854d",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0011343913787037038,
+        "full": 0.00019147031633703698,
+        "oracle144": 0.00019147031633703698
+      },
+      "reduction": 0.8312131774521817,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008915301510416668,
+          "full": 0.00014496054629629614,
+          "oracle144": 0.00014496054629629614
+        },
+        "9": {
+          "blind": 0.00025548520798611115,
+          "full": 9.549506481481471e-05,
+          "oracle144": 9.549506481481471e-05
+        },
+        "17": {
+          "blind": 0.0022561587770833333,
+          "full": 0.00033395533790000006,
+          "oracle144": 0.00033395533790000006
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "f4c65fa43339a6cf",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0014460333623246915,
+        "full": 0.00027325793516419766,
+        "oracle144": 0.00027325793516419766
+      },
+      "reduction": 0.8110293010633592,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001147156933333333,
+          "full": 0.00018496275000000012,
+          "oracle144": 0.00018496275000000012
+        },
+        "9": {
+          "blind": 0.000461599279861111,
+          "full": 0.0002833850601851854,
+          "oracle144": 0.0002833850601851854
+        },
+        "17": {
+          "blind": 0.0027293438737796306,
+          "full": 0.0003514259953074075,
+          "oracle144": 0.0003514259953074075
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "61c21420d4f4de74",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00026329465385802417,
+        "full": 9.454557314814789e-05,
+        "oracle144": 9.454557314814789e-05
+      },
+      "reduction": 0.6409134338172718,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000119158232407407,
+          "full": 7.533995833333297e-05,
+          "oracle144": 7.533995833333297e-05
+        },
+        "9": {
+          "blind": 0.00038513035370370285,
+          "full": 0.00010376625925925921,
+          "oracle144": 0.00010376625925925921
+        },
+        "17": {
+          "blind": 0.0002855953754629626,
+          "full": 0.00010453050185185152,
+          "oracle144": 0.00010453050185185152
+        }
+      }
+    },
+    {
+      "capture": null,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "7d3c76a0db73375e",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": false,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": false,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.00045661979452160515,
+        "full": 0.000541389707407407,
+        "oracle144": 0.000541389707407407
+      },
+      "reduction": -0.18564660118296947,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000282568633101852,
+          "full": 0.00013680190740740646,
+          "oracle144": 0.00013680190740740646
+        },
+        "9": {
+          "blind": 0.00034873521481481565,
+          "full": 0.0013111988009259258,
+          "oracle144": 0.0013111988009259258
+        },
+        "17": {
+          "blind": 0.0007385555356481479,
+          "full": 0.00017616841388888902,
+          "oracle144": 0.00017616841388888902
+        }
+      }
+    },
+    {
+      "capture": null,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "cca1c4c0eaccab15",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": false,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": false,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0010604847993441358,
+        "full": 0.0011439070346290158,
+        "oracle144": 0.0011439070346290158
+      },
+      "reduction": -0.0786642442555264,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006770272791666682,
+          "full": 0.0002245434085166674,
+          "oracle144": 0.0002245434085166674
+        },
+        "9": {
+          "blind": 0.0009086756189814829,
+          "full": 0.0018409868280092688,
+          "oracle144": 0.0018409868280092688
+        },
+        "17": {
+          "blind": 0.0015957514998842567,
+          "full": 0.0013661908673611113,
+          "oracle144": 0.0013661908673611113
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "f2455c301d9bd88d",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00028616470929783937,
+        "full": 0.00011090401234567898,
+        "oracle144": 0.00011090401234567898
+      },
+      "reduction": 0.6124469274432773,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0001718002685185185,
+          "full": 7.395333333333338e-05,
+          "oracle144": 7.395333333333338e-05
+        },
+        "9": {
+          "blind": 0.00013292995752314788,
+          "full": 5.535973148148144e-05,
+          "oracle144": 5.535973148148144e-05
+        },
+        "17": {
+          "blind": 0.0005537639018518517,
+          "full": 0.00020339897222222211,
+          "oracle144": 0.00020339897222222211
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "e67254de752a0e66",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0006118967050154318,
+        "full": 0.00021087649845678998,
+        "oracle144": 0.00021087649845678998
+      },
+      "reduction": 0.6553723909144571,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00039617097303240784,
+          "full": 0.00011119378240740719,
+          "oracle144": 0.00011119378240740719
+        },
+        "9": {
+          "blind": 0.0003652840593749996,
+          "full": 0.00025719274537037024,
+          "oracle144": 0.00025719274537037024
+        },
+        "17": {
+          "blind": 0.0010742350826388881,
+          "full": 0.0002642429675925925,
+          "oracle144": 0.0002642429675925925
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "db413950d78184b1",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0006433217902006177,
+        "full": 0.00031975721512345697,
+        "oracle144": 0.00031975721512345697
+      },
+      "reduction": 0.5029591411418821,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004711440376157417,
+          "full": 0.00016858264351851882,
+          "oracle144": 0.00016858264351851882
+        },
+        "9": {
+          "blind": 0.0008819609185185177,
+          "full": 0.00033169728240740767,
+          "oracle144": 0.00033169728240740767
+        },
+        "17": {
+          "blind": 0.0005768604144675937,
+          "full": 0.00045899171944444435,
+          "oracle144": 0.00045899171944444435
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "2d47298122e06e5f",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00033598845763888876,
+        "full": 9.046172993827156e-05,
+        "oracle144": 9.046172993827156e-05
+      },
+      "reduction": 0.7307594118739121,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 7.518588888888881e-05,
+          "full": 7.487774999999993e-05,
+          "oracle144": 7.487774999999993e-05
+        },
+        "9": {
+          "blind": 0.0002218833215277777,
+          "full": 5.082471759259256e-05,
+          "oracle144": 5.082471759259256e-05
+        },
+        "17": {
+          "blind": 0.0007108961624999998,
+          "full": 0.00014568272222222216,
+          "oracle144": 0.00014568272222222216
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "54ef4e660057aae8",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0009746009963734568,
+        "full": 0.0001600611620370372,
+        "oracle144": 0.0001600611620370372
+      },
+      "reduction": 0.8357674959982254,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004109323194444444,
+          "full": 0.00011941618518518514,
+          "oracle144": 0.00011941618518518514
+        },
+        "9": {
+          "blind": 0.00027932404039351873,
+          "full": 7.756152314814815e-05,
+          "oracle144": 7.756152314814815e-05
+        },
+        "17": {
+          "blind": 0.0022335466292824073,
+          "full": 0.0002832057777777783,
+          "oracle144": 0.0002832057777777783
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 24,
+        "seed": 0,
+        "wait_cap_rows": 120
+      },
+      "cell_sha": "f9ac16c1178cdc49",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0013644415124228395,
+        "full": 0.0002460218564814815,
+        "oracle144": 0.0002460218564814815
+      },
+      "reduction": 0.8196904343341032,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001057676030555555,
+          "full": 0.0001296966296296296,
+          "oracle144": 0.0001296966296296296
+        },
+        "9": {
+          "blind": 0.0004546797652777779,
+          "full": 0.00027096339351851876,
+          "oracle144": 0.00027096339351851876
+        },
+        "17": {
+          "blind": 0.0025809687414351857,
+          "full": 0.00033740554629629627,
+          "oracle144": 0.00033740554629629627
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "d791e544a308edce",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.001118992424035493,
+        "full": 0.00048149124587191215,
+        "oracle144": 0.00048149124587191215
+      },
+      "reduction": 0.5697100038126444,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006811859527777783,
+          "full": 0.00023016384444444379,
+          "oracle144": 0.00023016384444444379
+        },
+        "9": {
+          "blind": 0.0013063810531249976,
+          "full": 0.000803976615393517,
+          "oracle144": 0.000803976615393517
+        },
+        "17": {
+          "blind": 0.0013694102662037031,
+          "full": 0.00041033327777777553,
+          "oracle144": 0.00041033327777777553
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "c9a4b4e2cd8aff10",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0016544747073688256,
+        "full": 0.0006619564461209858,
+        "oracle144": 0.0006619564461209858
+      },
+      "reduction": 0.5998993256453461,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010181826233796323,
+          "full": 0.0003310306453703699,
+          "oracle144": 0.0003310306453703699
+        },
+        "9": {
+          "blind": 0.0018784209364583289,
+          "full": 0.0009149372587962933,
+          "oracle144": 0.0009149372587962933
+        },
+        "17": {
+          "blind": 0.002066820562268516,
+          "full": 0.0007399014341962943,
+          "oracle144": 0.0007399014341962943
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "1d3b2df9e7dbaaa3",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00298185140946204,
+        "full": 0.001008388315895065,
+        "oracle144": 0.001008388315895065
+      },
+      "reduction": 0.6618247600483254,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001987482553038886,
+          "full": 0.0005805267629629572,
+          "oracle144": 0.0005805267629629572
+        },
+        "9": {
+          "blind": 0.003331898586226863,
+          "full": 0.0011555827010416746,
+          "oracle144": 0.0011555827010416746
+        },
+        "17": {
+          "blind": 0.0036261730891203716,
+          "full": 0.0012890554836805625,
+          "oracle144": 0.0012890554836805625
+        }
+      }
+    },
+    {
+      "capture": null,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "0d78ecc869fab6c8",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": false,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": false,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0006010171186518523,
+        "full": 0.0006023934707561725,
+        "oracle144": 0.0006023934707561725
+      },
+      "reduction": -0.002290038106414674,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00034432140567129666,
+          "full": 0.000296151154282408,
+          "oracle144": 0.000296151154282408
+        },
+        "9": {
+          "blind": 0.0004595946037037035,
+          "full": 0.00042241731203703615,
+          "oracle144": 0.00042241731203703615
+        },
+        "17": {
+          "blind": 0.0009991353465805567,
+          "full": 0.0010886119459490736,
+          "oracle144": 0.0010886119459490736
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "60995b8f57c15eb6",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0013219646310956821,
+        "full": 0.0007628141967206792,
+        "oracle144": 0.0007628141967206792
+      },
+      "reduction": 0.4229692846710755,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000450734701504632,
+          "full": 0.00040257883587963104,
+          "oracle144": 0.00040257883587963104
+        },
+        "9": {
+          "blind": 0.0011366878907407426,
+          "full": 0.000765012986805555,
+          "oracle144": 0.000765012986805555
+        },
+        "17": {
+          "blind": 0.0023784713010416717,
+          "full": 0.0011208507674768514,
+          "oracle144": 0.0011208507674768514
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "e28bf86ebbc4d743",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.001454705144753088,
+        "full": 0.0010582937113040134,
+        "oracle144": 0.0010582937113040134
+      },
+      "reduction": 0.2725029432107761,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010244273769675959,
+          "full": 0.0006554016701388917,
+          "oracle144": 0.0006554016701388917
+        },
+        "9": {
+          "blind": 0.0016728544695601853,
+          "full": 0.0013812671667824072,
+          "oracle144": 0.0013812671667824072
+        },
+        "17": {
+          "blind": 0.0016668335877314823,
+          "full": 0.0011382122969907417,
+          "oracle144": 0.0011382122969907417
+        }
+      }
+    },
+    {
+      "capture": null,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "b32247346433250e",
+      "contract_violations": [],
+      "favourable_windows": 1,
+      "gates": {
+        "capture_ge_50pc": false,
+        "favourable_2_of_3": false,
+        "full_oracle_not_worse": false,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.0007589531099922833,
+        "full": 0.0010019418157793216,
+        "oracle144": 0.0010019418157793216
+      },
+      "reduction": -0.3201630016240514,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008019943050925922,
+          "full": 0.0011910657287037038,
+          "oracle144": 0.0011910657287037038
+        },
+        "9": {
+          "blind": 0.0003158780427083333,
+          "full": 0.0002733596807870372,
+          "oracle144": 0.0002733596807870372
+        },
+        "17": {
+          "blind": 0.0011589869821759244,
+          "full": 0.0015414000378472235,
+          "oracle144": 0.0015414000378472235
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "f8c407d573430343",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": false
+      },
+      "missing": [],
+      "pass": false,
+      "pooled": {
+        "blind": 0.001373127776427469,
+        "full": 0.0013238524333123454,
+        "oracle144": 0.0013238524333123454
+      },
+      "reduction": 0.03588547545322084,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008050457134259248,
+          "full": 0.0012983227040509254,
+          "oracle144": 0.0012983227040509254
+        },
+        "9": {
+          "blind": 0.0012743261622685186,
+          "full": 0.0008280228494212959,
+          "oracle144": 0.0008280228494212959
+        },
+        "17": {
+          "blind": 0.002040011453587963,
+          "full": 0.0018452117464648147,
+          "oracle144": 0.0018452117464648147
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "5116440c3bf01eaa",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0017671728396604959,
+        "full": 0.0015800055493827147,
+        "oracle144": 0.0015800055493827147
+      },
+      "reduction": 0.1059134036451914,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0009063932444444429,
+          "full": 0.0015002536244212979,
+          "oracle144": 0.0015002536244212979
+        },
+        "9": {
+          "blind": 0.0018649040468750018,
+          "full": 0.001045456926967591,
+          "oracle144": 0.001045456926967591
+        },
+        "17": {
+          "blind": 0.002530221227662043,
+          "full": 0.0021943060967592556,
+          "oracle144": 0.0021943060967592556
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "e6516c337cfbd85b",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0008273580959382706,
+        "full": 0.00041791182920524584,
+        "oracle144": 0.00041791182920524584
+      },
+      "reduction": 0.49488397919003824,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008453719618888889,
+          "full": 0.0002165196759259252,
+          "oracle144": 0.0002165196759259252
+        },
+        "9": {
+          "blind": 0.0008445635090277771,
+          "full": 0.0006402557718749979,
+          "oracle144": 0.0006402557718749979
+        },
+        "17": {
+          "blind": 0.000792138816898146,
+          "full": 0.00039696003981481444,
+          "oracle144": 0.00039696003981481444
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "d7ba1ee658cb3ca0",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00251594165859135,
+        "full": 0.0006388301728009251,
+        "oracle144": 0.0006388301728009251
+      },
+      "reduction": 0.7460870483147056,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0011471540805194256,
+          "full": 0.0003010397425925957,
+          "oracle144": 0.0003010397425925957
+        },
+        "9": {
+          "blind": 0.0036139292515046193,
+          "full": 0.0008630141436342554,
+          "oracle144": 0.0008630141436342554
+        },
+        "17": {
+          "blind": 0.0027867416437500057,
+          "full": 0.0007524366321759242,
+          "oracle144": 0.0007524366321759242
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "7ccba3c397681e4a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.003062864698285806,
+        "full": 0.0008805376795910435,
+        "oracle144": 0.0008805376795910435
+      },
+      "reduction": 0.7125117279637413,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0021418285962462877,
+          "full": 0.0004999242611111006,
+          "oracle144": 0.0004999242611111006
+        },
+        "9": {
+          "blind": 0.00406588971041667,
+          "full": 0.0011630552197916596,
+          "oracle144": 0.0011630552197916596
+        },
+        "17": {
+          "blind": 0.002980875788194461,
+          "full": 0.0009786335578703706,
+          "oracle144": 0.0009786335578703706
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "70aeb60d12497c38",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0008344493500000001,
+        "full": 0.00034596842532623413,
+        "oracle144": 0.00034596842532623413
+      },
+      "reduction": 0.5853931394083607,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005068807153935185,
+          "full": 0.00022558661064814862,
+          "oracle144": 0.00022558661064814862
+        },
+        "9": {
+          "blind": 0.0011198010111111115,
+          "full": 0.00037941463611110987,
+          "oracle144": 0.00037941463611110987
+        },
+        "17": {
+          "blind": 0.0008766663234953706,
+          "full": 0.00043290402921944383,
+          "oracle144": 0.00043290402921944383
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "478ef1b761351192",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0011108784450617323,
+        "full": 0.0006711066511188268,
+        "oracle144": 0.0006711066511188268
+      },
+      "reduction": 0.39587751107950164,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004579781311342621,
+          "full": 0.000297134978703705,
+          "oracle144": 0.000297134978703705
+        },
+        "9": {
+          "blind": 0.0010409545666666671,
+          "full": 0.0009756791157407387,
+          "oracle144": 0.0009756791157407387
+        },
+        "17": {
+          "blind": 0.0018337026373842677,
+          "full": 0.0007405058589120368,
+          "oracle144": 0.0007405058589120368
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "7f14ec0dc28d4608",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0021077713498456794,
+        "full": 0.0010135623488987664,
+        "oracle144": 0.0010135623488987664
+      },
+      "reduction": 0.5191307876098731,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008911250322916712,
+          "full": 0.000477373957870372,
+          "oracle144": 0.000477373957870372
+        },
+        "9": {
+          "blind": 0.0035317450659722183,
+          "full": 0.0011951408803240755,
+          "oracle144": 0.0011951408803240755
+        },
+        "17": {
+          "blind": 0.0019004439512731479,
+          "full": 0.0013681722085018514,
+          "oracle144": 0.0013681722085018514
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "d5bb9a826172ce16",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.000999046209469753,
+        "full": 0.0008516090911265436,
+        "oracle144": 0.0008516090911265436
+      },
+      "reduction": 0.1475778767245031,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006367278538194437,
+          "full": 0.0011099273259259268,
+          "oracle144": 0.0011099273259259268
+        },
+        "9": {
+          "blind": 0.00029512960370370377,
+          "full": 0.00017464052337962972,
+          "oracle144": 0.00017464052337962972
+        },
+        "17": {
+          "blind": 0.0020652811708861117,
+          "full": 0.0012702594240740746,
+          "oracle144": 0.0012702594240740746
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "f170104330d7cbd1",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0015498525561342587,
+        "full": 0.0009569127621913575,
+        "oracle144": 0.0009569127621913575
+      },
+      "reduction": 0.38257819532320514,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0014688623423611106,
+          "full": 0.0006545668208333325,
+          "oracle144": 0.0006545668208333325
+        },
+        "9": {
+          "blind": 0.0014911925565972224,
+          "full": 0.0006878536104166658,
+          "oracle144": 0.0006878536104166658
+        },
+        "17": {
+          "blind": 0.0016895027694444433,
+          "full": 0.0015283178553240741,
+          "oracle144": 0.0015283178553240741
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "d34f2b72f1e77e27",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0017464748422839533,
+        "full": 0.0012801770011188274,
+        "oracle144": 0.0012801770011188274
+      },
+      "reduction": 0.266993734965758,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001238250248148146,
+          "full": 0.0007525133254629618,
+          "oracle144": 0.0007525133254629618
+        },
+        "9": {
+          "blind": 0.0012428956129629657,
+          "full": 0.0009458006546296315,
+          "oracle144": 0.0009458006546296315
+        },
+        "17": {
+          "blind": 0.002758278665740749,
+          "full": 0.002142217023263889,
+          "oracle144": 0.002142217023263889
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "7113387d1f4da3ab",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007258745527391968,
+        "full": 0.0003510618097222215,
+        "oracle144": 0.0003510618097222215
+      },
+      "reduction": 0.5163602189972951,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00040148390925925833,
+          "full": 0.00017253998611111094,
+          "oracle144": 0.00017253998611111094
+        },
+        "9": {
+          "blind": 0.0004588370190972223,
+          "full": 0.0004372996712962949,
+          "oracle144": 0.0004372996712962949
+        },
+        "17": {
+          "blind": 0.0013173027298611097,
+          "full": 0.0004433457717592587,
+          "oracle144": 0.0004433457717592587
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "c81d7db7c02a4194",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0015677758385206752,
+        "full": 0.0005214704334876543,
+        "oracle144": 0.0005214704334876543
+      },
+      "reduction": 0.6673820193710192,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00041660251620369884,
+          "full": 0.0002830452240740758,
+          "oracle144": 0.0002830452240740758
+        },
+        "9": {
+          "blind": 0.0021504503766203676,
+          "full": 0.0007012223923611102,
+          "oracle144": 0.0007012223923611102
+        },
+        "17": {
+          "blind": 0.002136274622737959,
+          "full": 0.000580143684027777,
+          "oracle144": 0.000580143684027777
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "91bd52b8fca818ec",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0036153341494145064,
+        "full": 0.0008752339537422835,
+        "oracle144": 0.0008752339537422835
+      },
+      "reduction": 0.7579106335484853,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0017738534473175868,
+          "full": 0.0004576494370370393,
+          "oracle144": 0.0004576494370370393
+        },
+        "9": {
+          "blind": 0.005025719451851851,
+          "full": 0.0013534770195601801,
+          "oracle144": 0.0013534770195601801
+        },
+        "17": {
+          "blind": 0.004046429549074082,
+          "full": 0.0008145754046296309,
+          "oracle144": 0.0008145754046296309
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "65d761f0e719a2c5",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0004614270909722226,
+        "full": 0.00031878900387561704,
+        "oracle144": 0.00031878900387561704
+      },
+      "reduction": 0.309123781172164,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00033144453576388933,
+          "full": 0.00016117535370370362,
+          "oracle144": 0.00016117535370370362
+        },
+        "9": {
+          "blind": 0.0004684873240740746,
+          "full": 0.00029604962870370346,
+          "oracle144": 0.00029604962870370346
+        },
+        "17": {
+          "blind": 0.0005843494130787039,
+          "full": 0.0004991420292194441,
+          "oracle144": 0.0004991420292194441
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "a1d3c18255504b8d",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0011008638643518521,
+        "full": 0.0005940890179398144,
+        "oracle144": 0.0005940890179398144
+      },
+      "reduction": 0.460342884186146,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004802679996527802,
+          "full": 0.00031207794398148235,
+          "oracle144": 0.00031207794398148235
+        },
+        "9": {
+          "blind": 0.0012616131780092592,
+          "full": 0.0008849353844907389,
+          "oracle144": 0.0008849353844907389
+        },
+        "17": {
+          "blind": 0.001560710415393517,
+          "full": 0.0005852537253472218,
+          "oracle144": 0.0005852537253472218
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "29ac711930eb8f3a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0015421012538580255,
+        "full": 0.0007913169614969131,
+        "oracle144": 0.0007913169614969131
+      },
+      "reduction": 0.48685797413289295,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008411088700231521,
+          "full": 0.0007823790013888913,
+          "oracle144": 0.0007823790013888913
+        },
+        "9": {
+          "blind": 0.002002830779398148,
+          "full": 0.0009225174219907366,
+          "oracle144": 0.0009225174219907366
+        },
+        "17": {
+          "blind": 0.001782364112152776,
+          "full": 0.0006690544611111115,
+          "oracle144": 0.0006690544611111115
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "b023808b598f8f02",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0013875537353009264,
+        "full": 0.0003906201612654319,
+        "oracle144": 0.0003906201612654319
+      },
+      "reduction": 0.7184828584813575,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005948234944444443,
+          "full": 0.0004725622606481477,
+          "oracle144": 0.0004725622606481477
+        },
+        "9": {
+          "blind": 0.0003160937564814817,
+          "full": 0.00016417266851851832,
+          "oracle144": 0.00016417266851851832
+        },
+        "17": {
+          "blind": 0.003251743954976853,
+          "full": 0.0005351255546296296,
+          "oracle144": 0.0005351255546296296
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "07479c19f69ed78f",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0013876343435956786,
+        "full": 0.0006561259366688268,
+        "oracle144": 0.0006561259366688268
+      },
+      "reduction": 0.5271622241860531,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0007041371740740736,
+          "full": 0.0005865423578703703,
+          "oracle144": 0.0005865423578703703
+        },
+        "9": {
+          "blind": 0.0017224312092592592,
+          "full": 0.0006316991270833335,
+          "oracle144": 0.0006316991270833335
+        },
+        "17": {
+          "blind": 0.001736334647453703,
+          "full": 0.0007501363250527766,
+          "oracle144": 0.0007501363250527766
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "974ac0c11dc12156",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.002140352295640435,
+        "full": 0.0009663390697530878,
+        "oracle144": 0.0009663390697530878
+      },
+      "reduction": 0.548514012519635,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001455673827199072,
+          "full": 0.0006980005430555559,
+          "oracle144": 0.0006980005430555559
+        },
+        "9": {
+          "blind": 0.002188223603125002,
+          "full": 0.000834608372685186,
+          "oracle144": 0.000834608372685186
+        },
+        "17": {
+          "blind": 0.0027771594565972305,
+          "full": 0.0013664082935185215,
+          "oracle144": 0.0013664082935185215
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "0c46cfc02184aa45",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0007684031929290108,
+        "full": 0.0002311443352623453,
+        "oracle144": 0.0002311443352623453
+      },
+      "reduction": 0.6991887366041962,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000781356179481482,
+          "full": 0.00014929329166666583,
+          "oracle144": 0.00014929329166666583
+        },
+        "9": {
+          "blind": 0.0011174759418981447,
+          "full": 0.0003427604141203707,
+          "oracle144": 0.0003427604141203707
+        },
+        "17": {
+          "blind": 0.000406377457407406,
+          "full": 0.00020137929999999935,
+          "oracle144": 0.00020137929999999935
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "72765420bd2b5a37",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0022658813850083338,
+        "full": 0.0006254098476466047,
+        "oracle144": 0.0006254098476466047
+      },
+      "reduction": 0.7239882670891422,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0005108049104166629,
+          "full": 0.0002830435574074099,
+          "oracle144": 0.0002830435574074099
+        },
+        "9": {
+          "blind": 0.003526647430950923,
+          "full": 0.0010413399160879603,
+          "oracle144": 0.0010413399160879603
+        },
+        "17": {
+          "blind": 0.0027601918136574157,
+          "full": 0.0005518460694444435,
+          "oracle144": 0.0005518460694444435
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "96ea09a0a29daa1b",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.003606649651218829,
+        "full": 0.0006457362206790134,
+        "oracle144": 0.0006457362206790134
+      },
+      "reduction": 0.820959537763588,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0019781917581703614,
+          "full": 0.00043060006944444125,
+          "oracle144": 0.00043060006944444125
+        },
+        "9": {
+          "blind": 0.0035903092584490953,
+          "full": 0.0006895413716435198,
+          "oracle144": 0.0006895413716435198
+        },
+        "17": {
+          "blind": 0.005251447937037029,
+          "full": 0.0008170672209490791,
+          "oracle144": 0.0008170672209490791
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "aec2e3f67132bd58",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0005375357195216052,
+        "full": 0.00022838622713950614,
+        "oracle144": 0.00022838622713950614
+      },
+      "reduction": 0.5751236264954359,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000315369680208334,
+          "full": 0.00015764544629629637,
+          "oracle144": 0.00015764544629629637
+        },
+        "9": {
+          "blind": 0.00046547012222222236,
+          "full": 0.00029815258240740723,
+          "oracle144": 0.00029815258240740723
+        },
+        "17": {
+          "blind": 0.0008317673561342592,
+          "full": 0.00022936065271481488,
+          "oracle144": 0.00022936065271481488
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "6664ded8f36d4749",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0008741000910493839,
+        "full": 0.00036883415933641994,
+        "oracle144": 0.00036883415933641994
+      },
+      "reduction": 0.5780412756923257,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.000491572929282411,
+          "full": 0.0002632556685185198,
+          "oracle144": 0.0002632556685185198
+        },
+        "9": {
+          "blind": 0.0009294319287037024,
+          "full": 0.00044695720277777693,
+          "oracle144": 0.00044695720277777693
+        },
+        "17": {
+          "blind": 0.0012012954151620382,
+          "full": 0.00039628960671296315,
+          "oracle144": 0.00039628960671296315
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "915698448bd2c4a0",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0015807487520447547,
+        "full": 0.0005562134297629633,
+        "oracle144": 0.0005562134297629633
+      },
+      "reduction": 0.648132931281153,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008671459105324126,
+          "full": 0.0003919936037037056,
+          "oracle144": 0.0003919936037037056
+        },
+        "9": {
+          "blind": 0.002205862202777776,
+          "full": 0.0006856539407407387,
+          "oracle144": 0.0006856539407407387
+        },
+        "17": {
+          "blind": 0.0016692381428240752,
+          "full": 0.0005909927448444457,
+          "oracle144": 0.0005909927448444457
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "04ff51a061740d6f",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0009669351765432096,
+        "full": 0.00021101363261790125,
+        "oracle144": 0.00021101363261790125
+      },
+      "reduction": 0.7817706525350806,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006896696885416666,
+          "full": 0.0001564632731481482,
+          "oracle144": 0.0001564632731481482
+        },
+        "9": {
+          "blind": 0.00031351545092592604,
+          "full": 0.00015440017592592594,
+          "oracle144": 0.00015440017592592594
+        },
+        "17": {
+          "blind": 0.001897620390162036,
+          "full": 0.00032217744877962966,
+          "oracle144": 0.00032217744877962966
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "074ad7ad724558f0",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0017318098145061723,
+        "full": 0.0005018773681117283,
+        "oracle144": 0.0005018773681117283
+      },
+      "reduction": 0.7102006444888758,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0009956407128472206,
+          "full": 0.00025633318240740757,
+          "oracle144": 0.00025633318240740757
+        },
+        "9": {
+          "blind": 0.0016071989778935181,
+          "full": 0.0006375440379629629,
+          "oracle144": 0.0006375440379629629
+        },
+        "17": {
+          "blind": 0.002592589752777778,
+          "full": 0.0006117548839648146,
+          "oracle144": 0.0006117548839648146
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 48,
+        "seed": 0,
+        "wait_cap_rows": 96
+      },
+      "cell_sha": "20217e8f34351002",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0020914965523533974,
+        "full": 0.0006583159413580255,
+        "oracle144": 0.0006583159413580255
+      },
+      "reduction": 0.6852416798788055,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0009590597701388872,
+          "full": 0.0003675738259259261,
+          "oracle144": 0.0003675738259259261
+        },
+        "9": {
+          "blind": 0.002343925576620375,
+          "full": 0.0007748893157407423,
+          "oracle144": 0.0007748893157407423
+        },
+        "17": {
+          "blind": 0.0029715043103009297,
+          "full": 0.0008324846824074083,
+          "oracle144": 0.0008324846824074083
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "b440988316c031ba",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0022075823693672807,
+        "full": 0.0005622529188657384,
+        "oracle144": 0.0005622529188657384
+      },
+      "reduction": 0.7453082944185286,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00042749617129629895,
+          "full": 0.00038369610277777766,
+          "oracle144": 0.00038369610277777766
+        },
+        "9": {
+          "blind": 0.002468775041550921,
+          "full": 0.0006828755214120343,
+          "oracle144": 0.0006828755214120343
+        },
+        "17": {
+          "blind": 0.003726475895254623,
+          "full": 0.0006201871324074035,
+          "oracle144": 0.0006201871324074035
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "fc90e0105cb55941",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.003454912982787656,
+        "full": 0.0009553885628904359,
+        "oracle144": 0.0009553885628904359
+      },
+      "reduction": 0.7234695728517121,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.003705057637435172,
+          "full": 0.0007710059367037001,
+          "oracle144": 0.0007710059367037001
+        },
+        "9": {
+          "blind": 0.003579682769724083,
+          "full": 0.0010433585751157448,
+          "oracle144": 0.0010433585751157448
+        },
+        "17": {
+          "blind": 0.0030799985412037134,
+          "full": 0.001051801176851863,
+          "oracle144": 0.001051801176851863
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "3e7669abdbced78c",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.007509965443678097,
+        "full": 0.0016155991507095686,
+        "oracle144": 0.0016155991507095686
+      },
+      "reduction": 0.7848726252036775,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.007809845223279634,
+          "full": 0.0012419521687425988,
+          "oracle144": 0.0012419521687425988
+        },
+        "9": {
+          "blind": 0.006549134384143543,
+          "full": 0.001710022001736108,
+          "oracle144": 0.001710022001736108
+        },
+        "17": {
+          "blind": 0.008170916723611116,
+          "full": 0.0018948232816499986,
+          "oracle144": 0.0018948232816499986
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "4852d0a78a8e2790",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010268258410108036,
+        "full": 0.0007105827935956801,
+        "oracle144": 0.0007105827935956801
+      },
+      "reduction": 0.3079811929000686,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004413616092592617,
+          "full": 0.0004741085107638909,
+          "oracle144": 0.0004741085107638909
+        },
+        "9": {
+          "blind": 0.0009480573120370372,
+          "full": 0.0006041057500000011,
+          "oracle144": 0.0006041057500000011
+        },
+        "17": {
+          "blind": 0.0016910586017361122,
+          "full": 0.0010535341200231484,
+          "oracle144": 0.0010535341200231484
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "9cc9d65a9eeaaabe",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.001694672914870985,
+        "full": 0.001083863798860188,
+        "oracle144": 0.001083863798860188
+      },
+      "reduction": 0.3604289126538012,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0007082183546296308,
+          "full": 0.000632067204629633,
+          "oracle144": 0.000632067204629633
+        },
+        "9": {
+          "blind": 0.001988052284259255,
+          "full": 0.0014531587881944485,
+          "oracle144": 0.0014531587881944485
+        },
+        "17": {
+          "blind": 0.0023877481057240696,
+          "full": 0.0011663654037564826,
+          "oracle144": 0.0011663654037564826
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "6695941021ed344e",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.004828342493795369,
+        "full": 0.0018240345997759255,
+        "oracle144": 0.0018240345997759255
+      },
+      "reduction": 0.6222234437345964,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0016543671316805576,
+          "full": 0.001150669287932411,
+          "oracle144": 0.001150669287932411
+        },
+        "9": {
+          "blind": 0.006981743649074071,
+          "full": 0.002417338936689809,
+          "oracle144": 0.002417338936689809
+        },
+        "17": {
+          "blind": 0.00584891670063148,
+          "full": 0.0019040955747055565,
+          "oracle144": 0.0019040955747055565
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "42ed068ffd1292b3",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0012894193378648144,
+        "full": 0.0007845711208509263,
+        "oracle144": 0.0007845711208509263
+      },
+      "reduction": 0.39153144534801254,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006249666524305562,
+          "full": 0.0005659928018518522,
+          "oracle144": 0.0005659928018518522
+        },
+        "9": {
+          "blind": 0.0016190512226851848,
+          "full": 0.0007512377134259263,
+          "oracle144": 0.0007512377134259263
+        },
+        "17": {
+          "blind": 0.0016242401384787028,
+          "full": 0.0010364828472750006,
+          "oracle144": 0.0010364828472750006
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "e251a591ded40282",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0023691928425716136,
+        "full": 0.001313406967108642,
+        "oracle144": 0.001313406967108642
+      },
+      "reduction": 0.445631042138799,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001663396350694448,
+          "full": 0.0008039692576388894,
+          "oracle144": 0.0008039692576388894
+        },
+        "9": {
+          "blind": 0.0018222736783564822,
+          "full": 0.0013134531041666694,
+          "oracle144": 0.0013134531041666694
+        },
+        "17": {
+          "blind": 0.0036219084986639106,
+          "full": 0.0018227985395203672,
+          "oracle144": 0.0018227985395203672
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 24
+      },
+      "cell_sha": "23bee1db5368e8aa",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0030692117870160505,
+        "full": 0.0019775623765608008,
+        "oracle144": 0.0019775623765608008
+      },
+      "reduction": 0.35567744626595915,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0019840583840277804,
+          "full": 0.001056799004398148,
+          "oracle144": 0.001056799004398148
+        },
+        "9": {
+          "blind": 0.0036051440682870347,
+          "full": 0.001999164924999998,
+          "oracle144": 0.001999164924999998
+        },
+        "17": {
+          "blind": 0.0036184329087333364,
+          "full": 0.002876723200284257,
+          "oracle144": 0.002876723200284257
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "c49111d0892009bb",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0023164189678240746,
+        "full": 0.000538201749729938,
+        "oracle144": 0.000538201749729938
+      },
+      "reduction": 0.7676578558517428,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00033949018981481953,
+          "full": 0.00026297001203703875,
+          "oracle144": 0.00026297001203703875
+        },
+        "9": {
+          "blind": 0.003713583251388891,
+          "full": 0.0006992364846064821,
+          "oracle144": 0.0006992364846064821
+        },
+        "17": {
+          "blind": 0.0028961834622685135,
+          "full": 0.0006523987525462934,
+          "oracle144": 0.0006523987525462934
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "7912d0fab764995b",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0032961728839626565,
+        "full": 0.0008689404811904316,
+        "oracle144": 0.0008689404811904316
+      },
+      "reduction": 0.7363789728936208,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0023129726773981544,
+          "full": 0.0005598025287036969,
+          "oracle144": 0.0005598025287036969
+        },
+        "9": {
+          "blind": 0.004852891730045381,
+          "full": 0.0009754620112268529,
+          "oracle144": 0.0009754620112268529
+        },
+        "17": {
+          "blind": 0.0027226542444444344,
+          "full": 0.001071556903640745,
+          "oracle144": 0.001071556903640745
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "b5ba5751f8ae5b48",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.007920436824213587,
+        "full": 0.0016186220727027762,
+        "oracle144": 0.0016186220727027762
+      },
+      "reduction": 0.7956397975734769,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00844984010708334,
+          "full": 0.000973306976388892,
+          "oracle144": 0.000973306976388892
+        },
+        "9": {
+          "blind": 0.008322165844376858,
+          "full": 0.0016355196127314764,
+          "oracle144": 0.0016355196127314764
+        },
+        "17": {
+          "blind": 0.006989304521180566,
+          "full": 0.00224703962898796,
+          "oracle144": 0.00224703962898796
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "6386742db52edfb4",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0009524521598765443,
+        "full": 0.0006756512862444438,
+        "oracle144": 0.0006756512862444438
+      },
+      "reduction": 0.29061918833590455,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0004383902342592616,
+          "full": 0.00042243424722222366,
+          "oracle144": 0.00042243424722222366
+        },
+        "9": {
+          "blind": 0.0009337701035879643,
+          "full": 0.0004645301856481469,
+          "oracle144": 0.0004645301856481469
+        },
+        "17": {
+          "blind": 0.0014851961417824073,
+          "full": 0.001139989425862961,
+          "oracle144": 0.001139989425862961
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "c1590272811981fe",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0022264120566533956,
+        "full": 0.0009723223793385811,
+        "oracle144": 0.0009723223793385811
+      },
+      "reduction": 0.5632783354577607,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0013124912333333382,
+          "full": 0.0006838519390046302,
+          "oracle144": 0.0006838519390046302
+        },
+        "9": {
+          "blind": 0.0027656651246527747,
+          "full": 0.0012168469875000006,
+          "oracle144": 0.0012168469875000006
+        },
+        "17": {
+          "blind": 0.002601079811974074,
+          "full": 0.0010162682115111123,
+          "oracle144": 0.0010162682115111123
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "be735450eb607728",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.005462118559229314,
+        "full": 0.0020870019387496932,
+        "oracle144": 0.0020870019387496932
+      },
+      "reduction": 0.6179134678021047,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.002001635988283276,
+          "full": 0.001120218971983336,
+          "oracle144": 0.001120218971983336
+        },
+        "9": {
+          "blind": 0.00872266086284726,
+          "full": 0.0032700148836805505,
+          "oracle144": 0.0032700148836805505
+        },
+        "17": {
+          "blind": 0.005662058826557405,
+          "full": 0.0018707719605851932,
+          "oracle144": 0.0018707719605851932
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "1ec541c4454afecb",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0016987136729342586,
+        "full": 0.0009174551916842592,
+        "oracle144": 0.0009174551916842592
+      },
+      "reduction": 0.45991181074118226,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008391146024305544,
+          "full": 0.0004963381120370366,
+          "oracle144": 0.0004963381120370366
+        },
+        "9": {
+          "blind": 0.0007723128871527777,
+          "full": 0.000650437285069444,
+          "oracle144": 0.000650437285069444
+        },
+        "17": {
+          "blind": 0.0034847135292194434,
+          "full": 0.001605590177946297,
+          "oracle144": 0.001605590177946297
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "06d358f714f73ccd",
+      "contract_violations": [],
+      "favourable_windows": 2,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.002068068802486734,
+        "full": 0.0014231756427259261,
+        "oracle144": 0.0014231756427259261
+      },
+      "reduction": 0.3118335129785628,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0008573235259259266,
+          "full": 0.001104258885763884,
+          "oracle144": 0.001104258885763884
+        },
+        "9": {
+          "blind": 0.0019097975027777775,
+          "full": 0.001089124826388888,
+          "oracle144": 0.001089124826388888
+        },
+        "17": {
+          "blind": 0.0034370853787564974,
+          "full": 0.002076143216025007,
+          "oracle144": 0.002076143216025007
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 48
+      },
+      "cell_sha": "4d12f2e399fc2817",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0033449911784722308,
+        "full": 0.0018214392841996933,
+        "oracle144": 0.0018214392841996933
+      },
+      "reduction": 0.4554726195028097,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00110543556863426,
+          "full": 0.0009154258814814803,
+          "oracle144": 0.0009154258814814803
+        },
+        "9": {
+          "blind": 0.004229951347222217,
+          "full": 0.0018386068949074051,
+          "oracle144": 0.0018386068949074051
+        },
+        "17": {
+          "blind": 0.004699586619560215,
+          "full": 0.002710285076210194,
+          "oracle144": 0.002710285076210194
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "6f4a9f9fd4b24464",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0018202431946759232,
+        "full": 0.00045551814012345713,
+        "oracle144": 0.00045551814012345713
+      },
+      "reduction": 0.7497487470598357,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.00044625725277777395,
+          "full": 0.00029232406944444607,
+          "oracle144": 0.00029232406944444607
+        },
+        "9": {
+          "blind": 0.0030326517398148135,
+          "full": 0.000545455517592591,
+          "oracle144": 0.000545455517592591
+        },
+        "17": {
+          "blind": 0.001981820591435182,
+          "full": 0.0005287748333333344,
+          "oracle144": 0.0005287748333333344
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "e7e906bcba49f69a",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.004034121827333326,
+        "full": 0.0008835739607043242,
+        "oracle144": 0.0008835739607043242
+      },
+      "reduction": 0.7809748940357627,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.002817658917479627,
+          "full": 0.0005204056925925944,
+          "oracle144": 0.0005204056925925944
+        },
+        "9": {
+          "blind": 0.004516254916550907,
+          "full": 0.001088137835648149,
+          "oracle144": 0.001088137835648149
+        },
+        "17": {
+          "blind": 0.004768451647969444,
+          "full": 0.001042178353872229,
+          "oracle144": 0.001042178353872229
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 1,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "86b245fd59ba347e",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.00667472822981359,
+        "full": 0.0014876574310361157,
+        "oracle144": 0.0014876574310361157
+      },
+      "reduction": 0.7771208984372893,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0056183980066333425,
+          "full": 0.0010292441054398087,
+          "oracle144": 0.0010292441054398087
+        },
+        "9": {
+          "blind": 0.007016411443865767,
+          "full": 0.0018926300557870457,
+          "oracle144": 0.0018926300557870457
+        },
+        "17": {
+          "blind": 0.007389375238941657,
+          "full": 0.0015410981318814934,
+          "oracle144": 0.0015410981318814934
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "482021601fe26e02",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0010902771686342606,
+        "full": 0.0004130333885978392,
+        "oracle144": 0.0004130333885978392
+      },
+      "reduction": 0.621166616636367,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0006096433037037048,
+          "full": 0.00024913831296296293,
+          "oracle144": 0.00024913831296296293
+        },
+        "9": {
+          "blind": 0.0008350145898148167,
+          "full": 0.0004967728145833329,
+          "oracle144": 0.0004967728145833329
+        },
+        "17": {
+          "blind": 0.00182617361238426,
+          "full": 0.0004931890382472219,
+          "oracle144": 0.0004931890382472219
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "967609b847fa9297",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0022581290543000074,
+        "full": 0.0009519633743617287,
+        "oracle144": 0.0009519633743617287
+      },
+      "reduction": 0.5784282689472653,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010496165351851882,
+          "full": 0.0005180233194444458,
+          "oracle144": 0.0005180233194444458
+        },
+        "9": {
+          "blind": 0.002931785976504635,
+          "full": 0.001100894910763889,
+          "oracle144": 0.001100894910763889
+        },
+        "17": {
+          "blind": 0.0027929846512101987,
+          "full": 0.0012369718928768511,
+          "oracle144": 0.0012369718928768511
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 3,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "bc834756af9ef750",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.005222167838495058,
+        "full": 0.002459167176754325,
+        "oracle144": 0.002459167176754325
+      },
+      "reduction": 0.5290907430001299,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.001560390990085189,
+          "full": 0.0011123185032425934,
+          "oracle144": 0.0011123185032425934
+        },
+        "9": {
+          "blind": 0.007295860878587951,
+          "full": 0.0045621660942129745,
+          "oracle144": 0.0045621660942129745
+        },
+        "17": {
+          "blind": 0.006810251646812034,
+          "full": 0.0017030169328074076,
+          "oracle144": 0.0017030169328074076
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 20,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "f443f6ab0bb8fd3f",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0018784416028725306,
+        "full": 0.0006739219428416672,
+        "oracle144": 0.0006739219428416672
+      },
+      "reduction": 0.6412334874764808,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0007420958083333353,
+          "full": 0.0003729551675925926,
+          "oracle144": 0.0003729551675925926
+        },
+        "9": {
+          "blind": 0.0016005942368055557,
+          "full": 0.0007163988969907401,
+          "oracle144": 0.0007163988969907401
+        },
+        "17": {
+          "blind": 0.0032926347634787004,
+          "full": 0.000932411763941669,
+          "oracle144": 0.000932411763941669
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 35,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "ba071fc47e6d523c",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.0018382236890993836,
+        "full": 0.0011893814224712956,
+        "oracle144": 0.0011893814224712956
+      },
+      "reduction": 0.3529724214064398,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0010094903916666657,
+          "full": 0.0005566870009259267,
+          "oracle144": 0.0005566870009259267
+        },
+        "9": {
+          "blind": 0.0021794337615740774,
+          "full": 0.0009555408773148137,
+          "oracle144": 0.0009555408773148137
+        },
+        "17": {
+          "blind": 0.002325746914057408,
+          "full": 0.002055916389173146,
+          "oracle144": 0.002055916389173146
+        }
+      }
+    },
+    {
+      "capture": 1.0,
+      "cell": {
+        "concurrency": 5,
+        "n_jobs": 50,
+        "runtime_rows": 72,
+        "seed": 0,
+        "wait_cap_rows": 72
+      },
+      "cell_sha": "cb97633d4b13d96d",
+      "contract_violations": [],
+      "favourable_windows": 3,
+      "gates": {
+        "capture_ge_50pc": true,
+        "favourable_2_of_3": true,
+        "full_oracle_not_worse": true,
+        "pooled_reduction_ge_5pc": true
+      },
+      "missing": [],
+      "pass": true,
+      "pooled": {
+        "blind": 0.003432626145233648,
+        "full": 0.0015810279162598766,
+        "oracle144": 0.0015810279162598766
+      },
+      "reduction": 0.5394115614788977,
+      "signature_mismatch": [],
+      "windows": {
+        "1": {
+          "blind": 0.0014737797930555576,
+          "full": 0.0007455927277777766,
+          "oracle144": 0.0007455927277777766
+        },
+        "9": {
+          "blind": 0.004794606198032406,
+          "full": 0.0016059363967592605,
+          "oracle144": 0.0016059363967592605
+        },
+        "17": {
+          "blind": 0.004029492444612981,
+          "full": 0.0023915546242425927,
+          "oracle144": 0.0023915546242425927
+        }
+      }
+    }
+  ],
+  "stable_regions": 1,
+  "verdict": "PASS_STAGE_A"
+}
