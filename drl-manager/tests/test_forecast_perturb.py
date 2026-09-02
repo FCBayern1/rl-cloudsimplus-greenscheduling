@@ -181,3 +181,102 @@ def test_timecap_cal_arm_needs_the_artifact(monkeypatch):
     monkeypatch.delenv("PLANNER_PERTURB_CAL", raising=False)
     with pytest.raises(ValueError, match="PLANNER_PERTURB_CAL"):
         PerturbedOraclePlannerGlobalScheduler(5, 8)
+
+
+# ── ladder-v2 semantics (Codex 2026-09-02) ──────────────────────────────────
+
+def _cal(c=0.8):
+    return {"c": c, "ar1_rho": 0.9, "lead_alpha": 0.25,
+            "sigma_rel_dc": {"0": 1.0, "1": 1.0, "2": 1.0}}
+
+
+def _v2(g, t, site, tier, **kw):
+    if tier == "checkpoint_residual_surrogate_v2":
+        kw.setdefault("calibration", _cal())
+        kw.setdefault("common_key", "ep")
+    return fp.perturbed_future_v2(g, t, 144, site, tier, **kw)
+
+
+def test_v2_lead0_is_truth_in_every_tier():
+    g = _series()
+    for tier in fp.TIERS_V2:
+        v = _v2(g, 37, 0, tier)
+        assert v[0] == g[37], tier
+
+
+def test_v2_corrupts_only_leads_one_onward():
+    g = _series()
+    for tier in fp.TIERS_V2:
+        if tier == "godeye":
+            continue
+        v = _v2(g, 37, 0, tier)
+        assert not np.array_equal(v[1:], g[38:181]), tier
+        assert v[0] == g[37], tier
+
+
+def test_v2_godeye_is_bitwise_truth():
+    g = _series()
+    assert np.array_equal(_v2(g, 20, 1, "godeye"), g[20:164])
+
+
+def test_v2_replan_restores_each_new_present_row():
+    g = _series()
+    for t in (10, 11, 12, 40):
+        assert _v2(g, t, 0, "s60")[0] == g[t]
+        assert _v2(g, t, 0, "shuffle")[0] == g[t]
+        assert _v2(g, t, 0, "anti")[0] == g[t]
+
+
+def test_surrogate_common_mode_is_shared_and_correlated():
+    rng = np.random.default_rng(5)
+    g = {d: np.abs(rng.normal(50, 20, 3000)) + 1 for d in range(3)}
+    c = 0.8
+    errs = {}
+    for d in range(3):
+        v = fp.perturbed_future_v2(g[d], 0, 2900, d, "checkpoint_residual_surrogate_v2",
+                                   calibration=_cal(c), common_key="ep")
+        errs[d] = (v - g[d][:2900])[1:]           # lead 0 is exact by construction
+    import itertools
+    for a, b in itertools.combinations(range(3), 2):
+        r = np.corrcoef(errs[a], errs[b])[0, 1]
+        assert abs(r - c) < 0.1, f"pairwise corr {r:.3f} should be near c={c}"
+
+
+def test_surrogate_needs_calibration_and_common_key():
+    g = _series()
+    with pytest.raises(ValueError, match="calibration"):
+        fp.perturbed_future_v2(g, 0, 144, 0, "checkpoint_residual_surrogate_v2")
+    with pytest.raises(ValueError, match="common_key"):
+        fp.perturbed_future_v2(g, 0, 144, 0, "checkpoint_residual_surrogate_v2",
+                               calibration=_cal())
+
+
+def test_v2_deterministic():
+    g = _series()
+    a = _v2(g, 10, 2, "s30")
+    b = _v2(g.copy(), 10, 2, "s30")
+    assert np.array_equal(a, b)
+
+
+def test_v2_arm_uses_v2_tiers(monkeypatch):
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_V2", "1")
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "timecap_cal")   # a v1-only name
+    with pytest.raises(ValueError, match="unknown perturb tier"):
+        PerturbedOraclePlannerGlobalScheduler(5, 8)
+
+
+def test_v2_arm_lead0_matches_truth(monkeypatch):
+    from src.baselines.global_schedulers import PerturbedOraclePlannerGlobalScheduler
+    monkeypatch.setenv("PLANNER_PERTURB_V2", "1")
+    monkeypatch.setenv("PLANNER_PERTURB_TIER", "s60")
+    arm = PerturbedOraclePlannerGlobalScheduler(5, 8)
+    g = _series(1200)
+    arm.G = np.tile(g, (5, 1))
+    arm.T = arm.G.shape[1]
+    arm.t = 40
+    arm.clim = np.full(5, 12.0)
+    arm.green_now = np.full(5, g[40])
+    v = arm._green_view(0)
+    assert v[40] == g[40], "the present row must be the measured truth"
+    assert not np.array_equal(v[41:184], g[41:184])

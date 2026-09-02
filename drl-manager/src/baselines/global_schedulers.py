@@ -2151,14 +2151,28 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         super().__init__(num_datacenters, batch_size)
         from . import forecast_perturb as _fp
         self._fp = _fp
+        import json as _json
         self.perturb_tier = os.environ.get("PLANNER_PERTURB_TIER", "godeye")
-        if self.perturb_tier not in _fp.TIERS:
+        # Ladder-v2 (Codex 2026-09-02): lead 0 is an observation in every tier, and the
+        # calibrated tier is the DC-level one-factor surrogate. v1 stays available so the
+        # recorded A-prime run remains reproducible bit for bit.
+        self.perturb_v2 = os.environ.get("PLANNER_PERTURB_V2", "0") == "1"
+        tiers = _fp.TIERS_V2 if self.perturb_v2 else _fp.TIERS
+        if self.perturb_tier not in tiers:
             raise ValueError(f"unknown perturb tier {self.perturb_tier!r}; "
-                             f"registered: {sorted(_fp.TIERS)}")
+                             f"registered: {sorted(tiers)}")
         cal_path = os.environ.get("PLANNER_PERTURB_CAL", "")
-        self.perturb_calibration = _fp.load_calibration(cal_path) if cal_path else None
+        if cal_path and self.perturb_v2:
+            self.perturb_calibration = _json.load(open(cal_path))
+        elif cal_path:
+            self.perturb_calibration = _fp.load_calibration(cal_path)
+        else:
+            self.perturb_calibration = None
         if self.perturb_tier == "timecap_cal" and self.perturb_calibration is None:
             raise ValueError("tier timecap_cal needs PLANNER_PERTURB_CAL")
+        if self.perturb_tier == "checkpoint_residual_surrogate_v2" \
+                and self.perturb_calibration is None:
+            raise ValueError("the surrogate tier needs PLANNER_PERTURB_CAL")
 
     def _green_view(self, d):
         if self.info_source != "curve_horizon_perturbed":
@@ -2168,9 +2182,20 @@ class PerturbedOraclePlannerGlobalScheduler(CurveInformedPlannerGlobalScheduler)
         view = np.empty(self.T, dtype=np.float64)
         view[:self.t] = self.G[d, :self.t]
         edge = min(self.T, self.t + self.HORIZON_STEPS)
-        view[self.t:edge] = self._fp.perturbed_future(
-            self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
-            self.perturb_calibration)[:edge - self.t]
+        if self.perturb_v2:
+            if getattr(self, "_episode_key_T", None) != self.T:
+                import hashlib as _hl
+                self._episode_key = _hl.sha256(
+                    np.ascontiguousarray(self.G, dtype=np.float64).tobytes()).hexdigest()
+                self._episode_key_T = self.T
+            fut = self._fp.perturbed_future_v2(
+                self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
+                self.perturb_calibration, common_key=self._episode_key)
+        else:
+            fut = self._fp.perturbed_future(
+                self.G[d], self.t, self.HORIZON_STEPS, d, self.perturb_tier,
+                self.perturb_calibration)
+        view[self.t:edge] = fut[:edge - self.t]
         view[edge:] = self._tail_level(d)
         return view
 

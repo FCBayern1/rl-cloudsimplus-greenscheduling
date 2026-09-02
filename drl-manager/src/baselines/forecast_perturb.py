@@ -114,6 +114,80 @@ def perturbed_future(series: np.ndarray, t: int, horizon: int, site: int, tier: 
                       * scale_ref * eps)
 
 
+TIERS_V2 = {
+    "godeye": {"kind": "noise", "sigma_rel": 0.0},
+    "s05": {"kind": "noise", "sigma_rel": 0.05},
+    "s15": {"kind": "noise", "sigma_rel": 0.15},
+    "s30": {"kind": "noise", "sigma_rel": 0.30},
+    "s60": {"kind": "noise", "sigma_rel": 0.60},
+    "checkpoint_residual_surrogate_v2": {"kind": "surrogate"},
+    "shuffle": {"kind": "shuffle"},
+    "anti": {"kind": "anti"},
+}
+
+
+def perturbed_future_v2(series, t, horizon, site, tier, calibration=None,
+                        common_key=None):
+    """The v2 view of rows [t, t+horizon): lead 0 is the measured present, always.
+
+    Codex 2026-09-02 (ladder-v2, R3): the current row is an observation, not a forecast,
+    so no tier may touch it — the old ladder scaled lead-0 error by alpha and let shuffle
+    and anti rewrite the present, which mixed "the future is mispredicted" with "the
+    sensor is broken". Only leads 1..horizon-1 are corrupted, and because the view is
+    rebuilt at every planning step, each newly arrived row reverts to truth on its own.
+
+    The surrogate tier (R2) draws its error as a one-factor field,
+
+        eps_d = sqrt(c) * eps_common + sqrt(1-c) * eps_d_independent
+
+    with c and the per-DC scales measured at DC level from 2020 residuals and never
+    hand-rounded. eps_common comes from `common_key`, an episode-level key every site
+    shares, so the common mode is genuinely common across sites.
+    """
+    spec = TIERS_V2[tier]
+    lo, hi = t, min(len(series), t + horizon)
+    truth = np.asarray(series[lo:hi], dtype=np.float64)
+    if len(truth) == 0:
+        return truth
+    if spec["kind"] == "shuffle":
+        rng = np.random.default_rng(domain_seed(series_key(series, site, tier), "perm"))
+        perm = rng.permutation(len(series))
+        out = np.maximum(0.0, np.asarray(series, dtype=np.float64)[perm][lo:hi])
+    elif spec["kind"] == "anti":
+        out = np.maximum(0.0, np.asarray(series, dtype=np.float64)[::-1][lo:hi])
+    elif spec["kind"] == "surrogate":
+        if not calibration:
+            raise ValueError("the surrogate tier needs the DC-level calibration artifact")
+        if common_key is None:
+            raise ValueError("the surrogate tier needs an episode-level common_key")
+        c = float(calibration["c"])
+        rho = float(calibration["ar1_rho"])
+        alpha = float(calibration["lead_alpha"])
+        sigma = float(calibration["sigma_rel_dc"].get(str(site), 0.0))
+        if sigma == 0.0:
+            out = truth.copy()
+        else:
+            common = ar1_field(f"{common_key}:{tier}", len(series), rho)[lo:hi]
+            indep = ar1_field(series_key(series, site, tier), len(series), rho)[lo:hi]
+            eps = np.sqrt(c) * common + np.sqrt(1.0 - c) * indep
+            scale_ref = float(np.mean(np.abs(series))) or 1.0
+            leads = np.arange(len(truth), dtype=np.float64)
+            out = np.maximum(0.0, truth + lead_scale(leads, horizon, alpha)
+                             * sigma * scale_ref * eps)
+    else:
+        sigma = spec["sigma_rel"]
+        if sigma == 0.0:
+            out = truth.copy()
+        else:
+            eps = ar1_field(series_key(series, site, tier), len(series), AR1_RHO)[lo:hi]
+            scale_ref = float(np.mean(np.abs(series))) or 1.0
+            leads = np.arange(len(truth), dtype=np.float64)
+            out = np.maximum(0.0, truth + lead_scale(leads, horizon, LEAD_ALPHA)
+                             * sigma * scale_ref * eps)
+    out[0] = truth[0]                      # lead 0 is an observation, never corrupted
+    return out
+
+
 def load_calibration(path: str) -> dict:
     cal = json.load(open(path))
     for field in ("sigma_rel", "ar1_rho", "lead_alpha", "source_checkpoint_sha"):
