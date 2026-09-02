@@ -210,3 +210,50 @@ def test_v2_calibration_artifact_is_measured_not_rounded():
     assert cal["c"] == sorted(off)[1], "c is the median off-diagonal"
     assert max(abs(x - cal["c"]) for x in off) <= cal["single_factor_tolerance"]
     assert cal["label_offset"] == 0 and cal["year"] == 2020
+
+
+# ── Scheme 2-E data split (frozen before any E carbon result) ───────────────
+
+import e_data_split as eds                      # noqa: E402
+
+
+def test_e_split_is_deterministic_and_matches_the_artifact():
+    art = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "e_data_split.json")))
+    dealt = eds.deal()
+    assert dealt["discovery"] == art["discovery"]
+    assert dealt["confirmation"] == art["confirmation"]
+
+
+def test_e_split_turbines_are_fresh_and_disjoint():
+    art = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "e_data_split.json")))
+    d = set(art["discovery"]["turbines"])
+    c = set(art["confirmation"]["turbines"])
+    assert len(d) == 5 and len(c) == 5 and not d & c
+    banned = set(art["excluded"]["s2"]) | set(art["excluded"]["train"]) \
+        | set(art["excluded"]["sealed"]) | set(art["excluded"]["tb13"])
+    assert not (d | c) & banned
+    for t in d | c:
+        p = os.path.join(eds.SPL, f"Turbine_{t}_2021.csv")
+        assert sum(1 for _ in open(p)) - 1 == 52559
+
+
+def test_e_split_windows_never_touch_and_never_ran():
+    art = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "e_data_split.json")))
+    ks = art["discovery"]["windows_k"] + art["confirmation"]["windows_k"]
+    assert not set(ks) & {1, 9, 17, 25, 33, 41}, "S2's burned windows are off limits"
+    offs = art["discovery"]["offsets"] + art["confirmation"]["offsets"]
+    for i, a in enumerate(offs):
+        assert a + 7200 <= 52559
+        for b in offs[i + 1:]:
+            assert abs(a - b) >= 7300
+
+
+def test_e_split_dc_map_shape_matches_the_topology():
+    art = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "e_data_split.json")))
+    for part in ("discovery", "confirmation"):
+        m = art[part]["dc_map"]
+        assert [len(m["0"]), len(m["1"]), len(m["2"])] == [2, 2, 1]
