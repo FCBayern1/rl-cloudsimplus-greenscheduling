@@ -231,3 +231,38 @@ if __name__ == "__main__":
     m = generate()
     print(json.dumps({k: v for k, v in m.items()
                       if k not in ("trace_shas", "reports")}, indent=2, sort_keys=True))
+
+
+# ── Scheme 2-E configs: the same 108 blocks on the frozen fresh turbines ────────────
+
+def generate_e(part, out_dir=None):
+    """Derive config_s2e_<part>.yml from the S2 blocks by swapping ONLY the green DCs'
+    turbine_ids to the frozen E split. Everything else, the traces included, is byte
+    identical to the S2 derivation, and a test diffs it to prove that."""
+    import json as _json
+    out_dir = out_dir or HERE
+    split = _json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    base = base_block()
+    common = yaml.safe_load(open(BASE_CONFIG)).get("common", {})
+    blocks = {}
+    for cell in cells():
+        blk = derived_block(cell, base)
+        name = cell_name(cell)
+        blk["experiment_name"] = name
+        blk["simulation_name"] = f"S2E_{part[:4]}_{name}"
+        for dc in blk["datacenters"]:
+            did = str(dc["datacenter_id"])
+            if did in split["dc_map"]:
+                dc["turbine_ids"] = [int(t) for t in split["dc_map"][did]]
+        blocks[name] = blk
+    cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
+                              default_flow_style=False)
+    path = os.path.join(out_dir, f"config_s2e_{part}.yml")
+    with open(path, "w") as f:
+        f.write(cfg_text)
+    return {"part": part, "blocks": len(blocks), "sha": content_sha(cfg_text),
+            "turbines": split["turbines"], "windows_k": split["windows_k"]}
+
+
+if __name__ == "__main__" and os.environ.get("GEN_S2E"):
+    print(json.dumps([generate_e("discovery"), generate_e("confirmation")], indent=2))

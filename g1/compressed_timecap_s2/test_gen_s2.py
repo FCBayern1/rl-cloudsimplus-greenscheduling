@@ -257,3 +257,38 @@ def test_e_split_dc_map_shape_matches_the_topology():
     for part in ("discovery", "confirmation"):
         m = art[part]["dc_map"]
         assert [len(m["0"]), len(m["1"]), len(m["2"])] == [2, 2, 1]
+
+
+def test_e_config_differs_from_s2_only_in_green_dc_turbines(tmp_path):
+    import yaml
+    g.generate_e("discovery", out_dir=str(tmp_path))
+    e_cfg = yaml.safe_load(open(tmp_path / "config_s2e_discovery.yml"))
+    split = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "e_data_split.json")))["discovery"]
+    base = g.base_block()
+    for cell in g.cells()[:12]:
+        name = g.cell_name(cell)
+        s2 = g.derived_block(cell, base)
+        e = e_cfg[name]
+        for k in set(s2) | set(e):
+            if k in ("datacenters", "simulation_name"):
+                continue
+            assert json.dumps(s2.get(k), sort_keys=True, default=str) \
+                == json.dumps(e.get(k), sort_keys=True, default=str), k
+        for dc_s2, dc_e in zip(s2["datacenters"], e["datacenters"]):
+            for k in set(dc_s2) | set(dc_e):
+                if k == "turbine_ids":
+                    continue
+                assert dc_s2.get(k) == dc_e.get(k), k
+            did = str(dc_e["datacenter_id"])
+            if did in split["dc_map"]:
+                assert dc_e["turbine_ids"] == [int(t) for t in split["dc_map"][did]]
+            else:
+                assert dc_e["turbine_ids"] == dc_s2["turbine_ids"]
+
+
+def test_e_configs_generate_for_both_parts(tmp_path):
+    d = g.generate_e("discovery", out_dir=str(tmp_path))
+    c = g.generate_e("confirmation", out_dir=str(tmp_path))
+    assert d["blocks"] == c["blocks"] == 108
+    assert set(d["turbines"]).isdisjoint(c["turbines"])

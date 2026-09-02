@@ -27,6 +27,9 @@ OUT = os.path.join(HERE, "stage_a_out")
 BLINDS = ("persistence_planner", "climatology_planner", "reactive_wait_planner",
           "nowait_planner", "always_defer")
 ORACLES = ("curve_planner", "oracle144_planner")
+E_BLINDS = ("nowait_planner", "reactive_wait_planner", "reservation_edf",
+            "load_smoothing")
+E_ARMS = ("godeye", "calibrated_shrink_v1", "s30", "shuffle", "anti")
 TIERS = ("godeye", "s05", "s15", "s30", "s60", "timecap_cal", "shuffle", "anti")
 TIERS_V2 = ("godeye", "s05", "s15", "s30", "s60",
             "checkpoint_residual_surrogate_v2", "shuffle", "anti")
@@ -49,6 +52,29 @@ def jobs(arms, cell_names=None, which="discovery"):
         for name in names:
             for k, off in windows(which):
                 out.append({"arm": arm, "cell": name, "k": k, "offset": off})
+    return out
+
+
+def e_jobs(part, arms, tier_mode=False):
+    """Scheme 2-E jobs: fresh turbines via the part's config, that part's windows."""
+    split = json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    cfg = os.path.join(HERE, f"config_s2e_{part}.yml")
+    cal = os.path.join(HERE, "timecap_error_audit.json")
+    out = []
+    for arm in arms:
+        for cell in g.cells():
+            name = g.cell_name(cell)
+            for k, off in zip(split["windows_k"], split["offsets"]):
+                e = {"EVAL_CONFIG_PATH": cfg}
+                if tier_mode:
+                    e.update({"PLANNER_PERTURB_TIER": arm, "PLANNER_PERTURB_E": "1",
+                              "PLANNER_PERTURB_CAL": cal})
+                    out.append({"arm": "perturbed_oracle_planner", "cell": name,
+                                "k": k, "offset": off, "env": e,
+                                "dir": f"e_{part[:4]}_tier_{arm}"})
+                else:
+                    out.append({"arm": arm, "cell": name, "k": k, "offset": off,
+                                "env": e, "dir": f"e_{part[:4]}_{arm}"})
     return out
 
 
@@ -80,7 +106,6 @@ def run_one(j):
     if _done(csv_path):
         return "cached"
     env = dict(os.environ)
-    env.update(j.get("env", {}))
     env.update({
         "GATEWAY_LIBS": os.path.join(
             REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib"),
@@ -90,6 +115,7 @@ def run_one(j):
         "ORACLE_EXPERIMENT": j["cell"],
         "ORACLE_OFFSET_ROWS": str(j["offset"]),
     })
+    env.update(j.get("env", {}))       # a job's own env wins, e.g. the E config path
     cmd = [os.path.join(REPO, "drl-manager/.venv/bin/python"), "-m",
            "src.baselines.evaluate", "--experiment", j["cell"],
            "--global", j["arm"], "--local", "drain", "--episodes", "1",
@@ -173,6 +199,42 @@ def main():
         print(json.dumps(sweep(BLINDS), indent=2))
     elif phase == "freeze":
         print(json.dumps(freeze_blind(), indent=2))
+    elif phase == "e_blinds":
+        todo = e_jobs("discovery", E_BLINDS)
+        print(f"e_blinds: {len(todo)} runs on the fresh discovery turbines")
+        print(json.dumps(sweep(E_BLINDS, todo=todo), indent=2))
+    elif phase == "e_freeze":
+        # One strongest blind by pooled total carbon over the three discovery windows,
+        # frozen before any clean or corrupted number exists (E prereg section 3).
+        table, invalid = {}, {}
+        for arm in E_BLINDS:
+            vals, bad = [], 0
+            for jb in e_jobs("discovery", (arm,)):
+                jb2 = dict(jb, dir=jb["dir"])
+                row = read_cell(jb2)
+                if row is None or not row["contract_ok"]:
+                    bad += 1
+                else:
+                    vals.append(row["carbon"])
+            table[arm] = {"pooled": (sum(vals) / len(vals)) if vals else None,
+                          "valid": len(vals), "invalid": bad}
+        everywhere = [a for a in E_BLINDS if table[a]["invalid"] == 0]
+        art = {"arms": table, "valid_everywhere": everywhere}
+        if everywhere:
+            art["frozen_blind"] = min(everywhere, key=lambda a: table[a]["pooled"])
+            art["status"] = "FROZEN"
+        else:
+            art["status"] = "STOP_NO_VALID_BLIND"
+        with open(os.path.join(OUT, "e_blind_freeze.json"), "w") as f:
+            f.write(json.dumps(art, sort_keys=True, indent=2))
+        print(json.dumps(art, sort_keys=True, indent=2))
+    elif phase == "e_main":
+        fp = os.path.join(OUT, "e_blind_freeze.json")
+        if not os.path.exists(fp) or json.load(open(fp)).get("status") != "FROZEN":
+            raise RuntimeError("e_main runs only after the blind freeze is FROZEN")
+        todo = e_jobs("discovery", E_ARMS, tier_mode=True)
+        print(f"e_main: {len(todo)} runs")
+        print(json.dumps(sweep(E_ARMS, todo=todo), indent=2))
     elif phase == "pilot_shrink":
         # DESIGN_PILOT (2026-09-02): amplitude-shrinkage tiers on the DISCOVERY window
         # k=1 only. Exploratory, outside every prereg; results may not enter any verdict.
