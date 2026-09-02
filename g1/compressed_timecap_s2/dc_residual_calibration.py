@@ -53,7 +53,23 @@ def _truth(path):
         return np.array([float(r["Patv"] or 0.0) for r in csv.DictReader(f)])
 
 
+def _pin_threads():
+    """Byte-reproducibility across machines requires a fixed BLAS reduction order.
+
+    The 3060 replication showed the fitted scalars move by ~1e-7 with the thread count
+    (provenance fields byte-stable, same-thread reruns byte-identical), so inference runs
+    single-threaded and the artifact records it. Existing artifacts predate this pin and
+    stay as committed: the v1 ladder is closed and the v2 sweep froze its input in
+    flight; their cross-machine claim is provenance-bytes plus fitted values to 1e-6.
+    """
+    import torch
+    torch.set_num_threads(1)
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+
+
 def main():
+    _pin_threads()
     sys.path.insert(0, os.path.join(REPO, "drl-manager"))
     from timecap_prediction.predictor import TimeCAP_GreenPredictor
 
@@ -121,6 +137,7 @@ def main():
         "lead_alpha_per_dc": {str(d): float(v) for d, v in alpha.items()},
         "anchors": len(anchors), "stride": STRIDE, "label_offset": LABEL_OFFSET,
         "year": YEAR, "dc_turbines": {str(k): list(v) for k, v in DC_TURBINES.items()},
+        "torch_num_threads": 1,
         "source_checkpoint_sha": _sha(CK),
         "val_csv_shas": {os.path.basename(p): _sha(p) for p in paths.values()},
     }
