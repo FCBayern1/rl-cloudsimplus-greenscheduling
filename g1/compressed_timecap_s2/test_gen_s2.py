@@ -183,3 +183,29 @@ def test_verdict_centre_is_by_sha_not_by_effect(tmp_path, monkeypatch):
     assert centre["cell_sha"] == min(sv.cell_sha(c)[:16] for c in cells)
     # only a coincidence would make them equal; assert the rule text, not luck
     assert centre["cell_sha"] != deepest["cell_sha"] or len({r["cell_sha"] for r in rows}) == 1
+
+
+# ── ladder-v2 reader (frozen before the confirmation sweep is interpreted) ──
+
+import ladder_v2_verdict as lv                  # noqa: E402
+
+
+def test_v2_windows_are_the_confirmation_triple():
+    import run_stage_a as ra
+    assert [k for k, _o in ra.windows("confirmation")] == [25, 33, 41]
+    assert [k for k, _o in ra.windows("discovery")] == [1, 9, 17]
+
+
+def test_v2_tier_list_matches_the_prereg():
+    import run_stage_a as ra
+    assert ra.TIERS_V2 == ("godeye", "s05", "s15", "s30", "s60",
+                           "checkpoint_residual_surrogate_v2", "shuffle", "anti")
+
+
+def test_v2_calibration_artifact_is_measured_not_rounded():
+    cal = json.load(open(os.path.join(HERE, "dc_residual_cal.json")))
+    assert cal["c"] != 0.8, "c must be the measured median, never a hand-rounded value"
+    off = cal["off_diagonals"]
+    assert cal["c"] == sorted(off)[1], "c is the median off-diagonal"
+    assert max(abs(x - cal["c"]) for x in off) <= cal["single_factor_tolerance"]
+    assert cal["label_offset"] == 0 and cal["year"] == 2020

@@ -28,6 +28,8 @@ BLINDS = ("persistence_planner", "climatology_planner", "reactive_wait_planner",
           "nowait_planner", "always_defer")
 ORACLES = ("curve_planner", "oracle144_planner")
 TIERS = ("godeye", "s05", "s15", "s30", "s60", "timecap_cal", "shuffle", "anti")
+TIERS_V2 = ("godeye", "s05", "s15", "s30", "s60",
+            "checkpoint_residual_surrogate_v2", "shuffle", "anti")
 WORKERS = int(os.environ.get("S2_WORKERS", "5"))
 SEED = 42
 CONTRACT = {"completion_rate_mi": 0.995, "ontime_mi_share": 0.995}
@@ -36,16 +38,16 @@ ZERO_FIELDS = ("deadline_forced_count", "planner_n_stale_dropped",
                "planner_n_dispatched_never_started", "planner_running_pes_over_cap")
 
 
-def windows():
-    return g.windows(44950)["discovery"]
+def windows(which="discovery"):
+    return g.windows(44950)[which]
 
 
-def jobs(arms, cell_names=None):
+def jobs(arms, cell_names=None, which="discovery"):
     out = []
     names = cell_names or [g.cell_name(c) for c in g.cells()]
     for arm in arms:
         for name in names:
-            for k, off in windows():
+            for k, off in windows(which):
                 out.append({"arm": arm, "cell": name, "k": k, "offset": off})
     return out
 
@@ -171,6 +173,25 @@ def main():
         print(json.dumps(sweep(BLINDS), indent=2))
     elif phase == "freeze":
         print(json.dumps(freeze_blind(), indent=2))
+    elif phase == "ladder_v2":
+        # One-shot CONFIRMATION sweep (k=25/33/41): the frozen blind re-run beside the
+        # eight v2 tiers on the frozen region. No partial reads; the verdict reader is
+        # the only thing that interprets these files.
+        names = stable_region_cells()
+        cal = os.path.join(HERE, "dc_residual_cal.json")
+        todo = [dict(j, dir="conf_nowait_planner")
+                for j in jobs(("nowait_planner",), cell_names=names,
+                              which="confirmation")]
+        for tier in TIERS_V2:
+            e = {"PLANNER_PERTURB_TIER": tier, "PLANNER_PERTURB_V2": "1"}
+            if tier == "checkpoint_residual_surrogate_v2":
+                e["PLANNER_PERTURB_CAL"] = cal
+            for j in jobs(("perturbed_oracle_planner",), cell_names=names,
+                          which="confirmation"):
+                todo.append({**j, "dir": f"conf_tier_{tier}", "env": e})
+        print(f"ladder_v2: {len(names)} cells x (1 blind + {len(TIERS_V2)} tiers) "
+              f"x 3 confirmation windows = {len(todo)} runs")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "aprime":
         vp = os.path.join(OUT, "stage_a_verdict.json")
         if not os.path.exists(vp):
