@@ -155,6 +155,26 @@ def build_clean_args(turbine_ids, years, res_dir, epochs, batch_size, lr, patien
     return args
 
 
+def split_audits(args):
+    """The three splits' audit counters, built from the run's OWN args.
+
+    A seam rather than an inline expression because the inline version silently dropped
+    label_start_offset and reported the stock convention for a plan A run: the record
+    would have described a different experiment from the one being trained.
+    """
+    return {split: CleanDatasetAdapter(
+        args.clean_files, split, args.seq_len, args.pred_len,
+        scale=getattr(args, "scale", True),
+        label_start_offset=getattr(args, "label_start_offset",
+                                   cd.LABEL_START_OFFSET)).audit()
+        for split in cd.SPLITS}
+
+
+AUDIT_KEYS = ("n_windows", "cross_file_windows", "cross_split_windows",
+              "split_row_overlaps", "scaler_fit_is_train_only",
+              "label_start_offset", "span")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="1-epoch smoke of the clean loader; not a training entry point")
@@ -169,6 +189,11 @@ def main():
     ap.add_argument("--no-gpu", action="store_true")
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=20260901)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="parse the arguments, build the three splits, print the audit, "
+                         "then exit before training. Pre-flight for an unattended start: "
+                         "a frozen command that fails to parse, or a split that builds "
+                         "wrong, would otherwise only surface hours later.")
     ap.add_argument("--label-start-offset", type=int, default=cd.LABEL_START_OFFSET,
                     help="0 = stock label convention; 1 = plan A (y[0] is the last "
                          "history row, matching deployed consumption). Retrain prereg "
@@ -193,14 +218,16 @@ def main():
     logger = init_logger(log_dir)
     setting = get_setting_str(args)
 
-    exp = CleanExpTimeCAP(args, logger, model_dir, test_dir, setting)
-    for split in ("train", "val", "test"):
+    audits = split_audits(args)
+    for split in cd.SPLITS:
         print(f"[audit] {split}: " + ", ".join(
-            f"{k}={v}" for k, v in CleanDatasetAdapter(
-                args.clean_files, split, args.seq_len, args.pred_len).audit().items()
-            if k in ("n_windows", "cross_file_windows", "cross_split_windows",
-                     "split_row_overlaps", "scaler_fit_is_train_only",
-                     "label_start_offset", "span")))
+            f"{k}={audits[split][k]}" for k in AUDIT_KEYS))
+        if audits[split]["label_start_offset"] != args.label_start_offset:
+            raise SystemExit("audit and run disagree on label_start_offset")
+    if a.dry_run:
+        print("\n[dry-run] arguments parsed and splits built; exiting before training")
+        return
+    exp = CleanExpTimeCAP(args, logger, model_dir, test_dir, setting)
     exp.finetune()
     mse, mae = exp.Inference()
     print(f"\n评估结果 — MSE: {mse:.4f}  MAE: {mae:.4f}   (smoke only; not evidence)")

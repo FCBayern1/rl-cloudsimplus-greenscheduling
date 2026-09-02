@@ -212,3 +212,42 @@ def test_T5d_label_len_is_not_the_mechanism(tmp_path):
                                num_workers=0, split_dir=d, label_start_offset=1)
     assert args.label_len == 0, "plan A must not be routed through label_len"
     assert args.label_start_offset == 1
+
+
+# ---------------------------------------------------------------------------------------
+# The run log's audit must describe the run that actually happens.
+#
+# Caught by the pre-flight of the frozen §4 command: the training loader honoured
+# label_start_offset=1 while the audit block printed label_start_offset=0, span=240.
+# The numbers that go into the run record would then have asserted the stock convention
+# for a plan A run -- a clean-looking audit describing a different experiment.
+# ---------------------------------------------------------------------------------------
+def test_audit_block_reports_the_offset_the_run_will_use(tmp_path):
+    d = str(tmp_path / "src")
+    os.makedirs(d)
+    _write(d, 1, 2020, 400)
+    for off, span in ((0, cd.SEQ_LEN + cd.PRED_LEN), (1, cd.SEQ_LEN + cd.PRED_LEN - 1)):
+        args = tc.build_clean_args([1], [2020], res_dir=str(tmp_path / "res"), epochs=1,
+                                   batch_size=4, lr=5e-5, patience=5, use_gpu=False,
+                                   gpu=0, num_workers=0, split_dir=d,
+                                   label_start_offset=off)
+        audits = tc.split_audits(args)
+        assert set(audits) == set(cd.SPLITS)
+        for split, a in audits.items():
+            assert a["label_start_offset"] == off, f"{split} audit reports the wrong offset"
+            assert a["span"] == span, f"{split} audit reports the wrong span"
+
+
+def test_audit_and_training_loader_agree_on_the_offset(tmp_path):
+    d = str(tmp_path / "src")
+    os.makedirs(d)
+    _write(d, 1, 2020, 400)
+    args = tc.build_clean_args([1], [2020], res_dir=str(tmp_path / "res"), epochs=1,
+                               batch_size=4, lr=5e-5, patience=5, use_gpu=False, gpu=0,
+                               num_workers=0, split_dir=d, label_start_offset=1)
+    exp = tc.CleanExpTimeCAP.__new__(tc.CleanExpTimeCAP)
+    exp.clean_files = args.clean_files
+    exp.args = args
+    ds, _ = tc.CleanExpTimeCAP._get_data(exp, "train")
+    assert ds.label_start_offset == tc.split_audits(args)["train"]["label_start_offset"]
+    assert len(ds) == tc.split_audits(args)["train"]["n_windows"]
