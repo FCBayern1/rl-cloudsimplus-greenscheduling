@@ -1,0 +1,50 @@
+{
+  "benefit": {
+    "anti": -0.0005797920611931304,
+    "godeye": 0.0010271239624510377,
+    "s05": 0.001011261174559947,
+    "s15": 0.0009684681951361371,
+    "s30": 0.0010519117623281663,
+    "s60": 0.000977611713994194,
+    "shuffle": 0.00094431355131653,
+    "timecap_cal": -0.0004229608989135144
+  },
+  "frozen_blind": "nowait_planner",
+  "gates": {
+    "complete_and_contract_green": true,
+    "monotone_noise_axis": false,
+    "negatives_destroy_half": false,
+    "nothing_exceeds_godeye": false
+  },
+  "godeye_equals_oracle144_check": {
+    "godeye": 0.000680596136651486,
+    "oracle144": 0.000680596136651486,
+    "rel_diff": 0.0
+  },
+  "pooled": {
+    "anti": 0.002287512160295654,
+    "godeye": 0.000680596136651486,
+    "s05": 0.0006964589245425768,
+    "s15": 0.0007392519039663867,
+    "s30": 0.0006558083367743574,
+    "s60": 0.0007301083851083297,
+    "shuffle": 0.0007634065477859938,
+    "timecap_cal": 0.002130680998016038
+  },
+  "pooled_blind": 0.0017077200991025237,
+  "pooled_oracle144": 0.000680596136651486,
+  "problems": {},
+  "realistic_tier": "STOP_REALISTIC_QUALITY",
+  "region_cells": 97,
+  "retention": {
+    "anti": -0.5644810971107771,
+    "godeye": 1.0,
+    "s05": 0.984556111559079,
+    "s15": 0.9428931955058961,
+    "s30": 1.0241332115531383,
+    "s60": 0.9517952552302528,
+    "shuffle": 0.919376419826779,
+    "timecap_cal": -0.41179148221233
+  },
+  "verdict": "STOP_LADDER_GATE"
+}
