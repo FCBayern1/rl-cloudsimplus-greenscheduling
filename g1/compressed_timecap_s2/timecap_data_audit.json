@@ -1,0 +1,67 @@
+{
+  "cross_boundary_windows": {
+    "test": 0,
+    "train": 478,
+    "val": 0
+  },
+  "merged_csv": "drl-manager/timecap_prediction/data/turbines_merged.csv",
+  "n_segments": 3,
+  "notes": [
+    "Dataset_Custom splits one contiguous file 7:1:2 by row and slides windows freely inside each split, so windows can cross concatenation boundaries.",
+    "val overlaps train by seq_len rows by construction (border1 = 0.7N - 96)."
+  ],
+  "rows": 157683,
+  "scaler_fit_is_train_only": true,
+  "scaler_fit_range": [
+    0,
+    110378
+  ],
+  "segments": [
+    {
+      "fingerprint_hits": 1.0,
+      "first_date": "2021-01-01 00:10:00",
+      "identified_as": "Turbine_1_2021",
+      "last_date": "2022-01-01 00:10:00",
+      "rows": [
+        0,
+        52561
+      ]
+    },
+    {
+      "fingerprint_hits": 1.0,
+      "first_date": "2021-01-01 00:10:00",
+      "identified_as": "Turbine_15_2021",
+      "last_date": "2022-01-01 00:10:00",
+      "rows": [
+        52561,
+        105122
+      ]
+    },
+    {
+      "fingerprint_hits": 1.0,
+      "first_date": "2021-01-01 00:10:00",
+      "identified_as": "Turbine_30_2021",
+      "last_date": "2022-01-01 00:10:00",
+      "rows": [
+        105122,
+        157683
+      ]
+    }
+  ],
+  "split_borders": {
+    "test": [
+      126051,
+      157683
+    ],
+    "train": [
+      0,
+      110378
+    ],
+    "val": [
+      110282,
+      126147
+    ]
+  },
+  "train_rows_of_eval_turbine_2021_inside_scheduler_windows": 0,
+  "verdict": "STOP_DATA_PIPELINE"
+}
