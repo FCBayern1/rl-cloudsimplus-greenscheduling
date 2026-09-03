@@ -20,7 +20,14 @@ from __future__ import annotations
 
 import numpy as np
 
-P_DYN_W = 81.3  # dynamic draw of a 32-PE job on RS500A (214 - 51.4) / 2
+# Power of one 32-PE job as the simulator actually runs it on a zero-floor RS500A_DYN
+# host: the 32-PE VM has vm_pe_mips 40000 against 50000 MIPS host cores, so the host
+# utilisation is 32*40000 / (64*50000) = 0.4 and the draw is 1 W floor + 0.4 * 161.6 W.
+# Pinned by ZeroFloorSentinelTest (real simulation, 1e-9 W). The idealised 81.3 W
+# (half the 162.6 W span) is what a job would draw at equal VM and host MIPS; the
+# 192-config structural sweep of 2026-09-03 used that value, the per-cell pilot
+# predictions and the simulator comparison used 65.64 W.
+P_DYN_W = 1.0 + 0.4 * (214.0 - 51.4 - 1.0)  # = 65.64 W
 
 
 def brown_of(load: np.ndarray, G: np.ndarray) -> float:

@@ -78,6 +78,105 @@ def e_jobs(part, arms, tier_mode=False):
     return out
 
 
+HZ_BLINDS = E_BLINDS
+HZ_ARMS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
+HZ_MULT = int(os.environ.get("HZ_MULT", "2"))        # x2 is the only verdict scene
+HZ_ENV = {"PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+          "PLANNER_STATIC_TOTAL_W": "0"}
+HZ_PILOT_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
+
+
+def hz_jobs(part, arms, tier_mode=False, mult=None):
+    """Scheme 2-HZ jobs (SCHEME2_HZ_PREREG): zero-floor fleet config, that part's windows.
+
+    Discovery windows are the E split's (k=2 read, k=10/18 unread); confirmation
+    k=26/34/42 stays sealed until hz_verdict discovery PASSes. The planner's hidden
+    quantities (static floor 0, capacity vector) go in every job's env and are read back
+    from the result rows by the verdict.
+    """
+    mult = mult or HZ_MULT
+    split = json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    cfg = os.path.join(HERE, f"config_s2hz_m{mult}.yml")
+    cal = os.path.join(HERE, "timecap_error_audit.json")
+    out = []
+    for arm in arms:
+        for name in HZ_PILOT_CELLS:
+            for k, off in zip(split["windows_k"], split["offsets"]):
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
+                if tier_mode:
+                    e.update({"PLANNER_PERTURB_TIER": arm, "PLANNER_PERTURB_E": "1",
+                              "PLANNER_PERTURB_CAL": cal})
+                    out.append({"arm": "perturbed_oracle_planner", "cell": name,
+                                "k": k, "offset": off, "env": e,
+                                "dir": f"hz_{part[:4]}_m{mult}_tier_{arm}"})
+                else:
+                    out.append({"arm": arm, "cell": name, "k": k, "offset": off,
+                                "env": e, "dir": f"hz_{part[:4]}_m{mult}_{arm}"})
+    return out
+
+
+def hz_freeze(part="discovery", mult=None):
+    """One strongest blind by pooled discovery carbon, frozen before any clean number."""
+    mult = mult or HZ_MULT
+    table = {}
+    for arm in HZ_BLINDS:
+        vals, bad = [], 0
+        for jb in hz_jobs(part, (arm,), mult=mult):
+            row = read_cell(jb)
+            if row is None or not row["contract_ok"]:
+                bad += 1
+            else:
+                vals.append(row["carbon"])
+        table[arm] = {"pooled": (sum(vals) / len(vals)) if vals else None,
+                      "valid": len(vals), "invalid": bad}
+    everywhere = [a for a in HZ_BLINDS if table[a]["invalid"] == 0]
+    art = {"arms": table, "valid_everywhere": everywhere, "mult": mult,
+           "expected": len(HZ_PILOT_CELLS) * 3}
+    if everywhere:
+        art["frozen_blind"] = min(everywhere, key=lambda a: table[a]["pooled"])
+        art["status"] = "FROZEN"
+    else:
+        art["status"] = "STOP_NO_VALID_BLIND"
+    with open(os.path.join(OUT, f"hz_blind_freeze_m{mult}.json"), "w") as f:
+        f.write(json.dumps(art, sort_keys=True, indent=2))
+    return art
+
+
+def hz_manifest(mult=None):
+    """Code, jar, config, audit and per-job environment, hashed, for the HZ prereg."""
+    mult = mult or HZ_MULT
+    def sha(path):
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            h.update(f.read())
+        return h.hexdigest()
+    jar = os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/"
+                             "cloudsimplus-gateway.jar")
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True,
+                            text=True).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    perturb = os.path.join(REPO, "drl-manager/src/baselines/forecast_perturb.py")
+    planner = os.path.join(REPO, "drl-manager/src/baselines/global_schedulers.py")
+    art = {"commit": commit, "worktree_clean": dirty == "", "mult": mult,
+           "jar_sha256": sha(jar),
+           "forecast_perturb_sha256": sha(perturb),   # TIERS_E parameters live here
+           "global_schedulers_sha256": sha(planner),
+           "config": f"config_s2hz_m{mult}.yml",
+           "config_sha256": sha(os.path.join(HERE, f"config_s2hz_m{mult}.yml")),
+           "audit_sha256": sha(os.path.join(HERE, "timecap_error_audit.json")),
+           "planner_env": HZ_ENV, "arms": list(HZ_ARMS), "blinds": list(HZ_BLINDS),
+           "cells": HZ_PILOT_CELLS, "seed": SEED,
+           "windows": {p: json.load(open(os.path.join(HERE, "e_data_split.json")))[p]
+                       for p in ("discovery", "confirmation")},
+           "jobs_env": {f"{j['dir']}/{j['cell']}_k{j['k']}": j["env"]
+                        for j in hz_jobs("discovery", HZ_BLINDS, mult=mult)
+                        + hz_jobs("discovery", HZ_ARMS, tier_mode=True, mult=mult)}}
+    with open(os.path.join(OUT, f"hz_manifest_m{mult}.json"), "w") as f:
+        f.write(json.dumps(art, sort_keys=True, indent=2))
+    return {k: v for k, v in art.items() if k != "jobs_env"}
+
+
 def stable_region_cells():
     """The cells Stage A froze; A-prime may not enumerate its own."""
     v = json.load(open(os.path.join(OUT, "stage_a_verdict.json")))
@@ -304,6 +403,32 @@ def main():
                                  "env": e, "dir": f"piloth_m{m}_{aname}"})
         print(f"pilot_h: {len(todo)} runs (32-PE jobs x 3 scarcity x 3 arms x 6 cells)")
         print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
+    elif phase == "hz_manifest":
+        print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
+    elif phase == "hz_blinds":
+        todo = hz_jobs("discovery", HZ_BLINDS)
+        print(f"hz_blinds: {len(todo)} runs (x{HZ_MULT})")
+        print(json.dumps(sweep(HZ_BLINDS, todo=todo), indent=2))
+    elif phase == "hz_freeze":
+        print(json.dumps(hz_freeze(), sort_keys=True, indent=2))
+    elif phase == "hz_main":
+        fp = os.path.join(OUT, f"hz_blind_freeze_m{HZ_MULT}.json")
+        if not os.path.exists(fp) or json.load(open(fp)).get("status") != "FROZEN":
+            raise RuntimeError("hz_main runs only after the blind freeze is FROZEN")
+        todo = hz_jobs("discovery", HZ_ARMS, tier_mode=True)
+        print(f"hz_main: {len(todo)} runs (x{HZ_MULT})")
+        print(json.dumps(sweep(HZ_ARMS, todo=todo), indent=2))
+    elif phase == "hz_confirm":
+        # One-shot. The frozen blind and every arm run on the sealed windows only after
+        # the discovery verdict PASSed; the reader, not this phase, decides the outcome.
+        vp = os.path.join(OUT, f"hz_verdict_discovery_m{HZ_MULT}.json")
+        if not os.path.exists(vp) or json.load(open(vp)).get("verdict") != "PASS_HZ_DISCOVERY":
+            raise RuntimeError("hz_confirm runs only after the discovery verdict PASSed")
+        fz = json.load(open(os.path.join(OUT, f"hz_blind_freeze_m{HZ_MULT}.json")))
+        todo = hz_jobs("confirmation", (fz["frozen_blind"],)) + \
+            hz_jobs("confirmation", HZ_ARMS, tier_mode=True)
+        print(f"hz_confirm: {len(todo)} runs (x{HZ_MULT})")
+        print(json.dumps(sweep(HZ_ARMS, todo=todo), indent=2))
     elif phase == "pilot_hz":
         # DESIGN_PILOT, Level-1 spiral: H fleet on zero-floor hosts (marginal carbon).
         # Blind arms mirror toy_lever.py (nowait = run_now, reactive_wait = myopic) plus

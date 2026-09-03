@@ -40,22 +40,22 @@ Toy predictions (`toy_lever.py`, same wind, same arrivals, p = 65.6 W) were writ
 | ×1 | 12/12 | +14.1 pp | +2.1 pp | -0.63 | -1.23 | 3.8 pp |
 | ×2 | 12/12 | +14.9 pp | +6.9 pp | -0.59 | -1.37 | 3.4 pp |
 
-Pooled over the 12 (cell, window) runs, brown share of energy and total carbon (kg):
+Pooled over the 12 (cell, window) runs, brown share of energy and total carbon (kg). Correction 2026-09-03 (Codex item 5): the pooled brown-share column was first printed 100x too large (display only, the per-run table and every verdict quantity were unaffected); values below are recomputed from the raw rows.
 
 | divisor | arm | pooled brown share | pooled carbon kg | vs best blind carbon |
 |---|---|---|---|---|
-| ×1 | nowait | 2637.3% | 0.0517 | +17.2% |
-| ×1 | reactive_wait | 2221.6% | 0.0441 | +0.0% |
-| ×1 | reservation_edf | 3696.3% | 0.0711 | +61.2% |
-| ×1 | godeye | 736.7% | 0.0171 | -61.3% |
-| ×1 | shuffle | 2862.0% | 0.0557 | +26.3% |
-| ×1 | anti | 4073.9% | 0.0776 | +76.1% |
-| ×2 | nowait | 3330.6% | 0.0643 | +23.7% |
-| ×2 | reactive_wait | 2657.4% | 0.0520 | +0.0% |
-| ×2 | reservation_edf | 4646.6% | 0.0884 | +70.1% |
-| ×2 | godeye | 1265.3% | 0.0267 | -48.7% |
-| ×2 | shuffle | 3415.2% | 0.0658 | +26.7% |
-| ×2 | anti | 4789.9% | 0.0907 | +74.4% |
+| ×1 | nowait | 26.4% | 0.0517 | +17.2% |
+| ×1 | reactive_wait | 22.2% | 0.0441 | +0.0% |
+| ×1 | reservation_edf | 37.0% | 0.0711 | +61.2% |
+| ×1 | godeye | 7.4% | 0.0171 | -61.3% |
+| ×1 | shuffle | 28.6% | 0.0557 | +26.3% |
+| ×1 | anti | 40.7% | 0.0776 | +76.1% |
+| ×2 | nowait | 33.3% | 0.0643 | +23.7% |
+| ×2 | reactive_wait | 26.6% | 0.0520 | +0.0% |
+| ×2 | reservation_edf | 46.5% | 0.0884 | +70.1% |
+| ×2 | godeye | 12.7% | 0.0267 | -48.7% |
+| ×2 | shuffle | 34.2% | 0.0658 | +26.7% |
+| ×2 | anti | 47.9% | 0.0907 | +74.4% |
 
 ## 3. Reading
 

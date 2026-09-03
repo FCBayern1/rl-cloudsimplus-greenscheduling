@@ -62,3 +62,7 @@ F 配置 + `idle_host_power_down: true`(空闲主机零功耗,DatacenterInstance
 - 这与 TB13-v3 的空载地板病同源:S2 沿用 C-regime 的 2-PE 作业,从未做 TB13-v4 那次
   "作业相对地板放大"的修正。可检验推论:**动态/地板比 ≥ 1(如 32-PE 作业)时,追绿的
   碎片化代价可忽略,预报时机才可能载重。** 拟以 F 变体 + 32-PE trace 做真正的最后一次 pilot。
+
+## Addendum B (2026-09-03, Codex R-e): planner static floor disclosure
+
+Every planner-family arm in Scheme 2, E, F and H priced jobs against green net of a hard-coded 332 W fleet static draw spread by host count (`CurveInformedPlanner`, "measured C-regime fleet draw"). With idle power-down on, the real awake floor depends on packing; at the F/H scarcity levels ×2 and ×4 the constant erased most of each site's green, which contributes to the truth-informed arm's losses there. The constant is now the default of `PLANNER_STATIC_TOTAL_W` so these results stay bit-identical; the verdicts above are unchanged by this note. See `reports/PILOT_HZ_REPORT.md` for the zero-floor scene where it is set to 0.

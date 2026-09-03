@@ -37,6 +37,14 @@ def test_env_override_zeroes_the_static_floor(planner_cls, monkeypatch):
     assert np.allclose(p.static, 0.0)
 
 
+def test_metrics_report_the_hidden_pricing_quantities(planner_cls, monkeypatch):
+    monkeypatch.setenv("PLANNER_STATIC_TOTAL_W", "0")
+    monkeypatch.setenv("PLANNER_EXPECTED_CAP", "640;512;640;512;192")
+    m = planner_cls(5, 8).metrics()
+    assert m["planner_static_total_w"] == 0.0
+    assert m["planner_expected_cap"] == "640;512;640;512;192"
+
+
 def test_env_override_keeps_the_host_count_spread(planner_cls, monkeypatch):
     monkeypatch.delenv("PLANNER_STATIC_TOTAL_W", raising=False)
     base = planner_cls(5, 8).static.copy()

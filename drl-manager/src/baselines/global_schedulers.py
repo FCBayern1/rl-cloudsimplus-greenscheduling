@@ -2031,6 +2031,11 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
             "planner_row_seconds": self.row_seconds,
             "planner_weather_origin_sec": self.weather_origin_sec,
             "planner_weather_warmup_rows": self.weather_warmup_rows,
+            # Hidden pricing quantities, reported so a verdict can fail-fast on a run
+            # whose environment drifted from the registered one (HZ prereg, G0).
+            "planner_static_total_w": float(self.static.sum()),
+            "planner_expected_cap": (";".join(f"{int(x)}" for x in self.expected_cap)
+                                     if self.expected_cap is not None else ""),
             "planner_clock0": self._clock0,
             "planner_startup_row_shift": self._startup_row_shift,
             "planner_rows_signature": self._rows_signature,

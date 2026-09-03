@@ -72,3 +72,7 @@ The tax is +15…+25% at ×1 and ×2 (absolute +5…+21 Wh, larger than the +6/+
 The rule was: sweet spot found → register a full Scheme 2-H; still all-lose → close the temporal lever for this simulator family. The outcome is neither. ×2 and ×4 are all-lose or null. ×1 is a candidate sweet spot with the right shape (godeye < blind < shuffle in most cells) but one window per cell and a refuted mechanism story. Pilot results are design-only and enter no table.
 
 Recommendation: register Scheme 2-H restricted to ×1 (and ×1.5 as a scarcity edge), the E protocol unchanged (discovery windows k=2/10/18 on the discovery cells, TIERS_E ladder incl. shuffle and anti, blind = reservation_edf, gates 1–5 frozen before data, confirmation k=26/34/42 one-shot and unseen). Gate 1 (godeye beats blind, median across discovery cells×windows, ≥ 2/3 of cells) decides whether the family stays alive. Launch only after the Codex ruling on this report and on §6 of the interim report.
+
+## Addendum A (2026-09-03, Codex R-e / R-h)
+
+The truth-informed arm in this pilot priced green net of the planner's hard-coded 332 W fleet static (see `S2_E_F_INTERIM_FOR_CODEX.md` Addendum B). The H-×1 formal gate proposed in §4 was withdrawn by Codex ruling R-h; the zero-floor scene (`PILOT_HZ_REPORT.md`, `SCHEME2_HZ_PREREG.md`) replaces it. The 32-PE job draw on this legacy fleet was 51.4 W floor + 0.4 × 162.6 W = 116.4 W at the simulator's 0.4 host utilisation, not the 132.7 W (0.5 utilisation) written in §1.
