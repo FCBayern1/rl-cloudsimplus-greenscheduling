@@ -304,6 +304,42 @@ def main():
                                  "env": e, "dir": f"piloth_m{m}_{aname}"})
         print(f"pilot_h: {len(todo)} runs (32-PE jobs x 3 scarcity x 3 arms x 6 cells)")
         print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
+    elif phase == "pilot_hz":
+        # DESIGN_PILOT, Level-1 spiral: H fleet on zero-floor hosts (marginal carbon).
+        # Blind arms mirror toy_lever.py (nowait = run_now, reactive_wait = myopic) plus
+        # the capacity blind; information arms truth / shuffle / anti.
+        split = json.load(open(os.path.join(HERE, "e_data_split.json")))["discovery"]
+        pilot_cells = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
+        arms = {"nowait": {"g": "nowait_planner", "tier": False},
+                "reactive_wait": {"g": "reactive_wait_planner", "tier": False},
+                "reservation_edf": {"g": "reservation_edf", "tier": False},
+                "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                "shuffle": {"g": "perturbed_oracle_planner", "tier": "shuffle"},
+                "anti": {"g": "perturbed_oracle_planner", "tier": "anti"}}
+        # Windows: unclaimed k values (S2 burned 1/9/17/25/33/41, E/H hold 2/10/18 and
+        # the sealed 26/34/42). Design work lives on k=3,4 so the formal discovery
+        # windows k=10/18 stay unread. Offsets follow the simulator's 1009*k mod range.
+        ks = [int(x) for x in os.environ.get("PILOT_HZ_K", "3,4").split(",")]
+        offset_range = int(g.base_block().get("green_episode_offset_range", 44950))
+        todo = []
+        for m in (1, 2):
+            cfg = os.path.join(HERE, f"config_s2hz_m{m}.yml")
+            for aname, a in arms.items():
+                for cell in pilot_cells:
+                    for k in ks:
+                        off = (1009 * k) % offset_range
+                        # Zero-floor hosts: the planner must not subtract the C-regime
+                        # 332 W fleet floor from green (awake hosts draw 1 W here).
+                        e = {"EVAL_CONFIG_PATH": cfg,
+                             "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+                             "PLANNER_STATIC_TOTAL_W": "0"}
+                        if a["tier"]:
+                            e.update({"PLANNER_PERTURB_TIER": a["tier"],
+                                      "PLANNER_PERTURB_E": "1"})
+                        todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
+                                     "env": e, "dir": f"pilothz_m{m}_{aname}"})
+        print(f"pilot_hz: {len(todo)} runs (zero-floor hosts x 2 scarcity x 6 arms x 6 cells x k={ks})")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "pilot_g":
         # DESIGN_PILOT: F sweep with idle hosts powered down. Same cells, arms, window.
         split = json.load(open(os.path.join(HERE, "e_data_split.json")))["discovery"]
