@@ -397,6 +397,10 @@ def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="di
         blk["experiment_name"] = name
         blk["simulation_name"] = f"S2H_m{divisor_mult}_{name}"
         blk["cloudlet_trace_file"] = f"traces/s2/{name}_pes{H_PES}.csv"
+        # The C-regime base splits any cloudlet above 8 PEs into 8-PE pieces (MI divided
+        # accordingly). A 32-PE job must stay one 32-PE job to draw 81 W on one VM.
+        blk["split_large_cloudlets"] = False
+        blk["max_cloudlet_pes"] = H_PES
         blk["compressed_power_divisor"] = base_div * divisor_mult
         for dc in blk["datacenters"]:
             dc["brown_carbon_factor"] = F_BROWN_UNIFORM

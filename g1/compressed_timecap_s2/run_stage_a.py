@@ -294,7 +294,10 @@ def main():
             for aname, a in arms.items():
                 for cell in pilot_cells:
                     k, off = split["windows_k"][0], split["offsets"][0]
-                    e = {"EVAL_CONFIG_PATH": cfg}
+                    # H exposes hosts as 32-PE VMs: the effective capacity the planner
+                    # sentinel must see is the VM-PE total per DC, not the C-regime vector.
+                    e = {"EVAL_CONFIG_PATH": cfg,
+                         "PLANNER_EXPECTED_CAP": "640;512;640;512;192"}
                     if a["tier"]:
                         e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1"})
                     todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
