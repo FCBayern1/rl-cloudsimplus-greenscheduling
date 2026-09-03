@@ -403,6 +403,32 @@ def main():
                                  "env": e, "dir": f"piloth_m{m}_{aname}"})
         print(f"pilot_h: {len(todo)} runs (32-PE jobs x 3 scarcity x 3 arms x 6 cells)")
         print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
+    elif phase == "hz_p0":
+        # Stage D P0 reward truth table (Codex hard blocker 2): replay four planner-family
+        # arms on the V training block (training reward configuration) over the six
+        # frozen training windows, before any policy is trained. Windows come from the
+        # allowlist: --reset-skip k selects allowlist[k] on both sides.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        cfg = os.path.join(HERE, "config_stage_d.yml")
+        cal = os.path.join(HERE, "timecap_error_audit.json")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
+                "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                "calibrated_shrink_v1": {"g": "perturbed_oracle_planner",
+                                         "tier": "calibrated_shrink_v1"},
+                "always_defer": {"g": "always_defer", "tier": False}}
+        todo = []
+        for aname, a in arms.items():
+            for k, off in enumerate(allow):
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
+                if a["tier"]:
+                    e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1",
+                              "PLANNER_PERTURB_CAL": cal})
+                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
+                             "env": e, "dir": f"p0_{aname}"})
+        print(f"hz_p0: {len(todo)} runs (4 arms x {len(allow)} training windows)")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":

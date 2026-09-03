@@ -283,6 +283,14 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
         metrics['total_carbon_kg'] / total_finished if total_finished > 0 else 0.0
     )
 
+    # Episode-cumulative reward instrumentation exported by the Java core under `ep_*`
+    # (carbon-normalisation clip rate, cap-saturation monitor, spatial term). Passed
+    # through by name so the Stage D reward truth table can read them from result rows.
+    if isinstance(gs, dict):
+        for k, v in gs.items():
+            if isinstance(k, str) and (k.startswith('ep_') or k.startswith('defer_')):
+                metrics[k] = v
+
     return metrics
 
 

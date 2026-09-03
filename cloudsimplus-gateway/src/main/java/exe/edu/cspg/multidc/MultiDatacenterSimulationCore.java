@@ -2771,6 +2771,9 @@ public class MultiDatacenterSimulationCore {
         stats.put("ep_carbon_norm_sum", epCarbonNormSum);
         stats.put("ep_carbon_norm_clip_count", epCarbonNormClipCount);
         stats.put("ep_carbon_norm_sample_count", epCarbonNormSampleCount);
+        // Cap-saturation monitor, export-only (Stage D P0 reward truth table reads it).
+        stats.put("ep_global_carbon_cap_count", epGlobalCarbonCapCount);
+        stats.put("ep_global_carbon_max_ratio", epGlobalCarbonMaxRatio);
 
         // ---------------------------------------------------------------------
         // SLA / Lagrangian cost signals
