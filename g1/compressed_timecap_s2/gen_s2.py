@@ -312,3 +312,49 @@ def generate_f(divisor_mult, out_dir=None, part="discovery"):
 
 if __name__ == "__main__" and os.environ.get("GEN_S2F"):
     print(json.dumps([generate_f(m) for m in (1, 2, 4, 8)], indent=2))
+
+
+# ── Scheme 2-G variant: F (uniform brown + scarcity) with idle hosts powered down ────
+
+def generate_g(divisor_mult, out_dir=None, part="discovery"):
+    """The F variant with idle_host_power_down: true on every DC.
+
+    Five lines converged on one wall: waiting burns static idle power and lengthens the
+    makespan, so deferring for green is net negative when the fleet never sleeps. With
+    power-down an idle host draws zero (DatacenterInstance.hostPowerW), so the temporal
+    lever no longer pays a static tax; combined with time-scarce green (divisor_mult) the
+    question "does knowing WHEN green comes pay" gets its first fair test.
+    """
+    import json as _json
+    out_dir = out_dir or HERE
+    split = _json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    base = base_block()
+    common = yaml.safe_load(open(BASE_CONFIG)).get("common", {})
+    base_div = float(base.get("compressed_power_divisor", 1500.0))
+    blocks = {}
+    for cell in cells():
+        blk = derived_block(cell, base)
+        name = cell_name(cell)
+        blk["experiment_name"] = name
+        blk["simulation_name"] = f"S2G_m{divisor_mult}_{name}"
+        blk["compressed_power_divisor"] = base_div * divisor_mult
+        blk["idle_host_power_down"] = True
+        for dc in blk["datacenters"]:
+            dc["brown_carbon_factor"] = F_BROWN_UNIFORM
+            dc["idle_host_power_down"] = True
+            did = str(dc["datacenter_id"])
+            if did in split["dc_map"]:
+                dc["turbine_ids"] = [int(t) for t in split["dc_map"][did]]
+        blocks[name] = blk
+    cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
+                              default_flow_style=False)
+    path = os.path.join(out_dir, f"config_s2g_m{divisor_mult}.yml")
+    with open(path, "w") as f:
+        f.write(cfg_text)
+    return {"divisor_mult": divisor_mult, "idle_power_down": True,
+            "blocks": len(blocks), "sha": content_sha(cfg_text)}
+
+
+if __name__ == "__main__" and os.environ.get("GEN_S2G"):
+    for m in (1, 2, 4):
+        print(generate_g(m))

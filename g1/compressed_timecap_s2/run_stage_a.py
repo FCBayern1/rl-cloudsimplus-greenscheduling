@@ -281,6 +281,26 @@ def main():
         todo = e_jobs("discovery", E_ARMS, tier_mode=True)
         print(f"e_main: {len(todo)} runs")
         print(json.dumps(sweep(E_ARMS, todo=todo), indent=2))
+    elif phase == "pilot_g":
+        # DESIGN_PILOT: F sweep with idle hosts powered down. Same cells, arms, window.
+        split = json.load(open(os.path.join(HERE, "e_data_split.json")))["discovery"]
+        pilot_cells = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
+        arms = {"reservation_edf": {"g": "reservation_edf", "tier": False},
+                "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                "shuffle": {"g": "perturbed_oracle_planner", "tier": "shuffle"}}
+        todo = []
+        for m in (1, 2, 4):
+            cfg = os.path.join(HERE, f"config_s2g_m{m}.yml")
+            for aname, a in arms.items():
+                for cell in pilot_cells:
+                    k, off = split["windows_k"][0], split["offsets"][0]
+                    e = {"EVAL_CONFIG_PATH": cfg}
+                    if a["tier"]:
+                        e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1"})
+                    todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
+                                 "env": e, "dir": f"pilotg_m{m}_{aname}"})
+        print(f"pilot_g: {len(todo)} runs (power-down x 3 scarcity x 3 arms x 6 cells)")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "pilot_f":
         # DESIGN_PILOT (2026-09-03): sweep the green-scarcity knob on the uniform-brown
         # variant to find a setting where godeye beats the strongest blind AND shuffle
