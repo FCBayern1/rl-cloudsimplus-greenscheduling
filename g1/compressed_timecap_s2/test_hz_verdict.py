@@ -44,11 +44,31 @@ def test_missing_run_is_invalid_not_stop():
     assert ("c3", "primary", 10, "missing") in out["problems"]
 
 
-def test_planner_env_mismatch_voids_the_grid_and_fails_g0():
+def test_planner_env_mismatch_is_invalid_data():
     out = judge(table({"blind": 30.0, "clean": 10.0, "primary": 22.0, "shuffle": 32.0, "anti": 40.0},
                       bad_env={("clean", "c0", 2)}), CELLS, KS)
     assert out["gates"]["g0_contract"] is False
     assert out["grids_valid"] == 17 and out["verdict"] == "INVALID_INCOMPLETE_DATA"
+
+
+def test_contract_failure_voids_the_grid_and_the_verdict_proceeds():
+    rows = table({"blind": 30.0, "clean": 10.0, "primary": 22.0, "shuffle": 32.0, "anti": 40.0})
+    rows[("primary", "c5", 18)]["contract_ok"] = False
+    out = judge(rows, CELLS, KS)
+    assert out["grids_voided"] == [("c5", 18)] and out["grids_valid"] == 17
+    assert out["gates"]["g0_contract"] is True
+    assert out["strict_reading_all_runs_contract_green"] is False
+    assert out["verdict"] == "PASS_HZ_DISCOVERY"
+
+
+def test_voided_grids_cannot_satisfy_direction_counts():
+    # primary hurts in only four cells; void one of them -> 3 adverse cells -> STOP
+    prim = lambda c, k: 30.0 if c in ("c0", "c1", "c2", "c3") else 9.9  # noqa: E731
+    rows = table({"blind": 30.0, "clean": 10.0, "primary": prim, "shuffle": 32.0, "anti": 40.0})
+    for k in KS:
+        rows[("anti", "c3", k)]["contract_ok"] = False
+    out = judge(rows, CELLS, KS)
+    assert out["g2_cells_adverse"] == 3 and out["verdict"] == "STOP_HZ"
 
 
 def test_clean_not_load_bearing_stops():

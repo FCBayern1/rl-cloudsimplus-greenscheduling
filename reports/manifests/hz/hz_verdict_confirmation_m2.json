@@ -1,0 +1,57 @@
+{
+  "controls_worse_than_blind": {
+    "anti": true,
+    "shuffle": true
+  },
+  "frozen_blind": "reactive_wait_planner",
+  "g1_cells_favourable": 6,
+  "g1_median_reduction": 0.46668256274328923,
+  "g1_pooled_reduction": 0.42534983946055815,
+  "g1_windows_favourable": 3,
+  "g2_cells_adverse": 6,
+  "g2_pooled_raise": 1.5447778275691304,
+  "g2_windows_adverse": 3,
+  "gates": {
+    "g0_contract": true,
+    "g1_clean_load_bearing": true,
+    "g2_primary_hurts": true,
+    "g3_negative_controls": true
+  },
+  "grids_expected": 18,
+  "grids_valid": 17,
+  "grids_voided": [
+    [
+      "s2_r48_w72_c5_n50",
+      42
+    ]
+  ],
+  "mult": 2,
+  "part": "confirmation",
+  "pooled_intensity": {
+    "anti": 6.726718688070474e-11,
+    "blind": 4.087980893129311e-11,
+    "clean": 2.3491588765189294e-11,
+    "primary": 5.97808742240258e-11,
+    "shuffle": 5.926123694121808e-11
+  },
+  "problems": [
+    [
+      "s2_r48_w72_c5_n50",
+      "primary",
+      42,
+      "contract"
+    ]
+  ],
+  "retention_per_grid_median": {
+    "anti": -1.7024088568384488,
+    "primary": -0.5759048728024715,
+    "shuffle": -1.181258064958672
+  },
+  "retention_pooled": {
+    "anti": -1.5175433539109746,
+    "primary": -1.0870040241138643,
+    "shuffle": -1.0571195806317943
+  },
+  "strict_reading_all_runs_contract_green": false,
+  "verdict": "PASS_HZ_CONFIRMATION"
+}

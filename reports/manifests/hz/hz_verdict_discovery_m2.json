@@ -1,0 +1,45 @@
+{
+  "controls_worse_than_blind": {
+    "anti": true,
+    "shuffle": true
+  },
+  "frozen_blind": "reactive_wait_planner",
+  "g1_cells_favourable": 6,
+  "g1_median_reduction": 0.3443879237299696,
+  "g1_pooled_reduction": 0.2884675678032948,
+  "g1_windows_favourable": 3,
+  "g2_cells_adverse": 6,
+  "g2_pooled_raise": 1.0142765654903136,
+  "g2_windows_adverse": 3,
+  "gates": {
+    "g0_contract": true,
+    "g1_clean_load_bearing": true,
+    "g2_primary_hurts": true,
+    "g3_negative_controls": true
+  },
+  "grids_expected": 18,
+  "grids_valid": 18,
+  "grids_voided": [],
+  "mult": 2,
+  "part": "discovery",
+  "pooled_intensity": {
+    "anti": 1.0464133021441668e-10,
+    "blind": 6.934502623547357e-11,
+    "clean": 4.934123517807084e-11,
+    "primary": 9.938689373153437e-11,
+    "shuffle": 8.387201694550557e-11
+  },
+  "problems": [],
+  "retention_per_grid_median": {
+    "anti": -1.8989204286860848,
+    "primary": -1.2637636422332583,
+    "shuffle": -0.9833429643712095
+  },
+  "retention_pooled": {
+    "anti": -1.7644807365592408,
+    "primary": -1.5018087026530562,
+    "shuffle": -0.7262118799554276
+  },
+  "strict_reading_all_runs_contract_green": true,
+  "verdict": "PASS_HZ_DISCOVERY"
+}

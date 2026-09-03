@@ -75,7 +75,14 @@ def judge(rows, cells, ks):
                     problems.append((c, lab, k, "planner_env")); ok = False
             if ok:
                 valid.add((c, k))
-    missing = any(p[3] == "missing" for p in problems)
+    # Prereg section 4, G0: a run that fails the contract VOIDS its (cell, window) for every
+    # arm; the verdict proceeds on the remaining grids and the voided ones may not be used
+    # to satisfy a direction count (the 4/6 and 2/3 thresholds stay out of 6 and 3). Only
+    # a missing run (broken pipeline) or a planner-environment drift (fail-fast) makes the
+    # data invalid. Addendum A records that the first build of this reader returned
+    # INVALID on a contract failure, noticed on the confirmation set.
+    missing = any(p[3] in ("missing", "planner_env") for p in problems)
+    voided = sorted({(c, k) for c, _lab, k, why in problems if why == "contract"})
 
     def pooled(lab, grid):
         cs = sum(rows[(lab, c, k)]["carbon"] for c, k in grid)
@@ -121,16 +128,18 @@ def judge(rows, cells, ks):
     g3 = all(r_pool[t] is not None and r_pool[t] <= G3_RETENTION for t in ("shuffle", "anti"))
     per_grid_ret = {t: _median([_retention(inten("blind", c, k), inten(t, c, k), inten("clean", c, k))
                                 for c, k in valid]) for t in ("primary", "shuffle", "anti")}
-    gates = {"g0_contract": not problems, "g1_clean_load_bearing": bool(g1),
+    gates = {"g0_contract": not missing, "g1_clean_load_bearing": bool(g1),
              "g2_primary_hurts": bool(g2), "g3_negative_controls": bool(g3)}
-    out.update({"gates": gates, "g1_pooled_reduction": g1_pool,
+    out.update({"gates": gates, "grids_voided": voided,
+                "strict_reading_all_runs_contract_green": not problems,
+                "g1_pooled_reduction": g1_pool,
                 "g1_median_reduction": _median(red.values()),
                 "g1_cells_favourable": cell_fav, "g1_windows_favourable": win_fav,
                 "g2_pooled_raise": raise_pool, "g2_cells_adverse": cell_adv,
                 "g2_windows_adverse": win_adv, "retention_pooled": r_pool,
                 "retention_per_grid_median": per_grid_ret,
                 "controls_worse_than_blind": {t: P[t] >= P["blind"] for t in ("shuffle", "anti")}})
-    if missing or len(valid) < len(cells) * len(ks):
+    if missing:
         out["verdict"] = "INVALID_INCOMPLETE_DATA"
     elif all(gates.values()):
         out["verdict"] = "PASS_HZ_DISCOVERY"
