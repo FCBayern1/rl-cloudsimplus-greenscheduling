@@ -266,3 +266,49 @@ def generate_e(part, out_dir=None):
 
 if __name__ == "__main__" and os.environ.get("GEN_S2E"):
     print(json.dumps([generate_e("discovery"), generate_e("confirmation")], indent=2))
+
+
+# ── Scheme 2-F variant: uniform brown factor + a green-scarcity knob ────────────
+
+F_BROWN_UNIFORM = 0.5      # no clean-DC haven; green already uniform at 0.01
+
+def generate_f(divisor_mult, out_dir=None, part="discovery"):
+    """S2-E discovery config with every brown factor set equal and green scaled down.
+
+    The E verdict showed godeye lost to reservation_edf because the blind piled onto DC0
+    (brown 0.08, a clean haven) while godeye chased green into dirtier DCs. Removing the
+    haven (uniform brown) is necessary; scaling green down (divisor_mult > 1) makes green
+    the binding constraint so catching it needs real placement, not just spreading. The
+    pilot sweeps divisor_mult to find where godeye beats the blind AND shuffle does not.
+    """
+    import json as _json
+    out_dir = out_dir or HERE
+    split = _json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    base = base_block()
+    common = yaml.safe_load(open(BASE_CONFIG)).get("common", {})
+    base_div = float(base.get("compressed_power_divisor", 1500.0))
+    blocks = {}
+    for cell in cells():
+        blk = derived_block(cell, base)
+        name = cell_name(cell)
+        blk["experiment_name"] = name
+        blk["simulation_name"] = f"S2F_m{divisor_mult}_{name}"
+        blk["compressed_power_divisor"] = base_div * divisor_mult
+        for dc in blk["datacenters"]:
+            dc["brown_carbon_factor"] = F_BROWN_UNIFORM
+            did = str(dc["datacenter_id"])
+            if did in split["dc_map"]:
+                dc["turbine_ids"] = [int(t) for t in split["dc_map"][did]]
+        blocks[name] = blk
+    cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
+                              default_flow_style=False)
+    path = os.path.join(out_dir, f"config_s2f_m{divisor_mult}.yml")
+    with open(path, "w") as f:
+        f.write(cfg_text)
+    return {"divisor_mult": divisor_mult, "brown": F_BROWN_UNIFORM,
+            "divisor": base_div * divisor_mult, "blocks": len(blocks),
+            "sha": content_sha(cfg_text)}
+
+
+if __name__ == "__main__" and os.environ.get("GEN_S2F"):
+    print(json.dumps([generate_f(m) for m in (1, 2, 4, 8)], indent=2))

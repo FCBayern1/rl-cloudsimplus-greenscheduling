@@ -281,6 +281,30 @@ def main():
         todo = e_jobs("discovery", E_ARMS, tier_mode=True)
         print(f"e_main: {len(todo)} runs")
         print(json.dumps(sweep(E_ARMS, todo=todo), indent=2))
+    elif phase == "pilot_f":
+        # DESIGN_PILOT (2026-09-03): sweep the green-scarcity knob on the uniform-brown
+        # variant to find a setting where godeye beats the strongest blind AND shuffle
+        # does not. Discovery windows only; outside every prereg; not a verdict.
+        split = json.load(open(os.path.join(HERE, "e_data_split.json")))["discovery"]
+        # cells spanning concurrency (where the E effect varied) x two job counts
+        pilot_cells = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
+        arms = {"reservation_edf": {"g": "reservation_edf", "tier": False},
+                "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                "shuffle": {"g": "perturbed_oracle_planner", "tier": "shuffle"}}
+        todo = []
+        for m in (1, 2, 4, 8):
+            cfg = os.path.join(HERE, f"config_s2f_m{m}.yml")
+            for aname, a in arms.items():
+                for cell in pilot_cells:
+                    for k, off in zip(split["windows_k"][:1], split["offsets"][:1]):
+                        e = {"EVAL_CONFIG_PATH": cfg}
+                        if a["tier"]:
+                            e.update({"PLANNER_PERTURB_TIER": a["tier"],
+                                      "PLANNER_PERTURB_E": "1"})
+                        todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
+                                     "env": e, "dir": f"pilotf_m{m}_{aname}"})
+        print(f"pilot_f: {len(todo)} runs (4 scarcity x 3 arms x 6 cells x 1 window)")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "pilot_shrink":
         # DESIGN_PILOT (2026-09-02): amplitude-shrinkage tiers on the DISCOVERY window
         # k=1 only. Exploratory, outside every prereg; results may not enter any verdict.
