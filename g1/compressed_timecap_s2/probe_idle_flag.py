@@ -11,5 +11,10 @@ print("python-side config top-level idle_host_power_down =", cfg.get("idle_host_
       "| DC0 =", (cfg.get("datacenters") or [{}])[0].get("idle_host_power_down"))
 env = HierarchicalMultiDCEnv(config=cfg)
 obs, info = env.reset(seed=42)
-print("JVM idle_host_power_down_effective =", info.get("idle_host_power_down_effective"))
+print("reset info key =", info.get("idle_host_power_down_effective"))
+n = env.num_datacenters
+ids = info.get("planner", {}).get("batch_cloudlet_ids", [0] * 128)
+obs, r, term, trunc, info = env.step({"global": [n] * len(ids), "local": {i: 0 for i in range(n)}})
+print("JVM idle_host_power_down_effective (after step) =", info.get("idle_host_power_down_effective"))
+print("cpu_util_effective (control) =", info.get("cloudlet_cpu_utilization_effective"))
 env.close()
