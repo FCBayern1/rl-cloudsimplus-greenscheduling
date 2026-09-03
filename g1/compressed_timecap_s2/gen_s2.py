@@ -358,3 +358,63 @@ def generate_g(divisor_mult, out_dir=None, part="discovery"):
 if __name__ == "__main__" and os.environ.get("GEN_S2G"):
     for m in (1, 2, 4):
         print(generate_g(m))
+
+
+# ── Scheme 2-H pilot: F settings with 32-PE jobs (dynamic 81 W vs 51 W idle floor) ───
+
+H_PES = 32
+
+def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="discovery"):
+    """F variant whose pilot cells run 32-PE jobs instead of 2-PE.
+
+    With power-down on all along, energy is dominated by awake host-seconds because a
+    2-PE job draws 5 W against a 51 W floor; consolidation beats any forecast-driven
+    spreading. At 32 PE the job draws 81 W, above the floor, so fragmentation no longer
+    dominates and chasing green can pay. Traces are regenerated with the same arrivals
+    and runtimes (only pes and MI-per-job change) under distinct names.
+    """
+    import json as _json
+    out_dir = out_dir or HERE
+    trace_dir = trace_dir or TRACE_DIR
+    split = _json.load(open(os.path.join(HERE, "e_data_split.json")))[part]
+    base = base_block()
+    common = yaml.safe_load(open(BASE_CONFIG)).get("common", {})
+    mips = float(base["datacenters"][0]["vm_pe_mips"])
+    base_div = float(base.get("compressed_power_divisor", 1500.0))
+    blocks, shas = {}, {}
+    for cell in cells():
+        name = cell_name(cell)
+        if name not in pilot_cells:
+            continue
+        rows, _rep = trace(cell, mips)
+        rows32 = [(i, a, mi, H_PES, fs, os_, dl) for (i, a, mi, _p, fs, os_, dl) in rows]
+        text = trace_text(rows32)
+        tpath = os.path.join(trace_dir, f"{name}_pes{H_PES}.csv")
+        with open(tpath, "w") as f:
+            f.write(text)
+        shas[name] = content_sha(text)
+        blk = derived_block(cell, base)
+        blk["experiment_name"] = name
+        blk["simulation_name"] = f"S2H_m{divisor_mult}_{name}"
+        blk["cloudlet_trace_file"] = f"traces/s2/{name}_pes{H_PES}.csv"
+        blk["compressed_power_divisor"] = base_div * divisor_mult
+        for dc in blk["datacenters"]:
+            dc["brown_carbon_factor"] = F_BROWN_UNIFORM
+            did = str(dc["datacenter_id"])
+            if did in split["dc_map"]:
+                dc["turbine_ids"] = [int(t) for t in split["dc_map"][did]]
+        blocks[name] = blk
+    cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
+                              default_flow_style=False)
+    with open(os.path.join(out_dir, f"config_s2h_m{divisor_mult}.yml"), "w") as f:
+        f.write(cfg_text)
+    return {"divisor_mult": divisor_mult, "pes": H_PES, "blocks": len(blocks),
+            "trace_shas": shas, "sha": content_sha(cfg_text)}
+
+
+PILOT_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
+
+if __name__ == "__main__" and os.environ.get("GEN_S2H"):
+    for m in (1, 2, 4):
+        r = generate_h(m, PILOT_CELLS)
+        print({k: r[k] for k in ("divisor_mult", "pes", "blocks", "sha")})
