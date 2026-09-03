@@ -359,11 +359,18 @@ class HierarchicalMultiDCEnv(gym.Env):
         # Optional: TimeCAP-based forecast provider replaces Java's God's Eye
         # (oracle/ground-truth) future trend features when green_oracle_mode == "timecap".
         # Skipped in spaces_only mode (training scripts that only need space shapes).
+        # 'perturbed_godeye' (2026-09-03, DESIGN_PILOT): the true future pushed through the
+        # frozen SERIES-space ladder in src/baselines/forecast_perturb, then reduced to the
+        # same four features, so a policy can be TRAINED against a degraded forecast; until
+        # now the ladder only reached the planner. Deliberately NOT this env's own
+        # FORECAST_PERTURB_MODE, whose shuffle/anti perturb the AGGREGATED FEATURES (DC-axis
+        # reversal / value mirror) rather than the series (time permutation / time
+        # reversal). The names collide and the questions differ.
         self.green_oracle_mode = str(config.get("green_oracle_mode", "godeye")).lower()
-        if self.green_oracle_mode not in ("godeye", "timecap"):
+        if self.green_oracle_mode not in ("godeye", "timecap", "perturbed_godeye"):
             raise ValueError(
                 f"config['green_oracle_mode']={self.green_oracle_mode!r}; "
-                "expected 'godeye' or 'timecap'."
+                "expected 'godeye', 'timecap' or 'perturbed_godeye'."
             )
         self.timecap_provider = None
         self._timecap_warmup_on_reset = False
@@ -374,7 +381,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         # silently drops every sample it later produces. See regression test
         # test_timecap_lazy_build.py for the contract.
         self._timecap_pending_build = (
-            self.green_oracle_mode == "timecap" and not self._spaces_only
+            self.green_oracle_mode in ("timecap", "perturbed_godeye")
+            and not self._spaces_only
         )
 
         # 2026-05-12 Level A: flat-protocol opt-in.  When True, env.step() makes
@@ -428,6 +436,87 @@ class HierarchicalMultiDCEnv(gym.Env):
             + ", ".join(str(c) for c in candidates)
         )
 
+    def _forecast_dc_turbine_map(self, csv_dir, csv_year):
+        """{dc_id: [turbine_ids]}, {turbine_id: csv_path}, {dc_id: tz_offset}.
+
+        Same rules the TimeCAP builder applies inline: skip DCs that are not green-enabled
+        or declare no turbines, and fold the per-episode green-window shift into the per-DC
+        tz offset so the provider reads the slice the simulator replays. The TimeCAP path
+        is deliberately left untouched rather than refactored onto this helper; a test
+        asserts the two produce identical maps, which catches drift without editing a
+        working path.
+        """
+        from pathlib import Path as _P
+        dc_assignments, turbine_csv_paths, dc_tz_offsets = {}, {}, {}
+        for idx, dc_cfg in enumerate(self.dc_configs):
+            if not dc_cfg.get("green_energy_enabled", False):
+                continue
+            tids = dc_cfg.get("turbine_ids") or []
+            if not tids:
+                continue
+            dc_id = self.dc_ids[idx]
+            dc_assignments[dc_id] = [int(t) for t in tids]
+            dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0)) \
+                + int(getattr(self, "_green_episode_offset_rows", 0))
+            for t in tids:
+                t = int(t)
+                csv_path = _P(csv_dir) / f"Turbine_{t}_{csv_year}.csv"
+                if not csv_path.is_file():
+                    raise FileNotFoundError(
+                        f"Turbine CSV not found: {csv_path} "
+                        f"(DC {dc_id}, turbine_id={t})")
+                turbine_csv_paths[t] = str(csv_path)
+        return dc_assignments, turbine_csv_paths, dc_tz_offsets
+
+    def _build_perturbed_godeye_provider(self, config: Dict[str, Any]):
+        """PerturbedGodEyeProvider over the same DC/turbine map, with no checkpoint."""
+        import sys
+        from pathlib import Path as _Path
+        _src_dir = _Path(__file__).resolve().parents[2] / "src"
+        if str(_src_dir) not in sys.path:
+            sys.path.insert(0, str(_src_dir))
+        from prediction.perturbed_godeye_provider import PerturbedGodEyeProvider
+
+        cfg = config.get("timecap") or {}
+        csv_dir = _Path(cfg.get(
+            "csv_dir", "cloudsimplus-gateway/src/main/resources/windProduction/split"))
+        if not csv_dir.is_absolute():
+            csv_dir = _Path(__file__).resolve().parents[3] / csv_dir
+        csv_year = int(cfg.get("csv_year", int(config.get("wind_csv_year", 2021))))
+        dc_assignments, turbine_csv_paths, dc_tz_offsets = \
+            self._forecast_dc_turbine_map(csv_dir, csv_year)
+        if not dc_assignments:
+            logger.warning(
+                "green_oracle_mode='perturbed_godeye' requested but no green-enabled DC "
+                "declares turbine_ids; falling back to godeye (Java oracle) for this run.")
+            return None
+
+        eparams = None
+        ep_path = config.get("perturb_error_params")
+        if ep_path:
+            import json as _json
+            blob = _json.load(open(ep_path))
+            eparams = blob.get("primary_error_params", blob)
+
+        provider = PerturbedGodEyeProvider(
+            dc_assignments=dc_assignments,
+            turbine_csv_paths=turbine_csv_paths,
+            perturb_tier=str(config.get("perturb_tier", "godeye")),
+            pred_len=int(cfg.get("pred_len", 144)),
+            short_term_steps=int(config.get("forecast_short_term_rows", 3)),
+            long_term_steps=int(config.get("forecast_long_term_rows", 144)),
+            error_params=eparams,
+            csv_start_offset=int(cfg.get("csv_start_offset", 0)),
+            dc_tz_offsets=dc_tz_offsets,
+            simulation_warmup_rows=int(config.get("simulation_warmup_rows", 0)),
+        )
+        # Nothing to warm up: the truth is read directly, there is no history buffer.
+        self._timecap_warmup_on_reset = False
+        logger.info("perturbed_godeye ready: tier=%s | dcs=%s | turbines=%s",
+                    provider.perturb_tier, sorted(dc_assignments),
+                    sorted(turbine_csv_paths))
+        return provider
+
     def _build_timecap_provider(self, config: Dict[str, Any]):
         """
         Construct a TimeCAPGodEyeProvider from this env's dc_configs and the
@@ -452,6 +541,9 @@ class HierarchicalMultiDCEnv(gym.Env):
         _src_dir = _Path(__file__).resolve().parents[2] / "src"
         if str(_src_dir) not in sys.path:
             sys.path.insert(0, str(_src_dir))
+        if self.green_oracle_mode == "perturbed_godeye":
+            return self._build_perturbed_godeye_provider(config)
+
         from prediction.timecap_godeye_provider import TimeCAPGodEyeProvider
 
         tc_cfg = config.get("timecap") or {}

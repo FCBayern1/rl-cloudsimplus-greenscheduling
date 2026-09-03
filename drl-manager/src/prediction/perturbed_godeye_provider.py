@@ -90,6 +90,9 @@ class PerturbedGodEyeProvider:
         long_term_steps: int = 144,
         error_params: Optional[dict] = None,
         feature_columns: Optional[Sequence[str]] = None,
+        csv_start_offset: int = 0,
+        dc_tz_offsets: Optional[Dict[int, int]] = None,
+        simulation_warmup_rows: int = 0,
     ):
         if perturb_tier not in SUPPORTED_TIERS:
             raise ValueError(f"unknown perturb_tier {perturb_tier!r}; "
@@ -104,6 +107,22 @@ class PerturbedGodEyeProvider:
         self.short_term_steps = max(1, int(short_term_steps))
         self.long_term_steps = max(1, int(long_term_steps))
         self.error_params = error_params
+        self.dc_ids: List[int] = sorted(self.dc_assignments)
+        # Row mapping, composed exactly as TimeCAPGodEyeProvider composes it: a per-DC
+        # time zone plus the global warm-up when tz offsets are given, otherwise the
+        # scalar fallback. Getting this wrong does not crash, it just serves a different
+        # hour's weather than the simulator is burning, so it is mirrored rather than
+        # reinvented.
+        self.simulation_warmup_rows = max(0, int(simulation_warmup_rows))
+        self.dc_tz_offsets = {int(k): int(v) for k, v in (dc_tz_offsets or {}).items()}
+        self.row_offset: Dict[int, int] = {}
+        for d, tids in self.dc_assignments.items():
+            if self.dc_tz_offsets:
+                off = self.dc_tz_offsets.get(d, 0) + self.simulation_warmup_rows
+            else:
+                off = int(csv_start_offset) + self.simulation_warmup_rows
+            for t in tids:
+                self.row_offset[t] = off
 
         self.loader = CSVFeatureLoader(
             turbine_csv_paths=turbine_csv_paths,
@@ -123,6 +142,7 @@ class PerturbedGodEyeProvider:
 
         self._episode_key = self._build_episode_key()
         self._cache: Dict[int, Dict[int, np.ndarray]] = {}
+        self._last_per_t: Optional[Dict[int, np.ndarray]] = None
         logger.info("PerturbedGodEyeProvider ready: tier=%s dcs=%s pred_len=%d",
                     self.perturb_tier, sorted(self.dc_assignments), self.pred_len)
 
@@ -142,6 +162,7 @@ class PerturbedGodEyeProvider:
 
     def reset(self) -> None:
         self._cache.clear()
+        self._last_per_t = None
 
     def warmup(self, start_step: int = 0) -> None:
         """No history buffer to fill: the truth is read directly. Kept for interface
@@ -156,6 +177,7 @@ class PerturbedGodEyeProvider:
     def _perturbed_series(self, turbine_id: int, dc_id: int, step: int) -> np.ndarray:
         """The degraded view of rows [step, step + pred_len) for one turbine."""
         series = self.truth[turbine_id]
+        step = int(step) + self.row_offset.get(turbine_id, 0)
         if self.perturb_tier == "calibrated_shrink_v1":
             out = fp.perturbed_future_e(series, step, self.pred_len, dc_id,
                                         self.perturb_tier,
@@ -169,7 +191,8 @@ class PerturbedGodEyeProvider:
 
     def true_series(self, turbine_id: int, step: int) -> np.ndarray:
         s = self.truth[turbine_id]
-        return s[step:min(len(s), step + self.pred_len)]
+        r = int(step) + self.row_offset.get(turbine_id, 0)
+        return s[r:min(len(s), r + self.pred_len)]
 
     def _aggregate_dc(self, per_t: Dict[int, np.ndarray], turbine_ids: List[int]):
         """Java's aggregation, reproduced. Copied in behaviour from
@@ -207,16 +230,59 @@ class PerturbedGodEyeProvider:
         step = int(simulation_step)
         if step in self._cache:
             return {d: v.copy() for d, v in self._cache[step].items()}
-        out = {}
+        out, last = {}, {}
         for d, tids in self.dc_assignments.items():
             per_t = {t: self._perturbed_series(t, d, step) for t in tids}
+            last.update(per_t)
             out[d] = self._aggregate_dc(per_t, tids)
+        self._last_per_t = last
         self._cache[step] = out
         return {d: v.copy() for d, v in out.items()}
 
     def step_and_get(self, simulation_step: int) -> Dict[int, np.ndarray]:
         self.update(simulation_step)
         return self.get_features(simulation_step)
+
+    # -- the two extra channels the env reads off a provider ---------------------------
+    def get_raw_forecast_per_dc(self, horizon: Optional[int] = None,
+                                normalize: bool = True) -> Optional[Dict[int, np.ndarray]]:
+        """Per-DC forecast trajectory, same aggregation rule as TimeCAPGodEyeProvider:
+        max-power-weighted mean when normalized, summed kW converted to W when not."""
+        if self._last_per_t is None:
+            return None
+        h = self.pred_len if horizon is None else int(horizon)
+        if h < 1:
+            raise ValueError(f"horizon must be >= 1, got {h}")
+        h = min(h, self.pred_len)
+        out = {}
+        for d, tids in self.dc_assignments.items():
+            total_mp = float(sum(self.max_power_kw.get(t, 1.0) for t in tids)) or 1.0
+            acc = np.zeros(h, dtype=np.float64)
+            for t in tids:
+                pr = self._last_per_t.get(t)
+                if pr is not None and pr.size:
+                    acc[:min(h, pr.size)] += pr[:h]
+            out[d] = (acc / total_mp) if normalize else (acc * 1000.0)
+        return out
+
+    def get_predicted_wind_w_per_dc(self, horizon: int = 0) -> Optional[List[float]]:
+        """Per-DC predicted wind in W at one lead, ordered by dc_ids.
+
+        None before the first get_features of an episode, matching the TimeCAP provider's
+        contract: callers treat None as "no prediction yet" and omit the field.
+        """
+        if self._last_per_t is None:
+            return None
+        h = int(horizon)
+        vals = []
+        for d in self.dc_ids:
+            tot = 0.0
+            for t in self.dc_assignments[d]:
+                pr = self._last_per_t.get(t)
+                if pr is not None and pr.size > h:
+                    tot += float(pr[h])
+            vals.append(tot * 1000.0)
+        return vals
 
     # -- introspection, for tests and run records --------------------------------------
     def describe(self) -> dict:
@@ -230,6 +296,7 @@ class PerturbedGodEyeProvider:
             "episode_key": self._episode_key,
             "max_power_kw": {str(k): v for k, v in self.max_power_kw.items()},
             "uses_error_params": self.error_params is not None,
+            "row_offset": {str(k): v for k, v in self.row_offset.items()},
         }
 
 
@@ -262,4 +329,7 @@ def from_config(config: dict, dc_assignments: Dict[int, List[int]],
         short_term_steps=int(config.get("forecast_short_term_rows", 3)),
         long_term_steps=int(config.get("forecast_long_term_rows", 144)),
         error_params=params,
+        csv_start_offset=int((config.get("timecap") or {}).get("csv_start_offset", 0)),
+        dc_tz_offsets=config.get("dc_tz_offsets"),
+        simulation_warmup_rows=int(config.get("simulation_warmup_rows", 0)),
     )
