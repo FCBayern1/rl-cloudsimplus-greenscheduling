@@ -90,6 +90,21 @@ def perturb_future_bins(bins, mode: str, capacity_w) -> "np.ndarray":
     return bins
 
 
+def episode_offset_rows(episode_counter, offset_range, allowlist=None):
+    """Green-window offset for one episode, mirrored bit-for-bit from the Java side
+    (MultiDatacenterSimulationCore.episodeOffsetFor): a non-empty allowlist
+    ("13016;21088" or a list) is cycled by episode index and wins; otherwise the
+    1009*k mod range schedule; range <= 0 keeps the historical fixed window."""
+    allow = allowlist
+    if isinstance(allow, str):
+        allow = [int(x) for x in allow.replace(",", ";").split(";") if x.strip()]
+    if allow:
+        return max(0, int(allow[int(episode_counter) % len(allow)]))
+    if offset_range and int(offset_range) > 0 and episode_counter >= 0:
+        return (1009 * int(episode_counter)) % int(offset_range)
+    return 0
+
+
 class HierarchicalMultiDCEnv(gym.Env):
     """
     Hierarchical Multi-Datacenter Load Balancing Environment.
@@ -1257,7 +1272,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         # apply the same deterministic schedule (1009*k mod range).
         self._episode_counter = getattr(self, "_episode_counter", -1) + 1
         _off_range = int(self.config.get("green_episode_offset_range", 0) or 0)
-        _new_off = (1009 * self._episode_counter) % _off_range if _off_range > 0 else 0
+        _new_off = episode_offset_rows(self._episode_counter, _off_range,
+                                       self.config.get("green_episode_offset_allowlist"))
 
         # Lazy-build the TimeCAP provider on the first reset — keeps __init__
         # cheap so Ray's EnvRunner actor registers before its first health probe.

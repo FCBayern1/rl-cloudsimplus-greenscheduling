@@ -275,6 +275,25 @@ public class SimulationSettings {
      *  fixed. 0 (default) keeps the historical fixed-window behaviour. */
     private final int greenEpisodeOffsetRange;
 
+    /** Explicit episode offsets (rows), cycled by episode index when non-empty. */
+    private final java.util.List<Integer> greenEpisodeOffsetAllowlist;
+
+    /** "13016;21088" / "13016,21088" / a List of numbers -> ints; null or blank -> empty. */
+    public static java.util.List<Integer> parseIntList(Object raw) {
+        java.util.List<Integer> out = new java.util.ArrayList<>();
+        if (raw == null) return out;
+        if (raw instanceof java.util.List<?> list) {
+            for (Object o : list) out.add(((Number) o).intValue());
+            return out;
+        }
+        String s = String.valueOf(raw).trim();
+        if (s.isEmpty()) return out;
+        for (String tok : s.split("[;,\\s]+")) {
+            if (!tok.isEmpty()) out.add(Integer.parseInt(tok.trim()));
+        }
+        return out;
+    }
+
     /** Wind year the turbine resolver prefers; 2021 keeps the historical behaviour. */
     @Getter
     private final int windCsvYear;
@@ -536,6 +555,10 @@ public class SimulationSettings {
         this.perActionSpatialWeight     = getDoubleParam(params, "per_action_spatial_weight", 1.0);
         this.perActionSpatialSigma      = getDoubleParam(params, "per_action_spatial_sigma", 1.0);
         this.greenEpisodeOffsetRange    = getIntParam(params, "green_episode_offset_range", 0);
+        // Stage D (2026-09-03): an explicit, frozen list of episode offsets ("a;b;c" or a
+        // list) cycled by episode index, replacing the 1009*k schedule so training and
+        // judgement windows are exactly the preregistered ones. Empty keeps the schedule.
+        this.greenEpisodeOffsetAllowlist = parseIntList(params.get("green_episode_offset_allowlist"));
 
         this.carbonPenaltyMode = getStringParam(params, "carbon_penalty_mode", "TOTAL").trim().toUpperCase();
         this.carbonNormalizationMode = getStringParam(params, "carbon_normalization_mode", "RUNNING_MAX").trim().toUpperCase();

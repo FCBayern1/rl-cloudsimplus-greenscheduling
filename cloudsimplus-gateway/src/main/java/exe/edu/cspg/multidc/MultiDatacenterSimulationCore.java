@@ -206,6 +206,14 @@ public class MultiDatacenterSimulationCore {
         return (int) ((1009L * episodeIndex) % range);
     }
 
+    /** Stage D: a non-empty allowlist is cycled by episode index and wins over the schedule. */
+    static int episodeOffsetFor(int episodeIndex, int range, java.util.List<Integer> allowlist) {
+        if (allowlist != null && !allowlist.isEmpty() && episodeIndex >= 0) {
+            return Math.max(0, allowlist.get(episodeIndex % allowlist.size()));
+        }
+        return episodeOffsetFor(episodeIndex, range);
+    }
+
     public void resetSimulation() {
         LOGGER.info("Resetting multi-datacenter simulation environment...");
         episodeIndex++;
@@ -303,8 +311,9 @@ public class MultiDatacenterSimulationCore {
         // Deterministic schedule (1009*k mod range): episode 0 keeps the historical
         // window, both arms and eval see the identical window sequence.
         int greenOffsetRange = settings.getGreenEpisodeOffsetRange();
-        if (greenOffsetRange > 0) {
-            int epOffset = episodeOffsetFor(episodeIndex, greenOffsetRange);
+        java.util.List<Integer> allow = settings.getGreenEpisodeOffsetAllowlist();
+        if (greenOffsetRange > 0 || (allow != null && !allow.isEmpty())) {
+            int epOffset = episodeOffsetFor(episodeIndex, greenOffsetRange, allow);
             for (DatacenterInstance dc : datacenterInstances) {
                 for (exe.edu.cspg.energy.GreenEnergyProvider p : dc.getGreenEnergyProviders()) {
                     p.setEpisodeOffsetRows(epOffset);

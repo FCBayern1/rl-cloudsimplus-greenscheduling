@@ -540,6 +540,10 @@ def run_evaluation(
         obs, info = env.reset(seed=seed + ep)
         done = False
         steps = 0
+        # Cumulative env rewards of the replayed policy (Stage D P0 reward truth table:
+        # the ordering of arms by reward must match their ordering by physical carbon).
+        global_reward_sum = 0.0
+        local_reward_sum = 0.0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 
@@ -613,6 +617,10 @@ def run_evaluation(
                 ))
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
+            if isinstance(rewards, dict):
+                global_reward_sum += float(rewards.get("global", 0.0) or 0.0)
+                _loc = rewards.get("local", {})
+                local_reward_sum += float(sum(_loc.values()) if isinstance(_loc, dict) else (_loc or 0.0))
             # When force_full_episode=True, ignore the env's natural-completion
             # signal so every algorithm runs the same number of steps. Carbon /
             # energy totals become directly comparable across algorithms that
@@ -623,6 +631,8 @@ def run_evaluation(
         metrics = collect_metrics(info, num_dcs)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
+        metrics['global_reward_sum'] = global_reward_sum
+        metrics['local_reward_sum'] = local_reward_sum
         # Scheduler-side counters the validity contract is checked against (stale
         # reservations, capacity overrun, occupancy drift). Absent for schedulers that
         # keep no ledger, which is why this is opt-in rather than assumed.
@@ -1061,6 +1071,10 @@ def run_rllib_evaluation(
         obs, info = env.reset(seed=seed + ep)
         done = False
         steps = 0
+        # Cumulative env rewards of the replayed policy (Stage D P0 reward truth table:
+        # the ordering of arms by reward must match their ordering by physical carbon).
+        global_reward_sum = 0.0
+        local_reward_sum = 0.0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 

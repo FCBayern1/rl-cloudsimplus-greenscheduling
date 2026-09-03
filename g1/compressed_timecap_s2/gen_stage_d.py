@@ -1,0 +1,122 @@
+"""Stage D training blocks: four lines derived from the HZ x2 scene by a whitelisted diff.
+
+    N_V   vanilla PPO, future forecast hollowed (forecast_mode: none)
+    V     vanilla PPO, clean truth-informed forecast
+    N_E   EU-CRD,      future forecast hollowed
+    E     EU-CRD,      clean forecast
+
+Everything physical (zero-floor twins, 32-PE VMs, no splitting, brown 0.5, divisor 3000,
+capacity, reward keys) is the HZ x2 block of cell c3_n50 verbatim. The training trace is
+the generator's c3_n35 cell at 32 PEs (not one of the six evaluation cells). The EU-CRD
+subtree is copied from the frozen v5.2 block of config_rl_step2_pilot.yml with only
+`enabled` flipped, and its canonical SHA256 is recorded. Codex R-m / R-o, 2026-09-03.
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import os
+import subprocess
+
+import yaml
+
+import gen_s2 as g
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+HZ_CONFIG = os.path.join(HERE, "config_s2hz_m2.yml")
+RL_PILOT_CONFIG = os.path.join(HERE, "config_rl_step2_pilot.yml")
+WINDOWS = os.path.join(HERE, "stage_a_out", "stage_d_windows.json")
+HZ_CELL = "s2_r48_w72_c3_n50"
+TRAIN_CELL = "s2_r48_w72_c3_n35"
+LINES = {"NV": {"crd": False, "hollow": True},
+         "V": {"crd": False, "hollow": False},
+         "NE": {"crd": True, "hollow": True},
+         "E": {"crd": True, "hollow": False}}
+# Keys a line may differ in from the HZ block. Anything else is a generator bug.
+WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
+             "perturb_tier", "forecast_mode", "crd", "training", "wandb",
+             "green_episode_offset_allowlist"}
+BETWEEN_LINES = {"experiment_name", "simulation_name", "forecast_mode", "crd"}
+
+
+def canonical_sha(obj):
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def crd_subtree():
+    cfg = yaml.safe_load(open(RL_PILOT_CONFIG))
+    blk = cfg[[k for k in cfg if k != "common"][0]]
+    sub = copy.deepcopy(blk["crd"])
+    src_sha = canonical_sha(sub)
+    return sub, src_sha
+
+
+def train_trace(trace_dir=None):
+    """32-PE version of the c3_n35 trace, same arrivals/runtime/deadline as the RL pilot."""
+    trace_dir = trace_dir or g.TRACE_DIR
+    cell = next(c for c in g.cells() if g.cell_name(c) == TRAIN_CELL)
+    base = g.base_block()
+    rows, _ = g.trace(cell, float(base["datacenters"][0]["vm_pe_mips"]))
+    rows32 = [(i, a, mi, g.H_PES, fs, os_, dl) for (i, a, mi, _p, fs, os_, dl) in rows]
+    text = g.trace_text(rows32)
+    path = os.path.join(trace_dir, f"{TRAIN_CELL}_pes{g.H_PES}.csv")
+    with open(path, "w") as f:
+        f.write(text)
+    return f"traces/s2/{TRAIN_CELL}_pes{g.H_PES}.csv", g.content_sha(text)
+
+
+def build(total_timesteps, out_dir=None, trace_dir=None):
+    out_dir = out_dir or HERE
+    hz = yaml.safe_load(open(HZ_CONFIG))
+    base = hz[HZ_CELL]
+    common = hz.get("common", {})
+    crd, crd_sha = crd_subtree()
+    trace_rel, trace_sha = train_trace(trace_dir)
+    win = json.load(open(WINDOWS))
+    if win.get("status") != "OK":
+        raise RuntimeError("window preflight is not OK; no training block may be built")
+    allow = ";".join(str(w["offset"]) for w in win["train_windows"])
+    blocks = {}
+    for line, spec in LINES.items():
+        b = copy.deepcopy(base)
+        name = f"sd_{line}_{TRAIN_CELL}"
+        b["experiment_name"] = name
+        b["simulation_name"] = f"STAGED_{name}"
+        b["cloudlet_trace_file"] = trace_rel
+        b["green_oracle_mode"] = "perturbed_godeye"
+        b["perturb_tier"] = "godeye"                 # training is always clean
+        b["forecast_mode"] = "none" if spec["hollow"] else "full"
+        b["crd"] = dict(copy.deepcopy(crd), enabled=bool(spec["crd"]))
+        b["training"] = dict(b.get("training", {}), total_timesteps=int(total_timesteps))
+        b["wandb"] = dict(b.get("wandb", {}), enabled=False)
+        b["green_episode_offset_allowlist"] = allow
+        blocks[name] = b
+    text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True, default_flow_style=False)
+    path = os.path.join(out_dir, "config_stage_d.yml")
+    with open(path, "w") as f:
+        f.write(text)
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
+    manifest = {"config": "config_stage_d.yml", "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                "hz_source": {"file": "config_s2hz_m2.yml", "cell": HZ_CELL},
+                "crd_subtree_sha256": crd_sha, "crd_source": {"file": "config_rl_step2_pilot.yml",
+                                                              "commit_at_build": commit},
+                "train_trace": {"file": trace_rel, "sha": trace_sha},
+                "train_windows": win["train_windows"], "eval_windows": win["eval_windows"],
+                "windows_sha256": win.get("sha256"), "total_timesteps": int(total_timesteps),
+                "lines": {n: {"crd_enabled": b["crd"]["enabled"], "forecast_mode": b["forecast_mode"]}
+                          for n, b in blocks.items()}}
+    with open(os.path.join(out_dir, "stage_d_manifest.json"), "w") as f:
+        f.write(json.dumps(manifest, sort_keys=True, indent=2))
+    return blocks, manifest
+
+
+def diff_keys(a, b):
+    return sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+
+
+if __name__ == "__main__":
+    import sys
+    steps = int(sys.argv[1]) if len(sys.argv) > 1 else 50_000
+    blocks, man = build(steps)
+    print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
