@@ -78,14 +78,15 @@ def judge(rows, windows):
             "per_window_wins": wins, "windows": list(windows), "contract_bad": contract_bad}
 
 
-def load_rows():
-    man = json.load(open(os.path.join(HERE, "stage_d_manifest.json")))
+def load_rows(variant=""):
+    suffix = f"_{variant}" if variant else ""
+    man = json.load(open(os.path.join(HERE, f"stage_d_manifest{suffix}.json")))
     windows = list(range(len(man["train_windows"])))
     cell = "sd_V_s2_r48_w72_c3_n35"
     rows = {}
     for arm, d in DIRS.items():
         for k in windows:
-            p = os.path.join(OUT, d, f"{cell}_k{k}.csv")
+            p = os.path.join(OUT, d.replace("p0_", f"p0{suffix}_", 1), f"{cell}_k{k}.csv")
             if not os.path.exists(p):
                 rows[(arm, k)] = None
                 continue
@@ -100,9 +101,11 @@ def load_rows():
 
 
 def main():
-    rows, windows = load_rows()
+    variant = sys.argv[1] if len(sys.argv) > 1 else ""
+    rows, windows = load_rows(variant)
     out = judge(rows, windows)
-    with open(os.path.join(OUT, "p0_verdict.json"), "w") as fh:
+    out["reward_variant"] = variant or "legacy"
+    with open(os.path.join(OUT, f"p0_verdict{'_' + variant if variant else ''}.json"), "w") as fh:
         fh.write(json.dumps(out, sort_keys=True, indent=2, default=str))
     print(json.dumps(out, sort_keys=True, indent=2, default=str))
 

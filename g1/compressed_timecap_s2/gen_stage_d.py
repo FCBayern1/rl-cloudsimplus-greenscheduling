@@ -66,7 +66,20 @@ def train_trace(trace_dir=None):
     return f"traces/s2/{TRAIN_CELL}_pes{g.H_PES}.csv", g.content_sha(text)
 
 
-def build(total_timesteps, out_dir=None, trace_dir=None):
+# Reward variants (STAGE_D_PREREG Addendum C). "legacy" = the C-regime reward the HZ block
+# inherited: flat defer cost charged at every sighting plus an instant per-action carbon
+# price, which P0 showed dominates and inverts the carbon ordering. "physical" keeps only
+# the physical carbon term (beta * normalised ledger carbon, FIXED 5e-05) and the
+# completion shaping: reward ordering equals carbon ordering by construction.
+REWARD_VARIANTS = {
+    "legacy": {},
+    "physical": {"defer_base_cost": 0.0, "defer_urgency_weight": 0.0,
+                 "per_action_carbon_weight": 0.0},
+}
+REWARD_KEYS = {"defer_base_cost", "defer_urgency_weight", "per_action_carbon_weight"}
+
+
+def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"):
     out_dir = out_dir or HERE
     hz = yaml.safe_load(open(HZ_CONFIG))
     base = hz[HZ_CELL]
@@ -77,9 +90,12 @@ def build(total_timesteps, out_dir=None, trace_dir=None):
     if win.get("status") != "OK":
         raise RuntimeError("window preflight is not OK; no training block may be built")
     allow = ";".join(str(w["offset"]) for w in win["train_windows"])
+    overrides = REWARD_VARIANTS[reward_variant]
+    suffix = "" if reward_variant == "legacy" else f"_{reward_variant}"
     blocks = {}
     for line, spec in LINES.items():
         b = copy.deepcopy(base)
+        b.update(copy.deepcopy(overrides))
         name = f"sd_{line}_{TRAIN_CELL}"
         b["experiment_name"] = name
         b["simulation_name"] = f"STAGED_{name}"
@@ -93,11 +109,13 @@ def build(total_timesteps, out_dir=None, trace_dir=None):
         b["green_episode_offset_allowlist"] = allow
         blocks[name] = b
     text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True, default_flow_style=False)
-    path = os.path.join(out_dir, "config_stage_d.yml")
+    cfg_name = f"config_stage_d{suffix}.yml"
+    path = os.path.join(out_dir, cfg_name)
     with open(path, "w") as f:
         f.write(text)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
-    manifest = {"config": "config_stage_d.yml", "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    manifest = {"config": cfg_name, "reward_variant": reward_variant, "reward_overrides": overrides,
+                "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
                 "hz_source": {"file": "config_s2hz_m2.yml", "cell": HZ_CELL},
                 "crd_subtree_sha256": crd_sha, "crd_source": {"file": "config_rl_step2_pilot.yml",
                                                               "commit_at_build": commit},
@@ -106,7 +124,7 @@ def build(total_timesteps, out_dir=None, trace_dir=None):
                 "windows_sha256": win.get("sha256"), "total_timesteps": int(total_timesteps),
                 "lines": {n: {"crd_enabled": b["crd"]["enabled"], "forecast_mode": b["forecast_mode"]}
                           for n, b in blocks.items()}}
-    with open(os.path.join(out_dir, "stage_d_manifest.json"), "w") as f:
+    with open(os.path.join(out_dir, f"stage_d_manifest{suffix}.json"), "w") as f:
         f.write(json.dumps(manifest, sort_keys=True, indent=2))
     return blocks, manifest
 
@@ -118,5 +136,6 @@ def diff_keys(a, b):
 if __name__ == "__main__":
     import sys
     steps = int(sys.argv[1]) if len(sys.argv) > 1 else 50_000
-    blocks, man = build(steps)
+    variant = sys.argv[2] if len(sys.argv) > 2 else "legacy"
+    blocks, man = build(steps, reward_variant=variant)
     print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))

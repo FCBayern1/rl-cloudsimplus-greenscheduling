@@ -55,6 +55,22 @@ def test_lines_differ_only_in_identity_hollow_and_crd(built):
                {k: v for k, v in ref["crd"].items() if k != "enabled"}
 
 
+def test_physical_variant_changes_only_the_three_reward_keys():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        legacy, _ = sd.build(50_000, out_dir=d, trace_dir=d)
+        phys, man = sd.build(50_000, out_dir=d, trace_dir=d, reward_variant="physical")
+        assert man["config"] == "config_stage_d_physical.yml"
+        assert os.path.exists(os.path.join(d, "stage_d_manifest_physical.json"))
+    for n in legacy:
+        extra = set(sd.diff_keys(legacy[n], phys[n])) - sd.REWARD_KEYS
+        assert not extra, (n, extra)
+        assert phys[n]["defer_base_cost"] == 0.0 and phys[n]["defer_urgency_weight"] == 0.0
+        assert phys[n]["per_action_carbon_weight"] == 0.0
+        assert phys[n]["global_reward_beta"] == legacy[n]["global_reward_beta"] == 1.0
+
+
 def test_manifest_records_hashes_and_windows(built):
     _, man, _ = built
     assert len(man["crd_subtree_sha256"]) == 64 and len(man["config_sha256"]) == 64

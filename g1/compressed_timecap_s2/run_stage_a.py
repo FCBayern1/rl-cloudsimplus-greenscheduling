@@ -408,9 +408,13 @@ def main():
         # arms on the V training block (training reward configuration) over the six
         # frozen training windows, before any policy is trained. Windows come from the
         # allowlist: --reset-skip k selects allowlist[k] on both sides.
-        man = json.load(open(os.path.join(HERE, "stage_d_manifest.json")))
+        # P0_VARIANT selects the reward variant (Addendum C): "" = legacy block,
+        # "physical" = config_stage_d_physical.yml; outputs land in p0<variant>_* dirs.
+        variant = os.environ.get("P0_VARIANT", "").strip()
+        suffix = f"_{variant}" if variant else ""
+        man = json.load(open(os.path.join(HERE, f"stage_d_manifest{suffix}.json")))
         allow = [int(w["offset"]) for w in man["train_windows"]]
-        cfg = os.path.join(HERE, "config_stage_d.yml")
+        cfg = os.path.join(HERE, f"config_stage_d{suffix}.yml")
         cal = os.path.join(HERE, "timecap_error_audit.json")
         cell = "sd_V_s2_r48_w72_c3_n35"
         arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
@@ -426,8 +430,8 @@ def main():
                     e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1",
                               "PLANNER_PERTURB_CAL": cal})
                 todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off,
-                             "env": e, "dir": f"p0_{aname}"})
-        print(f"hz_p0: {len(todo)} runs (4 arms x {len(allow)} training windows)")
+                             "env": e, "dir": f"p0{suffix}_{aname}"})
+        print(f"hz_p0{suffix}: {len(todo)} runs (4 arms x {len(allow)} training windows)")
         print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
