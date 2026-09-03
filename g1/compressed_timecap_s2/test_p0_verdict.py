@@ -45,6 +45,22 @@ def test_clip_rate_and_cap_hits_stop():
     assert judge(table(GOOD_C, GOOD_R, cap=1.0), W)["gates"]["no_cap_hits"] is False
 
 
+def test_probe_contract_failure_is_reported_not_gated():
+    rows = table(GOOD_C, GOOD_R)
+    for k in W:
+        rows[("always_defer", k)]["contract_ok"] = False
+    out = judge(rows, W)
+    assert out["verdict"] == "PASS_P0" and out["gates"]["contract_green"] is True
+    assert out["probe_always_defer_contract_bad_windows"] == W
+
+
+def test_policy_arm_contract_failure_still_stops():
+    rows = table(GOOD_C, GOOD_R)
+    rows[("clean", 1)]["contract_ok"] = False
+    out = judge(rows, W)
+    assert out["gates"]["contract_green"] is False and out["verdict"] == "STOP_P0"
+
+
 def test_missing_run_is_invalid():
     rows = table(GOOD_C, GOOD_R)
     rows[("clean", 1)] = None

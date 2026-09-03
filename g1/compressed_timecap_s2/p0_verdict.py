@@ -28,6 +28,7 @@ import stage_a_verdict as sv  # noqa: E402
 
 OUT = ra.OUT
 ARMS = ("blind", "clean", "shrink", "always_defer")
+POLICY_ARMS = ("blind", "clean", "shrink")
 DIRS = {"blind": "p0_reactive_wait_planner", "clean": "p0_godeye",
         "shrink": "p0_calibrated_shrink_v1", "always_defer": "p0_always_defer"}
 CLIP_MAX = 0.05
@@ -46,7 +47,11 @@ def judge(rows, windows):
     missing = [(a, k) for a in ARMS for k in windows if rows.get((a, k)) is None]
     if missing:
         return {"verdict": "INVALID_INCOMPLETE_DATA", "missing": missing}
-    contract_bad = [(a, k) for a in ARMS for k in windows if not rows[(a, k)]["contract_ok"]]
+    # The contract gate covers the policy arms. always_defer is the arbitrage probe: it is
+    # expected to miss deadlines, and its contract outcome is reported, not gated
+    # (STAGE_D_PREREG Addendum D, amended after the first physical-variant reading).
+    contract_bad = [(a, k) for a in POLICY_ARMS for k in windows if not rows[(a, k)]["contract_ok"]]
+    probe_contract_bad = [k for k in windows if not rows[("always_defer", k)]["contract_ok"]]
     per_window = {}
     for k in windows:
         r = {a: rows[(a, k)] for a in ARMS}
@@ -75,7 +80,8 @@ def judge(rows, windows):
     }
     return {"verdict": "PASS_P0" if all(gates.values()) else "STOP_P0",
             "gates": gates, "pooled": pooled, "clip_rate": clip_rate, "cap_hits": cap_hits,
-            "per_window_wins": wins, "windows": list(windows), "contract_bad": contract_bad}
+            "per_window_wins": wins, "windows": list(windows), "contract_bad": contract_bad,
+            "probe_always_defer_contract_bad_windows": probe_contract_bad}
 
 
 def load_rows(variant=""):
