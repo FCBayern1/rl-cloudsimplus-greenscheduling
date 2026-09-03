@@ -1,0 +1,24 @@
+{
+  "aux_vs_blind_median": {
+    "anti": -2.356029587103645,
+    "s30": -1.179025598802283,
+    "shuffle": -0.12680367893843453
+  },
+  "cells_valid": 108,
+  "clean_vs_blind_median": -0.24288206384403604,
+  "frozen_blind": "reservation_edf",
+  "gates": {
+    "g1_clean_beats_blind_5pc": false,
+    "g2_primary_hurts": true,
+    "g3_direction_2_of_3": true,
+    "g4_actions_changed": true,
+    "g5_contract_green": true
+  },
+  "identical_cells": 0,
+  "part": "discovery",
+  "primary_giveback_median": 7.443367321729105,
+  "primary_vs_clean_median_raise": 0.901433481154444,
+  "problems": [],
+  "verdict": "STOP_NO_LOAD_BEARING_FORECAST_ERROR",
+  "windows_adverse": 3
+}

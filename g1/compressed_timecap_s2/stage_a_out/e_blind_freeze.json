@@ -1,0 +1,32 @@
+{
+  "arms": {
+    "load_smoothing": {
+      "invalid": 0,
+      "pooled": 0.00815576810864125,
+      "valid": 324
+    },
+    "nowait_planner": {
+      "invalid": 0,
+      "pooled": 0.0023301127775219727,
+      "valid": 324
+    },
+    "reactive_wait_planner": {
+      "invalid": 0,
+      "pooled": 0.0030069089417141008,
+      "valid": 324
+    },
+    "reservation_edf": {
+      "invalid": 0,
+      "pooled": 0.0006661375528353966,
+      "valid": 324
+    }
+  },
+  "frozen_blind": "reservation_edf",
+  "status": "FROZEN",
+  "valid_everywhere": [
+    "nowait_planner",
+    "reactive_wait_planner",
+    "reservation_edf",
+    "load_smoothing"
+  ]
+}
