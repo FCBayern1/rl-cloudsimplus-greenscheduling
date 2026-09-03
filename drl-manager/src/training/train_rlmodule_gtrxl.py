@@ -973,7 +973,7 @@ def train_rlmodule_gtrxl(
         checkpoint_at_end=True,
         num_to_keep=num_to_keep,
         checkpoint_score_attribute=ckpt_score_attr if num_to_keep else None,
-        checkpoint_score_order=ckpt_score_order if num_to_keep else None,
+        checkpoint_score_order=ckpt_score_order,      # ray requires "max"/"min" even unused
     )
     logger.info(
         "Checkpoint retention: %s by %s (%s)",
