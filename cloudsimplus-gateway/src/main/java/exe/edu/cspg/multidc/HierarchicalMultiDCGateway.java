@@ -216,6 +216,9 @@ public class HierarchicalMultiDCGateway {
         int specAsusRS720E9 = getIntParam(dcParams, "host_count_spec_asus_rs720_e9", 0);
         int specAsusRS500A = getIntParam(dcParams, "host_count_spec_asus_rs500a", 0);
         int specAsusRS700A = getIntParam(dcParams, "host_count_spec_asus_rs700a", 0);
+        // Zero-floor twins (dynamic power only, 0 W idle): marginal-carbon accounting.
+        int specAsusRS500ADyn = getIntParam(dcParams, "host_count_spec_asus_rs500a_dyn", 0);
+        int specAsusRS700ADyn = getIntParam(dcParams, "host_count_spec_asus_rs700a_dyn", 0);
 
         // Parse generic host profiles
         int lowPower = getIntParam(dcParams, "host_count_low_power", 0);
@@ -225,7 +228,8 @@ public class HierarchicalMultiDCGateway {
 
         // Check if any heterogeneous profiles are specified
         int totalHeterogeneousHosts = specAcerR520 + specAcerAR360 + specAsusRS720E9 +
-                specAsusRS500A + specAsusRS700A + lowPower + medium + highPerf + ultraHigh;
+                specAsusRS500A + specAsusRS700A + specAsusRS500ADyn + specAsusRS700ADyn +
+                lowPower + medium + highPerf + ultraHigh;
 
         if (totalHeterogeneousHosts > 0) {
             // Add host profiles using @Singular builder pattern
@@ -234,6 +238,8 @@ public class HierarchicalMultiDCGateway {
             if (specAsusRS720E9 > 0) builder.hostProfile("SPEC_ASUS_RS720_E9", specAsusRS720E9);
             if (specAsusRS500A > 0) builder.hostProfile("SPEC_ASUS_RS500A", specAsusRS500A);
             if (specAsusRS700A > 0) builder.hostProfile("SPEC_ASUS_RS700A", specAsusRS700A);
+            if (specAsusRS500ADyn > 0) builder.hostProfile("SPEC_ASUS_RS500A_DYN", specAsusRS500ADyn);
+            if (specAsusRS700ADyn > 0) builder.hostProfile("SPEC_ASUS_RS700A_DYN", specAsusRS700ADyn);
             if (lowPower > 0) builder.hostProfile("LOW_POWER", lowPower);
             if (medium > 0) builder.hostProfile("MEDIUM", medium);
             if (highPerf > 0) builder.hostProfile("HIGH_PERFORMANCE", highPerf);

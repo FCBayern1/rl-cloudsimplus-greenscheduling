@@ -1288,7 +1288,14 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         hosts = [sum(v for k, v in d.items() if k.startswith("host_count_"))
                  for d in sorted(dcs, key=lambda x: x["datacenter_id"])]
         tot = float(sum(hosts)) or 1.0
-        static_w = [332.0 * h / tot for h in hosts]      # measured C-regime fleet draw
+        # Fleet static draw subtracted from every site's green before a job is priced,
+        # spread over sites by host count. 332 W is the measured C-regime fleet draw and
+        # stays the default so every frozen arm prices exactly as before. It is wrong for
+        # any other fleet: on the zero-floor twins (SPEC_ASUS_RS500A_DYN) awake hosts draw
+        # 1 W, and with idle power-down the real floor depends on packing. Override with
+        # PLANNER_STATIC_TOTAL_W (e.g. "0" for the Level-1 zero-floor spiral).
+        static_total = float(os.environ.get("PLANNER_STATIC_TOTAL_W", "332.0"))
+        static_w = [static_total * h / tot for h in hosts]
         # Capacity is the real VM PE count, not hosts x 64. The old approximation
         # overstated every site by 4 to 8 percent, which let the planner reserve room
         # that does not exist and pushed the shortfall onto the Java backstop.

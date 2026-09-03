@@ -205,6 +205,34 @@ public class HostProfile {
         );
     }
 
+    /**
+     * Zero-floor twin of RS500A: the same 64 cores and MIPS, but only the dynamic part of
+     * the SPEC curve (214 - 51.4 = 162.6 W at full load). CloudSim Plus refuses a static
+     * power below 1 W, so the floor is 1.0 W (1.2% of a 32-PE job's draw) rather than 0.
+     * A 32-PE job draws 81.8 W on an otherwise idle host, so scheduling decisions move
+     * essentially the job's own energy and no host floor. Marginal-carbon accounting.
+     */
+    public static final double DYN_TECHNICAL_FLOOR_W = 1.0;
+
+    public static HostProfile SPEC_ASUS_RS500A_DYN() {
+        return new HostProfile(
+            "ASUSTeK-RS500A-E10-PS4-dyn",
+            64, 50000, 262144, 25000, 1000000,
+            214.0 - 51.4,                              // 162.6 W at full load
+            100.0 * DYN_TECHNICAL_FLOOR_W / (214.0 - 51.4)   // -> 1.0 W idle
+        );
+    }
+
+    /** Zero-floor twin of RS700A: 430 - 106 = 324 W at full load over 128 cores, 1 W idle. */
+    public static HostProfile SPEC_ASUS_RS700A_DYN() {
+        return new HostProfile(
+            "ASUSTeK-RS700A-E9-RS4V2-dyn",
+            128, 50000, 524288, 40000, 2000000,
+            430.0 - 106.0,
+            100.0 * DYN_TECHNICAL_FLOOR_W / (430.0 - 106.0)
+        );
+    }
+
     public double getIdlePowerW() {
         return maxPowerW * staticPowerPercent / 100.0;
     }
@@ -251,13 +279,20 @@ public class HostProfile {
             case "SPEC_ASUS_RS700A":
             case "ASUS_RS700A":  // Alias
                 return SPEC_ASUS_RS700A();
+            case "SPEC_ASUS_RS500A_DYN":
+            case "ASUS_RS500A_DYN":  // Alias
+                return SPEC_ASUS_RS500A_DYN();
+            case "SPEC_ASUS_RS700A_DYN":
+            case "ASUS_RS700A_DYN":  // Alias
+                return SPEC_ASUS_RS700A_DYN();
 
             default:
                 throw new IllegalArgumentException(
                     "Unknown host profile: '" + name + "'. " +
                     "Available profiles: LOW_POWER, MEDIUM, HIGH_PERFORMANCE, ULTRA_HIGH, " +
                     "SPEC_ACER_R520, SPEC_ACER_AR360, SPEC_ASUS_RS720_E9, " +
-                    "SPEC_ASUS_RS500A, SPEC_ASUS_RS700A"
+                    "SPEC_ASUS_RS500A, SPEC_ASUS_RS700A, " +
+                    "SPEC_ASUS_RS500A_DYN, SPEC_ASUS_RS700A_DYN"
                 );
         }
     }

@@ -364,8 +364,13 @@ if __name__ == "__main__" and os.environ.get("GEN_S2G"):
 
 H_PES = 32
 
-def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="discovery"):
+def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="discovery",
+               zero_floor=False):
     """F variant whose pilot cells run 32-PE jobs instead of 2-PE.
+
+    zero_floor=True (Level-1 spiral, config_s2hz_m*.yml): the same fleet on the zero-floor
+    host twins (SPEC_ASUS_RS500A_DYN / RS700A_DYN, 0 W idle, 81.3 W per 32-PE job), so the
+    simulator's power is exactly the sum of job dynamic power, the physics of toy_lever.py.
 
     With power-down on all along, energy is dominated by awake host-seconds because a
     2-PE job draws 5 W against a 51 W floor; consolidation beats any forecast-driven
@@ -395,7 +400,8 @@ def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="di
         shas[name] = content_sha(text)
         blk = derived_block(cell, base)
         blk["experiment_name"] = name
-        blk["simulation_name"] = f"S2H_m{divisor_mult}_{name}"
+        tag = "S2HZ" if zero_floor else "S2H"
+        blk["simulation_name"] = f"{tag}_m{divisor_mult}_{name}"
         blk["cloudlet_trace_file"] = f"traces/s2/{name}_pes{H_PES}.csv"
         # The C-regime base splits any cloudlet above 8 PEs into 8-PE pieces (MI divided
         # accordingly). A 32-PE job must stay one 32-PE job to draw 81 W on one VM.
@@ -419,12 +425,19 @@ def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="di
             dc["initial_s_vm_count"] = max(1, host_pes // H_PES)
             dc["initial_m_vm_count"] = 0
             dc["initial_l_vm_count"] = 0
+            if zero_floor:
+                for legacy in ("host_count_spec_asus_rs500a", "host_count_spec_asus_rs700a"):
+                    n_hosts = dc.pop(legacy, 0)
+                    if n_hosts:
+                        dc[legacy + "_dyn"] = n_hosts
         blocks[name] = blk
     cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
                               default_flow_style=False)
-    with open(os.path.join(out_dir, f"config_s2h_m{divisor_mult}.yml"), "w") as f:
+    fname = f"config_s2{'hz' if zero_floor else 'h'}_m{divisor_mult}.yml"
+    with open(os.path.join(out_dir, fname), "w") as f:
         f.write(cfg_text)
     return {"divisor_mult": divisor_mult, "pes": H_PES, "blocks": len(blocks),
+            "zero_floor": zero_floor, "config": fname,
             "trace_shas": shas, "sha": content_sha(cfg_text)}
 
 
@@ -434,3 +447,8 @@ if __name__ == "__main__" and os.environ.get("GEN_S2H"):
     for m in (1, 2, 4):
         r = generate_h(m, PILOT_CELLS)
         print({k: r[k] for k in ("divisor_mult", "pes", "blocks", "sha")})
+
+if __name__ == "__main__" and os.environ.get("GEN_S2HZ"):
+    for m in (1, 2):
+        r = generate_h(m, PILOT_CELLS, zero_floor=True)
+        print({k: r[k] for k in ("divisor_mult", "config", "blocks", "sha")})
