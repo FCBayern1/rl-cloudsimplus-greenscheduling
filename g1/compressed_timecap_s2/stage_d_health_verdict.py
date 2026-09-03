@@ -79,12 +79,20 @@ def judge(evals, crd, probe):
     # 5. EU-CRD internals alive
     for L in ("NE", "E"):
         s = crd.get(L)
-        if not s or any(s.get(f) is None for f in ("dr_mean", "dr_std")):
+        if not s or s.get("dr_mean") is None:
             wiring.append(("crd_stats_missing", L))
             continue
-        notes[f"{L}_dr_std"] = s["dr_std"]
-        if s["dr_std"] <= 0.0:
-            substantive.append(("delta_r_no_variance", L, s["dr_std"]))
+        # delta-r spread: dr_std when the learner logs it; until then the spread of the
+        # responsibility signal it feeds (rho_routing_std, reweight_w_std) is the proxy,
+        # recorded as such. A zero spread means the routing counterfactual is inert.
+        spread = s.get("dr_std")
+        if spread is None:
+            spread = max(float(s.get("rho_routing_std") or 0.0), float(s.get("reweight_w_std") or 0.0))
+            notes[f"{L}_dr_spread_is_proxy"] = True
+        notes[f"{L}_dr_mean"] = s["dr_mean"]
+        notes[f"{L}_dr_spread"] = spread
+        if spread <= 0.0:
+            substantive.append(("delta_r_no_variance", L, spread))
         for f in ("rho_routing_mean", "rho_forecast_mean"):
             v = s.get(f)
             if v is not None and (v <= 0.0501 or v >= 0.9999):
@@ -154,7 +162,11 @@ def load(results_dir, logs_dir, probe_dir):
         pick = lambda suffix: next((v for k, v in flat.items() if k.endswith(suffix)), None)  # noqa: E731
         crd[L] = {"dr_mean": pick("crd/dr_mean"), "dr_std": pick("crd/dr_std"),
                   "rho_routing_mean": pick("crd/rho_routing_mean"),
-                  "rho_forecast_mean": pick("crd/rho_forecast_mean")}
+                  "rho_routing_std": pick("crd/rho_routing_std"),
+                  "rho_forecast_mean": pick("crd/rho_forecast_mean"),
+                  "rho_scheduling_mean": pick("crd/rho_scheduling_mean"),
+                  "reweight_w_std": pick("crd/reweight_w_std"),
+                  "reweight_applied": pick("crd/reweight_applied")}
     probe = {}
     for L in ("V", "E"):
         p = os.path.join(probe_dir, f"probe_{L}.json")

@@ -57,6 +57,16 @@ def test_delta_r_without_variance_and_pinned_gate_stop():
     assert {"delta_r_no_variance", "gate_pinned"} <= kinds
 
 
+def test_missing_dr_std_uses_the_spread_proxy_and_zero_proxy_stops():
+    proxy = {"NE": {"dr_mean": 0.0, "rho_routing_std": 0.3, "reweight_w_std": 0.4, "rho_routing_mean": 0.5,
+                    "rho_forecast_mean": 0.2},
+             "E": {"dr_mean": 0.0, "rho_routing_std": 0.0, "reweight_w_std": 0.0, "rho_routing_mean": 0.5,
+                   "rho_forecast_mean": 0.2}}
+    out = judge(evals(), proxy, PROBE)
+    assert out["notes"]["NE_dr_spread_is_proxy"] is True and out["notes"]["NE_dr_spread"] == 0.4
+    assert any(s[:2] == ("delta_r_no_variance", "E") for s in out["substantive"])
+
+
 def test_reward_carbon_opposite_direction_stops():
     # carbon went down but reward went down too
     out = judge(evals(carbon_first=2.0, carbon_last=1.0, reward_first=-1.0, reward_last=-2.0), CRD, PROBE)
