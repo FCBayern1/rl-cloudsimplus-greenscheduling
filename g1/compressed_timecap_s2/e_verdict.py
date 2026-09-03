@@ -110,8 +110,17 @@ def read_verdict(part="discovery"):
     }
     aux_med = {t: float(np.median((b - np.array([c[t] for c in cells_out])) / b))
                for t in aux}
-    verdict = "PASS_E_DISCOVERY" if all(gates.values()) \
-        else "STOP_NO_LOAD_BEARING_FORECAST_ERROR"
+    # A verdict exists only over complete data. Missing runs are a broken pipeline,
+    # never a gate outcome: the first chain run fired this reader after a JVM-leak
+    # cascade killed 1,214 runs and it emitted a STOP over zero valid cells.
+    expected = len(g.cells())
+    if len(cells_out) < expected or any(why == "missing" for _c, _a, _k, why
+                                        in problems):
+        verdict = "INVALID_INCOMPLETE_DATA"
+    elif all(gates.values()):
+        verdict = "PASS_E_DISCOVERY"
+    else:
+        verdict = "STOP_NO_LOAD_BEARING_FORECAST_ERROR"
     return {"part": part, "frozen_blind": freeze["frozen_blind"],
             "cells_valid": len(cells_out), "gates": gates,
             "clean_vs_blind_median": g1v, "primary_vs_clean_median_raise": raise_med,

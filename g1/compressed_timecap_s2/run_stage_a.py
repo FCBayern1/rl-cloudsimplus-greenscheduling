@@ -121,11 +121,26 @@ def run_one(j):
            "--global", j["arm"], "--local", "drain", "--episodes", "1",
            "--seed", str(SEED), "--reset-skip", str(j["k"]),
            "--output", csv_path]
+    # The evaluate process spawns a JVM child. Killing only the python on timeout or
+    # failure orphans the JVM; 135 of those accumulated overnight, exhausted 60 GB and
+    # took the whole sweep down. The run therefore gets its own process group and the
+    # WHOLE group is killed on the way out, success or not.
     with open(log_path, "w") as log:
-        r = subprocess.run(cmd, cwd=os.path.join(REPO, "drl-manager"),
-                           env=env, stdout=log, stderr=subprocess.STDOUT,
-                           timeout=3600)
-    return "ok" if r.returncode == 0 and _done(csv_path) else "failed"
+        proc = subprocess.Popen(cmd, cwd=os.path.join(REPO, "drl-manager"),
+                                env=env, stdout=log, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        try:
+            rc = proc.wait(timeout=3600)
+        except subprocess.TimeoutExpired:
+            rc = -1
+        finally:
+            try:
+                os.killpg(proc.pid, 15)
+                time.sleep(2)
+                os.killpg(proc.pid, 9)
+            except ProcessLookupError:
+                pass
+    return "ok" if rc == 0 and _done(csv_path) else "failed"
 
 
 def sweep(arms, todo=None):
