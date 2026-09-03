@@ -1,0 +1,50 @@
+{
+  "action_space": "MultiDiscrete([6] * 128)",
+  "between_arms": {
+    "argmax_divergence": 0.471893310546875,
+    "mean_l1_between_policies": 0.15265603303394132,
+    "sensitivity_ratio_shrink50_over_godeye": 1.1053835429675505
+  },
+  "control_keys": [
+    "dc_green_ratio",
+    "dc_utilizations"
+  ],
+  "eps": 0.25,
+  "forecast_keys": [
+    "dc_future_short_mean",
+    "dc_future_short_trend",
+    "dc_future_long_mean",
+    "dc_future_long_peak_timing"
+  ],
+  "max_entropy_nats": 1.791759469228055,
+  "mean_abs_control_shift_applied": 0.16771262884140015,
+  "mean_abs_forecast_shift_applied": 0.17374923825263977,
+  "n": 512,
+  "per_arm": {
+    "godeye": {
+      "argmax_flip_rate_control": 0.2195892333984375,
+      "argmax_flip_rate_forecast": 0.1414794921875,
+      "control_sensitivity_l1_mean": 0.052831399557637895,
+      "defer_prob_mean": 0.04437252162803934,
+      "entropy_fraction_of_uniform": 0.9390158429081121,
+      "forecast_over_control_ratio": 0.627926805588549,
+      "forecast_sensitivity_l1_mean": 0.03317425195899984,
+      "forecast_sensitivity_l1_p90": 0.05347094190599813,
+      "per_slot_entropy_mean": 1.6824905282857736,
+      "top1_prob_mean": 0.2432618406516363
+    },
+    "shrink50": {
+      "argmax_flip_rate_control": 0.1653289794921875,
+      "argmax_flip_rate_forecast": 0.187591552734375,
+      "control_sensitivity_l1_mean": 0.03303600571484252,
+      "defer_prob_mean": 0.0420671696172422,
+      "entropy_fraction_of_uniform": 0.9346892721575234,
+      "forecast_over_control_ratio": 1.1100092572408689,
+      "forecast_sensitivity_l1_mean": 0.03667027216573744,
+      "forecast_sensitivity_l1_p90": 0.05935864526248145,
+      "per_slot_entropy_mean": 1.6747383541741212,
+      "top1_prob_mean": 0.23377601797230171
+    }
+  },
+  "seed": 20260903
+}
