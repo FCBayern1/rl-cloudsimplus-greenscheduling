@@ -158,8 +158,20 @@ def load(results_dir, logs_dir, probe_dir):
     probe = {}
     for L in ("V", "E"):
         p = os.path.join(probe_dir, f"probe_{L}.json")
-        if os.path.exists(p):
-            probe[L] = json.load(open(p))
+        if not os.path.exists(p):
+            continue
+        raw = json.load(open(p))
+        # Accept the F2 probe's layout (rl_step2_probe.py): per_arm[<name>] with
+        # forecast_sensitivity_l1_mean (action-probability L1 shift when only the four
+        # forecast keys are perturbed) and control_sensitivity_l1_mean. The first is the
+        # "clean vs corrupted input changes the action distribution" quantity of the
+        # prereg (L1 on action marginals rather than KL; noted in the report).
+        if "per_arm" in raw:
+            arm = raw["per_arm"].get(L) or next(iter(raw["per_arm"].values()))
+            probe[L] = {"kl_clean_vs_shrink": arm.get("forecast_sensitivity_l1_mean"),
+                        "control_sensitivity": arm.get("control_sensitivity_l1_mean")}
+        else:
+            probe[L] = raw
     return evals, crd, probe
 
 
