@@ -47,3 +47,18 @@ F 配置 + `idle_host_power_down: true`(空闲主机零功耗,DatacenterInstance
 - R-b:E 审计 Q3 参照改常数-μ(已在 SCHEME2_ERROR_REGRET_PREREG Addendum A 记录)——终审;
 - R-c:若 G 出甜点,新注册 Scheme 2-G 是否沿用 E 的七门与强盲族原样——预裁;
 - R-d:若 G 无甜点,是否同意"考场搜索正式结束、转方法学+负结果+EU-CRD 诚实评估"——预裁。
+
+## 6. 更正(append-only,2026-09-03 下午)
+
+**G pilot 无效,§2 第二层的机制表述有误,以此节为准。**
+
+- JVM 哨兵(`idle_host_power_down_effective`,commit 367365d3)确认:基座 block
+  `experiment_g1eval_matchedvan` 本就设 `idle_host_power_down: true`(顶层与逐 DC),
+  S2/E/F 全部实验自始即为空闲休眠模式。G pilot 未改变任何量,结果与 F 逐位相同,不构成试验。
+- 因此 F 的"等待烧空载"解释不成立(空闲主机功耗为零)。数据支持的机制是**整合 vs 碎片化**:
+  RS500A 醒着的地板 51.4 W,而 2-PE 作业动态仅 5.1 W(比 10:1),能耗由醒着的主机-秒主导;
+  reservation_edf 把作业并发压在最少主机上共享地板,godeye/shuffle 为追绿把作业散到不同
+  时刻,碎片化多付的全是地板(三臂动态能耗相同,能耗差 +6/+14 Wh 全为地板)。
+- 这与 TB13-v3 的空载地板病同源:S2 沿用 C-regime 的 2-PE 作业,从未做 TB13-v4 那次
+  "作业相对地板放大"的修正。可检验推论:**动态/地板比 ≥ 1(如 32-PE 作业)时,追绿的
+  碎片化代价可忽略,预报时机才可能载重。** 拟以 F 变体 + 32-PE trace 做真正的最后一次 pilot。
