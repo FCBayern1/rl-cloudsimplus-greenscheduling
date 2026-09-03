@@ -210,7 +210,12 @@ def run_job(j):
     env = dict(os.environ)
     env.update({"GATEWAY_LIBS": os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib"),
                 "EVAL_CONFIG_PATH": EVAL_CONFIG, "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
-                "PLANNER_STATIC_TOTAL_W": "0"})
+                "PLANNER_STATIC_TOTAL_W": "0",
+                # One BLAS/torch thread per evaluation process: six concurrent GTrXL
+                # inferences on eight cores oversubscribed the CPU (37 min per episode
+                # against 9 min with four workers) once each process spawned its own pool.
+                "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
+                "OPENBLAS_NUM_THREADS": "1"})
     cmd = [PY, "-m", "src.baselines.evaluate", "--experiment", f"sde_{j['cell']}_{j['tier']}",
            "--global", "rllib", "--new-api", "--stochastic", "--checkpoint", j["ck"], "--local", "drain",
            "--episodes", "1", "--seed", "42", "--reset-skip", str(j["k"]), "--output", csv_path]
