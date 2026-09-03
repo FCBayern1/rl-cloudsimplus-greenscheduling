@@ -149,7 +149,8 @@ def diff_keys(a, b):
 EVAL_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 EVAL_TIERS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
 EVAL_WHITELIST = {"experiment_name", "simulation_name", "green_oracle_mode", "perturb_tier",
-                  "forecast_mode", "training", "wandb"} | REWARD_KEYS
+                  "forecast_mode", "training", "wandb", "perturb_error_params"} | REWARD_KEYS
+AUDIT_JSON = os.path.join(HERE, "timecap_error_audit.json")
 
 
 def build_eval(out_dir=None, reward_variant="physical"):
@@ -178,6 +179,11 @@ def build_eval(out_dir=None, reward_variant="physical"):
                 b["green_oracle_mode"] = "perturbed_godeye"
                 b["perturb_tier"] = tier
                 b["forecast_mode"] = mode
+                if tier == "calibrated_shrink_v1":
+                    # The RL-side provider reads the audited error parameters from this
+                    # file (primary_error_params block), the same audit the planner arms
+                    # received through PLANNER_PERTURB_CAL.
+                    b["perturb_error_params"] = AUDIT_JSON
                 b["training"] = dict(b.get("training", {}))
                 b["wandb"] = dict(b.get("wandb", {}), enabled=False)
                 blocks[name] = b

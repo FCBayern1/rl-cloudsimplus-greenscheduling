@@ -1133,16 +1133,39 @@ def run_rllib_evaluation(
                 local_actions[dc_id] = local_schedulers[dc_id].schedule(local_obs, action_mask)
                 local_decision_ns.append(time.perf_counter_ns() - t0)
 
+            # Defer vs route decisions on the real (non-padding) planner slots (Stage D
+            # health gate: all-route / all-defer policies are collapses).
+            try:
+                _ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids")
+                for _slot, _a in enumerate(list(global_action) if global_action is not None else []):
+                    if _ids is not None and _slot < len(_ids) and int(_ids[_slot]) < 0:
+                        continue
+                    if int(_a) >= num_dcs:
+                        global_defer_actions += 1
+                    else:
+                        global_route_actions += 1
+            except Exception:
+                pass
             # 执行
             action = {'global': global_action, 'local': local_actions}
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
+            if isinstance(rewards, dict):
+                global_reward_sum += float(rewards.get("global", 0.0) or 0.0)
+                _loc = rewards.get("local", {})
+                local_reward_sum += float(sum(_loc.values()) if isinstance(_loc, dict) else (_loc or 0.0))
             done = truncated if force_full_episode else (terminated or truncated)
 
         # 收集指标
         metrics = collect_metrics(info, num_dcs)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
+        metrics['global_reward_sum'] = global_reward_sum
+        metrics['local_reward_sum'] = local_reward_sum
+        metrics['global_defer_actions'] = global_defer_actions
+        metrics['global_route_actions'] = global_route_actions
+        _dec = global_defer_actions + global_route_actions
+        metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         # Efficiency overhead: episode wall-clock (s) and peak memory footprint.

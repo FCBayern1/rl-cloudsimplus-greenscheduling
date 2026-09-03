@@ -33,7 +33,7 @@ LOGS = os.path.join(DRL, "logs/stage_d")
 RESULTS = os.path.join(DRL, "results/stage_d")
 SEED = int(os.environ.get("STAGE_D_SEED", "20260903"))
 STEPS = int(os.environ.get("STAGE_D_STEPS", "56000"))
-WORKERS = int(os.environ.get("STAGE_D_EVAL_WORKERS", "4"))
+WORKERS = int(os.environ.get("STAGE_D_EVAL_WORKERS", "6"))
 LINES = ("NV", "V", "NE", "E")
 CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 KS = (26, 34, 42)
@@ -190,10 +190,15 @@ def job_paths(j):
     return os.path.join(d, stem + ".csv"), os.path.join(d, stem + ".log")
 
 
+REQUIRED_FIELDS = ("completion_rate_mi", "ontime_mi_share", "deadline_forced_count", "total_carbon_kg",
+                   "global_reward_sum", "global_defer_action_rate", "ep_carbon_norm_clip_count")
+
+
 def done(csv_path):
+    """A result counts only when every field the health gate reads is present."""
     try:
         rows = list(csv.DictReader(open(csv_path)))
-        return bool(rows) and rows[-1].get("completion_rate_mi") not in (None, "")
+        return bool(rows) and all(rows[-1].get(k) not in (None, "") for k in REQUIRED_FIELDS)
     except Exception:
         return False
 

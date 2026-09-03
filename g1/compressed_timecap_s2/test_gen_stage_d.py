@@ -86,6 +86,10 @@ def test_eval_blocks_cover_cells_tiers_and_hollow_with_whitelisted_diff():
             assert b["forecast_mode"] == "none" and b["perturb_tier"] == "godeye"
         else:
             assert b["forecast_mode"] == "full" and b["perturb_tier"] in sd.EVAL_TIERS
+        if b["perturb_tier"] == "calibrated_shrink_v1":
+            assert b["perturb_error_params"] == sd.AUDIT_JSON and os.path.exists(b["perturb_error_params"])
+        else:
+            assert "perturb_error_params" not in b
 
 
 def test_training_checkpoints_every_iteration_kept_and_init_saved(built):

@@ -609,6 +609,7 @@ sde_s2_r48_w72_c1_n20_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
@@ -2084,6 +2085,7 @@ sde_s2_r48_w72_c1_n50_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
@@ -3559,6 +3561,7 @@ sde_s2_r48_w72_c3_n20_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
@@ -5034,6 +5037,7 @@ sde_s2_r48_w72_c3_n50_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
@@ -6509,6 +6513,7 @@ sde_s2_r48_w72_c5_n20_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
@@ -7984,6 +7989,7 @@ sde_s2_r48_w72_c5_n50_calibrated_shrink_v1:
   per_action_overflow_sharpness: 6.0
   per_slot_credit:
     enabled: true
+  perturb_error_params: /home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json
   perturb_tier: calibrated_shrink_v1
   py4j_port: 25333
   reward_completion_coef: 0.3
