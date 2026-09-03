@@ -475,6 +475,13 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                 1.0 if isinstance(batch.get("crd_reweight_applied"), torch.Tensor) else 0.0
             ),
         }
+        # Stage D health gate (2026-09-03): the counterfactual signals' dispersion, not
+        # only their mean (a near-zero mean Δr is expected; a zero spread means the
+        # routing counterfactual is inert). The reweight_w_* keys of the helper belong
+        # to ρ and are dropped here so they are not overwritten.
+        for _key, _short in ((COL_CRD_DR, "dr"), (COL_CRD_DQ, "dq")):
+            diag.update({k: v for k, v in _scalar_spread(_key, _short).items()
+                         if not k.startswith("crd/reweight")})
         # |R_forecast| magnitude (sign-agnostic — how strong the forecast-CF
         # signal is, which is what the attribution-fidelity experiment tracks).
         rf = batch.get(COL_CRD_FORECAST)
