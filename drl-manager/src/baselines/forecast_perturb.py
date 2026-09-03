@@ -231,6 +231,12 @@ def audited_future(series, t, horizon, site, eparams, common_key):
     the deployed model's residuals are.
     """
     key = str(site)
+    lo, hi = t, min(len(series), t + horizon)
+    truth0 = np.asarray(series[lo:hi], dtype=np.float64)
+    # DCs with no turbines (the C-regime has two) have no residual audit and no green to
+    # corrupt; their view is the truth. The audit only characterises the three green DCs.
+    if key not in eparams["lambda_lead_per_dc"]:
+        return truth0
     lam = np.asarray(eparams["lambda_lead_per_dc"][key], dtype=np.float64)
     b = np.asarray(eparams["b_ols_lead_per_dc"][key], dtype=np.float64)
     var = np.asarray(eparams["resid_var_lead_per_dc"][key], dtype=np.float64)

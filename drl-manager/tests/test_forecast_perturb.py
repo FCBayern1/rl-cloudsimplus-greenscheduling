@@ -401,3 +401,12 @@ def test_e_arm_loads_audit_params_and_uses_the_e_tiers(monkeypatch):
     v = arm._green_view(0)
     assert v[40] == g[40]
     assert not np.array_equal(v[41:184], g[41:184])
+
+
+def test_calibrated_tier_passes_through_turbineless_dc():
+    """A DC absent from the audit (no turbines) is not corrupted, not a KeyError."""
+    g = _series(600)
+    ep = _eparams()   # only DCs 0,1,2
+    v = fp.perturbed_future_e(g, 30, 144, 4, "calibrated_shrink_v1",
+                              eparams=ep, common_key="ep")
+    assert np.array_equal(v, g[30:174]), "site 4 has no audit params, view is truth"
