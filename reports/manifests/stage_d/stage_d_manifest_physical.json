@@ -1,8 +1,8 @@
 {
   "config": "config_stage_d_physical.yml",
-  "config_sha256": "6cb711fa7bf77a65b521ed6bf63c4f1ef1b2d5828226b43982f2fa01b436d065",
+  "config_sha256": "544f5b85845f6754074e49cf6b601d1192727e3cc302d2e92c07ff827989d174",
   "crd_source": {
-    "commit_at_build": "a0780a152d6005c9f580e353d90574222dbcafee",
+    "commit_at_build": "dd32a2766fef49ed6b0cd25119a985be2932a8e6",
     "file": "config_rl_step2_pilot.yml"
   },
   "crd_subtree_sha256": "700f3da6b8be34f0135f6e02bdfa10b4efe51acdb51b1e06da25447a0237fec6",
@@ -78,7 +78,7 @@
     "per_action_carbon_weight": 0.0
   },
   "reward_variant": "physical",
-  "total_timesteps": 50000,
+  "total_timesteps": 56000,
   "train_trace": {
     "file": "traces/s2/s2_r48_w72_c3_n35_pes32.csv",
     "sha": "a40f7659ac46b5fc"

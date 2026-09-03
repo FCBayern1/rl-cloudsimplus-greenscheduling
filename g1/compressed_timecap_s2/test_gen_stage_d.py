@@ -71,6 +71,29 @@ def test_physical_variant_changes_only_the_three_reward_keys():
         assert phys[n]["global_reward_beta"] == legacy[n]["global_reward_beta"] == 1.0
 
 
+def test_eval_blocks_cover_cells_tiers_and_hollow_with_whitelisted_diff():
+    with tempfile.TemporaryDirectory() as d:
+        blocks, man = sd.build_eval(out_dir=d)
+    assert man["blocks"] == len(blocks) == 6 * (4 + 1)
+    hz = yaml.safe_load(open(sd.HZ_CONFIG))
+    for n, b in blocks.items():
+        cell = "_".join(n.split("_")[1:6])
+        extra = set(sd.diff_keys(hz[cell], b)) - sd.EVAL_WHITELIST
+        assert not extra, (n, extra)
+        assert "green_episode_offset_allowlist" not in b
+        assert b["defer_base_cost"] == 0.0 and b["per_action_carbon_weight"] == 0.0
+        if n.endswith("_hollow"):
+            assert b["forecast_mode"] == "none" and b["perturb_tier"] == "godeye"
+        else:
+            assert b["forecast_mode"] == "full" and b["perturb_tier"] in sd.EVAL_TIERS
+
+
+def test_training_checkpoints_every_iteration(built):
+    blocks, _, _ = built
+    for b in blocks.values():
+        assert b["training"]["checkpoint_freq_timesteps"] == 8000
+
+
 def test_manifest_records_hashes_and_windows(built):
     _, man, _ = built
     assert len(man["crd_subtree_sha256"]) == 64 and len(man["config_sha256"]) == 64

@@ -348,13 +348,13 @@ sd_E_s2_r48_w72_c3_n35:
     warmup_on_reset: true
   training:
     algorithm: PPO
-    checkpoint_freq_timesteps: 60000
+    checkpoint_freq_timesteps: 8000
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
     sgd_minibatch_size: 2048
-    total_timesteps: 50000
+    total_timesteps: 56000
     train_batch_size: 8000
   wandb:
     enabled: false
@@ -644,13 +644,13 @@ sd_NE_s2_r48_w72_c3_n35:
     warmup_on_reset: true
   training:
     algorithm: PPO
-    checkpoint_freq_timesteps: 60000
+    checkpoint_freq_timesteps: 8000
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
     sgd_minibatch_size: 2048
-    total_timesteps: 50000
+    total_timesteps: 56000
     train_batch_size: 8000
   wandb:
     enabled: false
@@ -940,13 +940,13 @@ sd_NV_s2_r48_w72_c3_n35:
     warmup_on_reset: true
   training:
     algorithm: PPO
-    checkpoint_freq_timesteps: 60000
+    checkpoint_freq_timesteps: 8000
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
     sgd_minibatch_size: 2048
-    total_timesteps: 50000
+    total_timesteps: 56000
     train_batch_size: 8000
   wandb:
     enabled: false
@@ -1236,13 +1236,13 @@ sd_V_s2_r48_w72_c3_n35:
     warmup_on_reset: true
   training:
     algorithm: PPO
-    checkpoint_freq_timesteps: 60000
+    checkpoint_freq_timesteps: 8000
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
     sgd_minibatch_size: 2048
-    total_timesteps: 50000
+    total_timesteps: 56000
     train_batch_size: 8000
   wandb:
     enabled: false
