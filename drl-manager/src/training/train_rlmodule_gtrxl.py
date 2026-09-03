@@ -60,6 +60,7 @@ from src.training.wandb_integration import (
     upload_run_artifacts,
 )
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
+from src.callbacks.init_checkpoint_callback import InitCheckpointCallback
 from src.models.rlmodule_gtrxl_models import (
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
@@ -839,7 +840,8 @@ def create_rlmodule_config(
         .callbacks(make_multi_callbacks([
             lambda: GreenEnergyLoggerCallback(log_dir=output_dir),
             lambda: LagrangianCallback(log_dir=output_dir),
-        ]))
+        ] + ([lambda: InitCheckpointCallback(output_dir=output_dir)]
+             if bool((training_config or {}).get("save_init_checkpoint", False)) else [])))
         # This must be the CLI-resolved seed, not merely the driver-side
         # numpy/torch seed. RLlib serializes this value into result.json and
         # propagates it to env runners, learners, and action sampling.
@@ -961,15 +963,22 @@ def train_rlmodule_gtrxl(
     ckpt_score_attr = training_config.get(
         "checkpoint_score_attribute", "env_runners/checkpoint_score")
     ckpt_score_order = training_config.get("checkpoint_score_order", "min")
+    # Stage D (2026-09-03): training.checkpoint_num_to_keep = 0 keeps every checkpoint
+    # (no score-based pruning; the health gate needs the first and the last one intact).
+    # Default 3 preserves the historical behaviour for every other experiment.
+    _keep = training_config.get("checkpoint_num_to_keep", 3)
+    num_to_keep = None if (_keep is None or int(_keep) <= 0) else int(_keep)
     checkpoint_config = air.CheckpointConfig(
         checkpoint_frequency=max(1, checkpoint_freq // training_config.get("train_batch_size", 5000)),
         checkpoint_at_end=True,
-        num_to_keep=3,
-        checkpoint_score_attribute=ckpt_score_attr,
-        checkpoint_score_order=ckpt_score_order,
+        num_to_keep=num_to_keep,
+        checkpoint_score_attribute=ckpt_score_attr if num_to_keep else None,
+        checkpoint_score_order=ckpt_score_order if num_to_keep else None,
     )
     logger.info(
-        "Checkpoint scoring: keep best 3 by %s (%s)", ckpt_score_attr, ckpt_score_order)
+        "Checkpoint retention: %s by %s (%s)",
+        "keep ALL" if num_to_keep is None else f"keep best {num_to_keep}",
+        ckpt_score_attr, ckpt_score_order)
 
     # Reporter
     progress_reporter = TqdmProgressReporter(

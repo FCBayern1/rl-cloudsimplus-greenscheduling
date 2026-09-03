@@ -73,9 +73,14 @@ def train_trace(trace_dir=None):
 # completion shaping: reward ordering equals carbon ordering by construction.
 REWARD_VARIANTS = {
     "legacy": {},
+    # Registered name (Codex R-q, 2026-09-03): "ledger-aligned reward". It removes the
+    # repeatedly-charged waiting proxy and the dispatch-instant carbon proxy and keeps the
+    # real ledger carbon plus completion shaping; it is not a "pure physical" reward.
+    # The file suffix stays "physical" for continuity of the generated artefacts.
     "physical": {"defer_base_cost": 0.0, "defer_urgency_weight": 0.0,
                  "per_action_carbon_weight": 0.0},
 }
+REWARD_VARIANTS["ledger_aligned"] = REWARD_VARIANTS["physical"]
 REWARD_KEYS = {"defer_base_cost", "defer_urgency_weight", "per_action_carbon_weight"}
 
 
@@ -91,6 +96,8 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         raise RuntimeError("window preflight is not OK; no training block may be built")
     allow = ";".join(str(w["offset"]) for w in win["train_windows"])
     overrides = REWARD_VARIANTS[reward_variant]
+    if reward_variant == "ledger_aligned":
+        reward_variant = "physical"            # same overrides, same artefact names
     suffix = "" if reward_variant == "legacy" else f"_{reward_variant}"
     blocks = {}
     for line, spec in LINES.items():
@@ -106,8 +113,11 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         b["crd"] = dict(copy.deepcopy(crd), enabled=bool(spec["crd"]))
         # One checkpoint per PPO iteration (train_batch_size 8000) so the health gate can
         # read the first and the last checkpoint; total_timesteps should be a multiple.
+        # Codex smoke rulings: a true init checkpoint before the first SGD step, every
+        # iteration's checkpoint kept (num_to_keep 0 = keep all), never pruned by score.
         b["training"] = dict(b.get("training", {}), total_timesteps=int(total_timesteps),
-                             checkpoint_freq_timesteps=8000)
+                             checkpoint_freq_timesteps=8000, checkpoint_num_to_keep=0,
+                             save_init_checkpoint=True)
         b["wandb"] = dict(b.get("wandb", {}), enabled=False)
         b["green_episode_offset_allowlist"] = allow
         blocks[name] = b

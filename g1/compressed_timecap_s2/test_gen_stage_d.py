@@ -88,10 +88,16 @@ def test_eval_blocks_cover_cells_tiers_and_hollow_with_whitelisted_diff():
             assert b["forecast_mode"] == "full" and b["perturb_tier"] in sd.EVAL_TIERS
 
 
-def test_training_checkpoints_every_iteration(built):
+def test_training_checkpoints_every_iteration_kept_and_init_saved(built):
     blocks, _, _ = built
     for b in blocks.values():
         assert b["training"]["checkpoint_freq_timesteps"] == 8000
+        assert b["training"]["checkpoint_num_to_keep"] == 0
+        assert b["training"]["save_init_checkpoint"] is True
+
+
+def test_ledger_aligned_is_an_alias_of_the_physical_variant():
+    assert sd.REWARD_VARIANTS["ledger_aligned"] == sd.REWARD_VARIANTS["physical"]
 
 
 def test_manifest_records_hashes_and_windows(built):

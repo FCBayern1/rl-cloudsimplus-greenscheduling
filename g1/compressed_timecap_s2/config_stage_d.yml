@@ -349,10 +349,12 @@ sd_E_s2_r48_w72_c3_n35:
   training:
     algorithm: PPO
     checkpoint_freq_timesteps: 8000
+    checkpoint_num_to_keep: 0
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
+    save_init_checkpoint: true
     sgd_minibatch_size: 2048
     total_timesteps: 56000
     train_batch_size: 8000
@@ -645,10 +647,12 @@ sd_NE_s2_r48_w72_c3_n35:
   training:
     algorithm: PPO
     checkpoint_freq_timesteps: 8000
+    checkpoint_num_to_keep: 0
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
+    save_init_checkpoint: true
     sgd_minibatch_size: 2048
     total_timesteps: 56000
     train_batch_size: 8000
@@ -941,10 +945,12 @@ sd_NV_s2_r48_w72_c3_n35:
   training:
     algorithm: PPO
     checkpoint_freq_timesteps: 8000
+    checkpoint_num_to_keep: 0
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
+    save_init_checkpoint: true
     sgd_minibatch_size: 2048
     total_timesteps: 56000
     train_batch_size: 8000
@@ -1237,10 +1243,12 @@ sd_V_s2_r48_w72_c3_n35:
   training:
     algorithm: PPO
     checkpoint_freq_timesteps: 8000
+    checkpoint_num_to_keep: 0
     num_gpus: 1
     num_sgd_iter: 5
     num_workers: 0
     parameter_sharing: true
+    save_init_checkpoint: true
     sgd_minibatch_size: 2048
     total_timesteps: 56000
     train_batch_size: 8000
