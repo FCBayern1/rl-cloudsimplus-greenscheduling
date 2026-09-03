@@ -101,7 +101,38 @@ def _done(csv_path):
         return False
 
 
+def _reap_orphan_gateways():
+    """Kill gateway JVMs whose python parent is gone.
+
+    The env launches every JVM with setsid into its own session, so a group-kill of the
+    evaluate process can never reach it, and env-side cleanup only runs on a clean exit.
+    An orphaned gateway is precisely a logback-configured java process reparented to
+    init (ppid 1); live gateways keep their evaluate as parent. 135 orphans accumulated
+    overnight and took 60 GB down, so every run reaps before it starts.
+    """
+    import re
+    reaped = 0
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().replace(b"\0", b" ")
+            if b"java" not in cmd or b"logback" not in cmd:
+                continue
+            with open(f"/proc/{pid}/stat") as f:
+                ppid = int(re.match(r"\d+ \(.*?\) . (\d+)", f.read()).group(1))
+            if ppid == 1:
+                os.kill(int(pid), 9)
+                reaped += 1
+        except (OSError, AttributeError, ValueError):
+            continue
+    if reaped:
+        print(f"[janitor] reaped {reaped} orphan gateway JVMs", flush=True)
+
+
 def run_one(j):
+    _reap_orphan_gateways()
     csv_path, log_path = _paths(j)
     if _done(csv_path):
         return "cached"
