@@ -552,6 +552,8 @@ def run_evaluation(
         # the ordering of arms by reward must match their ordering by physical carbon).
         global_reward_sum = 0.0
         local_reward_sum = 0.0
+        global_defer_actions = 0
+        global_route_actions = 0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 
@@ -623,6 +625,20 @@ def run_evaluation(
                         if hasattr(global_scheduler, 'occ') else 0.0) for i in range(_n)},
                     **{f"routed_dc{i}": int(_ga[i]) for i in range(_n)},
                 ))
+            # Defer vs route decisions on the real (non-padding) planner slots, so the
+            # Stage D health gate can see whether a policy is all-route or all-defer.
+            try:
+                _ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids")
+                _ga = list(global_action) if global_action is not None else []
+                for _slot, _a in enumerate(_ga):
+                    if _ids is not None and _slot < len(_ids) and int(_ids[_slot]) < 0:
+                        continue
+                    if int(_a) >= num_dcs:
+                        global_defer_actions += 1
+                    else:
+                        global_route_actions += 1
+            except Exception:
+                pass
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             if isinstance(rewards, dict):
@@ -641,6 +657,10 @@ def run_evaluation(
         metrics['episode_length'] = steps
         metrics['global_reward_sum'] = global_reward_sum
         metrics['local_reward_sum'] = local_reward_sum
+        metrics['global_defer_actions'] = global_defer_actions
+        metrics['global_route_actions'] = global_route_actions
+        _dec = global_defer_actions + global_route_actions
+        metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
         # Scheduler-side counters the validity contract is checked against (stale
         # reservations, capacity overrun, occupancy drift). Absent for schedulers that
         # keep no ledger, which is why this is opt-in rather than assumed.
@@ -1083,6 +1103,8 @@ def run_rllib_evaluation(
         # the ordering of arms by reward must match their ordering by physical carbon).
         global_reward_sum = 0.0
         local_reward_sum = 0.0
+        global_defer_actions = 0
+        global_route_actions = 0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
 
