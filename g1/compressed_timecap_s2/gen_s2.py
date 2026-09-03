@@ -403,6 +403,18 @@ def generate_h(divisor_mult, pilot_cells, out_dir=None, trace_dir=None, part="di
             did = str(dc["datacenter_id"])
             if did in split["dc_map"]:
                 dc["turbine_ids"] = [int(t) for t in split["dc_map"][did]]
+            # TB13-v4 map: the host is exposed as 32-PE VMs, as many as the host PEs
+            # allow, so a 32-PE job occupies 32 real cores at full dynamic power. The
+            # C-regime fleet (2/4/8-PE VMs) time-shared a 32-PE job onto 8 cores and
+            # the whole pilot ran at a fifth of the intended draw.
+            host_pes = (dc.get("host_count_spec_asus_rs500a", 0) * 64
+                        + dc.get("host_count_spec_asus_rs700a", 0) * 128)
+            dc["small_vm_pes"] = H_PES
+            dc["medium_vm_multiplier"] = 1
+            dc["large_vm_multiplier"] = 1
+            dc["initial_s_vm_count"] = max(1, host_pes // H_PES)
+            dc["initial_m_vm_count"] = 0
+            dc["initial_l_vm_count"] = 0
         blocks[name] = blk
     cfg_text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True,
                               default_flow_style=False)

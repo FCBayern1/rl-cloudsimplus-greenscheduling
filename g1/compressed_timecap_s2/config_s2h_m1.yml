@@ -130,14 +130,14 @@ s2_r48_w72_c1_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -155,14 +155,14 @@ s2_r48_w72_c1_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -180,14 +180,14 @@ s2_r48_w72_c1_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -204,14 +204,14 @@ s2_r48_w72_c1_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -227,14 +227,14 @@ s2_r48_w72_c1_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -423,14 +423,14 @@ s2_r48_w72_c1_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -448,14 +448,14 @@ s2_r48_w72_c1_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -473,14 +473,14 @@ s2_r48_w72_c1_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -497,14 +497,14 @@ s2_r48_w72_c1_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -520,14 +520,14 @@ s2_r48_w72_c1_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -716,14 +716,14 @@ s2_r48_w72_c3_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -741,14 +741,14 @@ s2_r48_w72_c3_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -766,14 +766,14 @@ s2_r48_w72_c3_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -790,14 +790,14 @@ s2_r48_w72_c3_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -813,14 +813,14 @@ s2_r48_w72_c3_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1009,14 +1009,14 @@ s2_r48_w72_c3_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1034,14 +1034,14 @@ s2_r48_w72_c3_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1059,14 +1059,14 @@ s2_r48_w72_c3_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1083,14 +1083,14 @@ s2_r48_w72_c3_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1106,14 +1106,14 @@ s2_r48_w72_c3_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1302,14 +1302,14 @@ s2_r48_w72_c5_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1327,14 +1327,14 @@ s2_r48_w72_c5_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1352,14 +1352,14 @@ s2_r48_w72_c5_n20:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1376,14 +1376,14 @@ s2_r48_w72_c5_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1399,14 +1399,14 @@ s2_r48_w72_c5_n20:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1595,14 +1595,14 @@ s2_r48_w72_c5_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 10
     idle_host_power_down: true
-    initial_l_vm_count: 25
-    initial_m_vm_count: 50
-    initial_s_vm_count: 100
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Nordic
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1620,14 +1620,14 @@ s2_r48_w72_c5_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs500a: 8
     idle_host_power_down: true
-    initial_l_vm_count: 20
-    initial_m_vm_count: 40
-    initial_s_vm_count: 80
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_Germany
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1645,14 +1645,14 @@ s2_r48_w72_c5_n50:
     green_energy_enabled: true
     host_count_spec_asus_rs700a: 5
     idle_host_power_down: true
-    initial_l_vm_count: 12
-    initial_m_vm_count: 25
-    initial_s_vm_count: 50
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 20
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_East
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1669,14 +1669,14 @@ s2_r48_w72_c5_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs700a: 4
     idle_host_power_down: true
-    initial_l_vm_count: 10
-    initial_m_vm_count: 20
-    initial_s_vm_count: 40
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 16
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_US_West
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
@@ -1692,14 +1692,14 @@ s2_r48_w72_c5_n50:
     green_energy_enabled: false
     host_count_spec_asus_rs500a: 3
     idle_host_power_down: true
-    initial_l_vm_count: 8
-    initial_m_vm_count: 15
-    initial_s_vm_count: 30
-    large_vm_multiplier: 4
-    medium_vm_multiplier: 2
+    initial_l_vm_count: 0
+    initial_m_vm_count: 0
+    initial_s_vm_count: 6
+    large_vm_multiplier: 1
+    medium_vm_multiplier: 1
     name: DC_APAC
     small_vm_bw: 1000
-    small_vm_pes: 2
+    small_vm_pes: 32
     small_vm_ram: 8192
     small_vm_storage: 4000
     time_scaling_mode: COMPRESSED
