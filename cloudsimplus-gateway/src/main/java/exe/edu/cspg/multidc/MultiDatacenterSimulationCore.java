@@ -2487,6 +2487,16 @@ public class MultiDatacenterSimulationCore {
                  String.valueOf(settings.getDeferDeadlineForceMode()));
         info.put("wind_csv_year_effective",
                  String.valueOf(exe.edu.cspg.energy.GreenEnergyProvider.getPreferredWindYear()));
+        // Idle-host power-down gates the static floor in DatacenterInstance.hostPowerW.
+        // A pilot that set it and produced results bit-identical to the run without it
+        // could not tell whether the key reached the JVM; this reports it per DC.
+        StringBuilder idle = new StringBuilder();
+        for (DatacenterInstance inst : datacenterInstances) {
+            if (idle.length() > 0) idle.append(",");
+            idle.append(inst != null && inst.getConfig() != null
+                    && inst.getConfig().isIdleHostPowerDown() ? "1" : "0");
+        }
+        info.put("idle_host_power_down_effective", idle.toString());
     }
 
     /** Test seam for the CSV encoding; the separators are a contract with the planner. */
