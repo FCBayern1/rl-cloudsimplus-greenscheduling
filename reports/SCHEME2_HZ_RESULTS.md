@@ -1,6 +1,6 @@
 # Scheme 2-HZ formal results: DISCOVERY and CONFIRMATION (2026-09-03)
 
-Prereg `reports/SCHEME2_HZ_PREREG.md` (frozen at 47a025d7, Addendum A on the reader). Scene: accelerated-weather, marginal-carbon mechanism positive control (zero-floor hosts, ×2 scarcity, 32-PE 48-row jobs, six cells). Arms after the blind freeze: frozen blind, truth-informed planner (clean), calibrated_shrink_v1 (primary realistic error), shuffle, anti. Every verdict quantity comes from `hz_verdict.py`; the JSONs, the blind freeze, the phase manifest and a SHA256 list of all 162 run outputs are under `reports/manifests/hz/`.
+Prereg `reports/SCHEME2_HZ_PREREG.md` (frozen at 47a025d7, Addendum A on the reader). Scene: accelerated-weather, marginal-carbon mechanism positive control (zero-floor hosts, ×2 scarcity, 32-PE 48-row jobs, six cells). Arms after the blind freeze: frozen blind, truth-informed planner (clean), calibrated_shrink_v1 (primary realistic error), shuffle, anti. Every verdict quantity comes from `hz_verdict.py`; the JSONs, the blind freeze, the phase manifest and a SHA256 list of all 234 run outputs (72 blind + 72 discovery arms + 90 confirmation) are under `reports/manifests/hz/`.
 
 ## 1. Blind freeze (DISCOVERY, before any clean number existed)
 
@@ -82,3 +82,10 @@ Pooled carbon intensity relative to the frozen blind:
 - **Strict reading.** One CONFIRMATION run, calibrated_shrink_v1 on c5_n50 / k=42, finished all 50 jobs with ontime 0.98 (one job late; the other four arms on that grid were 1.0). Under the registered G0 rule the grid is voided and the verdict rests on 17 grids with thresholds still out of 6 and 3. Under a strict "every run contract-green" reading, which the first build of the reader enforced and the prereg text did not register (Addendum A), CONFIRMATION would fail G0. The late job is itself an effect of the corrupted forecast on the deadline axis, and is reported as such rather than hidden.
 - **What the primary error does.** The audited λ lead-curve pulls the forecast toward the site mean at long leads, so the planner books jobs into stretches it believes are windy and that are not; on this scene that is worse than reversing the forecast. This is the frozen primary corruption from the E prereg, unchanged.
 - **Scope.** This is a mechanism positive control (1 W floor, accelerated weather). It establishes step 1 of the chain in a controlled scene; it does not by itself support a real-world saving claim. Next: Stage D prereg (vanilla / EU-CRD, clean and corrupt, matched no-forecast), then the spiral's second turn with the real 51.4 W floor.
+
+## 5. Disclosure rules for the paper (Codex R-i, 2026-09-03)
+
+- Main analysis: PASS under the preregistered rule (a run that fails the contract voids its (cell, window) symmetrically for every arm; 17/18 grids carry the CONFIRMATION carbon verdict).
+- Strict sensitivity analysis, reported alongside: if every run were required to be contract-green, CONFIRMATION would fail G0 because of the one late job. The paper must not state that all CONFIRMATION contracts were green.
+- The ontime 0.98 run (calibrated_shrink_v1, c5_n50, k=42) is reported once, as an independent SLA-axis harm of the corrupted forecast. It is excluded from the carbon analysis and is not counted again as evidence for the carbon gate.
+- Raw data: the 234 result CSVs are committed in place under `g1/compressed_timecap_s2/stage_a_out/hz_{disc,conf}_m2_*/`, the 234 run logs in `reports/manifests/hz/hz_formal_run_logs.tar.xz` (SHA256 alongside); `HZ_RUN_OUTPUTS.sha256` verified 234/234 at commit time. Pilot directories (`pilothz_*`, design windows k=3,4) stay separate and uncommitted.

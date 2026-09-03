@@ -1,0 +1,1040 @@
+{
+  "arms": [
+    "godeye",
+    "calibrated_shrink_v1",
+    "shuffle",
+    "anti"
+  ],
+  "audit_sha256": "475793a6c036c80138b433133546f046e465bd5eac5b7a780621358995db75a9",
+  "blinds": [
+    "nowait_planner",
+    "reactive_wait_planner",
+    "reservation_edf",
+    "load_smoothing"
+  ],
+  "cells": [
+    "s2_r48_w72_c1_n20",
+    "s2_r48_w72_c1_n50",
+    "s2_r48_w72_c3_n20",
+    "s2_r48_w72_c3_n50",
+    "s2_r48_w72_c5_n20",
+    "s2_r48_w72_c5_n50"
+  ],
+  "commit": "47a025d734b0b7fb5ba1b0b976c623b3fefcbaa0",
+  "config": "config_s2hz_m2.yml",
+  "config_sha256": "3403778da3889bd9352edf5843c50a67b5ea02c55f8118813597dc51f03ab8f0",
+  "forecast_perturb_sha256": "ad1e76bb52b9322ea3753ab54f157b861fb915fc1e0a45a6dfb8d7721fd7e6de",
+  "global_schedulers_sha256": "94618bfbc2c13c695e5ab3b57b4979607c5b6c007ede03b34fb5049d922e23d6",
+  "jar_sha256": "cab825fe145dab3a4c9672393a7f5f4733cbe89a085c68687525be2d98622fa9",
+  "jobs_env": {
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_load_smoothing/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_nowait_planner/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reactive_wait_planner/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_reservation_edf/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_anti/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "anti",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_calibrated_shrink_v1/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "calibrated_shrink_v1",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_godeye/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "godeye",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c1_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c3_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n20_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n20_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n20_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n50_k10": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n50_k18": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    },
+    "hz_disc_m2_tier_shuffle/s2_r48_w72_c5_n50_k2": {
+      "EVAL_CONFIG_PATH": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_s2hz_m2.yml",
+      "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+      "PLANNER_PERTURB_CAL": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/timecap_error_audit.json",
+      "PLANNER_PERTURB_E": "1",
+      "PLANNER_PERTURB_TIER": "shuffle",
+      "PLANNER_STATIC_TOTAL_W": "0"
+    }
+  },
+  "mult": 2,
+  "planner_env": {
+    "PLANNER_EXPECTED_CAP": "640;512;640;512;192",
+    "PLANNER_STATIC_TOTAL_W": "0"
+  },
+  "seed": 42,
+  "windows": {
+    "confirmation": {
+      "dc_map": {
+        "0": [
+          52,
+          71
+        ],
+        "1": [
+          47,
+          54
+        ],
+        "2": [
+          3
+        ]
+      },
+      "offsets": [
+        26234,
+        34306,
+        42378
+      ],
+      "turbines": [
+        52,
+        71,
+        47,
+        54,
+        3
+      ],
+      "windows_k": [
+        26,
+        34,
+        42
+      ]
+    },
+    "discovery": {
+      "dc_map": {
+        "0": [
+          123,
+          10
+        ],
+        "1": [
+          51,
+          53
+        ],
+        "2": [
+          112
+        ]
+      },
+      "offsets": [
+        2018,
+        10090,
+        18162
+      ],
+      "turbines": [
+        123,
+        10,
+        51,
+        53,
+        112
+      ],
+      "windows_k": [
+        2,
+        10,
+        18
+      ]
+    }
+  },
+  "worktree_clean": true
+}
