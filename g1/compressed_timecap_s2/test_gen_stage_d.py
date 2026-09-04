@@ -159,3 +159,25 @@ def test_cca_lines_are_vanilla_backbone_with_the_hindsight_baseline_on():
         assert b["training"]["total_timesteps"] == 400_000
         extra = set(sd.diff_keys(ref, b)) - sd.BETWEEN_LINES
         assert not extra, (n, extra)                   # identical to V apart from identity/hollow/crd
+
+
+def test_risk_lines_reuse_the_vanilla_backbone_and_frozen_objective_values():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        four, _ = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                           checkpoint_freq=40_000, out_name="config_stage_d_longrun.yml")
+        risk, man = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                             checkpoint_freq=40_000, out_name="config_stage_d_risk.yml",
+                             lines=sd.RISK_LINES)
+    assert man["config"] == "config_stage_d_risk.yml" and len(risk) == 4
+    ref = four["sd_V_s2_r48_w72_c3_n35"]
+    for n, b in risk.items():
+        line = n.split("_")[1]
+        assert b["crd"]["enabled"] is False and b["crd"]["risk"] == sd.RISK_CFG[line]
+        assert b["forecast_mode"] == "full"          # they share N_V as the no-forecast line
+        assert "cca" not in b["crd"]
+        extra = set(sd.diff_keys(ref, b)) - sd.BETWEEN_LINES
+        assert not extra, (n, extra)
+    kinds = {b["crd"]["risk"]["kind"] for b in risk.values()}
+    assert kinds == {"cvar", "risk_sensitive", "mean_variance", "dist_cvar"}

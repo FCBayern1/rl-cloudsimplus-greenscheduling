@@ -40,6 +40,14 @@ LINES = {"NV": {"crd": False, "hollow": True},
 CCA_CFG = {"enabled": True, "horizon": 12, "hidden": 64, "lr": 0.001, "train_iters": 1}
 CCA_LINES = {"NC": {"crd": False, "hollow": True, "cca": True},
              "C": {"crd": False, "hollow": False, "cca": True}}
+# Risk-sensitive comparison set, frozen at the values the earlier campaign used; never
+# retuned for this scene. Same vanilla backbone and observation as V, so they share V's
+# matched no-forecast line (N_V) rather than each carrying its own.
+RISK_CFG = {"RCV": {"kind": "cvar", "alpha": 0.2, "lam": 0.5},
+            "RRS": {"kind": "risk_sensitive", "beta": 1.0},
+            "RMV": {"kind": "mean_variance", "lam": 1.0},
+            "RDC": {"kind": "dist_cvar", "alpha": 0.1, "lam": 0.7}}
+RISK_LINES = {k: {"crd": False, "hollow": False, "risk": k} for k in RISK_CFG}
 # Keys a line may differ in from the HZ block. Anything else is a generator bug.
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
@@ -121,6 +129,8 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         b["crd"] = dict(copy.deepcopy(crd), enabled=bool(spec["crd"]))
         if spec.get("cca"):
             b["crd"]["cca"] = copy.deepcopy(CCA_CFG)
+        if spec.get("risk"):
+            b["crd"]["risk"] = copy.deepcopy(RISK_CFG[spec["risk"]])
         # One checkpoint per PPO iteration (train_batch_size 8000) so the health gate can
         # read the first and the last checkpoint; total_timesteps should be a multiple.
         # Codex smoke rulings: a true init checkpoint before the first SGD step, every
@@ -236,6 +246,11 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "risk":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_risk.yml", lines=RISK_LINES)
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     if variant == "cca":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
