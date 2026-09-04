@@ -91,6 +91,7 @@ class Capture:
         self.learner = learner
         self.defer_index = defer_index
         self.records = []
+        self.shape_notes = []
         self.enabled = False
         self._orig = learner._compute_responsibilities
 
@@ -102,7 +103,7 @@ class Capture:
                 return cap._orig(module_id=module_id, batch=batch)
             import torch
             from ray.rllib.core.columns import Columns
-            from ray.rllib.utils.postprocessing.value_predictions import Postprocessing  # noqa
+            from ray.rllib.evaluation.postprocessing import Postprocessing
             adv_pre = batch[Postprocessing.ADVANTAGES].detach().clone()
             cap._orig(module_id=module_id, batch=batch)
             adv_post = batch[Postprocessing.ADVANTAGES].detach()
@@ -115,8 +116,14 @@ class Capture:
             mask = batch.get(Columns.LOSS_MASK)
             n = adv_pre.numel()
             acts_np = acts.detach().cpu().numpy().reshape(n, -1) if acts.numel() % n == 0 else None
-            mask_np = None
-            share = defer_share(acts_np, cap.defer_index) if acts_np is not None else np.full(n, np.nan)
+            # per-slot validity from the observation's slot mask, so padding slots inside a
+            # real timestep are not counted as ROUTE(0)
+            slot_mask = None
+            ob = batch.get(Columns.OBS)
+            am = ob.get("action_mask") if isinstance(ob, dict) else None
+            if am is not None and acts_np is not None and am.numel() == acts_np.size:
+                slot_mask = am.detach().cpu().numpy().reshape(n, -1)
+            share = defer_share(acts_np, cap.defer_index, slot_mask) if acts_np is not None else np.full(n, np.nan)
             rec = {"rho": rho.detach().cpu().numpy().reshape(-1), "w": w.cpu().numpy().reshape(-1),
                    "adv_pre": adv_pre.cpu().numpy().reshape(-1), "adv_post": adv_post.cpu().numpy().reshape(-1),
                    "share": share}
@@ -126,9 +133,22 @@ class Capture:
                             else np.full(n, np.nan))
             tau = batch.get("crd_tau")
             rec["tau"] = np.asarray([float(tau)]) if tau is not None else np.asarray([])
+            # padded timesteps: the learner's loss mask when it lines up, otherwise a
+            # timestep whose every slot is action 0 and whose advantage is exactly 0
             if mask is not None and mask.numel() == n:
                 keep = mask.detach().cpu().numpy().reshape(-1).astype(bool)
-                rec = {k: (v[keep] if v.shape[0] == n else v) for k, v in rec.items()}
+                how = "loss_mask"
+            elif acts_np is not None:
+                keep = ~((acts_np == 0).all(axis=1) & (np.abs(rec["adv_pre"]) < 1e-12))
+                how = "all_zero_fallback"
+            else:
+                keep = np.ones(n, dtype=bool)
+                how = "none"
+            cap.shape_notes.append({"n": int(n), "kept": int(keep.sum()), "how": how,
+                                    "adv_shape": list(adv_pre.shape), "acts_shape": list(acts.shape),
+                                    "loss_mask_shape": (list(mask.shape) if mask is not None else None),
+                                    "slot_mask": slot_mask is not None})
+            rec = {k: (v[keep] if v.shape[0] == n else v) for k, v in rec.items()}
             cap.records.append(rec)
 
         self.learner._compute_responsibilities = wrapped
@@ -149,7 +169,11 @@ def build_local_learner(algo, ckpt):
     cfg.learners(num_learners=0, num_gpus_per_learner=0)
     learner = cfg.build_learner(spaces=spaces) if spaces else cfg.build_learner(env=algo.env_runner.env)
     mods = RLModule.from_checkpoint(os.path.join(ckpt, "learner_group", "learner", "rl_module"))
-    learner.module.set_state({mid: mods[mid].get_state() for mid in mods if mid in learner.module})
+    # from_checkpoint on the multi-module dir returns a MultiRLModule; its state is keyed by
+    # module id already, so hand it over whole (iterating the module yields indices).
+    state = mods.get_state()
+    have = set(learner.module.keys()) if hasattr(learner.module, "keys") else set(state)
+    learner.module.set_state({mid: st for mid, st in state.items() if mid in have})
     # the audit measures the reweighting, so the warm-up gate must be open
     learner._crd_reweight_calls = {GLOBAL: 10 ** 9, "shared_local_policy": 10 ** 9}
     return learner
@@ -198,7 +222,7 @@ def main():
     warmed = summarize(cap.merged()) if cap.records else None
     res = {"line": a.line, "checkpoint": ckpt, "defer_index": defer_index, "steps_per_batch": a.steps,
            "burnin_batches": a.burnin, "first_batch": first, "warmed": warmed,
-           "elapsed_s": round(time.time() - t0, 1)}
+           "shape_notes": cap.shape_notes[:6], "elapsed_s": round(time.time() - t0, 1)}
     with open(out, "w") as f:
         json.dump(res, f, indent=2, default=float)
     print(json.dumps({k: res[k] for k in ("line", "checkpoint", "elapsed_s")}))

@@ -49,9 +49,16 @@ RISK_CFG = {"RCV": {"kind": "cvar", "alpha": 0.2, "lam": 0.5},
             "RDC": {"kind": "dist_cvar", "alpha": 0.1, "lam": 0.7}}
 RISK_LINES = {k: {"crd": False, "hollow": False, "risk": k} for k in RISK_CFG}
 # Keys a line may differ in from the HZ block. Anything else is a generator bug.
+# Stage D' overlay (STAGE_D_PRIME_DESIGN §2–3, Codex 2026-09-05): raw per-job timing state,
+# no best-start hint, the contract-aligned on-time SLA through the existing Lagrangian
+# channel, and the deadline-safe DEFER mask. The margin is a placeholder until the
+# development smoke fixes it; the D' preregistration freezes the final value.
+DPRIME_OVERLAY = {"obs_v31_features": True, "obs_v32_job_forecast": False,
+                  "defer_deadline_mask": True, "defer_deadline_mask_margin_sec": 0.0,
+                  "sla_mode": "ontime_mi", "sla_target": 0.995}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
-             "green_episode_offset_allowlist"}
+             "green_episode_offset_allowlist", *DPRIME_OVERLAY}
 BETWEEN_LINES = {"experiment_name", "simulation_name", "forecast_mode", "crd"}
 
 
@@ -100,7 +107,7 @@ REWARD_KEYS = {"defer_base_cost", "defer_urgency_weight", "per_action_carbon_wei
 
 
 def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy",
-          checkpoint_freq=8000, out_name=None, lines=None):
+          checkpoint_freq=8000, out_name=None, lines=None, overlay=None):
     out_dir = out_dir or HERE
     hz = yaml.safe_load(open(HZ_CONFIG))
     base = hz[HZ_CELL]
@@ -119,6 +126,8 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
     for line, spec in (lines or LINES).items():
         b = copy.deepcopy(base)
         b.update(copy.deepcopy(overrides))
+        if overlay:
+            b.update(copy.deepcopy(overlay))
         name = f"sd_{line}_{TRAIN_CELL}"
         b["experiment_name"] = name
         b["simulation_name"] = f"STAGED_{name}"
@@ -150,6 +159,7 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         f.write(text)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
     manifest = {"config": cfg_name, "reward_variant": reward_variant, "reward_overrides": overrides,
+                "overlay": overlay or {},
                 "checkpoint_freq_timesteps": int(checkpoint_freq),
                 "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
                 "hz_source": {"file": "config_s2hz_m2.yml", "cell": HZ_CELL},
@@ -246,6 +256,11 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "dprime":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_dprime.yml", overlay=DPRIME_OVERLAY)
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     if variant == "risk":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,

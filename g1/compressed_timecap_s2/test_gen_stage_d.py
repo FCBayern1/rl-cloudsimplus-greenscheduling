@@ -181,3 +181,22 @@ def test_risk_lines_reuse_the_vanilla_backbone_and_frozen_objective_values():
         assert not extra, (n, extra)
     kinds = {b["crd"]["risk"]["kind"] for b in risk.values()}
     assert kinds == {"cvar", "risk_sensitive", "mean_variance", "dist_cvar"}
+
+
+def test_dprime_overlay_changes_only_the_six_registered_keys_on_every_line():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        base, _ = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                           checkpoint_freq=40_000, out_name="config_stage_d_longrun.yml")
+        dp, man = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                           checkpoint_freq=40_000, out_name="config_stage_d_dprime.yml",
+                           overlay=sd.DPRIME_OVERLAY)
+    assert man["config"] == "config_stage_d_dprime.yml" and man["overlay"] == sd.DPRIME_OVERLAY
+    assert set(dp) == set(base)
+    for n in base:
+        assert set(sd.diff_keys(base[n], dp[n])) <= set(sd.DPRIME_OVERLAY)
+        b = dp[n]
+        assert b["obs_v31_features"] is True and b["obs_v32_job_forecast"] is False
+        assert b["defer_deadline_mask"] is True and b["sla_mode"] == "ontime_mi" and b["sla_target"] == 0.995
+        assert b["defer_base_cost"] == 0.0            # ledger-aligned reward untouched

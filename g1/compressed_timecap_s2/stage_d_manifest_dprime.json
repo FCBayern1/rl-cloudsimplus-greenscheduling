@@ -1,0 +1,140 @@
+{
+  "checkpoint_freq_timesteps": 40000,
+  "config": "config_stage_d_dprime.yml",
+  "config_sha256": "003fd8464741434ec751b16a2305e7731b8857d6c43b4fbc3c6abbc1b2716d09",
+  "crd_source": {
+    "commit_at_build": "6d505461a7bc43cc646f211db367e82db190e50a",
+    "file": "config_rl_step2_pilot.yml"
+  },
+  "crd_subtree_sha256": "700f3da6b8be34f0135f6e02bdfa10b4efe51acdb51b1e06da25447a0237fec6",
+  "eval_windows": [
+    {
+      "offset": 13016,
+      "rows": [
+        13012,
+        15938
+      ]
+    },
+    {
+      "offset": 21088,
+      "rows": [
+        21084,
+        24010
+      ]
+    },
+    {
+      "offset": 29160,
+      "rows": [
+        29156,
+        32082
+      ]
+    },
+    {
+      "offset": 37232,
+      "rows": [
+        37228,
+        40154
+      ]
+    },
+    {
+      "offset": 45304,
+      "rows": [
+        45300,
+        48226
+      ]
+    },
+    {
+      "offset": 48230,
+      "rows": [
+        48226,
+        51152
+      ]
+    }
+  ],
+  "hz_source": {
+    "cell": "s2_r48_w72_c3_n50",
+    "file": "config_s2hz_m2.yml"
+  },
+  "lines": {
+    "sd_E_s2_r48_w72_c3_n35": {
+      "crd_enabled": true,
+      "forecast_mode": "full"
+    },
+    "sd_NE_s2_r48_w72_c3_n35": {
+      "crd_enabled": true,
+      "forecast_mode": "none"
+    },
+    "sd_NV_s2_r48_w72_c3_n35": {
+      "crd_enabled": false,
+      "forecast_mode": "none"
+    },
+    "sd_V_s2_r48_w72_c3_n35": {
+      "crd_enabled": false,
+      "forecast_mode": "full"
+    }
+  },
+  "overlay": {
+    "defer_deadline_mask": true,
+    "defer_deadline_mask_margin_sec": 0.0,
+    "obs_v31_features": true,
+    "obs_v32_job_forecast": false,
+    "sla_mode": "ontime_mi",
+    "sla_target": 0.995
+  },
+  "reward_overrides": {
+    "defer_base_cost": 0.0,
+    "defer_urgency_weight": 0.0,
+    "per_action_carbon_weight": 0.0
+  },
+  "reward_variant": "physical",
+  "total_timesteps": 400000,
+  "train_trace": {
+    "file": "traces/s2/s2_r48_w72_c3_n35_pes32.csv",
+    "sha": "a40f7659ac46b5fc"
+  },
+  "train_windows": [
+    {
+      "offset": 6962,
+      "rows": [
+        6958,
+        8037
+      ]
+    },
+    {
+      "offset": 15942,
+      "rows": [
+        15938,
+        17017
+      ]
+    },
+    {
+      "offset": 24014,
+      "rows": [
+        24010,
+        25089
+      ]
+    },
+    {
+      "offset": 32086,
+      "rows": [
+        32082,
+        33161
+      ]
+    },
+    {
+      "offset": 40158,
+      "rows": [
+        40154,
+        41233
+      ]
+    },
+    {
+      "offset": 51156,
+      "rows": [
+        51152,
+        52231
+      ]
+    }
+  ],
+  "windows_sha256": "078ab54456d7e8c2a7513092579fc52a6661c5d1b4dbbf285ddabd90d44f2330"
+}
