@@ -121,9 +121,11 @@ def judge(evals, crd, probe):
 
 def load(results_dir, logs_dir, probe_dir):
     evals = {}
+    # The runner writes <line>_final / <line>_init; the reader's tags are last / first.
+    dirname = {"last": "final", "first": "init"}
     for L in LINES:
         for tag in ("last", "first"):
-            d = os.path.join(results_dir, f"{L}_{tag}")
+            d = os.path.join(results_dir, f"{L}_{dirname[tag]}")
             for f in glob.glob(os.path.join(d, "*.csv")):
                 base = os.path.basename(f)[:-4]
                 cell = "_".join(base.split("_")[:5])
@@ -141,7 +143,7 @@ def load(results_dir, logs_dir, probe_dir):
                     "clip": g("ep_carbon_norm_clip_count")}
     crd = {}
     for L in ("NE", "E"):
-        rj = sorted(glob.glob(os.path.join(logs_dir, f"{L}_s*", "*", "result.json")))
+        rj = sorted(glob.glob(os.path.join(logs_dir, f"{L}_s*", "**", "result.json"), recursive=True))
         if not rj:
             continue
         last = None
