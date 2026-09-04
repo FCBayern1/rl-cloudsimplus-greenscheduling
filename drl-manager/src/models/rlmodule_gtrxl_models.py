@@ -1406,6 +1406,22 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             else:
                 defer_logit = self.defer_head(q) / self.score_temperature  # (B,T,N_batch,1)
                 scores = torch.cat([scores, defer_logit], dim=-1)
+            # Stage D' deadline-safe DEFER mask (STAGE_D_PRIME_DESIGN §3). When the env
+            # publishes batch_cloudlet_defer_allowed, a slot at its last safe start point
+            # loses the DEFER choice (last column) and must pick a DC; both the plain
+            # defer head and the factorized temporal gate go through here. Absent key ->
+            # behaviour unchanged, so every frozen run is untouched.
+            defer_allowed = obs.get("batch_cloudlet_defer_allowed") if isinstance(obs, dict) else None
+            if defer_allowed is not None:
+                da = self._to_btD(defer_allowed, self.num_batch_slots)          # (B, T', N_b)
+                if da.shape[1] != scores.shape[1] and da.shape[1] == 1:
+                    da = da.expand(da.shape[0], scores.shape[1], da.shape[2])
+                keep = (da >= 0.5)
+                defer_col = scores[..., -1]
+                scores = torch.cat(
+                    [scores[..., :-1],
+                     torch.where(keep, defer_col, torch.full_like(defer_col, -1e9)).unsqueeze(-1)],
+                    dim=-1)
         T = scores.shape[1]
         if os.environ.get("DEBUG_SHAPES"):
             logger.warning(

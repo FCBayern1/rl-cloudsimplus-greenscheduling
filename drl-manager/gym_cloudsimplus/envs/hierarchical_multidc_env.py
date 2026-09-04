@@ -105,6 +105,33 @@ def episode_offset_rows(episode_counter, offset_range, allowlist=None):
     return 0
 
 
+def defer_allowed_from(time_to_deadline_sec, deadline_present, mi, pes, vm_pe_mips, cpu_utilization,
+                       margin_sec, timestep_sec):
+    """Deadline-safe DEFER mask, one entry per batch slot (STAGE_D_PRIME_DESIGN §3).
+
+    A slot may still wait one more decision step iff, after that step, the job can still be
+    started and finish by its deadline with `margin_sec` to spare:
+
+        time_to_deadline - timestep - runtime - margin > 0,   runtime = mi / (mips * u)
+
+    which is the Java backstop's own runtime unit (PerActionRewardMath.deadlineForceLatestStart)
+    evaluated one step ahead, so the mask fires before the backstop ever has to. Slots without a
+    deadline may always wait; padding slots (mi <= 0) are 0. Pure numpy; shared by every arm.
+    """
+    ttd = np.asarray(time_to_deadline_sec, dtype=np.float64).reshape(-1)
+    present = np.asarray(deadline_present, dtype=np.float64).reshape(-1)
+    mi_a = np.asarray(mi, dtype=np.float64).reshape(-1)
+    n = ttd.shape[0]
+    present = present[:n] if present.shape[0] >= n else np.concatenate([present, np.zeros(n - present.shape[0])])
+    mi_a = mi_a[:n] if mi_a.shape[0] >= n else np.concatenate([mi_a, np.zeros(n - mi_a.shape[0])])
+    rate = max(1.0, float(vm_pe_mips)) * min(1.0, max(1e-6, float(cpu_utilization)))
+    runtime = mi_a / rate
+    slack_after_wait = ttd - float(timestep_sec) - runtime - float(margin_sec)
+    allowed = np.where(present >= 0.5, slack_after_wait > 0.0, True)
+    allowed = np.where(mi_a > 0.0, allowed, False)
+    return allowed.astype(np.float32)
+
+
 class HierarchicalMultiDCEnv(gym.Env):
     """
     Hierarchical Multi-Datacenter Load Balancing Environment.
@@ -253,6 +280,12 @@ class HierarchicalMultiDCEnv(gym.Env):
         # nor the legacy forecast_mode="none" zero-fill changes.  When enabled,
         # the temporal head receives per-cloudlet features derived from that
         # arm's own information set (full=godeye/TimeCAP, none=persistence).
+        # Stage D' deadline-safe DEFER mask: off by default so every frozen run stays
+        # byte-identical. Needs obs_v31_features (the per-job deadline facts).
+        self.defer_deadline_mask = bool(config.get("defer_deadline_mask", False))
+        self._defer_mask_margin_sec = max(0.0, float(config.get("defer_deadline_mask_margin_sec", 0.0)))
+        if self.defer_deadline_mask and not self.obs_v31_features:
+            raise ValueError("defer_deadline_mask=true requires obs_v31_features=true")
         self.obs_v32_job_forecast = bool(
             config.get("obs_v32_job_forecast", False)
         )
@@ -982,6 +1015,12 @@ class HierarchicalMultiDCEnv(gym.Env):
                     low=0.0, high=1.0, shape=(1,), dtype=np.float32),
             })
 
+        if self.obs_v31_features and self.defer_deadline_mask:
+            # Stage D' deadline-safe DEFER mask (STAGE_D_PRIME_DESIGN §3): 1 = the slot may
+            # still wait one more step and finish by its deadline, 0 = it must be routed now.
+            global_spaces["batch_cloudlet_defer_allowed"] = spaces.Box(
+                low=0.0, high=1.0, shape=(self.global_routing_batch_size,), dtype=np.float32)
+
         if self.obs_v32_job_forecast:
             batch_shape = (self.global_routing_batch_size,)
             global_spaces.update({
@@ -1670,6 +1709,13 @@ class HierarchicalMultiDCEnv(gym.Env):
                 np.clip(float(global_deferred_mi) / self._obs_v31_global_mi_scale, 0.0, 1.0)
             ], dtype=np.float32),
         })
+        if self.defer_deadline_mask:
+            mi = _batch(obs.get("batch_cloudlet_mi", np.zeros(batch_size)))
+            pes = _batch(obs.get("batch_cloudlet_pes", np.zeros(batch_size)))
+            u = float(self.config.get("cloudlet_cpu_utilization", 1.0) or 1.0)
+            obs["batch_cloudlet_defer_allowed"] = defer_allowed_from(
+                ttd, present, mi, pes, self._v32_vm_mips, u,
+                self._defer_mask_margin_sec, float(self._v32_sim_timestep_sec))
 
     def _v32_apply_blind_persistence(self, obs: Dict[str, Any]) -> None:
         """Replace future summaries with a current-state persistence baseline.
