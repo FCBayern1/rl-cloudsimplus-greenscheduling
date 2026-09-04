@@ -34,8 +34,8 @@ OUT=$SCRATCHDIR/smoke
 rm -rf "$OUT"; mkdir -p "$OUT"
 for pair in "NV 0" "V 1"; do
   set -- $pair
-  CUDA_VISIBLE_DEVICES=$2 python drl-manager/entrypoint_rlmodule_gtrxl.py \
-    --config g1/compressed_timecap_s2/config_stage_d_longrun.yml \
+  CUDA_VISIBLE_DEVICES=$2 python "$REPO/drl-manager/entrypoint_rlmodule_gtrxl.py" \
+    --config "$REPO/g1/compressed_timecap_s2/config_stage_d_longrun.yml" \
     --experiment sd_$1_s2_r48_w72_c3_n35 --total-timesteps 8000 --num-workers 0 \
     --seed 20260904 --no-wandb --output-dir "$OUT/$1" > "$OUT/$1.log" 2>&1 &
 done
