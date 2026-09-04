@@ -448,6 +448,16 @@ def main():
         todo = hz_jobs("discovery", HZ_ARMS, tier_mode=True)
         print(f"hz_main: {len(todo)} runs (x{HZ_MULT})")
         print(json.dumps(sweep(HZ_ARMS, todo=todo), indent=2))
+    elif phase == "hz_decomp":
+        # Post-verdict mechanism diagnostic (HZ_DECOMPOSITION_DIAGNOSTIC.md): the S arm,
+        # the truth-informed planner with deferral forbidden, on the confirmation set.
+        # B (frozen blind) and ST (clean godeye) rows already exist and are reused.
+        todo = hz_jobs("confirmation", ["godeye"], tier_mode=True)
+        for j in todo:
+            j["env"] = dict(j["env"], PLANNER_ALLOW_DEFER="0")
+            j["dir"] = f"hz_conf_m{HZ_MULT}_tier_godeye_nodefer"
+        print(f"hz_decomp: {len(todo)} S runs (x{HZ_MULT}, PLANNER_ALLOW_DEFER=0)")
+        print(json.dumps(sweep(["godeye"], todo=todo), indent=2))
     elif phase == "hz_confirm":
         # One-shot. The frozen blind and every arm run on the sealed windows only after
         # the discovery verdict PASSed; the reader, not this phase, decides the outcome.
