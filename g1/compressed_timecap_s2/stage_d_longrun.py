@@ -236,6 +236,32 @@ def train_seed(seed):
         train_group(seed, group)
 
 
+def train_line(seed, line):
+    """One line, one process, for a cluster that schedules a job per GPU. The paired
+    init-hash check cannot run here (the partner is a different job), so it is enforced
+    by `check_init_pairs` before that seed's evaluation."""
+    disk_gate()
+    p, lf = launch_train(seed, line)
+    rc = p.wait()
+    lf.close()
+    log(f"seed {seed} train {line} exit={rc} disk_free={disk_free_gb():.1f}GB")
+    if rc:
+        raise SystemExit(f"training failed: {line} rc={rc}")
+
+
+def check_init_pairs(seed):
+    """N_V = V and N_E = E over the four init checkpoints of a seed. Run before the
+    seed's evaluation when the lines were trained as separate jobs."""
+    hashes = {L: (init_hash(init_checkpoint(seed, L)) if init_checkpoint(seed, L) else None) for L in LINES}
+    log(f"seed {seed} init hashes " + " ".join(f"{L}={str(h)[:12]}" for L, h in hashes.items()))
+    bad = [p for p in PAIRS if hashes[p[0]] is None or hashes[p[0]] != hashes[p[1]]]
+    with open(os.path.join(seed_results(seed), "init_hashes.json"), "w") as f:
+        f.write(json.dumps({"hashes": hashes, "pairs_ok": not bad}, indent=2))
+    if bad:
+        raise SystemExit(f"init weight hashes differ or missing for {bad} (seed {seed})")
+    return hashes
+
+
 # ---------------------------------------------------------------- check
 def final_checkpoint(seed, line):
     cks = sorted(glob.glob(os.path.join(line_dir(seed, line), "*", "PPO_*", "checkpoint_*")),
@@ -454,8 +480,13 @@ def main(argv):
         log("long run done")
     elif phase == "seed":
         s, sub = int(argv[2]), argv[3]
-        {"freeze": freeze_seed, "train": train_seed, "check": check_seed, "eval": eval_seed,
-         "crd": crd_seed, "certified": certified_seed}[sub](s)
+        if sub == "train_line":
+            train_line(s, argv[4])
+        elif sub == "check_init_pairs":
+            check_init_pairs(s)
+        else:
+            {"freeze": freeze_seed, "train": train_seed, "check": check_seed, "eval": eval_seed,
+             "crd": crd_seed, "certified": certified_seed}[sub](s)
     elif phase == "verdict":
         verdict()
     elif phase == "certified":
