@@ -1,0 +1,28 @@
+{
+  "commit": "287ba36fe51febecdef25463c797c182c8c1e155",
+  "jar_sha256": "6931ed570c5033eec4deeb80dba9e27d6e31b82efd384cbd693ed20019605250",
+  "jobs": {
+    "final": 180,
+    "init": 72,
+    "total": 252
+  },
+  "seed": 20260903,
+  "sources": {
+    "drl-manager/gym_cloudsimplus/envs/hierarchical_multidc_env.py": "77b277784c89246bd80fec2bd086f262b4a1ccb84e8886d53daeaed3ea320462",
+    "drl-manager/src/baselines/evaluate.py": "b361f39276d972661660be9b9d54787232fb483fe5e61e3d4ded82447901f0d4",
+    "drl-manager/src/baselines/forecast_perturb.py": "ad1e76bb52b9322ea3753ab54f157b861fb915fc1e0a45a6dfb8d7721fd7e6de",
+    "drl-manager/src/callbacks/init_checkpoint_callback.py": "f9cbe6cb1cde75688dd0734769371cd651889268309e9be15c7804f5713b8fdd",
+    "drl-manager/src/learners/crd_q_loss.py": "2c74e5efa9875ee195604657d126782b4bbc0b86e6b8ebe2ac20b1fe5fe06e8c",
+    "drl-manager/src/prediction/perturbed_godeye_provider.py": "5a747ca701b663112c7a756638dda001f18995b530a6c6424afb18144bc9c5b6",
+    "drl-manager/src/training/train_rlmodule_gtrxl.py": "de36a43c3793805d0becc18de32dd4233e7b75a75fd792cc307c06f7d02c6fd6",
+    "g1/compressed_timecap_s2/config_stage_d_eval.yml": "a050323f27cfb446cbc79f52b1363571bbf21579152f2a3c5e67bde9fc40e269",
+    "g1/compressed_timecap_s2/config_stage_d_physical.yml": "a163aab19560e1bf71ef2cb50eeb1e8350c383a3a0022b8968d71a2a7f8c3e74",
+    "g1/compressed_timecap_s2/gen_stage_d.py": "e7ecf4be1525cac87fd69a079dc36f4a8d063d137ace67dfc8fd7a5e16dda9ee",
+    "g1/compressed_timecap_s2/stage_d_health_verdict.py": "f15b3755e49e46342478ba668b0bace69ce306abd62b63765bc8d5f4cd61c1a0",
+    "g1/compressed_timecap_s2/stage_d_manifest_physical.json": "0178987f517a23347ddca653b77d1e0e30c8a20d69e61db6fd92ef356f0f5df5",
+    "g1/compressed_timecap_s2/stage_d_run.py": "d06628865c18654df1d68a4efc5670ddea8250d42d7c310331d6afdda6bc4588",
+    "g1/compressed_timecap_s2/timecap_error_audit.json": "475793a6c036c80138b433133546f046e465bd5eac5b7a780621358995db75a9"
+  },
+  "steps": 56000,
+  "worktree_clean": true
+}
