@@ -8,9 +8,9 @@
 #SBATCH --job-name=stage_d_smoke
 #SBATCH --account=brics.u6tx
 #SBATCH --partition=workq
-#SBATCH --gres=gpu:4
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=200G
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=100G
 #SBATCH --time=01:30:00
 #SBATCH --output=%x_%j.out
 set -uo pipefail
