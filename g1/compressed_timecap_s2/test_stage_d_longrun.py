@@ -38,6 +38,7 @@ def test_init_hash_is_over_state_files_only_and_equal_for_equal_weights():
 def test_env_pins_hash_seed_and_ray_tmpdir():
     e = lr.env_for()
     assert e["PYTHONHASHSEED"] == "0" and e["RAY_TMPDIR"] == lr.RAY_TMPDIR
+    assert e["TMPDIR"] == lr.TMPDIR and lr.TMPDIR.startswith("/home/")
     ee = lr.env_for(lr.EVAL_ENV)
     assert ee["OMP_NUM_THREADS"] == "1"
 
@@ -47,6 +48,8 @@ def test_disk_gate_refuses_when_below_threshold():
     assert lr.disk_gate(min_gb=0, path="/") == free
     with pytest.raises(SystemExit):
         lr.disk_gate(min_gb=free + 1e6, path="/")
+    with pytest.raises(SystemExit):
+        lr.disk_gate(min_gb=0, path="/", tmp_min_gb=free + 1e6, tmp_path="/")
 
 
 def test_seeds_and_budget_are_the_frozen_ones():

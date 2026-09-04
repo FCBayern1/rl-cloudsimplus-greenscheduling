@@ -60,7 +60,11 @@ FROZEN_SOURCES = [
     "drl-manager/src/prediction/perturbed_godeye_provider.py", "drl-manager/src/baselines/forecast_perturb.py",
     "drl-manager/src/models/rlmodule_gtrxl_ensemble.py",
 ]
-BASE_ENV = {"PYTHONHASHSEED": "0", "RAY_TMPDIR": RAY_TMPDIR,
+# TMPDIR: Ray Tune writes every checkpoint to Python's temp dir before persisting it to
+# storage_path; with /tmp full that write raised ENOSPC at 320k of seed 20260904 (long-run
+# addendum A). Everything temporary now lives on the large /home partition.
+TMPDIR = os.path.join(RAY_TMPDIR, "tmp")
+BASE_ENV = {"PYTHONHASHSEED": "0", "RAY_TMPDIR": RAY_TMPDIR, "TMPDIR": TMPDIR,
             "GATEWAY_LIBS": os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib"),
             "PLANNER_EXPECTED_CAP": "640;512;640;512;192", "PLANNER_STATIC_TOTAL_W": "0"}
 EVAL_ENV = {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "TORCH_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
@@ -106,10 +110,14 @@ def disk_free_gb(path="/home"):
     return shutil.disk_usage(path).free / 1e9
 
 
-def disk_gate(min_gb=DISK_MIN_GB, path="/home"):
+def disk_gate(min_gb=DISK_MIN_GB, path="/home", tmp_min_gb=10, tmp_path="/tmp"):
+    """Hard gate on the data partition and on /tmp (system temp still used by tooling)."""
     free = disk_free_gb(path)
     if free < min_gb:
         raise SystemExit(f"disk gate: {free:.1f} GB free on {path} < {min_gb} GB; refusing to continue")
+    tfree = disk_free_gb(tmp_path)
+    if tfree < tmp_min_gb:
+        raise SystemExit(f"disk gate: {tfree:.1f} GB free on {tmp_path} < {tmp_min_gb} GB; refusing to continue")
     return free
 
 
@@ -128,6 +136,7 @@ def init_hash(ck_dir):
 # ---------------------------------------------------------------- freeze
 def freeze_seed(seed):
     os.makedirs(RAY_TMPDIR, exist_ok=True)
+    os.makedirs(TMPDIR, exist_ok=True)
     os.makedirs(seed_results(seed), exist_ok=True)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=REPO,
@@ -139,7 +148,8 @@ def freeze_seed(seed):
     art = {"seed": seed, "commit": commit, "worktree_clean": dirty == "", "steps": STEPS,
            "gpu": gpu, "torch": ver[0] if ver else None, "cuda": ver[1] if len(ver) > 1 else None,
            "ray": ver[2] if len(ver) > 2 else None, "python_hash_seed": BASE_ENV["PYTHONHASHSEED"],
-           "ray_tmpdir": RAY_TMPDIR, "disk_free_gb": round(disk_free_gb(), 1),
+           "ray_tmpdir": RAY_TMPDIR, "tmpdir": TMPDIR, "disk_free_gb": round(disk_free_gb(), 1),
+           "tmp_free_gb": round(disk_free_gb("/tmp"), 1),
            "jar_sha256": sha(JAR), "sources": {p: sha(os.path.join(REPO, p)) for p in FROZEN_SOURCES},
            "judgement_offsets": judgement_offsets(),
            "jobs": {"main": EXPECTED_MAIN, "init": EXPECTED_INIT}}
