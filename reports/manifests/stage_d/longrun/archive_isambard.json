@@ -1,0 +1,536 @@
+{
+  "platform": "isambard GH200",
+  "verdict_context": "STOP_STAGE_D_CONTRACT on the workstation; these runs stopped at ~iteration 7/50, unread",
+  "runs": {
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260904": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260905": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260906": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260907": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260908": {
+      "iterations": 6,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/E_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260904": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260905": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260906": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260907": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260908": {
+      "iterations": 6,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NE_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260904": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260905": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260906": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260907": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260908": {
+      "iterations": 6,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/NV_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260904": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260905": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260906": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260907": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260908": {
+      "iterations": 6,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_STOPPED_CONTRACT/V_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260904": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260905": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260906": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260907": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260908": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/C_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260904": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260905": {
+      "iterations": 8,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260906": {
+      "iterations": 6,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260907": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260908": {
+      "iterations": 7,
+      "checkpoints": [
+        "checkpoint_000000",
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_cca_STOPPED_CONTRACT/NC_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260904": {
+      "iterations": 3,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260905": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260906": {
+      "iterations": 3,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260907": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260908": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RCV_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260904": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260905": {
+      "iterations": 3,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260906": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260907": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260908": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RDC_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260904": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260905": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260906": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260907": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260908": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RMV_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260904": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260904.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260905": {
+      "iterations": 3,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260905.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260906": {
+      "iterations": 3,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260906.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260907": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260907.log": {
+      "iterations": 0,
+      "checkpoints": []
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260908": {
+      "iterations": 2,
+      "checkpoints": [
+        "checkpoint_init"
+      ]
+    },
+    "stage_d_longrun_risk_STOPPED_CONTRACT/RRS_s20260908.log": {
+      "iterations": 0,
+      "checkpoints": []
+    }
+  }
+}
