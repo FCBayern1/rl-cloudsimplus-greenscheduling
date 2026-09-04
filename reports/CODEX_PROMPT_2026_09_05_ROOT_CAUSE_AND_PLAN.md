@@ -72,4 +72,4 @@ Stage D 已按你的裁定以 STOP_STAGE_D_CONTRACT 终止并归档(附录 G)。
 
 ## 6. 文件指针
 
-`reports/HZ_DECOMPOSITION_DIAGNOSTIC.md`、`g1/compressed_timecap_s2/stage_a_out/hz_decomp_m2.json`、`reports/CODEX_PROMPT_2026_09_05_SEED1_DIAGNOSIS.md` §7–8、`reports/STAGE_D_LONGRUN_PREREG.md` 附录 A–G、归档 `drl-manager/{logs,results}/stage_d_longrun*_STOPPED_CONTRACT`。当前 commit df2ce234。两台机器空闲,无实验在跑,主实验代码未改。
+`reports/HZ_DECOMPOSITION_DIAGNOSTIC.md`、`g1/compressed_timecap_s2/stage_a_out/hz_decomp_m2.json`、`reports/CODEX_PROMPT_2026_09_05_SEED1_DIAGNOSIS.md` §7–8、`reports/STAGE_D_LONGRUN_PREREG.md` 附录 A–G、归档 `drl-manager/{logs,results}/stage_d_longrun*_STOPPED_CONTRACT`。当前 commit a3703679(修正:此前误写为 df2ce234)。两台机器空闲,无实验在跑,主实验代码未改。

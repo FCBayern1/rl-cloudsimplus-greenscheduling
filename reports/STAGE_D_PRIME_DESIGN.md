@@ -1,0 +1,43 @@
+# Stage D′ design basis — Codex ruling of 2026-09-05 on the root-cause analysis, with verified implementation notes
+
+Status: DESIGN APPROVED, retraining NOT approved as proposed. This file records the ruling verbatim in substance, the corrections it makes to `CODEX_PROMPT_2026_09_05_ROOT_CAUSE_AND_PLAN.md`, and what the codebase actually offers for each item (checked this session). The Stage D′ preregistration is written only after steps 1–5 of §4 complete.
+
+## 1. Root causes as ruled
+
+- **R1 (accepted, reworded):** the policy lacks an explicit, per-job, approximately Markov-sufficient timing state. Not "mathematically unobservable": a GTrXL can partially infer timing from repeated observations. Evidence E2 stands (18 obs keys, no deadline / wait age / deferred state; forecast = 3-row and 144-row scalars).
+- **R2 (corrected):** the SLA is not absent from training. The Lagrangian channel is on with `sla_mode: deadline_miss` and `sla_deadline_miss_target: 0.1`, so a 6.5% miss rate (E's mean on-time 0.935) is *feasible* for training while the contract allows about 0.5%. This is a contract–objective misalignment, not a missing term. Verified: `SimulationSettings.java:569–571`, `lagrangian_callback.py` dual update, frozen E block `sla_target: 0.62` (the old completion target).
+- **R3 (partly accepted):** zero slack is unsafe once start latency and queueing exist, but enlarging the Java backstop slack fires `forced` earlier, and the contract requires `forced = 0`; it cannot be the main fix.
+- **R4 (stays a hypothesis):** the existing `normalize_rho_cap` bounds only the upward amplification, not the recovery-phase suppression (w ≈ 0.06); a one-sided cap may not close the described ratchet.
+- **E1 wording:** "in the pooled decomposition, no positive gain was observed once active deferral was forbidden"; spatial and temporal effects may interact and per-window shares are not uniformly negative (−0.50 / +0.60 / −0.53). Not "100% temporal".
+
+## 2. The five rulings
+
+| # | ruling | what the code offers (verified) |
+|---|---|---|
+| Q1 | `obs_v31_features: true`, `obs_v32_job_forecast: false`. All four lines get raw per-job timing state (deadline, wait age, deferred flag, global deferred backlog); no best-start hint. | Flag exists; V3.1 campaign used it in 26 blocks. Keys added: `batch_cloudlet_time_to_deadline`, `deadline_present`, `wait_age`, `is_deferred`, `defer_count`, `global_deferred_count/mi`. |
+| Q2 | Timing enters via the **existing Lagrangian SLA channel**, not `global_reward_gamma` (that is the green-waste weight): `sla_mode: ontime_mi`, `sla_target: 0.995`. No fixed defer cost: it would systematically oppose the waiting that is valuable here. | `MultiDatacenterSimulationCore.java:2805–2808`: `ontime_mi` mode computes c_ep = max(0, sla_target − ontime_mi_share); pure config change. Note the frozen `sla_target` is 0.62 and must be set to 0.995. |
+| Q3 | Do **not** freeze `normalize_rho_cap = 1.5` now. Run M5 first, separately for DEFER and ROUTE: raw ρ, normalised w, upper-tail amplification, lower-tail suppression, advantage sign and magnitude, ΔQ, Δr, c_t, τ. If only upper-tail amplification appears, 1.5 is a candidate frozen after development; if "amplified in, erased out" appears, a one-sided cap is insufficient and a symmetric guard or shrinkage toward w = 1 is needed. Design fixed before the new preregistration. | Cap exists (`normalize_rho_cap`, default inf); a symmetric guard would be new code in `_compute_responsibilities`. |
+| Q4 | Reject the "[0.3×, 3×] of ST's defer rate" gate. Replace with a **timing-selectivity gate** on a frozen diagnostic corpus containing non-empty ST-route and ST-defer samples: P_V(defer | ST-defer) − P_V(defer | ST-route) ≥ 0.10, balanced AUC ≥ 0.60, clean contract all green, and no collapse of the overall defer rate. | Needs a corpus builder: run ST on the corpus windows, record its per-slot decisions, replay the same states through V and score V's DEFER probability. New diagnostic code. |
+| Q5 | Do **not** withdraw the reservation "not yet proven structurally unlearnable". E1 shows the value comes from timing and that V did not realise it; the action space can still express waiting through repeated DEFER. Stage D stopped on E's contract failure; gate 2 is a strong single-seed negative indication only. | Recorded in Addendum G wording. |
+
+## 3. Two additions to the plan
+
+- **Deadline-safe DEFER action mask, shared by every algorithm.** At a slot's last safe start point the DEFER choice is masked so the policy must pick a DC itself; the Java backstop remains only as a last safety net. An adversarial always-defer policy must be routed legally by the mask: on-time ≥ 0.995 and Java `forced = 0`. Verified state of the code: the global `action_mask` is **slot-level** (`get_global_action_mask`, shape (128,)), applied by the GTrXL module as slot validity; there is no per-choice mask. Implementation needs (a) Java: per-slot `defer_allowed` from the latest-start rule with a safety margin, exported in the global observation; (b) env: obs key + mask; (c) module: −∞ on the DEFER logit of slots with `defer_allowed = 0`. The backstop slack stays as the last net.
+- **New seeds and new judgement windows.** The current changes were designed from seed 20260904 and windows already read. Old windows and seeds serve development and smoke only; Stage D′ freezes five new paired seeds and new unread judgement windows (window preflight rerun). Scene, corruptions and gate 1–5 formulas may stay. CCA-PG and the risk set must be retrained under the new observation, SLA and mask semantics if D′ passes; no old baseline result is reused.
+
+## 4. Order of execution (ruled)
+
+1. **M5** action-conditioned credit audit on the archived E / N_E checkpoints (§5 below).
+2. **M1** `obs_v31_features` + contract-aligned SLA (`ontime_mi`, 0.995) + deadline-safe DEFER mask.
+3. **P0′** extended reward truth table, comparing the actual PPO **discounted return**, not only undiscounted reward and terminal carbon, on behaviours differing only in timing: best-green-window-and-on-time > start-now-on-brown > defer-until-late.
+4. One development smoke on the old windows and old seeds.
+5. Timing-selectivity gate and contract gate pass → freeze the new Stage D′ preregistration (new seeds, new windows).
+6. Only then the five new seeds; baselines after the main line passes.
+
+## 5. M5 audit — definition (frozen before running)
+
+Inputs: archived checkpoints `E_s20260904` and `NE_s20260904`, `checkpoint_init` and `checkpoint_000000 … 000009` (every 40k). For each: restore the algorithm, sample fresh episodes on the training scene with the checkpoint's own policy, build a local learner from the frozen config with the checkpoint's module weights, disable the reweighting warm-up for the audit, and run the EU-CRD term computation exactly as the learner does (`_compute_crd_terms`), capturing per transition: ρ_routing raw and after normalisation, w, advantage before and after reweighting, ΔQ, Δr, c_t, τ, and the DEFER share of the valid slots at that transition. Split transitions into DEFER-dominated (share ≥ 0.5) and ROUTE-dominated, report the distributions and the four quantities Q3 names: upper-tail amplification (w > 1), lower-tail suppression (w < 0.2), advantage sign by class, and whether the DEFER-class w differs from the ROUTE-class w in a consistent direction across checkpoints after warm-up (checkpoints ≥ 000005). The same on N_E as the control. Caveat recorded in advance: EMA scale state and the blender's τ are learner-side memory not stored in the checkpoint (to be verified in code); the audit re-warms them on a burn-in of five batches before recording and reports first-batch values separately.
+
+## 6. Provenance
+
+Root-cause prompt commit a3703679 (its footer originally mis-stated df2ce234; corrected). This design file supersedes M1–M7 of that prompt where they conflict.
