@@ -84,13 +84,60 @@ def judge(rows, windows):
             "probe_always_defer_contract_bad_windows": probe_contract_bad}
 
 
-def load_rows(variant=""):
+DPRIME_ARMS = ("blind", "clean", "shrink", "always_defer", "nodefer")
+DPRIME_DIRS = dict(DIRS, nodefer="p0_godeye_nodefer")
+ONTIME_MIN, FORCED_MAX = 0.995, 0
+
+
+def judge_dprime(rows, windows):
+    """P0' (STAGE_D_PRIME_DESIGN §4 step 3, Codex Q2). On top of the P0 gates, the actual
+    PPO objective (discounted return) must order the three behaviours that differ only in
+    timing:  clean (best window, on time)  >  nodefer (start now)  >  always_defer (wait
+    until the mask routes it);  clean must also beat nodefer on carbon; and always_defer
+    must be routed legally by the mask: on-time >= 0.995 and Java forced == 0.
+    rows: as load_rows(dprime=True) -> adds "reward_disc", "ontime", "forced"."""
+    missing = [(a, k) for a in DPRIME_ARMS for k in windows if rows.get((a, k)) is None]
+    if missing:
+        return {"verdict": "INVALID_INCOMPLETE_DATA", "missing": missing}
+    base = judge({key: v for key, v in rows.items() if key[0] in ARMS}, windows)
+    if base["verdict"].startswith("INVALID"):
+        return base
+    order_ok = {}
+    for k in windows:
+        c, s, d = rows[("clean", k)], rows[("nodefer", k)], rows[("always_defer", k)]
+        order_ok[k] = {"clean_gt_nodefer_disc": c["reward_disc"] > s["reward_disc"],
+                       "nodefer_gt_defer_disc": s["reward_disc"] > d["reward_disc"],
+                       "clean_lt_nodefer_carbon": c["carbon"] < s["carbon"]}
+    pooled = {a: {"reward_disc": sum(rows[(a, k)]["reward_disc"] for k in windows),
+                  "carbon": sum(rows[(a, k)]["carbon"] for k in windows)} for a in DPRIME_ARMS}
+    n = len(windows)
+    wins = {key: sum(1 for k in windows if order_ok[k][key]) for key in order_ok[windows[0]]}
+    defer_legal = [k for k in windows
+                   if rows[("always_defer", k)]["ontime"] >= ONTIME_MIN
+                   and rows[("always_defer", k)]["forced"] <= FORCED_MAX]
+    gates = dict(base["gates"])
+    gates.update({
+        "disc_order_pooled": pooled["clean"]["reward_disc"] > pooled["nodefer"]["reward_disc"]
+                             > pooled["always_defer"]["reward_disc"],
+        "disc_order_per_window_majority": all(wins[key] * 2 > n for key in
+                                              ("clean_gt_nodefer_disc", "nodefer_gt_defer_disc")),
+        "clean_beats_nodefer_carbon_pooled": pooled["clean"]["carbon"] < pooled["nodefer"]["carbon"],
+        "always_defer_routed_legally_by_mask": len(defer_legal) == n,
+    })
+    out = dict(base)
+    out.update({"verdict": "PASS_P0_PRIME" if all(gates.values()) else "STOP_P0_PRIME",
+                "gates": gates, "pooled_dprime": pooled, "per_window_wins_dprime": wins,
+                "always_defer_legal_windows": defer_legal})
+    return out
+
+
+def load_rows(variant="", dprime=False):
     suffix = f"_{variant}" if variant else ""
     man = json.load(open(os.path.join(HERE, f"stage_d_manifest{suffix}.json")))
     windows = list(range(len(man["train_windows"])))
     cell = "sd_V_s2_r48_w72_c3_n35"
     rows = {}
-    for arm, d in DIRS.items():
+    for arm, d in (DPRIME_DIRS if dprime else DIRS).items():
         for k in windows:
             p = os.path.join(OUT, d.replace("p0_", f"p0{suffix}_", 1), f"{cell}_k{k}.csv")
             if not os.path.exists(p):
@@ -99,6 +146,8 @@ def load_rows(variant=""):
             r = list(csv.DictReader(open(p)))[-1]
             f = lambda key, default=0.0: float(r.get(key, default) or default)  # noqa: E731
             rows[(arm, k)] = {"carbon": f("total_carbon_kg"), "reward": f("global_reward_sum"),
+                              "reward_disc": f("global_reward_discounted_sum"),
+                              "ontime": f("ontime_mi_share", 1.0), "forced": f("deadline_forced_count"),
                               "clip": f("ep_carbon_norm_clip_count"),
                               "samples": f("ep_carbon_norm_sample_count"),
                               "cap": f("ep_global_carbon_cap_count"),
@@ -108,6 +157,14 @@ def load_rows(variant=""):
 
 def main():
     variant = sys.argv[1] if len(sys.argv) > 1 else ""
+    if variant == "dprime":
+        rows, windows = load_rows(variant, dprime=True)
+        out = judge_dprime(rows, windows)
+        out["reward_variant"] = variant
+        with open(os.path.join(OUT, "p0_verdict_dprime.json"), "w") as fh:
+            fh.write(json.dumps(out, sort_keys=True, indent=2, default=str))
+        print(json.dumps(out, sort_keys=True, indent=2, default=str))
+        return
     rows, windows = load_rows(variant)
     out = judge(rows, windows)
     out["reward_variant"] = variant or "legacy"

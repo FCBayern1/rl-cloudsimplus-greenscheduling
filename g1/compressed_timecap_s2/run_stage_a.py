@@ -422,10 +422,17 @@ def main():
                 "calibrated_shrink_v1": {"g": "perturbed_oracle_planner",
                                          "tier": "calibrated_shrink_v1"},
                 "always_defer": {"g": "always_defer", "tier": False}}
+        if variant == "dprime":
+            # P0' (STAGE_D_PRIME_DESIGN §4 step 3): the three behaviours that differ only in
+            # timing. ST = godeye (best window, on time), S = godeye with deferral forbidden
+            # (start now), always_defer (defer until the mask routes it). Judged on the
+            # discounted return by p0_verdict.judge_dprime.
+            arms["godeye_nodefer"] = {"g": "perturbed_oracle_planner", "tier": "godeye",
+                                      "extra": {"PLANNER_ALLOW_DEFER": "0"}}
         todo = []
         for aname, a in arms.items():
             for k, off in enumerate(allow):
-                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, **a.get("extra", {})}
                 if a["tier"]:
                     e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1",
                               "PLANNER_PERTURB_CAL": cal})

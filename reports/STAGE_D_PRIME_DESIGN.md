@@ -50,3 +50,19 @@ Root-cause prompt commit a3703679 (its footer originally mis-stated df2ce234; co
 - **Contract-aligned SLA is a config change**: `sla_mode: ontime_mi`, `sla_target: 0.995` (Java `:2805–2808` already implements the on-time cost; the frozen `sla_target` 0.62 is the old completion target and must be replaced).
 - **Timing-selectivity corpus (Q4)** needs a per-decision dump that does not exist yet: the planner has no decision log and evaluate.py has no per-step action dump. A small addition to evaluate.py (per-step CSV of slot id, cloudlet id, time-to-deadline, action) serves both ST (corpus labels) and V (defer probability replay), gated by an env var so frozen runs are unaffected.
 - **M5 audit** (running): the Ray restore path works end to end (algorithm, env runner, local learner, checkpoint module weights); learner-side EMA and warm-up state are in-memory only (`_crd_share_scale_ema`, `_crd_reweight_calls`), so the audit burns in and reports first-batch and warmed values separately, as §5 states.
+
+## 8. Implementation status (2026-09-05, before any D′ run)
+
+| item | state | where |
+|---|---|---|
+| M5 audit | script verified end to end on E ckpt 000009 (loss-mask and slot-mask aligned); full sweep E/N_E × init + 10 checkpoints, burn-in 5, running | `stage_d_credit_audit.py`, `stage_d_credit_audit_summary.py`, results `drl-manager/results/stage_d_credit_audit/` |
+| M1 timing state | config flag `obs_v31_features: true` (Java already produces the arrays) | `config_stage_d_dprime.yml` |
+| M1 deadline-safe DEFER mask | env computes `batch_cloudlet_defer_allowed` one step ahead of the backstop rule; score-based module masks the DEFER column; env re-routes a disallowed DEFER from a heuristic or adversarial arm to the greenest DC with room and counts it (`info["mask_route_count"]`); all off unless `defer_deadline_mask: true` | env, `rlmodule_gtrxl_models.py`, 11 tests |
+| M1 contract-aligned SLA | `sla_mode: ontime_mi`, `sla_target: 0.995` in the overlay | `gen_stage_d.py DPRIME_OVERLAY` |
+| D′ config | generated from the frozen HZ block + ledger-aligned reward + overlay; diff against the long-run config limited to the six overlay keys by test; SHA 003fd846… (margin still the placeholder 0.0) | `config_stage_d_dprime.yml`, `stage_d_manifest_dprime.json` |
+| P0′ | `hz_p0` replays the extra `godeye_nodefer` arm under `P0_VARIANT=dprime`; `p0_verdict.py dprime` judges discounted-return order clean > nodefer > always_defer, clean < nodefer on carbon, always_defer routed legally (on-time ≥ 0.995, forced = 0), plus the legacy P0 gates; 5 tests | `run_stage_a.py`, `p0_verdict.py` |
+| evaluate.py | `global_reward_discounted_sum` (γ from config, 0.99) in both loops; `EVAL_DECISION_DUMP` per-slot decision CSV (+ optional raw-obs npz) for the Q4 corpus | `evaluate.py`, 3 tests |
+| Q4 timing-selectivity gate | corpus builder and replay scorer not yet written (needs the dump above) | — |
+| D′ preregistration | not written; waits for M5, P0′, the development smoke and the margin | — |
+
+Nothing above has been run on the scene except the M5 audit; no frozen run is affected (every change is behind a flag that the frozen configs do not set).
