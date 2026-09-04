@@ -27,7 +27,9 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 DRL = os.path.join(REPO, "drl-manager")
-PY = os.path.join(DRL, ".venv/bin/python")
+# The workstation's venv by default; a cluster passes its own interpreter (conda env on
+# Isambard) through STAGE_D_PYTHON so the frozen source needs no edit at job time.
+PY = os.environ.get("STAGE_D_PYTHON") or os.path.join(DRL, ".venv/bin/python")
 CONFIG = os.path.join(HERE, "config_stage_d_longrun.yml")
 EVAL_JUDGEMENT = os.path.join(HERE, "config_stage_d_eval_judgement.yml")
 EVAL_CERTIFIED = os.path.join(HERE, "config_stage_d_eval.yml")
@@ -164,8 +166,15 @@ def launch_train(seed, line):
     cmd = [PY, "entrypoint_rlmodule_gtrxl.py", "--config", CONFIG, "--experiment", exp_name(line),
            "--total-timesteps", str(STEPS), "--num-workers", "0", "--seed", str(seed), "--no-wandb",
            "--output-dir", line_dir(seed, line)]
+    extra = {}
+    # One GPU per line when the node has one per line (STAGE_D_GPU_MAP="NV:0,V:1,NE:2,E:3").
+    gmap = os.environ.get("STAGE_D_GPU_MAP", "")
+    if gmap:
+        m = dict(kv.split(":") for kv in gmap.split(",") if ":" in kv)
+        if line in m:
+            extra["CUDA_VISIBLE_DEVICES"] = m[line]
     lf = open(os.path.join(LOGS, f"{line}_s{seed}.log"), "w")
-    return subprocess.Popen(cmd, cwd=DRL, env=env_for(), stdout=lf, stderr=subprocess.STDOUT,
+    return subprocess.Popen(cmd, cwd=DRL, env=env_for(extra), stdout=lf, stderr=subprocess.STDOUT,
                             start_new_session=True), lf
 
 
@@ -189,16 +198,20 @@ def kill(proc):
         pass
 
 
-def train_pair(seed, pair):
+def train_group(seed, lines):
+    """Train `lines` concurrently, one process each, after checking that the paired
+    initialisations match (N_V = V, N_E = E). A mismatch kills the whole group."""
     disk_gate()
-    procs = {L: launch_train(seed, L) for L in pair}
-    inits = {L: wait_init(seed, L) for L in pair}
-    hashes = {L: (init_hash(inits[L]) if inits[L] else None) for L in pair}
-    log(f"seed {seed} pair {pair}: init hashes " + " ".join(f"{L}={str(h)[:12]}" for L, h in hashes.items()))
-    if any(h is None for h in hashes.values()) or len(set(hashes.values())) != 1:
+    procs = {L: launch_train(seed, L) for L in lines}
+    inits = {L: wait_init(seed, L) for L in lines}
+    hashes = {L: (init_hash(inits[L]) if inits[L] else None) for L in lines}
+    log(f"seed {seed} group {tuple(lines)}: init hashes " + " ".join(f"{L}={str(h)[:12]}" for L, h in hashes.items()))
+    bad = [p for p in PAIRS if set(p) <= set(lines)
+           and (hashes[p[0]] is None or hashes[p[0]] != hashes[p[1]])]
+    if bad or any(hashes[L] is None for L in lines):
         for p, _ in procs.values():
             kill(p)
-        raise SystemExit(f"init weight hashes differ or missing for {pair} (seed {seed}); training killed")
+        raise SystemExit(f"init weight hashes differ or missing for {bad or lines} (seed {seed}); training killed")
     rcs = {}
     for L, (p, lf) in procs.items():
         rcs[L] = p.wait()
@@ -206,13 +219,21 @@ def train_pair(seed, pair):
         log(f"seed {seed} train {L} exit={rcs[L]} disk_free={disk_free_gb():.1f}GB")
     if any(rcs.values()):
         raise SystemExit(f"training failed: {rcs}")
-    with open(os.path.join(seed_results(seed), f"init_hashes_{pair[0]}_{pair[1]}.json"), "w") as f:
+    with open(os.path.join(seed_results(seed), f"init_hashes_{'_'.join(lines)}.json"), "w") as f:
         f.write(json.dumps(hashes, indent=2))
 
 
+def train_groups():
+    """How many lines run at once: pairs on a single-GPU workstation, all four on a node
+    with four GPUs (STAGE_D_PARALLEL_LINES=4). Scientifically identical: each line is an
+    independent seeded process; only wall-clock and GPU placement change."""
+    n = int(os.environ.get("STAGE_D_PARALLEL_LINES", "2"))
+    return [list(LINES)] if n >= 4 else [list(p) for p in PAIRS]
+
+
 def train_seed(seed):
-    for pair in PAIRS:
-        train_pair(seed, pair)
+    for group in train_groups():
+        train_group(seed, group)
 
 
 # ---------------------------------------------------------------- check

@@ -52,6 +52,35 @@ def test_disk_gate_refuses_when_below_threshold():
         lr.disk_gate(min_gb=0, path="/", tmp_min_gb=free + 1e6, tmp_path="/")
 
 
+def test_line_grouping_is_pairs_by_default_and_all_four_when_asked(monkeypatch):
+    monkeypatch.delenv("STAGE_D_PARALLEL_LINES", raising=False)
+    assert lr.train_groups() == [["NV", "V"], ["NE", "E"]]
+    monkeypatch.setenv("STAGE_D_PARALLEL_LINES", "4")
+    assert lr.train_groups() == [["NV", "V", "NE", "E"]]
+
+
+def test_gpu_map_pins_one_device_per_line(monkeypatch):
+    monkeypatch.setenv("STAGE_D_GPU_MAP", "NV:0,V:1,NE:2,E:3")
+    seen = {}
+
+    class P:
+        pid = 1
+
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_popen(cmd, cwd=None, env=None, stdout=None, stderr=None, start_new_session=None):
+        seen[cmd[cmd.index("--experiment") + 1]] = env.get("CUDA_VISIBLE_DEVICES")
+        return P()
+
+    monkeypatch.setattr(lr.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(lr.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr("builtins.open", lambda *a, **k: __import__("io").StringIO())
+    for L in lr.LINES:
+        lr.launch_train(20260904, L)
+    assert seen[lr.exp_name("NV")] == "0" and seen[lr.exp_name("E")] == "3"
+
+
 def test_seeds_and_budget_are_the_frozen_ones():
     assert lr.SEEDS == (20260904, 20260905, 20260906, 20260907, 20260908)
     assert lr.STEPS == 400_000 and lr.PAIRS == (("NV", "V"), ("NE", "E"))
