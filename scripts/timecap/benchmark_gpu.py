@@ -44,7 +44,7 @@ from prediction.timecap_godeye_provider import TimeCAPGodEyeProvider     # noqa:
 from timecap_prediction.predictor import TimeCAP_GreenPredictor          # noqa: E402
 
 
-DEFAULT_CSV_DIR = _REPO / "cloudsimplus-gateway/bin/main/windProduction/split"
+DEFAULT_CSV_DIR = _REPO / "cloudsimplus-gateway/src/main/resources/windProduction/split"
 DEFAULT_CKPT = (
     _REPO / "drl-manager/timecap_prediction/TimeCAP/model"
     / "finetune_TimeCAP_custom_sl96_baseline_4358062/ckpt_best.pth"

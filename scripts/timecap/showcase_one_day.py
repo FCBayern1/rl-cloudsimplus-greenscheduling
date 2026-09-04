@@ -50,7 +50,7 @@ DEFAULT_CHECKPOINT = (
 )
 DEFAULT_CSV = (
     _REPO_ROOT
-    / "cloudsimplus-gateway/bin/main/windProduction/split/Turbine_46_2021.csv"
+    / "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_46_2021.csv"
 )
 DEFAULT_OUT_DIR = _REPO_ROOT / "drl-manager/timecap_prediction/figures"
 
