@@ -30,13 +30,17 @@ DRL = os.path.join(REPO, "drl-manager")
 # The workstation's venv by default; a cluster passes its own interpreter (conda env on
 # Isambard) through STAGE_D_PYTHON so the frozen source needs no edit at job time.
 PY = os.environ.get("STAGE_D_PYTHON") or os.path.join(DRL, ".venv/bin/python")
-CONFIG = os.path.join(HERE, "config_stage_d_longrun.yml")
+# The frozen four-line config by default; STAGE_D_CONFIG points a second
+# preregistration (the CCA-PG baseline) at its own config, and STAGE_D_SUFFIX keeps its
+# logs, results and line names apart from the main run.
+CONFIG = os.environ.get("STAGE_D_CONFIG") or os.path.join(HERE, "config_stage_d_longrun.yml")
+SUFFIX = os.environ.get("STAGE_D_SUFFIX", "")
 EVAL_JUDGEMENT = os.path.join(HERE, "config_stage_d_eval_judgement.yml")
 EVAL_CERTIFIED = os.path.join(HERE, "config_stage_d_eval.yml")
 WINDOWS = os.path.join(HERE, "stage_a_out", "stage_d_windows.json")
 JAR = os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar")
-LOGS = os.path.join(DRL, "logs/stage_d_longrun")
-RESULTS = os.path.join(DRL, "results/stage_d_longrun")
+LOGS = os.path.join(DRL, f"logs/stage_d_longrun{os.environ.get('STAGE_D_SUFFIX', '')}")
+RESULTS = os.path.join(DRL, f"results/stage_d_longrun{os.environ.get('STAGE_D_SUFFIX', '')}")
 # Workstation defaults; a cluster exports its own before calling this runner, and the
 # exported value wins (hard-coding the workstation path made every Isambard job die in the
 # freeze step with PermissionError on /home/joshua).
@@ -45,15 +49,15 @@ SEEDS = (20260904, 20260905, 20260906, 20260907, 20260908)
 STEPS = 400_000
 WORKERS = int(os.environ.get("STAGE_D_EVAL_WORKERS", "6"))
 DISK_MIN_GB = 50
-LINES = ("NV", "V", "NE", "E")
-PAIRS = (("NV", "V"), ("NE", "E"))
+LINES = tuple(os.environ.get("STAGE_D_LINES", "NV,V,NE,E").split(","))
+PAIRS = ((("NC", "C"),) if LINES == ("NC", "C") else (("NV", "V"), ("NE", "E")))
 CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
-TIERS = {"NV": ("hollow",), "NE": ("hollow",),
-         "V": ("godeye", "calibrated_shrink_v1", "shuffle", "anti"),
-         "E": ("godeye", "calibrated_shrink_v1", "shuffle", "anti")}
-CLEAN = {"NV": "hollow", "NE": "hollow", "V": "godeye", "E": "godeye"}
+CORRUPT_TIERS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
+TIERS = {L: (("hollow",) if L.startswith("N") else CORRUPT_TIERS) for L in LINES}
+CLEAN = {L: ("hollow" if L.startswith("N") else "godeye") for L in LINES}
 CERTIFIED_KS = (26, 34, 42)
-EXPECTED_MAIN, EXPECTED_INIT = 360, 144
+EXPECTED_MAIN = sum(len(TIERS[L]) for L in LINES) * len(CELLS) * 6
+EXPECTED_INIT = len(LINES) * len(CELLS) * 6
 FROZEN_SOURCES = [
     "g1/compressed_timecap_s2/stage_d_longrun.py", "g1/compressed_timecap_s2/stage_d_longrun_verdict.py",
     "g1/compressed_timecap_s2/gen_stage_d.py", "g1/compressed_timecap_s2/config_stage_d_longrun.yml",

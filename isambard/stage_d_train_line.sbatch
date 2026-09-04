@@ -21,6 +21,10 @@ mkdir -p "$TMPDIR" "$RAY_TMPDIR"
 export RAY_LIMIT_CPUS=8 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONHASHSEED=0
 export STAGE_D_PYTHON=$(command -v python)
 export STAGE_D_DATA_PATH=$SCRATCHDIR
+# Optional: a second preregistration (CCA-PG baseline) reuses these scripts with its own
+# config, line names and output roots, so the frozen four-line run is untouched.
+[ -n "${STAGE_D_CONFIG:-}" ] && export STAGE_D_CONFIG
+[ -n "${STAGE_D_SUFFIX:-}" ] && export STAGE_D_SUFFIX
 export GATEWAY_LIBS=$REPO/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
 cd "$REPO"
 echo "[$(date '+%F %T')] node $(hostname) seed $SEED line $LINE commit $(git rev-parse --short HEAD)"

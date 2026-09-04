@@ -33,6 +33,13 @@ LINES = {"NV": {"crd": False, "hollow": True},
          "V": {"crd": False, "hollow": False},
          "NE": {"crd": True, "hollow": True},
          "E": {"crd": True, "hollow": False}}
+# Credit-assignment baseline (Mesnard et al. 2021, hindsight baseline) as its own two
+# lines, so it is compared under the same protocol without touching the frozen four.
+# The learner routes to the CRD learner's `_apply_cca` hook on a vanilla backbone when
+# crd.enabled is false, no risk objective is set, and crd.cca.enabled is true.
+CCA_CFG = {"enabled": True, "horizon": 12, "hidden": 64, "lr": 0.001, "train_iters": 1}
+CCA_LINES = {"NC": {"crd": False, "hollow": True, "cca": True},
+             "C": {"crd": False, "hollow": False, "cca": True}}
 # Keys a line may differ in from the HZ block. Anything else is a generator bug.
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
@@ -85,7 +92,7 @@ REWARD_KEYS = {"defer_base_cost", "defer_urgency_weight", "per_action_carbon_wei
 
 
 def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy",
-          checkpoint_freq=8000, out_name=None):
+          checkpoint_freq=8000, out_name=None, lines=None):
     out_dir = out_dir or HERE
     hz = yaml.safe_load(open(HZ_CONFIG))
     base = hz[HZ_CELL]
@@ -101,7 +108,7 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         reward_variant = "physical"            # same overrides, same artefact names
     suffix = "" if reward_variant == "legacy" else f"_{reward_variant}"
     blocks = {}
-    for line, spec in LINES.items():
+    for line, spec in (lines or LINES).items():
         b = copy.deepcopy(base)
         b.update(copy.deepcopy(overrides))
         name = f"sd_{line}_{TRAIN_CELL}"
@@ -112,6 +119,8 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         b["perturb_tier"] = "godeye"                 # training is always clean
         b["forecast_mode"] = "none" if spec["hollow"] else "full"
         b["crd"] = dict(copy.deepcopy(crd), enabled=bool(spec["crd"]))
+        if spec.get("cca"):
+            b["crd"]["cca"] = copy.deepcopy(CCA_CFG)
         # One checkpoint per PPO iteration (train_batch_size 8000) so the health gate can
         # read the first and the last checkpoint; total_timesteps should be a multiple.
         # Codex smoke rulings: a true init checkpoint before the first SGD step, every
@@ -227,6 +236,11 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "cca":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_cca.yml", lines=CCA_LINES)
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     if variant == "longrun":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,

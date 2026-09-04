@@ -138,3 +138,24 @@ def test_manifest_records_hashes_and_windows(built):
     assert man["train_trace"]["file"].endswith("s2_r48_w72_c3_n35_pes32.csv")
     assert len(man["train_windows"]) >= 4 and len(man["eval_windows"]) == 6
     assert json.dumps(man)  # serialisable
+
+
+def test_cca_lines_are_vanilla_backbone_with_the_hindsight_baseline_on():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        four, _ = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                           checkpoint_freq=40_000, out_name="config_stage_d_longrun.yml")
+        cca, man = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                            checkpoint_freq=40_000, out_name="config_stage_d_cca.yml",
+                            lines=sd.CCA_LINES)
+    assert man["config"] == "config_stage_d_cca.yml" and set(cca) == {
+        "sd_NC_s2_r48_w72_c3_n35", "sd_C_s2_r48_w72_c3_n35"}
+    ref = four["sd_V_s2_r48_w72_c3_n35"]
+    for n, b in cca.items():
+        assert b["crd"]["enabled"] is False           # vanilla backbone, no ensemble
+        assert b["crd"]["cca"] == sd.CCA_CFG
+        assert b["forecast_mode"] == ("none" if "_NC_" in n else "full")
+        assert b["training"]["total_timesteps"] == 400_000
+        extra = set(sd.diff_keys(ref, b)) - sd.BETWEEN_LINES
+        assert not extra, (n, extra)                   # identical to V apart from identity/hollow/crd
