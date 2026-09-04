@@ -77,7 +77,7 @@ def load(mult):
     import hz_verdict as hv
     import ladder_v2_verdict as lv
     import run_stage_a as ra
-    import s2_verdict as sv
+    import stage_a_verdict as sv
     part = "confirmation"
     ks = json.load(open(os.path.join(HERE, "e_data_split.json")))[part]["windows_k"]
     freeze = json.load(open(os.path.join(ra.OUT, f"hz_blind_freeze_m{mult}.json")))
