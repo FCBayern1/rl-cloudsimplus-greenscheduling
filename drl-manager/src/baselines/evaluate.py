@@ -439,6 +439,80 @@ def _checkpoint_label_from_path(checkpoint_path: str) -> str:
         return "rllib"
 
 
+def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs):
+    """Per-slot decision records for the Stage D' timing-selectivity corpus
+    (STAGE_D_PRIME_DESIGN Q4). One row per real slot: what was decided (route index or
+    DEFER) next to the slot's timing facts as the policy saw them. Pure."""
+    rows = []
+    if global_action is None:
+        return rows
+    g = obs_global if isinstance(obs_global, dict) else {}
+
+    def col(k, i):
+        v = g.get(k)
+        if v is None:
+            return None
+        try:
+            return float(v[i])
+        except Exception:
+            return None
+
+    for slot, a in enumerate(list(global_action)):
+        if planner_ids is not None and slot < len(planner_ids) and int(planner_ids[slot]) < 0:
+            continue
+        mi = col("batch_cloudlet_mi", slot)
+        if planner_ids is None and (mi is None or mi <= 0):
+            continue                                   # padding slot without planner ids
+        rows.append({
+            "episode": ep, "step": step, "slot": slot,
+            "cloudlet_id": int(planner_ids[slot]) if planner_ids is not None and slot < len(planner_ids) else -1,
+            "action": int(a), "is_defer": int(int(a) >= num_dcs),
+            "mi": mi, "pes": col("batch_cloudlet_pes", slot),
+            "time_to_deadline": col("batch_cloudlet_time_to_deadline", slot),
+            "deadline_present": col("batch_cloudlet_deadline_present", slot),
+            "wait_age": col("batch_cloudlet_wait_age", slot),
+            "is_deferred": col("batch_cloudlet_is_deferred", slot),
+            "defer_allowed": col("batch_cloudlet_defer_allowed", slot),
+        })
+    return rows
+
+
+class _DecisionDump:
+    """Writes decision_rows to EVAL_DECISION_DUMP (CSV, appended) and, when
+    EVAL_DECISION_DUMP_OBS=1, the raw global observation of every step to a sibling .npz so
+    another policy can be replayed on the same states. Off unless the env var is set."""
+
+    def __init__(self, num_dcs):
+        self.path = os.environ.get("EVAL_DECISION_DUMP", "").strip() or None
+        self.save_obs = bool(self.path) and os.environ.get("EVAL_DECISION_DUMP_OBS", "0") == "1"
+        self.num_dcs = num_dcs
+        self._rows, self._obs = [], []
+
+    def record(self, ep, step, obs_global, global_action, info):
+        if not self.path:
+            return
+        ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids") if isinstance(info, dict) else None
+        self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs))
+        if self.save_obs and isinstance(obs_global, dict):
+            self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
+
+    def close(self):
+        if not self.path or not self._rows:
+            return
+        import csv as _csv
+        keys = list(self._rows[0].keys())
+        new = not os.path.exists(self.path)
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+        with open(self.path, "a", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=keys)
+            if new:
+                w.writeheader()
+            w.writerows(self._rows)
+        if self.save_obs and self._obs:
+            stacked = {k: np.stack([o[k] for o in self._obs]) for k in self._obs[0] if all(k in o for o in self._obs)}
+            np.savez_compressed(os.path.splitext(self.path)[0] + "_obs.npz", **stacked)
+
+
 def run_evaluation(
     global_scheduler_name: str,
     local_scheduler_name: str,
@@ -556,6 +630,11 @@ def run_evaluation(
         global_route_actions = 0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
+        # PPO's own objective, for the Stage D' reward truth table P0' (discounted return,
+        # not only the undiscounted sum). gamma = the training config's, default 0.99.
+        _gamma = float((getattr(env, "config", {}) or {}).get("gamma", 0.99) or 0.99)
+        global_reward_discounted_sum = 0.0
+        _dump = _DecisionDump(num_dcs)
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
@@ -639,10 +718,13 @@ def run_evaluation(
                         global_route_actions += 1
             except Exception:
                 pass
+            _dump.record(ep + 1, steps, obs['global'], global_action, info)
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             if isinstance(rewards, dict):
-                global_reward_sum += float(rewards.get("global", 0.0) or 0.0)
+                _gr = float(rewards.get("global", 0.0) or 0.0)
+                global_reward_sum += _gr
+                global_reward_discounted_sum += (_gamma ** (steps - 1)) * _gr
                 _loc = rewards.get("local", {})
                 local_reward_sum += float(sum(_loc.values()) if isinstance(_loc, dict) else (_loc or 0.0))
             # When force_full_episode=True, ignore the env's natural-completion
@@ -656,11 +738,14 @@ def run_evaluation(
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
         metrics['global_reward_sum'] = global_reward_sum
+        metrics['global_reward_discounted_sum'] = global_reward_discounted_sum
+        metrics['discount_gamma'] = _gamma
         metrics['local_reward_sum'] = local_reward_sum
         metrics['global_defer_actions'] = global_defer_actions
         metrics['global_route_actions'] = global_route_actions
         _dec = global_defer_actions + global_route_actions
         metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
+        _dump.close()
         # The green window this episode actually replayed (schedule or allowlist), so a
         # verdict can assert it against the registered offset for its --reset-skip.
         metrics['green_episode_offset_rows'] = int(getattr(env, '_green_episode_offset_rows', -1) or 0)
@@ -1110,6 +1195,9 @@ def run_rllib_evaluation(
         global_route_actions = 0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
+        _gamma = float((getattr(env, "config", {}) or {}).get("gamma", 0.99) or 0.99)
+        global_reward_discounted_sum = 0.0
+        _dump = _DecisionDump(num_dcs)
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
@@ -1151,10 +1239,13 @@ def run_rllib_evaluation(
                 pass
             # 执行
             action = {'global': global_action, 'local': local_actions}
+            _dump.record(ep + 1, steps, obs['global'], global_action, info)
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             if isinstance(rewards, dict):
-                global_reward_sum += float(rewards.get("global", 0.0) or 0.0)
+                _gr = float(rewards.get("global", 0.0) or 0.0)
+                global_reward_sum += _gr
+                global_reward_discounted_sum += (_gamma ** (steps - 1)) * _gr
                 _loc = rewards.get("local", {})
                 local_reward_sum += float(sum(_loc.values()) if isinstance(_loc, dict) else (_loc or 0.0))
             done = truncated if force_full_episode else (terminated or truncated)
@@ -1164,11 +1255,14 @@ def run_rllib_evaluation(
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
         metrics['global_reward_sum'] = global_reward_sum
+        metrics['global_reward_discounted_sum'] = global_reward_discounted_sum
+        metrics['discount_gamma'] = _gamma
         metrics['local_reward_sum'] = local_reward_sum
         metrics['global_defer_actions'] = global_defer_actions
         metrics['global_route_actions'] = global_route_actions
         _dec = global_defer_actions + global_route_actions
         metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
+        _dump.close()
         # The green window this episode actually replayed (schedule or allowlist), so a
         # verdict can assert it against the registered offset for its --reset-skip.
         metrics['green_episode_offset_rows'] = int(getattr(env, '_green_episode_offset_rows', -1) or 0)
