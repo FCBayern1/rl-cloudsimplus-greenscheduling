@@ -1,0 +1,45 @@
+{
+  "verdict": "STOP_STAGE_D_CONTRACT",
+  "basis": "Addendum G: clean-deployment contract failure on line E, seed 20260904, workstation",
+  "seed": 20260904,
+  "platform": "NVIDIA GeForce RTX 5080",
+  "clean_contract_failures": 33,
+  "clean_contract_failures_by_line": {
+    "NV": 0,
+    "V": 0,
+    "NE": 0,
+    "E": 33
+  },
+  "first_failures": [
+    "('E', 's2_r48_w72_c1_n20', 1)",
+    "('E', 's2_r48_w72_c1_n20', 3)",
+    "('E', 's2_r48_w72_c1_n20', 4)"
+  ],
+  "effects": {
+    "vanilla_forecast_value": 0.06372102675197981,
+    "vanilla_harm": 0.011250925399344308,
+    "eucrd_forecast_value": 0.048225587827177736,
+    "eucrd_harm": -0.0032119177216225554
+  },
+  "gates_seed1": {
+    "g1": true,
+    "g2": false,
+    "g3": false,
+    "g4": true,
+    "g5": false,
+    "g0_clean_contract": false,
+    "g0_codirectional": true
+  },
+  "C": {
+    "NV": 9.683982408731553e-11,
+    "NE": 9.955132983423675e-11,
+    "V0": 9.066909106599068e-11,
+    "V1": 9.16892022456005e-11,
+    "E0": 9.475040843400343e-11,
+    "E1": 9.444607791802328e-11,
+    "V_shuffle": 9.37148536211731e-11,
+    "V_anti": 9.297564331111419e-11,
+    "E_shuffle": 9.386170359202168e-11,
+    "E_anti": 9.541146760589837e-11
+  }
+}
