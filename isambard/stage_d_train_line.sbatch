@@ -20,9 +20,10 @@ export TMPDIR=$SCRATCHDIR/tmp RAY_TMPDIR=$SCRATCHDIR/ray
 mkdir -p "$TMPDIR" "$RAY_TMPDIR"
 export RAY_LIMIT_CPUS=8 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONHASHSEED=0
 export STAGE_D_PYTHON=$(command -v python)
+export STAGE_D_DATA_PATH=$SCRATCHDIR
 export GATEWAY_LIBS=$REPO/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
 cd "$REPO"
 echo "[$(date '+%F %T')] node $(hostname) seed $SEED line $LINE commit $(git rev-parse --short HEAD)"
-python g1/compressed_timecap_s2/stage_d_longrun.py seed "$SEED" freeze
-python g1/compressed_timecap_s2/stage_d_longrun.py seed "$SEED" train_line "$LINE"
+python g1/compressed_timecap_s2/stage_d_longrun.py seed "$SEED" freeze || { echo "freeze FAILED"; exit 1; }
+python g1/compressed_timecap_s2/stage_d_longrun.py seed "$SEED" train_line "$LINE" || { echo "train FAILED"; exit 1; }
 echo "[$(date '+%F %T')] seed $SEED line $LINE done"

@@ -84,3 +84,21 @@ def test_gpu_map_pins_one_device_per_line(monkeypatch):
 def test_seeds_and_budget_are_the_frozen_ones():
     assert lr.SEEDS == (20260904, 20260905, 20260906, 20260907, 20260908)
     assert lr.STEPS == 400_000 and lr.PAIRS == (("NV", "V"), ("NE", "E"))
+
+
+def test_tmpdirs_follow_the_environment(monkeypatch):
+    """A cluster exports RAY_TMPDIR/TMPDIR before the runner starts; the module-level
+    workstation defaults must not win (they made every Isambard job die in freeze)."""
+    import importlib
+    monkeypatch.setenv("RAY_TMPDIR", "/scratch/x/ray")
+    monkeypatch.setenv("TMPDIR", "/scratch/x/tmp")
+    monkeypatch.setenv("STAGE_D_DATA_PATH", "/scratch/x")
+    m = importlib.reload(lr)
+    try:
+        assert m.RAY_TMPDIR == "/scratch/x/ray" and m.TMPDIR == "/scratch/x/tmp"
+        assert m.DATA_PATH == "/scratch/x"
+        assert m.env_for()["RAY_TMPDIR"] == "/scratch/x/ray"
+    finally:
+        for v in ("RAY_TMPDIR", "TMPDIR", "STAGE_D_DATA_PATH"):
+            monkeypatch.delenv(v, raising=False)
+        importlib.reload(lr)

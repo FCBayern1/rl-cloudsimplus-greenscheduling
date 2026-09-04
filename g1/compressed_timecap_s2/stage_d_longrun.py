@@ -37,7 +37,10 @@ WINDOWS = os.path.join(HERE, "stage_a_out", "stage_d_windows.json")
 JAR = os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar")
 LOGS = os.path.join(DRL, "logs/stage_d_longrun")
 RESULTS = os.path.join(DRL, "results/stage_d_longrun")
-RAY_TMPDIR = "/home/joshua/rt"
+# Workstation defaults; a cluster exports its own before calling this runner, and the
+# exported value wins (hard-coding the workstation path made every Isambard job die in the
+# freeze step with PermissionError on /home/joshua).
+RAY_TMPDIR = os.environ.get("RAY_TMPDIR") or "/home/joshua/rt"
 SEEDS = (20260904, 20260905, 20260906, 20260907, 20260908)
 STEPS = 400_000
 WORKERS = int(os.environ.get("STAGE_D_EVAL_WORKERS", "6"))
@@ -65,7 +68,9 @@ FROZEN_SOURCES = [
 # TMPDIR: Ray Tune writes every checkpoint to Python's temp dir before persisting it to
 # storage_path; with /tmp full that write raised ENOSPC at 320k of seed 20260904 (long-run
 # addendum A). Everything temporary now lives on the large /home partition.
-TMPDIR = os.path.join(RAY_TMPDIR, "tmp")
+TMPDIR = os.environ.get("TMPDIR") or os.path.join(RAY_TMPDIR, "tmp")
+# The filesystem the run writes its outputs to; the disk gate checks this one and TMPDIR's.
+DATA_PATH = os.environ.get("STAGE_D_DATA_PATH") or os.path.dirname(os.path.abspath(__file__))
 BASE_ENV = {"PYTHONHASHSEED": "0", "RAY_TMPDIR": RAY_TMPDIR, "TMPDIR": TMPDIR,
             "GATEWAY_LIBS": os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib"),
             "PLANNER_EXPECTED_CAP": "640;512;640;512;192", "PLANNER_STATIC_TOTAL_W": "0"}
@@ -112,8 +117,10 @@ def disk_free_gb(path="/home"):
     return shutil.disk_usage(path).free / 1e9
 
 
-def disk_gate(min_gb=DISK_MIN_GB, path="/home", tmp_min_gb=10, tmp_path="/tmp"):
-    """Hard gate on the data partition and on /tmp (system temp still used by tooling)."""
+def disk_gate(min_gb=DISK_MIN_GB, path=None, tmp_min_gb=10, tmp_path=None):
+    """Hard gate on the partition holding the outputs and on the one holding TMPDIR."""
+    path = path or DATA_PATH
+    tmp_path = tmp_path or (TMPDIR if os.path.isdir(TMPDIR) else "/tmp")
     free = disk_free_gb(path)
     if free < min_gb:
         raise SystemExit(f"disk gate: {free:.1f} GB free on {path} < {min_gb} GB; refusing to continue")
@@ -150,8 +157,9 @@ def freeze_seed(seed):
     art = {"seed": seed, "commit": commit, "worktree_clean": dirty == "", "steps": STEPS,
            "gpu": gpu, "torch": ver[0] if ver else None, "cuda": ver[1] if len(ver) > 1 else None,
            "ray": ver[2] if len(ver) > 2 else None, "python_hash_seed": BASE_ENV["PYTHONHASHSEED"],
-           "ray_tmpdir": RAY_TMPDIR, "tmpdir": TMPDIR, "disk_free_gb": round(disk_free_gb(), 1),
-           "tmp_free_gb": round(disk_free_gb("/tmp"), 1),
+           "ray_tmpdir": RAY_TMPDIR, "tmpdir": TMPDIR, "data_path": DATA_PATH,
+           "disk_free_gb": round(disk_free_gb(DATA_PATH), 1),
+           "tmp_free_gb": round(disk_free_gb(TMPDIR if os.path.isdir(TMPDIR) else "/tmp"), 1),
            "jar_sha256": sha(JAR), "sources": {p: sha(os.path.join(REPO, p)) for p in FROZEN_SOURCES},
            "judgement_offsets": judgement_offsets(),
            "jobs": {"main": EXPECTED_MAIN, "init": EXPECTED_INIT}}
@@ -216,7 +224,7 @@ def train_group(seed, lines):
     for L, (p, lf) in procs.items():
         rcs[L] = p.wait()
         lf.close()
-        log(f"seed {seed} train {L} exit={rcs[L]} disk_free={disk_free_gb():.1f}GB")
+        log(f"seed {seed} train {L} exit={rcs[L]} disk_free={disk_free_gb(DATA_PATH):.1f}GB")
     if any(rcs.values()):
         raise SystemExit(f"training failed: {rcs}")
     with open(os.path.join(seed_results(seed), f"init_hashes_{'_'.join(lines)}.json"), "w") as f:
@@ -244,7 +252,7 @@ def train_line(seed, line):
     p, lf = launch_train(seed, line)
     rc = p.wait()
     lf.close()
-    log(f"seed {seed} train {line} exit={rc} disk_free={disk_free_gb():.1f}GB")
+    log(f"seed {seed} train {line} exit={rc} disk_free={disk_free_gb(DATA_PATH):.1f}GB")
     if rc:
         raise SystemExit(f"training failed: {line} rc={rc}")
 

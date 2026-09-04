@@ -22,6 +22,7 @@ mkdir -p "$TMPDIR" "$RAY_TMPDIR"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 TORCH_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export PYTHONHASHSEED=0 STAGE_D_EVAL_WORKERS=12
 export STAGE_D_PYTHON=$(command -v python)
+export STAGE_D_DATA_PATH=$SCRATCHDIR
 export GATEWAY_LIBS=$REPO/cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
 cd "$REPO"
 echo "[$(date '+%F %T')] node $(hostname) seed $SEED evaluation"
