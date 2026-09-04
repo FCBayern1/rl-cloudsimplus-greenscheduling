@@ -661,6 +661,9 @@ def run_evaluation(
         metrics['global_route_actions'] = global_route_actions
         _dec = global_defer_actions + global_route_actions
         metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
+        # The green window this episode actually replayed (schedule or allowlist), so a
+        # verdict can assert it against the registered offset for its --reset-skip.
+        metrics['green_episode_offset_rows'] = int(getattr(env, '_green_episode_offset_rows', -1) or 0)
         # Scheduler-side counters the validity contract is checked against (stale
         # reservations, capacity overrun, occupancy drift). Absent for schedulers that
         # keep no ledger, which is why this is opt-in rather than assumed.
@@ -1166,6 +1169,9 @@ def run_rllib_evaluation(
         metrics['global_route_actions'] = global_route_actions
         _dec = global_defer_actions + global_route_actions
         metrics['global_defer_action_rate'] = (global_defer_actions / _dec) if _dec else 0.0
+        # The green window this episode actually replayed (schedule or allowlist), so a
+        # verdict can assert it against the registered offset for its --reset-skip.
+        metrics['green_episode_offset_rows'] = int(getattr(env, '_green_episode_offset_rows', -1) or 0)
         metrics.update(_summarize_decision_latency(global_decision_ns, "global_decision"))
         metrics.update(_summarize_decision_latency(local_decision_ns, "local_decision"))
         # Efficiency overhead: episode wall-clock (s) and peak memory footprint.

@@ -92,6 +92,34 @@ def test_eval_blocks_cover_cells_tiers_and_hollow_with_whitelisted_diff():
             assert "perturb_error_params" not in b
 
 
+def test_judgement_eval_blocks_carry_the_six_unread_offsets_only_there():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        blocks, man = sd.build_eval(out_dir=d, windows="judgement")
+        cert, _ = sd.build_eval(out_dir=d, windows="certified")
+    assert man["config"] == "config_stage_d_eval_judgement.yml" and man["blocks"] == 30
+    offs = [int(x) for x in man["allowlist"].split(";")]
+    assert offs == sd.judgement_offsets() and len(offs) == 6
+    for n, b in blocks.items():
+        assert b["green_episode_offset_allowlist"] == man["allowlist"]
+        assert "green_episode_offset_allowlist" not in cert[n]
+        assert set(sd.diff_keys(cert[n], b)) == {"green_episode_offset_allowlist"}
+
+
+def test_longrun_config_has_400k_and_40k_checkpoints():
+    if not os.path.exists(sd.WINDOWS):
+        pytest.skip("window preflight artifact missing")
+    with tempfile.TemporaryDirectory() as d:
+        blocks, man = sd.build(400_000, out_dir=d, trace_dir=d, reward_variant="physical",
+                               checkpoint_freq=40_000, out_name="config_stage_d_longrun.yml")
+    assert man["config"] == "config_stage_d_longrun.yml" and man["checkpoint_freq_timesteps"] == 40_000
+    for b in blocks.values():
+        assert b["training"]["total_timesteps"] == 400_000
+        assert b["training"]["checkpoint_freq_timesteps"] == 40_000
+        assert b["defer_base_cost"] == 0.0
+
+
 def test_training_checkpoints_every_iteration_kept_and_init_saved(built):
     blocks, _, _ = built
     for b in blocks.values():

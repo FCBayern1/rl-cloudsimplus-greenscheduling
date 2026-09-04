@@ -84,7 +84,8 @@ REWARD_VARIANTS["ledger_aligned"] = REWARD_VARIANTS["physical"]
 REWARD_KEYS = {"defer_base_cost", "defer_urgency_weight", "per_action_carbon_weight"}
 
 
-def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"):
+def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy",
+          checkpoint_freq=8000, out_name=None):
     out_dir = out_dir or HERE
     hz = yaml.safe_load(open(HZ_CONFIG))
     base = hz[HZ_CELL]
@@ -116,18 +117,21 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         # Codex smoke rulings: a true init checkpoint before the first SGD step, every
         # iteration's checkpoint kept (num_to_keep 0 = keep all), never pruned by score.
         b["training"] = dict(b.get("training", {}), total_timesteps=int(total_timesteps),
-                             checkpoint_freq_timesteps=8000, checkpoint_num_to_keep=0,
+                             checkpoint_freq_timesteps=int(checkpoint_freq), checkpoint_num_to_keep=0,
                              save_init_checkpoint=True)
         b["wandb"] = dict(b.get("wandb", {}), enabled=False)
         b["green_episode_offset_allowlist"] = allow
         blocks[name] = b
     text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True, default_flow_style=False)
-    cfg_name = f"config_stage_d{suffix}.yml"
+    cfg_name = out_name or f"config_stage_d{suffix}.yml"
+    if out_name:
+        suffix = "_" + out_name.replace("config_stage_d_", "").replace(".yml", "")
     path = os.path.join(out_dir, cfg_name)
     with open(path, "w") as f:
         f.write(text)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
     manifest = {"config": cfg_name, "reward_variant": reward_variant, "reward_overrides": overrides,
+                "checkpoint_freq_timesteps": int(checkpoint_freq),
                 "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
                 "hz_source": {"file": "config_s2hz_m2.yml", "cell": HZ_CELL},
                 "crd_subtree_sha256": crd_sha, "crd_source": {"file": "config_rl_step2_pilot.yml",
@@ -149,11 +153,19 @@ def diff_keys(a, b):
 EVAL_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 EVAL_TIERS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
 EVAL_WHITELIST = {"experiment_name", "simulation_name", "green_oracle_mode", "perturb_tier",
-                  "forecast_mode", "training", "wandb", "perturb_error_params"} | REWARD_KEYS
+                  "forecast_mode", "training", "wandb", "perturb_error_params",
+                  "green_episode_offset_allowlist"} | REWARD_KEYS
 AUDIT_JSON = os.path.join(HERE, "timecap_error_audit.json")
 
 
-def build_eval(out_dir=None, reward_variant="physical"):
+def judgement_offsets():
+    win = json.load(open(WINDOWS))
+    if win.get("status") != "OK":
+        raise RuntimeError("window preflight is not OK")
+    return [int(w["offset"]) for w in win["eval_windows"]]
+
+
+def build_eval(out_dir=None, reward_variant="physical", windows="certified"):
     """Deployment blocks: six HZ cells x four provider tiers x {full, hollow} forecast.
 
     Each block is the HZ x2 cell block with the RL keys and the registered reward variant;
@@ -165,6 +177,11 @@ def build_eval(out_dir=None, reward_variant="physical"):
     hz = yaml.safe_load(open(HZ_CONFIG))
     common = hz.get("common", {})
     overrides = REWARD_VARIANTS[reward_variant]
+    # windows="judgement": the six unread offsets of the preflight become the block's
+    # allowlist and --reset-skip 0..5 selects them (long-run main verdict, Codex R-v).
+    # windows="certified": the simulator schedule, --reset-skip 26/34/42 (health smoke,
+    # secondary "certified benchmark evaluation").
+    allow = ";".join(str(o) for o in judgement_offsets()) if windows == "judgement" else None
     blocks = {}
     for cell in EVAL_CELLS:
         for tier in EVAL_TIERS:
@@ -186,13 +203,16 @@ def build_eval(out_dir=None, reward_variant="physical"):
                     b["perturb_error_params"] = AUDIT_JSON
                 b["training"] = dict(b.get("training", {}))
                 b["wandb"] = dict(b.get("wandb", {}), enabled=False)
+                if allow:
+                    b["green_episode_offset_allowlist"] = allow
                 blocks[name] = b
     text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True, default_flow_style=False)
-    path = os.path.join(out_dir, "config_stage_d_eval.yml")
+    cfg_name = "config_stage_d_eval.yml" if windows == "certified" else "config_stage_d_eval_judgement.yml"
+    path = os.path.join(out_dir, cfg_name)
     with open(path, "w") as f:
         f.write(text)
-    return blocks, {"config": "config_stage_d_eval.yml", "blocks": len(blocks),
-                    "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    return blocks, {"config": cfg_name, "blocks": len(blocks), "windows": windows,
+                    "allowlist": allow, "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
                     "reward_variant": reward_variant}
 
 
@@ -203,6 +223,15 @@ if __name__ == "__main__":
     if variant == "eval":
         _, m = build_eval()
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "eval_judgement":
+        _, m = build_eval(windows="judgement")
+        print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "longrun":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_longrun.yml")
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     blocks, man = build(steps, reward_variant=variant)
     print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
