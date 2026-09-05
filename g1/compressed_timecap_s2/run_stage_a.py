@@ -500,6 +500,24 @@ def main():
                          "dir": "option_corpus"})
         print(f"hz_opt_corpus: {len(todo)} oracle_opt runs with decision + observation dumps")
         print(json.dumps(sweep(("perturbed_oracle_planner_opt",), todo=todo), indent=2))
+    elif phase == "hz_opt_bc":
+        # Gate 4, criterion 2 (OPTION_ACTION_DESIGN §6): the fitted behaviour-cloned option
+        # policy executed through the shared executor on the held-out windows k4, k5.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime_option.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        cfg = os.path.join(HERE, "config_stage_d_dprime_option.yml")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        model_dir = os.path.join(OUT, "option_bc")
+        if not os.path.exists(os.path.join(model_dir, "model.pt")):
+            raise RuntimeError("hz_opt_bc needs the gate-4 fit (option_bc.py fit) first")
+        todo = []
+        for k in (4, 5):
+            todo.append({"arm": "option_bc", "cell": cell, "k": k, "offset": allow[k],
+                         "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, "OPTION_BC_MODEL": model_dir,
+                                 "OPTION_BC_CONFIG": cfg, "OPTION_BC_BLOCK": cell},
+                         "dir": "opt_bc"})
+        print(f"hz_opt_bc: {len(todo)} executed-BC runs on the held-out windows")
+        print(json.dumps(sweep(("option_bc",), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":

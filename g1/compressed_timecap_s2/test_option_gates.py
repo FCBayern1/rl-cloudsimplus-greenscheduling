@@ -73,6 +73,22 @@ def test_gate2_conditions_and_the_executor_red_flag():
     assert gate2([8.0] * 6, blinds, [7.9] * 6, [9.6] * 6)["pass"] is False
 
 
+def test_gate4_needs_classification_and_executed_capture_with_a_clean_contract():
+    from option_gates import gate4
+    ok = {"verdict": "PASS_CLASSIFICATION", "main_gate_raw": {"lift": 0.2, "auc": 0.7}}
+    bc_rows = {("bc", 4): _row(hold_refused=2), ("bc", 5): _row()}          # refusals allowed on BC
+    led = {k: _ledger() for k in bc_rows}
+    g = gate4(ok, [10.0, 10.0], [6.0, 6.0], [7.5, 7.5], bc_rows, led)     # capture 0.625
+    assert g["pass"] is True and abs(g["executed_capture"] - 0.625) < 1e-12
+    assert gate4(ok, [10.0, 10.0], [6.0, 6.0], [8.5, 8.5], bc_rows, led)["pass"] is False   # 0.375
+    bad = {"verdict": "FAIL_CLASSIFICATION", "main_gate_raw": {"lift": 0.0, "auc": 0.5}}
+    assert gate4(bad, [10.0, 10.0], [6.0, 6.0], [6.5, 6.5], bc_rows, led)["pass"] is False
+    inv = gate4({"verdict": "INVALID_CORPUS"}, [10.0], [6.0], [6.0])
+    assert inv["verdict"] == "INVALID_CORPUS" and inv["pass"] is False
+    dirty = {("bc", 4): _row(forced=1)}
+    assert gate4(ok, [10.0], [6.0], [6.5], dirty, {("bc", 4): _ledger()})["pass"] is False
+
+
 def test_judge_order_stops_at_the_first_failing_gate():
     arms = ("oracle_opt", "shuffle_opt", "anti_opt", "shrink_opt", "persistence_opt",
             "climatology_opt", "reactive_opt", "nowait_opt", "always_hold")

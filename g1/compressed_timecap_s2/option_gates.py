@@ -148,6 +148,37 @@ def judge(rows, ledgers, refs):
     return out
 
 
+# ── gate 4: small-sample learnability ─────────────────────────────────────────────────
+BC_CAPTURE = 0.50                                  # A4, frozen
+
+
+def gate4(classification, c_blind_star, c_oracle, c_bc, bc_rows=None, bc_ledgers=None):
+    """classification: option_bc.score() result (verdict PASS_CLASSIFICATION / FAIL / INVALID_CORPUS);
+    carbon lists over the held-out windows for blind*, oracle_opt and the executed BC arm.
+    Executed capture = (C_blind* - C_bc) / (C_blind* - C_oracle) >= 0.50 on the held-out sum,
+    with the BC arm contract-clean (gate-3 row checks, refusals allowed but reported)."""
+    out = {"classification_verdict": classification.get("verdict"),
+           "classification": classification.get("main_gate_raw")}
+    if classification.get("verdict") == "INVALID_CORPUS":
+        out.update({"verdict": "INVALID_CORPUS", "pass": False})
+        return out
+    pb, po, pc = sum(c_blind_star), sum(c_oracle), sum(c_bc)
+    denom = pb - po
+    cap = None if denom <= 0 else (pb - pc) / denom
+    out.update({"pooled": {"blind_star": pb, "oracle": po, "bc": pc}, "executed_capture": cap})
+    viol = {}
+    for key, row in (bc_rows or {}).items():
+        v = gate3_row(row, (bc_ledgers or {}).get(key, []), analytic=False)
+        if v:
+            viol[f"{key[0]}:k{key[1]}"] = v
+    out["bc_contract_violations"] = viol
+    c1 = classification.get("verdict") == "PASS_CLASSIFICATION"
+    c2 = cap is not None and cap >= BC_CAPTURE and not viol
+    out.update({"cond_classification": c1, "cond_executed_capture": c2,
+                "pass": bool(c1 and c2), "verdict": "PASS" if (c1 and c2) else "FAIL"})
+    return out
+
+
 # ── loading ───────────────────────────────────────────────────────────────────────────
 FIELDS = {"carbon": "total_carbon_kg", "completion": "completion_rate_mi", "ontime": "ontime_mi_share",
           "forced": "deadline_forced_count", "created": "ep_opt_created", "released": "ep_opt_released",
@@ -194,6 +225,24 @@ def load_refs(out=OUT, windows=None, cell=CELL):
 
 def main():
     smoke = "--smoke" in sys.argv
+    if "--gate4" in sys.argv:
+        held = [4, 5]
+        prev = json.load(open(os.path.join(OUT, "option_gates_verdict.json")))
+        if not prev.get("verdict", "").startswith("PASS_GATES_1_2_3"):
+            raise SystemExit(f"gate 4 is read only after gates 1-3 pass; verdict is {prev.get('verdict')}")
+        star = prev["gate2"]["blind_star"]
+        rows, ledgers = load(arms=("oracle_opt", star), windows=held)
+        bc_rows, bc_ledgers = load(arms=("bc",), windows=held)
+        cls = json.load(open(os.path.join(OUT, "option_bc", "score.json")))
+        col = lambda arm, rs: [float(rs[(arm, k)]["carbon"]) for k in held]     # noqa: E731
+        res = gate4(cls, col(star, rows), col("oracle_opt", rows), col("bc", bc_rows), bc_rows, bc_ledgers)
+        res.update({"held_windows": held, "blind_star": star})
+        path = os.path.join(OUT, "option_gate4_verdict.json")
+        with open(path, "w") as f:
+            json.dump(res, f, indent=2)
+        print(json.dumps(res, indent=1))
+        print("written", path)
+        return
     windows = [0] if smoke else None
     rows, ledgers = load(windows=windows)
     ks = sorted({k for (_a, k) in rows})

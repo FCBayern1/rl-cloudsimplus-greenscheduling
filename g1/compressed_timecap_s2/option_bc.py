@@ -66,51 +66,19 @@ def corpus_valid(labels):
 
 
 def model_config_from_block(cfg):
-    """The module config exactly as train_rlmodule_gtrxl builds it from the block."""
-    from src.training.train_rlmodule_gtrxl import _merged_gtrxl_model_settings
-    gm = _merged_gtrxl_model_settings(cfg.get("local_model", {}) or {}, cfg)
-    return {
-        "d_model": gm.get("d_model", 128), "nhead": gm.get("nhead", 4),
-        "num_layers": gm.get("num_layers", 2), "dim_feedforward": gm.get("dim_feedforward", 256),
-        "dropout": gm.get("dropout", 0.0), "max_seq_len": int(gm.get("max_seq_len", 128)),
-        "mem_len": int(gm.get("mem_len", 16)), "use_score_based": bool(gm.get("use_score_based", False)),
-        "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
-        "score_temperature": float(gm.get("score_temperature", 2.0)),
-        "critic_separate_trunk": bool(gm.get("critic_separate_trunk", False)),
-        "factorized_temporal_gate": bool(gm.get("factorized_temporal_gate", False)),
-        "temporal_gate_hidden": int(gm.get("temporal_gate_hidden", 64)),
-        "v32_wait_age_scale_sec": float(cfg.get("obs_v31_wait_age_scale_sec",
-                                                float(cfg.get("max_episode_length", 7200)) * float(cfg.get("simulation_timestep", 1.0)))),
-    }
+    from src.baselines.option_bc_module import model_config_from_block as _m
+    return _m(cfg)
 
 
-# ── module ────────────────────────────────────────────────────────────────────────────
+# ── module (shared with the executed arm, src/baselines/option_bc_module.py) ─────────
 def load_block(config=CONFIG, block=BLOCK):
-    import yaml
-    cfg = yaml.safe_load(open(config))[block]
-    cfg = dict(cfg)
-    cfg.pop("py4j_port", None)
-    return cfg
+    from src.baselines.option_bc_module import load_block as _l
+    return _l(config, block)
 
 
 def build_module(cfg, seed=SEED):
-    import torch
-    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-    from gym_cloudsimplus.envs import HierarchicalMultiDCParallelEnv
-    from src.models.rlmodule_gtrxl_models import GTrXLScoreBasedGlobalRLModule
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    env = HierarchicalMultiDCParallelEnv(config=cfg)
-    obs_space = env.observation_space("global_agent")
-    act_space = env.action_space("global_agent")
-    spec = RLModuleSpec(module_class=GTrXLScoreBasedGlobalRLModule, observation_space=obs_space,
-                        action_space=act_space, model_config=model_config_from_block(cfg))
-    mod = spec.build()
-    try:
-        env.close()
-    except Exception:
-        pass
-    return mod, obs_space, act_space
+    from src.baselines.option_bc_module import build_option_module
+    return build_option_module(cfg, seed)
 
 
 def load_window(k, corpus=CORPUS, cell=BLOCK):

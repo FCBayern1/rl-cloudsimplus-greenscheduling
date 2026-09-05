@@ -2519,7 +2519,64 @@ class AlwaysHoldGlobalScheduler(GlobalScheduler):
         return out
 
 
+class OptionBCGlobalScheduler(GlobalScheduler):
+    """Executed behaviour-cloned option policy (OPTION_ACTION_DESIGN §6 gate 4, criterion 2).
+
+    Loads the gate-4 fit (OPTION_BC_MODEL = directory holding model.pt) and the option block
+    it was built from (OPTION_BC_CONFIG, OPTION_BC_BLOCK), runs the module recurrently on the
+    raw env observation with the legality mask applied, and acts by argmax over the 2n
+    choices (deterministic decode, recorded in fit.json). Illegal choices cannot occur at
+    the logit level; the env's translation counts any that would.
+    """
+
+    HANDLES_DEFER = True
+    OPTION = True
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        from src.baselines.option_bc_module import load_fitted_module
+        model_dir = os.environ.get("OPTION_BC_MODEL", "").strip()
+        cfg = os.environ.get("OPTION_BC_CONFIG", "").strip()
+        block = os.environ.get("OPTION_BC_BLOCK", "").strip()
+        if not (model_dir and cfg and block):
+            raise RuntimeError("option_bc needs OPTION_BC_MODEL, OPTION_BC_CONFIG and OPTION_BC_BLOCK")
+        self.module, _obs_space, act_space = load_fitted_module(model_dir, cfg, block)
+        nvec = [int(x) for x in act_space.nvec]
+        if len(nvec) != batch_size or nvec[0] != 2 * num_datacenters:
+            raise RuntimeError(f"option_bc module space {nvec[:1]}x{len(nvec)} does not match the env "
+                               f"({2 * num_datacenters}x{batch_size})")
+        self.n_choices = nvec[0]
+        self._state = None
+        self.n_steps = 0
+
+    def reset(self):
+        self._state = None
+        self.n_steps = 0
+
+    def schedule(self, global_obs):
+        import torch
+        raw = global_obs.get("raw_global_obs")
+        if raw is None:
+            raise RuntimeError("option_bc needs the raw global observation (evaluate forwards it as raw_global_obs)")
+        obs = {k: torch.as_tensor(np.asarray(v)[None, ...]) for k, v in raw.items()}
+        batch = {"obs": {"observation": obs, "action_mask": torch.ones(1, self.batch_size)}}
+        if self._state is None:
+            self._state = self.module.get_initial_state()
+        batch["state_in"] = {k: torch.as_tensor(v) for k, v in self._state.items()} if isinstance(self._state, dict) \
+            else {"gtrxl_mem": torch.as_tensor(self._state)}
+        with torch.no_grad():
+            out = self.module.forward_inference(batch)
+        logits = out["action_dist_inputs"].reshape(-1, self.batch_size, self.n_choices)[-1]
+        so = out.get("state_out")
+        if so is not None:
+            self._state = {k: (v[0] if isinstance(v, torch.Tensor) and v.dim() == 4 else v) for k, v in so.items()} \
+                if isinstance(so, dict) else (so[0] if so.dim() == 4 else so)
+        self.n_steps += 1
+        return [int(a) for a in logits.argmax(-1).tolist()]
+
+
 GLOBAL_SCHEDULERS = {
+    'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,
     'persistence_planner_opt': PersistencePlannerOptionGlobalScheduler,

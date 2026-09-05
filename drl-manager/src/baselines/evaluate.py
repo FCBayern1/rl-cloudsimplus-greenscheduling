@@ -881,6 +881,9 @@ def _convert_global_obs_for_scheduler(
               "dc_held_count", "dc_held_pes", "dc_held_tightest_margin"):
         if k in global_obs:
             converted[k] = global_obs[k]
+    # The executed behaviour-cloned arm (gate 4) runs the policy module on the observation
+    # exactly as the env publishes it; a reference, not a copy.
+    converted["raw_global_obs"] = global_obs
     planner = (info or {}).get('planner')
     if planner is not None:
         converted['planner'] = planner
