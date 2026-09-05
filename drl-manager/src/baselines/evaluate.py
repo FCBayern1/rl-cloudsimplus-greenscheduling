@@ -851,6 +851,12 @@ def _convert_global_obs_for_scheduler(
         'batch_cloudlet_mi': global_obs.get('batch_cloudlet_mi', []),
         'load_imbalance': global_obs.get('load_imbalance', [0]),
     }
+    # Option mode keys (OPTION_ACTION_DESIGN Addendum A3): the (slot, site) HOLD legality
+    # and the per-site held ledger, forwarded when the env publishes them.
+    for k in ("batch_cloudlet_defer_allowed", "batch_cloudlet_hold_allowed",
+              "dc_held_count", "dc_held_pes", "dc_held_tightest_margin"):
+        if k in global_obs:
+            converted[k] = global_obs[k]
     planner = (info or {}).get('planner')
     if planner is not None:
         converted['planner'] = planner
