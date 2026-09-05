@@ -1,0 +1,21 @@
+{
+  "windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "gate3": {
+    "pass": false,
+    "violations": {
+      "persistence_off:k5": [
+        "route_to_start_max_steps 49.0301 > 1"
+      ]
+    },
+    "n_rows": 90
+  },
+  "blind_star": "persistence_off",
+  "verdict": "STOP_GATE3"
+}

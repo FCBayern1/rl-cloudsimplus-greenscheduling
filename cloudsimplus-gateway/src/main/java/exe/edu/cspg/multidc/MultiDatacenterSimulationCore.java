@@ -1330,6 +1330,31 @@ public class MultiDatacenterSimulationCore {
             // caps ~10-15%). Track the running free-PE count locally and decrement on
             // each assignment so cloudlets spread across the fleet.
             Map<Long, Long> freePes = new HashMap<>();
+            // Placement ledger repair (Codex ruling 2026-09-05, gate-3 forensic on
+            // persistence_off k5): a cloudlet submitted in an earlier step can still be
+            // in flight (sent to the datacentre, not yet in the VM scheduler's exec or
+            // waiting list) at the next decision point; the old exec+waiting count then
+            // reported the VM as free and the selector stacked the next cloudlet behind it
+            // on the same VM while idle VMs existed (cloudlet 10 behind 11 on VM 4, 49-step
+            // start delay). In-flight submissions now count as committed.
+            java.util.Set<Long> finishedIds = new java.util.HashSet<>();
+            for (Cloudlet c : localBroker.getCloudletFinishedList()) finishedIds.add(c.getId());
+            Map<Long, Long> inflightByVm = new HashMap<>();
+            Map<Long, java.util.Set<Long>> listedByVm = new HashMap<>();
+            for (Vm vm : dc.getVmPool()) {
+                java.util.Set<Long> listed = new java.util.HashSet<>();
+                for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletExecList()) listed.add(ce.getCloudlet().getId());
+                for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletWaitingList()) listed.add(ce.getCloudlet().getId());
+                listedByVm.put(vm.getId(), listed);
+            }
+            for (Cloudlet c : localBroker.getCloudletSubmittedList()) {
+                if (c.getVm() == null || finishedIds.contains(c.getId())) continue;
+                long vid = c.getVm().getId();
+                java.util.Set<Long> listed = listedByVm.get(vid);
+                if (listed != null && !listed.contains(c.getId())) {
+                    inflightByVm.merge(vid, c.getPesNumber(), Long::sum);
+                }
+            }
             for (Vm vm : dc.getVmPool()) {
                 if (vm.isCreated() && !vm.isFailed()) {
                     // vm.getFreePesNumber() never updates under this broker's
@@ -1340,12 +1365,13 @@ public class MultiDatacenterSimulationCore {
                     // on one VM back-to-back (tb12 A' probe: five 2-PE jobs, five
                     // serial finishes exactly one runtime apart, every assignment
                     // logged "VM 0 (avail PEs: 2)"). Count committed PEs from the
-                    // scheduler's exec+waiting lists instead.
-                    long used = vm.getCloudletScheduler().getCloudletExecList().stream()
-                            .mapToLong(ce -> ce.getPesNumber()).sum()
-                            + vm.getCloudletScheduler().getCloudletWaitingList().stream()
+                    // scheduler's exec+waiting lists plus in-flight submissions.
+                    long execPes = vm.getCloudletScheduler().getCloudletExecList().stream()
                             .mapToLong(ce -> ce.getPesNumber()).sum();
-                    freePes.put(vm.getId(), Math.max(0L, vm.getPesNumber() - used));
+                    long waitPes = vm.getCloudletScheduler().getCloudletWaitingList().stream()
+                            .mapToLong(ce -> ce.getPesNumber()).sum();
+                    long inflight = inflightByVm.getOrDefault(vm.getId(), 0L);
+                    freePes.put(vm.getId(), PlacementLedger.freePes(vm.getPesNumber(), execPes, waitPes, inflight));
                 }
             }
             int placed = 0;
@@ -1356,16 +1382,9 @@ public class MultiDatacenterSimulationCore {
                     break;
                 }
                 final long need = Math.max(1, next.getPesNumber());
-                // most-free VM that still fits the next cloudlet (least-loaded, local view)
-                long vmId = -1;
-                long bestFree = -1;
-                for (Map.Entry<Long, Long> e : freePes.entrySet()) {
-                    long f = e.getValue();
-                    if (f >= need && f > bestFree) {
-                        bestFree = f;
-                        vmId = e.getKey();
-                    }
-                }
+                // most-free VM that still fits the next cloudlet (least-loaded, local view;
+                // ties broken by the lowest VM id so the choice is deterministic)
+                long vmId = PlacementLedger.selectMostFreeFitting(freePes, need);
                 // Evaluator-only forensic snapshot (Codex ruling 2026-09-05, gate-3 cell
                 // persistence_off k5): the selector's inputs and verdict per VM at the moment
                 // of this dispatch. Off unless PLACEMENT_SNAPSHOT_FILE is set; behaviour-neutral.
