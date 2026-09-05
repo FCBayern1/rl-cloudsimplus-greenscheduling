@@ -369,11 +369,11 @@ public class HierarchicalMultiDCGateway {
 
     /**
      * Execution-start clock of the given cloudlets from the simulator's own start events
-     * (finished or running), keyed by id; ids without a start are absent from the map.
+     * (finished or running), one value per id in order; NaN when the id never started.
      */
-    public Map<Long, Double> getStartTimesForIds(List<? extends Number> ids) {
+    public List<Double> getStartTimesForIds(List<? extends Number> ids) {
         if (simulationCore == null) {
-            return new java.util.HashMap<>();
+            return new java.util.ArrayList<>();
         }
         return simulationCore.getStartTimesForIds(ids);
     }

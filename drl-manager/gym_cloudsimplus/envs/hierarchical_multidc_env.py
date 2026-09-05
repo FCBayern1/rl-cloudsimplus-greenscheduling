@@ -1945,8 +1945,11 @@ class HierarchicalMultiDCEnv(gym.Env):
             starts = {}
             if ids:
                 try:
-                    raw = self.java_env.getStartTimesForIds([int(i) for i in ids])
-                    starts = {int(k): float(raw.get(k)) for k in raw.keySet()} if hasattr(raw, "keySet") else {int(k): float(v) for k, v in dict(raw).items()}
+                    raw = list(self.java_env.getStartTimesForIds([int(i) for i in ids]))
+                    for jid, v in zip(ids, raw):
+                        v = float(v) if v is not None else float("nan")
+                        if v == v:                       # NaN = no start event
+                            starts[int(jid)] = v
                 except Exception as e:
                     logger.warning("getStartTimesForIds failed: %s", e)
             clock0 = float(getattr(self, "_option_clock0", 0.0) or 0.0)

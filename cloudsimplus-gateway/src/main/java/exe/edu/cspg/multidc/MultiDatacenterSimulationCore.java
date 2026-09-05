@@ -950,9 +950,12 @@ public class MultiDatacenterSimulationCore {
      * option ledger's timing truth (Addendum A3.4). Finished cloudlets first, then the ones
      * still executing; ids that never started are absent.
      */
-    public Map<Long, Double> getStartTimesForIds(List<? extends Number> ids) {
-        Map<Long, Double> out = new HashMap<>();
+    public List<Double> getStartTimesForIds(List<? extends Number> ids) {
+        // Returned as a list aligned with `ids` (NaN = no start event) rather than a
+        // Long-keyed map: Py4J looks a Python int up as an Integer and misses Long keys.
+        List<Double> out = new ArrayList<>();
         if (ids == null || ids.isEmpty()) return out;
+        Map<Long, Double> found = new HashMap<>();
         java.util.Set<Long> want = new java.util.HashSet<>();
         for (Number n : ids) want.add(n.longValue());
         for (DatacenterInstance dc : datacenterInstances) {
@@ -962,18 +965,22 @@ public class MultiDatacenterSimulationCore {
             if (fin != null) {
                 for (Cloudlet c : fin) {
                     if (want.contains(c.getId()) && c.getStartTime() >= 0) {
-                        out.put(c.getId(), c.getStartTime());
+                        found.put(c.getId(), c.getStartTime());
                     }
                 }
             }
             for (Vm vm : dc.getVmPool()) {
                 for (Cloudlet c : vm.getCloudletScheduler().getCloudletExecList().stream()
                         .map(ce -> ce.getCloudlet()).collect(java.util.stream.Collectors.toList())) {
-                    if (want.contains(c.getId()) && c.getStartTime() >= 0 && !out.containsKey(c.getId())) {
-                        out.put(c.getId(), c.getStartTime());
+                    if (want.contains(c.getId()) && c.getStartTime() >= 0 && !found.containsKey(c.getId())) {
+                        found.put(c.getId(), c.getStartTime());
                     }
                 }
             }
+        }
+        for (Number n : ids) {
+            Double v = found.get(n.longValue());
+            out.add(v == null ? Double.NaN : v);
         }
         return out;
     }
