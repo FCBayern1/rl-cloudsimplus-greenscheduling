@@ -342,3 +342,23 @@ Codex ruling (§CODEX_PROMPT_2026_09_05_OFFSET_GATE3): not yet classifiable; my 
 Forensic (evaluator-only per-VM dispatch snapshot, `PLACEMENT_SNAPSHOT_FILE`, behaviour-neutral; replay bitwise identical, 49.03 steps again): at clock 175 cloudlet 11 was dispatched to VM 4 (idle). At clock 176 cloudlet 10 was dispatched to **VM 4 again**: its scheduler showed exec 0 and waiting 0, the selector's free map said 32, and 15 other VMs were created, suitable and idle (exec 0, waiting 0, in flight 0), but VM 4 carried cloudlet 11 **in flight** (submitted the step before, in neither scheduler list yet). The selector therefore violated its declared "most-free fitting VM" rule by omitting cross-step in-flight submissions from the committed count; cloudlet 10 then queued behind 11 on the space-shared VM for a full runtime. The drift 160 PE is the planner's sentinel comparing its grid with `cap − dc_available_pes`, the never-recovering allocation counter (five finished 32-PE jobs), and says nothing about occupancy. Snapshot and rows in `reports/manifests/stage_d/dprime/option/forensic_k5/`.
 
 Repair, within the placement ledger only (`PlacementLedger.java`, pure; 5 JUnit tests): committed PEs = exec + waiting + in-flight (submitted to the VM by this broker, not yet listed, not finished); selector = most-free fitting VM, lowest id on ties, −1 when none fits (unchanged SpaceShared queueing then). The four ruled properties are the tests: idle VM beats an in-flight VM; a previous-step submission counts; same-step dispatches spread; no idle VM → queued. Full Java test suite run on the rebuild. Consequence per the ruling: this is the fallback's one gate-3 repair; the 108 run-1 rows are archived as pre-fix; the whole chain reruns from the gate-3 smoke with a fresh blind* freeze, and the step-wise references B and ST (P0′ run 6) are regenerated under the repaired jar as P0′ run 7 with an A/B against run 6 before any downstream use; the option line is not rerun and its rows are marked as belonging to the old placement jar.
+
+## 35. Post-repair rerun (jar b0b44d1e…): references unchanged, fallback gate 3 PASS, gate 1 FAIL on the window criterion → STOP_GATE1_FAIL_ACTION_SPACE_LINE_ENDS (2026-09-05 22:30–22:44)
+
+P0′ run 7 under the repaired jar: PASS_P0_PRIME and every one of the 30 rows bitwise equal to run 6 (the placement defect never fired in the step-wise reference runs), so B and ST are unchanged; archived as `p0_prime/run7/`. Fallback chain from scratch: gate-3 smoke PASS; 72 blind rows; blind* frozen before any informed row = persistence_off (pooled 0.020400; fixed_off_72 0.020924, fixed_off_0 0.020926, fixed_off_1 0.020926, …); 18 informed rows; gate 3 on all 90 rows PASS (no violation of any kind).
+
+Gate 1, expressibility of oracle_off against B = reactive_wait and ST = the reserving godeye planner:
+
+| window | C_B | C_ST | C_oracle_off | gap (C_B − C_ST) / C_B | capture |
+|---|---|---|---|---|---|
+| k0 | 0.002634 | 0.001476 | 0.001150 | 44.0 % | 1.281 |
+| k1 | 0.005079 | 0.003191 | 0.002836 | 37.2 % | 1.189 |
+| k2 | 0.003876 | 0.003870 | 0.003736 | 0.2 % | invalid denominator |
+| k3 | 0.002718 | 0.000894 | 0.000933 | 67.1 % | 0.978 |
+| k4 | 0.001946 | 0.001600 | 0.001894 | 17.8 % | 0.150 |
+| k5 | 0.000422 | 0.000309 | 0.000377 | 26.7 % | 0.397 |
+| pooled | 0.016674 | 0.011339 | **0.010926** | 32.0 % | **1.077** |
+
+Pooled capture 1.077 clears 0.80 (the quantised offset oracle is below the step-wise reserving planner on the pooled sum), but the window criterion (A6: 0.70 on all but one of the valid windows, i.e. four of five) reads three of five: k4 and k5, the two windows with the smallest absolute gaps (0.000346 and 0.000113 kg), capture 0.15 and 0.40. **Verdict by the frozen rule: gate 1 FAIL → STOP_GATE1_FAIL_ACTION_SPACE_LINE_ENDS** (C6). Gate 2 was not read and no blind-versus-oracle number was computed; gate 4 was not read (its corpus was generated, unused). Rows, ledgers, freeze, verdict and corpus in `reports/manifests/stage_d/dprime/offset/run2/`.
+
+Recorded without acting on it: the window criterion was written by me in Addendum A6 as "all but one of the remaining windows" and ratified in Addendum C; it treats a window with a 0.0001 kg gap the same as one with a 0.0018 kg gap. Whether that is the right criterion is a question that can only be answered for a future preregistration; applying a different one to these rows would be a rule change after reading them.
