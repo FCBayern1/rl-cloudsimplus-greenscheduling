@@ -204,3 +204,11 @@ Order: the three background tasks finish first (smoke A as development only; the
 ## 21. P0′ run 5 — the formal P0′ under the revised contract (2026-09-05 11:47–12:0x)
 
 Same config (e74f9980…), same arms and windows; rows now carry `ep_mask_routed_ids` (+ sha, unknown count) and `planner_unplanned_start_ids`. **PASS_P0_PRIME**, `contract_bad` empty, every gate true. Per-id closure on the only grid with unplanned starts: blind, window 4 — unplanned ids {18, 19, 20} = mask-routed ids {18, 19, 20}, unknown 0. always_defer: mask-routed exactly once per job on every window, on-time 1.000, forced 0. Rows and verdict archived under `reports/manifests/stage_d/dprime/p0_prime/run5/`. Runs 1–4 remain archived as development-phase interface-contract repair history.
+
+## 22. Disclosure found while wiring the 2020 rule (2026-09-05 12:20)
+
+`g1/compressed_timecap_s2/timecap_error_audit.json`, the audit that defines `calibrated_shrink_v1`, records `dc_turbines {0: [12, 36], 1: [95, 91], 2: [96]}` and `year: 2020`. The HZ scene's turbines are 123/10, 51/53, 112 (2021). The primary corruption used throughout Stage D was therefore calibrated on a different turbine set and year than the scene it was applied to. This predates D′ (it came with the HZ preregistration) and is reported here, not repaired: the shrink parameters are amplitude/lag statistics of the forecaster's error, and whether they transfer across turbines is a question for the ruling, not something to fix silently. The same file satisfies §20 item 5 ("audit year 2020") only nominally.
+
+Year wiring verified for §20 item 5: the simulator reads `wind_csv_year` (SimulationSettings, default 2021); the forecast turbine map reads `wind_csv_year` too and already fails fast when a TimeCAP `csv_year` disagrees with it. The D′ 2020 judgement blocks will set `wind_csv_year: 2020` and the generator will assert it on every block and on the audit.
+
+Prior 2020 usage of the HZ turbines: the planner gate's 2020 confirmation (`G1_PLANNER_GATE_VERDICT_2020.md`, `g1/config_C_2020.yml`) used turbines 12/36, 95/91, 96 — not the HZ set; TB12 calibration used turbines 100/101. The repository scan for `read_2020_intervals.json` is run and frozen before selection (§20 item 1).
