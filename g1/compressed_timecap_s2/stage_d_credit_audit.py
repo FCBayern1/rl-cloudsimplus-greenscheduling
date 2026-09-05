@@ -130,7 +130,11 @@ class Capture:
             if am is not None and acts_np is not None and am.numel() == acts_np.size:
                 slot_mask = am.detach().cpu().numpy().reshape(n, -1)
             share = defer_share(acts_np, cap.defer_index, slot_mask) if acts_np is not None else np.full(n, np.nan)
+            wg = batch.get("crd_w_guarded")
+            wg = (wg.detach().reshape(adv_pre.shape).cpu().numpy().reshape(-1)
+                  if wg is not None and wg.numel() == adv_pre.numel() else w.cpu().numpy().reshape(-1))
             rec = {"rho": rho.detach().cpu().numpy().reshape(-1), "w": w.cpu().numpy().reshape(-1),
+                   "w_guarded": wg,
                    "adv_pre": adv_pre.cpu().numpy().reshape(-1), "adv_post": adv_post.cpu().numpy().reshape(-1),
                    "share": share}
             for col, key in (("crd_dq", "dq"), ("crd_dr", "dr"), ("crd_c_t", "c_t")):
@@ -160,7 +164,7 @@ class Capture:
         self.learner._compute_responsibilities = wrapped
 
     def merged(self):
-        keys = ("rho", "w", "adv_pre", "adv_post", "dq", "dr", "c_t", "share", "tau")
+        keys = ("rho", "w", "w_guarded", "adv_pre", "adv_post", "dq", "dr", "c_t", "share", "tau")
         return {k: np.concatenate([r[k] for r in self.records]) if self.records else np.array([]) for k in keys}
 
 

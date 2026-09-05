@@ -27,11 +27,17 @@ ETA = 0.5
 LOW = 0.2
 
 
-def cross(w, adv, share, eta=ETA):
-    """Pure. w, adv, share: 1-D arrays of the same length (w = the applied raw weight)."""
+def cross(w, adv, share, eta=ETA, w_guarded=None):
+    """Pure. w, adv, share: 1-D arrays of the same length (w = the raw weight before the guard).
+    w_guarded: the weight the learner actually applied, when recorded; then the report also
+    carries the bitwise check against 1 + eta (w - 1) and the retained mass under it."""
     w = np.asarray(w, float); adv = np.asarray(adv, float); share = np.asarray(share, float)
     wg = 1.0 + eta * (w - 1.0)
     out = {"eta": eta}
+    if w_guarded is not None:
+        wga = np.asarray(w_guarded, float)
+        out["bitwise_max_abs_err"] = float(np.max(np.abs(wga - wg))) if wga.size else None
+        wg = wga
     for cls, sel in (("DEFER", share >= 0.5), ("ROUTE", share < 0.5)):
         neg, pos = sel & (adv < 0), sel & (adv >= 0)
         rec = {"n": int(sel.sum()), "n_neg": int(neg.sum()), "n_pos": int(pos.sum())}
@@ -49,7 +55,26 @@ def cross(w, adv, share, eta=ETA):
     out["guard_recovers_negative_mass"] = (d["neg_mass_retained_guarded"] is not None
                                            and d["neg_mass_retained_raw"] is not None
                                            and d["neg_mass_retained_guarded"] - d["neg_mass_retained_raw"] >= 0.05)
+    out["guard_gate"] = guard_gate(d, out.get("bitwise_max_abs_err"))
     return out
+
+
+GUARD_MIN_N, GUARD_R_MIN, GUARD_EPS, GUARD_BIT_TOL = 100, 0.90, 0.01, 1e-6
+
+
+def guard_gate(d, bitwise_err):
+    """Substantive guard gate (design §16 Q1) on the DEFER class of E's last checkpoint:
+    n(DEFER, A<0) >= 100; R_guarded >= 0.90; if R_raw < 0.95 then
+    R_guarded - R_raw >= 0.5 (1 - R_raw) - eps; and w_guarded = 1 + 0.5 (w_raw - 1) bitwise
+    (within GUARD_BIT_TOL) when the applied weight was recorded."""
+    r_raw, r_g = d.get("neg_mass_retained_raw"), d.get("neg_mass_retained_guarded")
+    g = {"n_neg_ok": int(d.get("n_neg", 0)) >= GUARD_MIN_N,
+         "retained_ok": r_g is not None and r_g >= GUARD_R_MIN,
+         "recovery_ok": (r_raw is None or r_g is None) and False or
+                        (r_raw >= 0.95 or (r_g - r_raw) >= 0.5 * (1.0 - r_raw) - GUARD_EPS),
+         "bitwise_ok": bitwise_err is None or bitwise_err <= GUARD_BIT_TOL}
+    g["pass"] = all(g.values())
+    return g
 
 
 def main():
@@ -62,7 +87,7 @@ def main():
     print(f"{'file':28s} {'cls':5s} {'n':>6s} {'E[w|A<0]':>9s} {'E[w|A>=0]':>9s} {'P(low|A<0)':>10s} {'P(low|A>=0)':>11s} {'ret_raw':>8s} {'ret_eta':>8s}")
     for f in files:
         z = np.load(f)
-        r = cross(z["w"], z["adv_pre"], z["share"])
+        r = cross(z["w"], z["adv_pre"], z["share"], w_guarded=(z["w_guarded"] if "w_guarded" in z.files else None))
         name = os.path.basename(f).replace("_raw.npz", "")
         report[name] = r
         for cls in ("DEFER", "ROUTE"):

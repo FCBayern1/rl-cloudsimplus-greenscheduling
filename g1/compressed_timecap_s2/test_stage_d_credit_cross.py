@@ -29,3 +29,17 @@ def test_no_effect_when_weights_are_uniform():
     r = cross(w, adv, share)
     assert r["DEFER"]["P_low_neg"] == 0.0 and not r["low_weight_falls_on_negative"]
     assert not r["guard_recovers_negative_mass"]
+
+
+def test_guard_gate_uses_actual_guarded_weights_and_bitwise_check():
+    share = np.ones(200); adv = -np.ones(200); w = np.full(200, 0.5)
+    r = cross(w, adv, share, eta=0.5, w_guarded=1.0 + 0.5 * (w - 1.0))
+    g = r["guard_gate"]
+    # R_raw 0.5 -> R_guarded 0.75: retained_ok fails (< 0.90) but recovery is exactly half the gap
+    assert g["n_neg_ok"] and g["bitwise_ok"] and g["recovery_ok"] and not g["retained_ok"] and not g["pass"]
+    r2 = cross(np.full(200, 0.9), adv, share, eta=0.5, w_guarded=np.full(200, 0.95))
+    assert r2["guard_gate"]["pass"]
+    r3 = cross(np.full(200, 0.9), adv, share, eta=0.5, w_guarded=np.full(200, 0.97))   # not the ruled formula
+    assert not r3["guard_gate"]["bitwise_ok"]
+    r4 = cross(np.full(50, 0.9), adv[:50], share[:50], eta=0.5)
+    assert not r4["guard_gate"]["n_neg_ok"]
