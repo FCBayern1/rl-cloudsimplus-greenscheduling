@@ -63,6 +63,9 @@ public class MultiDatacenterSimulationCore {
     // SLA. Populated from the descriptors (deferrable-batch traces). Empty when the
     // trace carries no deadline column → deadline_miss_rate stays 0.
     private final Map<Long, Long> cloudletDeadlineById = new HashMap<>();
+    // Stage D' mask-margin probe: clock at which each cloudlet was routed, so the episode
+    // stats can export the route -> exec-start delay distribution (export-only).
+    private final Map<Long, Double> cloudletRoutedAtById = new HashMap<>();
     // SQT2.3 on-time accounting (Codex, 2026-08-19): MI per deadline-carrying
     // cloudlet, so ontime_mi_share can weight punctuality by work volume.
     private final Map<Long, Long> cloudletMiById = new HashMap<>();
@@ -366,6 +369,7 @@ public class MultiDatacenterSimulationCore {
         // Record completion deadlines (cloudletId → deadline sim-seconds) before the
         // descriptors are converted to Cloudlets (toCloudlet drops the deadline).
         cloudletDeadlineById.clear();
+        cloudletRoutedAtById.clear();
         cloudletMiById.clear();
         for (CloudletDescriptor d : descriptors) {
             if (d.hasDeadline()) {
@@ -676,6 +680,7 @@ public class MultiDatacenterSimulationCore {
                     int forced = pickGreenestAvailableDc(cloudlet);
                     if (forced >= 0 && globalBroker.routeCloudletToDatacenter(cloudlet, forced)) {
                         routedCount++;
+                        cloudletRoutedAtById.put(cloudlet.getId(), currentClock);
                         deadlineForcedCount++;
                         double settlement = settleOnRouteIfIncremental(cloudlet);
                         stepPerSlotReward[i] = settlement;
@@ -734,6 +739,7 @@ public class MultiDatacenterSimulationCore {
             boolean routed = globalBroker.routeCloudletToDatacenter(cloudlet, targetDcIndex);
             if (routed) {
                 routedCount++;
+                cloudletRoutedAtById.put(cloudlet.getId(), currentClock);
                 double settlement = settleOnRouteIfIncremental(cloudlet);
                 stepPerSlotReward[i] = settlement;
                 try {
@@ -2759,6 +2765,25 @@ public class MultiDatacenterSimulationCore {
         stats.put("ontime_mi_share", onTimeMiShare);
         stats.put("deadline_total", deadlineTotal);
         stats.put("deadline_forced_count", epDeadlineForcedCount);
+        // Stage D' mask-margin probe (export-only): route -> exec-start delay over the
+        // finished cloudlets; the deadline-safe DEFER mask margin is set mechanically to
+        // ceil(max) + 1 step from a saturated-dispatch run, never from carbon.
+        {
+            Map<Long, Double> startTimeById = new HashMap<>();
+            for (DatacenterInstance dc : datacenterInstances) {
+                LoadBalancingBroker lb = dc.getLocalBroker();
+                if (lb == null) continue;
+                List<Cloudlet> fin = lb.getCloudletFinishedList();
+                if (fin == null) continue;
+                for (Cloudlet c : fin) {
+                    startTimeById.put(c.getId(), c.getStartTime());
+                }
+            }
+            double[] d = PerActionRewardMath.routeToStartDelays(cloudletRoutedAtById, startTimeById);
+            stats.put("ep_route_to_start_max_sec", d[0]);
+            stats.put("ep_route_to_start_p95_sec", d[1]);
+            stats.put("ep_route_to_start_n", (int) d[2]);
+        }
         stats.put("defer_urgency_cost_sum", epDeferUrgencyCostSum);
         // R0 teacher-reward audit: per-term episode sums of the global
         // per-action reward (carbon level + completion + spatial; urgency is

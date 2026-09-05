@@ -130,6 +130,26 @@ final class PerActionRewardMath {
      * runtime unit. Unlike the legacy fixed-lead rule this leaves tight-slack
      * jobs their genuine wait window instead of firing ~slackSec early.
      */
+    /**
+     * Stage D' mask-margin probe: route -> exec-start delays of the cloudlets present in
+     * both maps. Returns {max, p95 (nearest-rank), count}; {0, 0, 0} when none.
+     * Negative delays (start before route, impossible) are clamped to 0.
+     */
+    static double[] routeToStartDelays(java.util.Map<Long, Double> routedAtById,
+                                       java.util.Map<Long, Double> startTimeById) {
+        java.util.List<Double> delays = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<Long, Double> e : routedAtById.entrySet()) {
+            Double start = startTimeById.get(e.getKey());
+            if (start == null || e.getValue() == null) continue;
+            delays.add(Math.max(0.0, start - e.getValue()));
+        }
+        if (delays.isEmpty()) return new double[]{0.0, 0.0, 0.0};
+        java.util.Collections.sort(delays);
+        int n = delays.size();
+        int idx = Math.min(n - 1, Math.max(0, (int) Math.ceil(0.95 * n) - 1));
+        return new double[]{delays.get(n - 1), delays.get(idx), n};
+    }
+
     static boolean deadlineForceLatestStart(double nowSec, double deadlineSec,
                                             double lengthMi, long pes,
                                             double mipsPerPe, double slackSec) {
