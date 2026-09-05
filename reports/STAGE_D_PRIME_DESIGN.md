@@ -256,3 +256,27 @@ Read as development only (§16, §24): the corruption here is the sister-turbine
 | E | anti | 1.000 | 1.000 | 0 | 0.460 | 0 | 0.00682 |
 
 Contract clean on all 72 clean deployments, forced = 0 everywhere, and the env-side re-route never fired on an RL row (the logit-level mask removed the DEFER choice first, as designed). No collapse in either direction: defer rates sit between 0.42 and 0.58 across the four lines, against 0.038 / 0.956 in Stage D. The health runner's own verdict read FIX_AND_RERUN only because it ran before the chain's probe step (`probe_missing`); the chain and the post-smoke script re-run it after the probes. The guard gate, the recurrent pre-mask selectivity and the six-criteria verdict follow in part 2.
+
+## 27. Development smoke A, part 2: guard gate, selectivity, six-criteria verdict = STOP_DPRIME_SMOKE (2026-09-05 13:20; artefacts and hashes in `reports/manifests/stage_d/dprime/smoke_a/`)
+
+**Verdict: STOP_DPRIME_SMOKE.** Six of seven gates pass; the timing-selectivity gate fails. Per §16 item 5 the consequence is fixed: stop D′, write the (DC, start-offset) / option action design first, and run its four zero-training probes before any training.
+
+| gate | reading | pass |
+|---|---|---|
+| contract clean, all lines | 72/72 clean rows on-time 1.000, completion 1.000 | yes |
+| forced = 0 | 0 on every row | yes |
+| defer not collapsed | V 0.504 (band 0.02–0.90) | yes |
+| guard wiring sentinel | applied weight w′: P(w′ < 0.2) = 0.000, min 0.528 (= 1 + 0.5 (0.056 − 1)) | yes (after the column fix below) |
+| guard, no mass erasure (E last, DEFER) | n(A<0) 585 ≥ 100; R_raw 0.994, R_guarded 0.997; bitwise error 6e−8 | yes |
+| reward–carbon co-direction | V reward −146.5 → −111.0, carbon 0.00909 → 0.00731; E −140.0 → −100.5, 0.00876 → 0.00679 | yes |
+| timing selectivity (V last, raw, recurrent, job-paired) | lift −0.022, balanced AUC 0.308 (need ≥ 0.10 / ≥ 0.60) | **no** |
+
+**Selectivity detail.** Corpus: 210 jobs on the six development windows; 129 paired (44 excluded because their route was mask-forced, 37 never deferred by ST). Per window the balanced AUC runs 0.14–0.46 and the lift −0.043 to −0.005, so the failure is uniform, not one window. The deployed (post-mask) probabilities are identical to the raw ones on the paired states, as they must be: both members of a pair are DEFER-legal by construction, so the mask never binds there (a sanity check that passed). The all-sightings appendix reads lift +0.046, AUC 0.641 (8693 : 210), which is the queue-time exposure of the 41 : 1 corpus and is why it is not the gate. Reading: V's DEFER preference is about 0.60 at a job's first legal wait moment and 0.62 at the moment ST starts it, i.e. the policy leans slightly more towards waiting the longer a job has been present, the reverse of the planner's timing. V waits about 60 % of the time regardless of state. This is the E1 picture (§3) seen from the policy side: the value is in timing and the policy has not represented it.
+
+**Guard reading.** On this smoke E never drifted (defer rate 0.45, stable), so there was no ratchet for the guard to correct: E[w | DEFER, A<0] 1.045 vs E[w | DEFER, A≥0] 0.971, the opposite sign from the Stage D drift checkpoints (§12). The guard is wired and harmless here; the smoke says nothing about whether it is needed.
+
+**Caveat, recorded but not acted on.** 56k steps per line is a development budget. Whether selectivity would emerge at 400k steps was not tested, and testing it now would be tuning on a result; the pre-registered rule (§16 item 5) applies as written.
+
+**Instrument disclosure (development phase).** The first judge run also failed `guard_wiring_sentinel`: the judge read the audit's `lower_tail_suppression`, which is computed on the raw weight (DEFER 0.066 > 0.05), while §16 item 1 defines the sentinel on the applied weight w′ (near-tautological under η = 0.5). `stage_d_credit_audit.summarize` now also emits `lower_tail_suppression_guarded` and `w_guarded_min` when the applied weight was captured; the judge reads the guarded field and fails when it is absent. The E audit JSON was re-summarised from the saved per-transition file (same n and mean w; the original is kept as `audit_E_last.prefix.json`, the first verdict as `dprime_smoke_verdict.prefix.json`). The verdict is STOP either way; 11 judge and audit tests pass.
+
+**What is now moot and what is not.** The 2020 / never-used-turbine continuation (§24–§25) is moot for D′ training. The re-certification requirement and `calibrated_shrink_hz_v2` carry over to whatever successor scene the action design is tested on. Nothing has been selected.

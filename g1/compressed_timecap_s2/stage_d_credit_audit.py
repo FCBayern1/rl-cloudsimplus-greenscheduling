@@ -69,6 +69,12 @@ def summarize(rec):
         w = np.asarray(rec["w"])[sel]
         c["upper_tail_amplification"] = float((w > 1.0).mean())
         c["lower_tail_suppression"] = float((w < 0.2).mean())
+        if rec.get("w_guarded") is not None and len(rec["w_guarded"]) == share.size:
+            # the weight the learner actually multiplied in (post-guard); under eta = 0.5
+            # it is >= 0.5 by construction, so a non-zero tail here means the guard is not wired
+            wg = np.asarray(rec["w_guarded"])[sel]
+            c["lower_tail_suppression_guarded"] = float((wg < 0.2).mean())
+            c["w_guarded_min"] = float(wg.min())
         adv = np.asarray(rec["adv_pre"])[sel]
         c["adv_positive_frac"] = float((adv > 0).mean())
         c["adv_abs_mean_pre"] = float(np.abs(adv).mean())

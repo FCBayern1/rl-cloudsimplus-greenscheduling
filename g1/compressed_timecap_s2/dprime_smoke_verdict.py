@@ -43,7 +43,10 @@ def judge(clean_rows, selectivity, audit_e_last, codirection):
     s = (audit_e_last or {}).get("warmed") or {}
     d = s.get("DEFER", {})
     # wiring sentinel (near-tautological under eta = 0.5, kept as such per §16 Q1)
-    gates["guard_wiring_sentinel"] = bool(d.get("n")) and d.get("lower_tail_suppression", 1.0) <= ERASE_MAX
+    # It must read the APPLIED (guarded) weight: under eta = 0.5 that weight is >= 0.5 by
+    # construction, so any lower tail there means the guard is not wired. The raw weight's
+    # tail is the substantive quantity and belongs to guard_no_mass_erasure, not here.
+    gates["guard_wiring_sentinel"] = bool(d.get("n")) and d.get("lower_tail_suppression_guarded", 1.0) <= ERASE_MAX
     # substantive guard gate from the cross statistics of E's last checkpoint (§16 Q1)
     gg = ((audit_e_last or {}).get("cross") or {}).get("guard_gate") or {}
     gates["guard_no_mass_erasure"] = bool(gg.get("pass"))

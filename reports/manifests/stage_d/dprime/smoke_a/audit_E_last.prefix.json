@@ -183,9 +183,7 @@
       "lower_tail_suppression": 0.06574074074074074,
       "adv_positive_frac": 0.4583333333333333,
       "adv_abs_mean_pre": 0.6540983319282532,
-      "adv_abs_mean_post": 0.6512370705604553,
-      "lower_tail_suppression_guarded": 0.0,
-      "w_guarded_min": 0.5278910994529724
+      "adv_abs_mean_post": 0.6512370705604553
     },
     "ROUTE": {
       "n": 18920,
@@ -242,9 +240,7 @@
       "lower_tail_suppression": 0.09529598308668076,
       "adv_positive_frac": 0.4846723044397463,
       "adv_abs_mean_pre": 0.7975613474845886,
-      "adv_abs_mean_post": 0.7896476984024048,
-      "lower_tail_suppression_guarded": 0.0,
-      "w_guarded_min": 0.5278910994529724
+      "adv_abs_mean_post": 0.7896476984024048
     },
     "w_defer_minus_route": 0.012163043022155762,
     "rho_defer_minus_route": 0.010767161846160889,
@@ -368,8 +364,5 @@
       "slot_mask": true
     }
   ],
-  "elapsed_s": 1113.3,
-  "resummarized_from_npz": {
-    "note": "warmed.*.lower_tail_suppression_guarded / w_guarded_min added post hoc from audit_E_last_raw.npz (same n and mean w as the original run); the original JSON is audit_E_last.prefix.json"
-  }
+  "elapsed_s": 1113.3
 }

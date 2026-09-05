@@ -5,7 +5,7 @@
     "no_forced": true,
     "timing_selectivity": false,
     "defer_not_collapsed": true,
-    "guard_wiring_sentinel": true,
+    "guard_wiring_sentinel": false,
     "guard_no_mass_erasure": true,
     "reward_carbon_codirection": true
   },
