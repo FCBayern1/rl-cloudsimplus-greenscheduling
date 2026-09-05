@@ -1,0 +1,52 @@
+{
+  "isolation_sha256": "a8234093f76683cd",
+  "dc_turbines": {
+    "0": [
+      133,
+      78
+    ],
+    "1": [
+      22,
+      81
+    ],
+    "2": [
+      94
+    ]
+  },
+  "pool_2021": {
+    "status": "OK",
+    "tag": "scene-interface-v1:2021:",
+    "footprint": 2922,
+    "n_rows": 52559,
+    "windows": [
+      259,
+      27364,
+      39729,
+      16477,
+      43574,
+      4240,
+      9154,
+      23604,
+      33225,
+      13223,
+      19663,
+      46630
+    ]
+  },
+  "configs": {
+    "defer": {
+      "file": "config_scene_v1_defer.yml",
+      "source": "config_stage_d_dprime.yml",
+      "source_sha256": "e74f9980c09f418b",
+      "sha256": "7135c3f57498e3ad",
+      "block": "sv1_defer_s2_r48_w72_c3_n35"
+    },
+    "offset": {
+      "file": "config_scene_v1_offset.yml",
+      "source": "config_stage_d_dprime_offset.yml",
+      "source_sha256": "25446146e66a8a1f",
+      "sha256": "427fed12bb2fe4f5",
+      "block": "sv1_offset_s2_r48_w72_c3_n35"
+    }
+  }
+}

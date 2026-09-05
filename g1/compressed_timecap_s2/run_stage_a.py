@@ -573,6 +573,38 @@ def main():
                 todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": allow[k], "env": e, "dir": d})
         print(f"{phase}: {len(todo)} runs ({len(arms)} arms x {len(ks)} windows)")
         print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
+    elif phase in ("scene_cert", "scene_cert_shrink"):
+        # Scene v1 step 2 (SCENE_INTERFACE_DESIGN §2.1, A2): step-wise certification arms on
+        # the twelve hash-ordered 2021 pool windows of the new turbines, defer-mode twin
+        # config, zero RL. scene_cert = B, godeye, shuffle, anti (no calibration needed);
+        # scene_cert_shrink = the calibrated shrink tier fed with the v2 audit of these
+        # turbines (TIMECAP_CAL_V2 = path), run only after the audit exists.
+        man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
+        cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
+        cell = man["configs"]["defer"]["block"]
+        windows = man["pool_2021"]["windows"]
+        if phase == "scene_cert":
+            arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
+                    "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                    "shuffle": {"g": "perturbed_oracle_planner", "tier": "shuffle"},
+                    "anti": {"g": "perturbed_oracle_planner", "tier": "anti"}}
+            cal = None
+        else:
+            cal = os.environ.get("TIMECAP_CAL_V2", os.path.join(HERE, "timecap_error_audit_hz_v2.json"))
+            if not os.path.exists(cal):
+                raise RuntimeError(f"scene_cert_shrink needs the v2 audit at {cal}")
+            arms = {"calibrated_shrink_hz_v2": {"g": "perturbed_oracle_planner", "tier": "calibrated_shrink_v1"}}
+        todo = []
+        for aname, a in arms.items():
+            for k, off in enumerate(windows):
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
+                if a["tier"]:
+                    e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1"})
+                    if cal:
+                        e["PLANNER_PERTURB_CAL"] = cal
+                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off, "env": e, "dir": f"sc_{aname}"})
+        print(f"{phase}: {len(todo)} runs ({len(arms)} arms x {len(windows)} pool windows)")
+        print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":
