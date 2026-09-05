@@ -141,7 +141,7 @@ def route_disallowed_defers(actions, defer_allowed, pes, dc_green_ratio, dc_avai
     avail = np.asarray(dc_available_pes if dc_available_pes is not None else np.zeros(num_dcs), dtype=np.float64).reshape(-1)
     pes_a = np.asarray(pes if pes is not None else np.ones(len(acts)), dtype=np.float64).reshape(-1)
     order = list(np.argsort(-green[:num_dcs], kind="stable"))
-    n_routed = 0
+    n_routed, routed_slots = 0, []
     for i, a in enumerate(acts):
         if a != num_dcs or i >= da.shape[0] or da[i] >= 0.5:
             continue
@@ -151,7 +151,8 @@ def route_disallowed_defers(actions, defer_allowed, pes, dc_green_ratio, dc_avai
         choice = next((int(d) for d in order if avail[d] >= need), int(order[0]))
         acts[i] = choice
         n_routed += 1
-    return acts, n_routed
+        routed_slots.append(i)
+    return acts, n_routed, routed_slots
 
 
 class HierarchicalMultiDCEnv(gym.Env):
@@ -307,6 +308,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         self.defer_deadline_mask = bool(config.get("defer_deadline_mask", False))
         self._defer_mask_margin_sec = max(0.0, float(config.get("defer_deadline_mask_margin_sec", 0.0)))
         self._mask_route_count = 0     # DEFERs re-routed by the env-side mask this episode
+        self._mask_routed_ids = set()  # their cloudlet ids when the planner channel carries ids
+        self._mask_routed_ids_unknown = 0
         if self.defer_deadline_mask and not self.obs_v31_features:
             raise ValueError("defer_deadline_mask=true requires obs_v31_features=true")
         self.obs_v32_job_forecast = bool(
@@ -1369,6 +1372,8 @@ class HierarchicalMultiDCEnv(gym.Env):
             observations = self._parse_hierarchical_observation_from_reset(result)
             self._last_global_obs_for_crd = observations.get("global", {})
             self._mask_route_count = 0
+            self._mask_routed_ids = set()
+            self._mask_routed_ids_unknown = 0
             info = self._parse_info_from_reset(result)
         except Exception as e:
             logger.error(f"Failed to parse reset result: {e}")
@@ -1478,10 +1483,17 @@ class HierarchicalMultiDCEnv(gym.Env):
             g = self._last_global_obs_for_crd or {}
             da = g.get("batch_cloudlet_defer_allowed")
             if da is not None:
-                global_actions, n_routed = route_disallowed_defers(
+                global_actions, n_routed, routed_slots = route_disallowed_defers(
                     global_actions, da, g.get("batch_cloudlet_pes"), g.get("dc_green_ratio"),
                     g.get("dc_available_pes"), self.num_datacenters)
                 self._mask_route_count += int(n_routed)
+                # per-id closure (design §16): which jobs the mask routed, when ids are known
+                ids = (self._planner_channel or {}).get("batch_cloudlet_ids") if isinstance(self._planner_channel, dict) else None
+                for s in routed_slots:
+                    if ids is not None and s < len(ids) and int(ids[s]) >= 0:
+                        self._mask_routed_ids.add(int(ids[s]))
+                    else:
+                        self._mask_routed_ids_unknown += 1
 
         # Convert local actions dict to Java-compatible format
         # Apply action mapping: agent outputs 0 to num_vms -> Java expects -1 to num_vms-1
@@ -1661,6 +1673,10 @@ class HierarchicalMultiDCEnv(gym.Env):
                     info[str(key)] = self._convert_java_value(value)
                 info["crd"] = self._collect_crd_info()
                 info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
+                _mids = sorted(getattr(self, "_mask_routed_ids", set()))
+                info["ep_mask_routed_ids"] = ";".join(str(i) for i in _mids)
+                info["ep_mask_routed_ids_sha"] = __import__("hashlib").sha256(";".join(str(i) for i in _mids).encode()).hexdigest()[:16]
+                info["ep_mask_routed_ids_unknown"] = int(getattr(self, "_mask_routed_ids_unknown", 0))
                 if self._planner_channel is not None:
                     info["planner"] = self._planner_channel
                 return info
@@ -1677,6 +1693,10 @@ class HierarchicalMultiDCEnv(gym.Env):
             info[str(key)] = self._convert_java_value(value)
         info["crd"] = self._collect_crd_info()
         info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
+        _mids = sorted(getattr(self, "_mask_routed_ids", set()))
+        info["ep_mask_routed_ids"] = ";".join(str(i) for i in _mids)
+        info["ep_mask_routed_ids_sha"] = __import__("hashlib").sha256(";".join(str(i) for i in _mids).encode()).hexdigest()[:16]
+        info["ep_mask_routed_ids_unknown"] = int(getattr(self, "_mask_routed_ids_unknown", 0))
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
         return info
@@ -2505,6 +2525,10 @@ class HierarchicalMultiDCEnv(gym.Env):
                 info["episode_reward"] = self.episode_reward
                 info["crd"] = self._collect_crd_info()
                 info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
+                _mids = sorted(getattr(self, "_mask_routed_ids", set()))
+                info["ep_mask_routed_ids"] = ";".join(str(i) for i in _mids)
+                info["ep_mask_routed_ids_sha"] = __import__("hashlib").sha256(";".join(str(i) for i in _mids).encode()).hexdigest()[:16]
+                info["ep_mask_routed_ids_unknown"] = int(getattr(self, "_mask_routed_ids_unknown", 0))
                 if self._planner_channel is not None:
                     info["planner"] = self._planner_channel
                 return info
@@ -2523,6 +2547,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
         info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
+        _mids = sorted(getattr(self, "_mask_routed_ids", set()))
+        info["ep_mask_routed_ids"] = ";".join(str(i) for i in _mids)
+        info["ep_mask_routed_ids_sha"] = __import__("hashlib").sha256(";".join(str(i) for i in _mids).encode()).hexdigest()[:16]
+        info["ep_mask_routed_ids_unknown"] = int(getattr(self, "_mask_routed_ids_unknown", 0))
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
 
@@ -2697,6 +2725,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
         info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
+        _mids = sorted(getattr(self, "_mask_routed_ids", set()))
+        info["ep_mask_routed_ids"] = ";".join(str(i) for i in _mids)
+        info["ep_mask_routed_ids_sha"] = __import__("hashlib").sha256(";".join(str(i) for i in _mids).encode()).hexdigest()[:16]
+        info["ep_mask_routed_ids_unknown"] = int(getattr(self, "_mask_routed_ids_unknown", 0))
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
         return info

@@ -63,9 +63,25 @@ def test_dprime_contract_accepts_mask_routed_unplanned_starts_only():
     base = {"completion_rate_mi": "1.0", "ontime_mi_share": "1.0", "deadline_forced_count": "0",
             "planner_n_stale_dropped": "0", "planner_n_wrong_dc": "0",
             "planner_n_dispatched_never_started": "0", "planner_running_pes_over_cap": "0.0"}
-    ok = dict(base, planner_n_unplanned_start="3", ep_mask_route_count="3")
-    too_many = dict(base, planner_n_unplanned_start="4", ep_mask_route_count="3")
+    ids = dict(planner_unplanned_start_ids="1;2;3", ep_mask_routed_ids="1;2;3", ep_mask_routed_ids_unknown="0")
+    ok = dict(base, planner_n_unplanned_start="3", ep_mask_route_count="3", **ids)
+    too_many = dict(base, planner_n_unplanned_start="4", ep_mask_route_count="3", **ids)
     other_field = dict(base, planner_n_unplanned_start="0", ep_mask_route_count="0", planner_n_wrong_dc="1")
     late = dict(base, planner_n_unplanned_start="0", ep_mask_route_count="0", ontime_mi_share="0.99")
     assert pv.contract_ok_dprime(ok) and not pv.contract_ok_dprime(too_many)
     assert not pv.contract_ok_dprime(other_field) and not pv.contract_ok_dprime(late)
+
+
+def test_dprime_contract_requires_per_id_closure_when_unplanned_starts_exist():
+    base = {"completion_rate_mi": "1.0", "ontime_mi_share": "1.0", "deadline_forced_count": "0",
+            "planner_n_stale_dropped": "0", "planner_n_wrong_dc": "0",
+            "planner_n_dispatched_never_started": "0", "planner_running_pes_over_cap": "0.0",
+            "planner_n_unplanned_start": "2", "ep_mask_route_count": "3", "ep_mask_routed_ids_unknown": "0"}
+    closed = dict(base, planner_unplanned_start_ids="11;12", ep_mask_routed_ids="11;12;13")
+    leaked = dict(base, planner_unplanned_start_ids="11;99", ep_mask_routed_ids="11;12;13")
+    unknown = dict(base, planner_unplanned_start_ids="11;12", ep_mask_routed_ids="11;12;13", ep_mask_routed_ids_unknown="1")
+    missing = dict(base)
+    assert pv.contract_ok_dprime(closed)
+    assert not pv.contract_ok_dprime(leaked) and not pv.contract_ok_dprime(unknown) and not pv.contract_ok_dprime(missing)
+    none = dict(base, planner_n_unplanned_start="0", ep_mask_route_count="0")
+    assert pv.contract_ok_dprime(none)          # no unplanned starts: no ids needed

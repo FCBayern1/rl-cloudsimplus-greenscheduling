@@ -100,9 +100,25 @@ def contract_ok_dprime(r):
         if z == "planner_n_unplanned_start":
             if f(z) > f("ep_mask_route_count"):
                 return False
+            if f(z) > 0 and not unplanned_ids_are_mask_routed(r):
+                return False
         elif f(z) != 0.0:
             return False
     return True
+
+
+def _ids(s):
+    return {int(x) for x in str(s or "").split(";") if x.strip() not in ("", "None")}
+
+
+def unplanned_ids_are_mask_routed(r):
+    """Per-id closure (design §16): every unplanned start must be a job the mask routed.
+    Requires both id lists to be present and the mask's ids fully known."""
+    if float(r.get("ep_mask_routed_ids_unknown", 0) or 0) > 0:
+        return False
+    if "planner_unplanned_start_ids" not in r or "ep_mask_routed_ids" not in r:
+        return False
+    return _ids(r["planner_unplanned_start_ids"]) <= _ids(r["ep_mask_routed_ids"])
 DPRIME_DIRS = dict(DIRS, nodefer="p0_godeye_nodefer")
 ONTIME_MIN, FORCED_MAX = 0.995, 0
 
