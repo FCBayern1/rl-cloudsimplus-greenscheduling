@@ -1,0 +1,33 @@
+{
+  "windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "gate3": {
+    "pass": false,
+    "violations": {
+      "climatology_opt:k1": [
+        "completion 0.8571 < 0.995",
+        "held_open = 5 != 0",
+        "stale = 5 != 0",
+        "id 30 stale",
+        "id 31 stale",
+        "id 32 stale",
+        "id 33 stale",
+        "id 34 stale"
+      ],
+      "shrink_opt:k1": [
+        "completion 0.9714 < 0.995",
+        "held_open = 1 != 0",
+        "stale = 1 != 0",
+        "id 34 stale"
+      ]
+    },
+    "n_rows": 54
+  },
+  "verdict": "STOP_GATE3"
+}
