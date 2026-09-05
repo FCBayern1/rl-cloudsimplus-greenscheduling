@@ -419,3 +419,21 @@ Five windows pass; the rule needs six from the first twelve → **STOP_WINDOW_SP
 Ruling (design doc Addendum C): v1 STOP kept permanently ("pool too short", not "no forecast value"); continuation on the next candidates of the same hash sequence with unchanged thresholds, first pass = sixth window, the five passing windows kept, mechanism PASS and audit v2 inherited and frozen; none passes → final STOP of this scene; 2020 sealed. Disclosed at the freeze: the 2021 file holds at most seventeen disjoint footprints, so after the pool of twelve only three candidates exist (offsets 49625, 36713, 30299); the search covers those three.
 
 Search run 1 is **invalid** and is archived as such (`reports/manifests/scene_v1/v2_search_invalid_run1/`): the harness ran the candidates with the pool config and reset index 100–102, and the simulator takes its window from the block's allowlist by reset index modulo its length (`episode_offset_rows`: allow[k % 12] → pool windows 4, 5, 6), while the planner was given the candidate offset. The truth-curve planner therefore planned on a window the simulator was not running; its carbon collapsed to 13–87 % above the blind (which reads only the live meter), and the run reported STOP_SCENE_FINAL. Caught from the pattern (ST far above B on all three, B's carbon on "candidate 13" equal to pool window 4's) before any consequence was drawn. Fix: every run on windows outside the pool now uses its own config whose allowlist is exactly the window list (candidates → `config_scene_v2_defer.yml`; the development set → `config_scene_dev_{defer,offset}.yml`, block `svdev_*`), so reset index k and the planner offset always name the same window; the pool-12 certification (k = 0..11 on the pool allowlist) was aligned and stands. Search run 2 follows below.
+
+## 39. Search run 2: sixth window found; A2 error gate STOP_ERROR_NOT_LOAD_BEARING (2026-09-06 00:22–00:24)
+
+Aligned search: candidate 13 (offset 49625) passes at the first try (C_B 0.005110, C_ST 0.003961, gap 22.5 %, 0.00115 kg ≥ 9.49e−4), so the development set is 16477, 4240, 9154, 33225, 13223, 49625 (five from the pool, one from the continuation); candidates 14–15 were not run. Rows regenerated on the dev-set config for godeye and the calibrated shrink v2 arm (`sc2_*`, 12 rows, contract clean).
+
+A2 (Addendum A2 of the scene design): C_shrink ≥ 1.05 · C_ST pooled and shrink above ST on ≥ 4 of 6 windows.
+
+| dev k | offset | C_ST | C_shrink_v2 | ratio | green used ST / shrink (Wh) |
+|---|---|---|---|---|---|
+| 0 | 16477 | 0.001406 | 0.001327 | 0.943 | 28.55 / 28.80 |
+| 1 | 4240 | 0.002391 | 0.003336 | 1.395 | 26.71 / 24.74 |
+| 2 | 9154 | 0.001899 | 0.002478 | 1.305 | 27.58 / 26.38 |
+| 3 | 33225 | 0.001879 | 0.001458 | 0.776 | 27.70 / 28.58 |
+| 4 | 13223 | 0.000942 | 0.000887 | 0.942 | 29.63 / 29.76 |
+| 5 | 49625 | 0.003961 | 0.003896 | 0.983 | 23.51 / 23.66 |
+| pooled | | 0.012479 | 0.013380 | **1.072** | |
+
+Pooled ratio 1.072 clears 1.05, but the shrunk forecast is above truth on only two of six windows; on the other four it is equal or better (k3: 22 % lower). **Verdict by the frozen rule: STOP_ERROR_NOT_LOAD_BEARING.** The calibrated real error of the deployed TimeCAP checkpoint on these turbines (λ ≈ 0.88, a mild pull toward the mean, no false peaks) does not consistently harm the analytic scheduler on this scene; a forecast pulled toward the mean even helps the reserving planner on half the windows, which says the truth-curve planner is not the optimum on them (consistent with §35's dyadic wins on k0/k1). Nothing about resisting this error can be shown here, so by A2 the line stops before RL; the margin probe, P0′ and gates 4.1–4.5 were not run; the 2020 confirmation windows were never read. Artefacts in `reports/manifests/scene_v1/v2_search_run2/`.
