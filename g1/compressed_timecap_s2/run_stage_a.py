@@ -455,6 +455,30 @@ def main():
         todo = hz_jobs("discovery", HZ_ARMS, tier_mode=True)
         print(f"hz_main: {len(todo)} runs (x{HZ_MULT})")
         print(json.dumps(sweep(HZ_ARMS, todo=todo), indent=2))
+    elif phase == "hz_corpus":
+        # Stage D' timing-selectivity corpus (Q4): the truth-informed planner ST replayed on
+        # the development windows under the D' config, dumping every slot decision and the
+        # global observation of every step. Frozen once written; timing_selectivity.py scores
+        # a V checkpoint on exactly these states.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        cfg = os.path.join(HERE, "config_stage_d_dprime.yml")
+        cal = os.path.join(HERE, "timecap_error_audit.json")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        cdir = os.path.join(OUT, "dprime_corpus")
+        os.makedirs(cdir, exist_ok=True)
+        todo = []
+        for k, off in enumerate(allow):
+            dump = os.path.join(cdir, f"{cell}_k{k}_decisions.csv")
+            if os.path.exists(dump):
+                os.remove(dump)                       # the dump appends; one clean file per window
+            todo.append({"arm": "perturbed_oracle_planner", "cell": cell, "k": k, "offset": off,
+                         "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, "PLANNER_PERTURB_TIER": "godeye",
+                                 "PLANNER_PERTURB_E": "1", "PLANNER_PERTURB_CAL": cal,
+                                 "EVAL_DECISION_DUMP": dump, "EVAL_DECISION_DUMP_OBS": "1"},
+                         "dir": "dprime_corpus"})
+        print(f"hz_corpus: {len(todo)} ST runs with decision + observation dumps")
+        print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
     elif phase == "hz_margin_probe":
         # Stage D' mask margin (STAGE_D_PRIME_DESIGN §10): a saturated-dispatch probe on the
         # fixed development load. nowait_planner routes every job the step it appears, so
