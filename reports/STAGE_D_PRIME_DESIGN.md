@@ -96,3 +96,16 @@ DEFER transitions receive **less** weight than ROUTE transitions (w difference �
 **Cross-statistics still owed before the guard is called a fix** (this needs per-transition records, which the archived JSONs do not hold; the drift checkpoints are re-sampled with raw records saved): E[w | DEFER, A<0] vs E[w | DEFER, A>0]; P(w<0.2 | DEFER, A<0 / A≥0); the share of DEFER negative-advantage mass retained after reweighting; the same recomputed counterfactually with η = 0.5. If the negative corrective mass clearly recovers, write "supports the ratchet reading"; otherwise the guard is reported as a general regulariser, not as a root-cause fix.
 
 **Order:** cross-statistics → η guard with bit-identical regression tests → mask margin fixed mechanically as ceil(max route→exec-start delay) + 1 step from a saturated-dispatch probe on a fixed development load (never from carbon or training) → P0′ on the actual discounted return (best window on time > start now on brown > late; always-defer routed by the mask with on-time ≥ 0.995 and forced = 0) → Q4 frozen corpus and scorer → ONE development smoke on an old seed and old windows, which must simultaneously give: four lines contract-clean, no forced, V timing-selectivity lift ≥ 0.10 and balanced AUC ≥ 0.60, no defer collapse, no large-scale lower-tail erasure under the guard, reward co-directional with physical carbon. Any failure stops; no second guard strength. Only then the D′ preregistration with new seeds and new unread windows.
+
+## 11. Implementation status after the M5 ruling (2026-09-05 morning)
+
+| item | state |
+|---|---|
+| Symmetric guard η = 0.5 | implemented (`shrink_weights`, key `responsibility_shrink_strength`, default 1.0 bit-identical; `crd_w_raw` / `crd_w_guarded` in the batch); 4 tests |
+| Cross-statistics | `stage_d_credit_cross.py` written and tested; the drift checkpoints (E, N_E × 7/8/9) are being re-sampled with `--save-raw` because the archived JSONs hold only class summaries |
+| Mask margin | Java exports `ep_route_to_start_max/p95/n` (JUnit-tested, jar reinstall queued behind the re-sample); `hz_margin_probe` (nowait_planner on the D′ config, six training windows) + `margin_probe.py` set the margin as ceil(max/timestep)+1 steps; the value then replaces the 0.0 placeholder in `DPRIME_OVERLAY` and the config is regenerated |
+| P0′ | tooling ready (`hz_p0` with `P0_VARIANT=dprime`, `p0_verdict.py dprime`); runs after the margin is frozen |
+| Q4 corpus and scorer | `hz_corpus` (ST under the D′ config, decision + observation dumps) and `timing_selectivity.py` (lift ≥ 0.10, balanced AUC ≥ 0.60) written and tested; the corpus is built after the margin is frozen. Caveat recorded: the dump labels ST's intended action before the env-side mask re-route, and the module is scored per observation with a fresh recurrent state |
+| Development smoke | not started; runs only after P0′ passes |
+
+Nothing has been run on the scene beyond the M5 audit and its re-sample.
