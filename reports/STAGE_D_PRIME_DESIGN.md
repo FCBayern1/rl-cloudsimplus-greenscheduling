@@ -390,3 +390,26 @@ Step 1, by the frozen rules, reading no wind value:
 - Confirmation windows (2020, sha256("scene-interface-v1:2020:" + offset), greedy non-overlap, all six kept whatever their headroom): 24398, 10829, 7479, 20843, 523, 14997. They are read only by §4.6 of the design.
 
 Next: step 2, scene certification and calibration on 2021 (mechanism control on the first twelve hash-ordered 2021 windows; TimeCAP error calibration on these turbines; margin probe; P0′), zero RL.
+
+## 37. Step 2a: mechanism control PASS; headroom gate leaves five of twelve → STOP_WINDOW_SPLIT (2026-09-06 00:04)
+
+Certification arms on the twelve hash-ordered 2021 pool windows (offsets 259, 27364, 39729, 16477, 43574, 4240, 9154, 23604, 33225, 13223, 19663, 46630), defer-mode twin config 7135c3f5…, jar b0b44d1e…, 48 rows, contract clean on all: pooled carbon B (reactive_wait) 0.039255, ST (godeye) 0.027651 (−29.6 %), shuffle 0.059917, anti 0.070697 → mechanism control PASS (ST below B; both controls above B). TimeCAP error audit v2 on these turbines, 2021: λ_pooled 0.881 / 0.892 / 0.876 per DC, regression to the mean confirmed, no systematic false peaks, no spatial ranking error (`timecap_error_audit_hz_v2.json`).
+
+Headroom gate (§2.2 + A1/B1: relative ≥ 0.15 and absolute ≥ 0.05 · C_brown_ref; C_brown_ref = 37.94 Wh of dynamic job energy × 0.5 kg/kWh = 0.01897 kg, absolute gate 9.49e−4 kg):
+
+| pool k | offset | C_B | C_ST | gap rel | gap abs (kg) | pass |
+|---|---|---|---|---|---|---|
+| 0 | 259 | 0.001733 | 0.001430 | 17.5 % | 0.000303 | no (abs) |
+| 1 | 27364 | 0.000312 | 0.000310 | 0.5 % | 0.000001 | no |
+| 2 | 39729 | 0.001326 | 0.000771 | 41.8 % | 0.000554 | no (abs) |
+| 3 | 16477 | 0.004512 | 0.001406 | 68.8 % | 0.003106 | yes |
+| 4 | 43574 | 0.008796 | 0.008933 | −1.6 % | −0.000137 | no |
+| 5 | 4240 | 0.003603 | 0.002391 | 33.6 % | 0.001212 | yes |
+| 6 | 9154 | 0.004483 | 0.001899 | 57.6 % | 0.002584 | yes |
+| 7 | 23604 | 0.001078 | 0.000346 | 67.9 % | 0.000732 | no (abs) |
+| 8 | 33225 | 0.002855 | 0.001879 | 34.2 % | 0.000975 | yes |
+| 9 | 13223 | 0.002229 | 0.000942 | 57.7 % | 0.001287 | yes |
+| 10 | 19663 | 0.004664 | 0.003857 | 17.3 % | 0.000807 | no (abs) |
+| 11 | 46630 | 0.003665 | 0.003485 | 4.9 % | 0.000180 | no |
+
+Five windows pass; the rule needs six from the first twelve → **STOP_WINDOW_SPLIT** by the frozen rule. Observation, recorded and not acted on: the absolute gate (5 % of the all-brown reference) equals 25–90 % of a typical window's blind carbon on this scene, so it rejects windows with 42 % and 68 % relative gaps (k2, k7); the relative gate alone would pass eight of twelve. The design fixes the pool at the first twelve hash-ordered windows and fixes both thresholds, so neither can be changed for this pool without an addendum; the steps 2b/2c (shrink gate, margin probe, P0′) were not run. Rows, judge, manifest and audit in `reports/manifests/scene_v1/cert_pool12/`.
