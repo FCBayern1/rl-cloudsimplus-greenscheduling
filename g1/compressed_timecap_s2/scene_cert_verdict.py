@@ -122,6 +122,7 @@ def main():
                 raise SystemExit("error gate is read only after the development set exists")
             offsets = prev0["development"]["dev_offsets"]
         dk = list(range(len(offsets)))
+        cell = "svdev_defer_" + cell[len("sv1_defer_"):]          # the dev-set twin's block name
         rows = load_rows(("godeye", "calibrated_shrink_hz_v2"), dk, cell, prefix="sc2_")
         prev = {"dev_offsets": offsets, "error_gate": error_gate(rows, dk)}
         prev["verdict"] = prev["error_gate"]["verdict"]

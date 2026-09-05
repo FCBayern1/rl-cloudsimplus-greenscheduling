@@ -200,9 +200,13 @@ def load_rows_scene():
     """Scene v1 P0' rows (SCENE_INTERFACE_DESIGN §2, step 2c): the development windows of
     scene_v1_cert.json, the defer-mode block, dirs p0_scene_v1_<arm>."""
     man = json.load(open(os.path.join(HERE, "stage_a_out", "scene_v1_manifest.json")))
-    cert = json.load(open(os.path.join(HERE, "stage_a_out", "scene_v1_cert.json")))
-    cell = man["configs"]["defer"]["block"]
-    windows = list(range(len(cert["development"]["dev_offsets"])))
+    cell = "svdev_defer_" + man["configs"]["defer"]["block"][len("sv1_defer_"):]   # dev-set twin
+    v2 = os.path.join(HERE, "stage_a_out", "scene_v2_dev.json")
+    if os.path.exists(v2):
+        dev = json.load(open(v2))["dev_offsets"]
+    else:
+        dev = json.load(open(os.path.join(HERE, "stage_a_out", "scene_v1_cert.json")))["development"]["dev_offsets"]
+    windows = list(range(len(dev)))
     rows = {}
     for arm, d in SCENE_DIRS.items():
         for k in windows:

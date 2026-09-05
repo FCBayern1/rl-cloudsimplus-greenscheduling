@@ -101,6 +101,27 @@ def scene_dev_offsets():
     return list(cert["development"]["dev_offsets"])
 
 
+def scene_dev_config(mode):
+    """(config path, block name) of the development-set twin for `mode` ("defer" / "offset"):
+    the scene block with the allowlist = the six development offsets, so a run with
+    --reset-skip k simulates dev window k and the planner's ORACLE_OFFSET_ROWS names the same
+    window (the simulator takes allow[k % len]). Written deterministically on every call."""
+    import yaml
+    from gen_scene_v1 import BLOCK, scene_block
+    man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
+    dev = scene_dev_offsets()
+    src_name = man["configs"][mode]["source"]
+    src = yaml.safe_load(open(os.path.join(HERE, src_name)))
+    block = f"svdev_{mode}_" + BLOCK[5:]
+    blk = scene_block(src[BLOCK], man["dc_turbines"], dev, block)
+    out_cfg = {k: v for k, v in src.items() if not k.startswith("sd_")}
+    out_cfg[block] = blk
+    path = os.path.join(HERE, f"config_scene_dev_{mode}.yml")
+    with open(path, "w") as f:
+        yaml.safe_dump(out_cfg, f, sort_keys=True)
+    return path, block
+
+
 def hz_jobs(part, arms, tier_mode=False, mult=None):
     """Scheme 2-HZ jobs (SCHEME2_HZ_PREREG): zero-floor fleet config, that part's windows.
 
@@ -595,11 +616,16 @@ def main():
         # scene_cert_shrink = the calibrated shrink tier fed with the v2 audit of these
         # turbines (TIMECAP_CAL_V2 = path), run only after the audit exists.
         man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
-        cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
-        cell = man["configs"]["defer"]["block"]
-        # scene_cert reads the twelve pool windows; scene_cert_shrink (and the godeye rows it
-        # is judged against) run on the final six development windows into sc2_* (C3)
-        windows = man["pool_2021"]["windows"] if phase == "scene_cert" else scene_dev_offsets()
+        # scene_cert reads the twelve pool windows with the pool config; scene_cert_shrink
+        # (and the godeye rows it is judged against) run on the final six development
+        # windows with the dev-set config (allowlist = dev offsets) into sc2_* (C3)
+        if phase == "scene_cert":
+            cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
+            cell = man["configs"]["defer"]["block"]
+            windows = man["pool_2021"]["windows"]
+        else:
+            windows = scene_dev_offsets()
+            cfg, cell = scene_dev_config("defer")
         if phase == "scene_cert":
             arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
                     "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
@@ -629,10 +655,8 @@ def main():
         # probe (nowait_planner; margin = ceil(max delay / timestep) + 1, never from carbon)
         # and P0' (blind / clean / calibrated shrink v2 / always_defer / nodefer on the
         # discounted return, judged by p0_verdict --scene). Zero RL.
-        man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
-        cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
-        cell = man["configs"]["defer"]["block"]
         dev = scene_dev_offsets()
+        cfg, cell = scene_dev_config("defer")            # allowlist = the dev offsets, k = 0..5
         cal = os.path.join(HERE, "timecap_error_audit_hz_v2.json")
         todo = []
         if phase == "scene_margin":
