@@ -76,7 +76,7 @@ def test_gate2_conditions_and_the_executor_red_flag():
 def test_judge_order_stops_at_the_first_failing_gate():
     arms = ("oracle_opt", "shuffle_opt", "anti_opt", "shrink_opt", "persistence_opt",
             "climatology_opt", "reactive_opt", "nowait_opt", "always_hold")
-    rows = {(a, k): _row(carbon={"oracle_opt": 6.5, "shuffle_opt": 9.5, "anti_opt": 9.6}.get(a, 10.0))
+    rows = {(a, k): _row(carbon={"oracle_opt": 6.5, "shuffle_opt": 9.7, "anti_opt": 9.6}.get(a, 10.0))
             for a in arms for k in range(6)}
     led = {k: _ledger() for k in rows}
     refs = {"B": [10.0] * 6, "ST": [6.0] * 6}
