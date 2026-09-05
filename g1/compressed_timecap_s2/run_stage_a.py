@@ -605,6 +605,38 @@ def main():
                 todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off, "env": e, "dir": f"sc_{aname}"})
         print(f"{phase}: {len(todo)} runs ({len(arms)} arms x {len(windows)} pool windows)")
         print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
+    elif phase in ("scene_margin", "scene_p0"):
+        # Scene v1 step 2b/2c on the six development windows: the saturated-dispatch margin
+        # probe (nowait_planner; margin = ceil(max delay / timestep) + 1, never from carbon)
+        # and P0' (blind / clean / calibrated shrink v2 / always_defer / nodefer on the
+        # discounted return, judged by p0_verdict --scene). Zero RL.
+        man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
+        cert = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
+        if cert.get("development", {}).get("status") != "OK":
+            raise RuntimeError("scene_margin / scene_p0 need the certified development set (scene_cert_verdict)")
+        cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
+        cell = man["configs"]["defer"]["block"]
+        dev = cert["development"]["dev_offsets"]
+        cal = os.path.join(HERE, "timecap_error_audit_hz_v2.json")
+        todo = []
+        if phase == "scene_margin":
+            todo = [{"arm": "nowait_planner", "cell": cell, "k": k, "offset": off,
+                     "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}, "dir": "sm_probe"} for k, off in enumerate(dev)]
+        else:
+            arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
+                    "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                    "calibrated_shrink_hz_v2": {"g": "perturbed_oracle_planner", "tier": "calibrated_shrink_v1"},
+                    "always_defer": {"g": "always_defer", "tier": False},
+                    "godeye_nodefer": {"g": "perturbed_oracle_planner", "tier": "godeye",
+                                       "extra": {"PLANNER_ALLOW_DEFER": "0"}}}
+            for aname, a in arms.items():
+                for k, off in enumerate(dev):
+                    e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, **a.get("extra", {})}
+                    if a["tier"]:
+                        e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1", "PLANNER_PERTURB_CAL": cal})
+                    todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off, "env": e, "dir": f"p0_scene_v1_{aname}"})
+        print(f"{phase}: {len(todo)} runs on {len(dev)} development windows")
+        print(json.dumps(sweep(tuple(sorted({j['arm'] for j in todo})), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":

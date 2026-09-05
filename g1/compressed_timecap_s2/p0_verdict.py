@@ -191,8 +191,46 @@ def load_rows(variant="", dprime=False):
     return rows, windows
 
 
+SCENE_DIRS = {"blind": "p0_scene_v1_reactive_wait_planner", "clean": "p0_scene_v1_godeye",
+              "shrink": "p0_scene_v1_calibrated_shrink_hz_v2", "always_defer": "p0_scene_v1_always_defer",
+              "nodefer": "p0_scene_v1_godeye_nodefer"}
+
+
+def load_rows_scene():
+    """Scene v1 P0' rows (SCENE_INTERFACE_DESIGN §2, step 2c): the development windows of
+    scene_v1_cert.json, the defer-mode block, dirs p0_scene_v1_<arm>."""
+    man = json.load(open(os.path.join(HERE, "stage_a_out", "scene_v1_manifest.json")))
+    cert = json.load(open(os.path.join(HERE, "stage_a_out", "scene_v1_cert.json")))
+    cell = man["configs"]["defer"]["block"]
+    windows = list(range(len(cert["development"]["dev_offsets"])))
+    rows = {}
+    for arm, d in SCENE_DIRS.items():
+        for k in windows:
+            p = os.path.join(OUT, d, f"{cell}_k{k}.csv")
+            if not os.path.exists(p):
+                rows[(arm, k)] = None
+                continue
+            r = list(csv.DictReader(open(p)))[-1]
+            f = lambda key, default=0.0: float(r.get(key, default) or default)  # noqa: E731
+            rows[(arm, k)] = {"carbon": f("total_carbon_kg"), "reward": f("global_reward_sum"),
+                              "reward_disc": f("global_reward_discounted_sum"),
+                              "ontime": f("ontime_mi_share", 1.0), "forced": f("deadline_forced_count"),
+                              "clip": f("ep_carbon_norm_clip_count"), "samples": f("ep_carbon_norm_sample_count"),
+                              "cap": f("ep_global_carbon_cap_count"), "mask_routed": f("ep_mask_route_count"),
+                              "unplanned": f("planner_n_unplanned_start"), "contract_ok": bool(contract_ok_dprime(r))}
+    return rows, windows
+
+
 def main():
     variant = sys.argv[1] if len(sys.argv) > 1 else ""
+    if variant == "scene":
+        rows, windows = load_rows_scene()
+        out = judge_dprime(rows, windows)
+        out["reward_variant"] = "scene_v1"
+        with open(os.path.join(OUT, "p0_verdict_scene_v1.json"), "w") as fh:
+            json.dump(out, fh, indent=2)
+        print(json.dumps(out, indent=2))
+        return
     if variant == "dprime":
         rows, windows = load_rows(variant, dprime=True)
         out = judge_dprime(rows, windows)
