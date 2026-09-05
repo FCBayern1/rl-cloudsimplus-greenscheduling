@@ -1,71 +1,61 @@
-# Scene and observation-interface design (v0 draft, 2026-09-05 23:20; for the user, then Codex; nothing frozen, nothing run)
+# Scene and observation-interface design (v1, 2026-09-05 23:45; revised after the Codex review of v0; for Codex to freeze; nothing run)
 
-This is the prospective design Codex asked for after closing the action-space line (STAGE_D_PRIME_DESIGN §35). It does not reopen the option or offset verdicts. It builds on two established facts and three open questions.
+Builds on STAGE_D_PRIME_DESIGN §35 and its diagnostic: the (DC, dispatch-offset) action with an every-step grid reproduces the reserving planner exactly on all six development windows; the frozen dyadic grid's downward quantisation, not the action, caused the k4/k5 failure. The option and offset verdicts are not reopened. Every training in §4.1–§4.5 is zero-RL (the supervised fits of §4.5 are training); RL appears only in §4.6.
 
-Established (design log §3, §32, §35 and its diagnostic): the value in the HZ ×2 scene is temporal; an oracle-driven (DC, dispatch-offset) action with a fine grid reproduces the reserving planner exactly on every window; the frozen dyadic grid's downward quantisation, not the action, cost the k4/k5 windows.
+Changes from v0 (Codex review): the confirmation windows are hash-drawn from a year never used for anything else and kept whatever their headroom; the headroom threshold no longer depends on the data it gates; the blind family covers every offset the oracle can choose; the observation gains one candidate-aligned key, whose semantics net out static draw and already-committed load; the fits of §4.5 use the development set only; seeds are frozen independently of any deadline.
 
-Open, in the order they must be answered: (i) whether a fixed reservation alone captures the gain (necessity against the strong blind family); (ii) whether a policy can learn the decision from forecast features it is allowed to see (representation learnability); (iii) whether PPO and EU-CRD then inherit or resist forecast error (the thesis).
+## 1. Data isolation
 
-## 1. Scene
+- Turbines: option B, a never-used set chosen by the frozen hash rule of `stage_d_prime_turbines.py` (tag stage-d-prime-turbines-v1; first five eligible ids in hash order; DC0 ← 2, DC1 ← 2, DC2 ← 1; DC3, DC4 without turbines as in HZ). Eligible = never in any tracked config, audit or report, with complete 2020 (32,224 rows) and 2021 (52,559 rows) files. The choice is written to `stage_a_out/scene_v1_turbines.json` and frozen before any wind value of those turbines is read.
+- 2021 = design year: scene certification, TimeCAP error calibration (`calibrated_shrink_hz_v2` on these turbines), margin probe, P0′, the headroom-gated development windows, the supervised fits and their selection.
+- 2020 = confirmation year: six judgement windows drawn once by sha256("scene-interface-v1:2020:" + offset) over every legal footprint start, greedy non-overlap, all six kept whatever their headroom; read only by the final RL / EU-CRD judgement of §4.6. If the pooled headroom of the six (measured by B and ST only, at the time of §4.6, after everything else is frozen) is below the threshold of §2.2, the line reports STOP_CONFIRMATION_HEADROOM honestly; no window is replaced.
 
-### 1.1 Turbines and year: two options, one recommendation
+## 2. Scene certification (2021, zero RL)
 
-- (A) Same five HZ turbines (123/10, 51/53, 112), 2021 file (52,559 rows), unread windows only. Known constraint (design log §17): once every read window and its full 2,922-row footprint is excluded, the largest remaining gap is 2,119 rows, so six disjoint unread windows do not exist; only a read-only exclusion (footprint not excluded) yields six, and the headroom gate of §1.2 will remove more. Cheapest, but the pool is nearly spent and every further read burns it.
-- (B) A never-used turbine set (106 eligible ids with complete 2020 and 2021 files, `stage_a_out/turbine_usage_inventory.json`), chosen by the frozen hash rule of `stage_d_prime_turbines.py` (tag stage-d-prime-turbines-v1, first five in hash order mapped onto the HZ layout DC0 ← 2, DC1 ← 2, DC2 ← 1). Costs the full re-certification the ruling of §24 already required for any successor: the zero-training scene gate (mechanism control on the reactive-wait blind, shrink/shuffle/anti below the blind), the TimeCAP error calibration on these turbines (`calibrated_shrink_hz_v2`), the margin probe, and P0′. Gives a clean 2021 pool of 52,559 rows for development and judgement, and a 2020 file for a cross-year confirmation.
+### 2.1 Mechanism control, as ruled for any successor scene
+Zero-training arms on hash-ordered 2021 windows: the reactive-wait blind B, the reserving godeye planner ST, shuffle and anti of ST, and after calibration the calibrated-shrink arm. Pass iff ST is below B on the pooled sum, shuffle and anti are not below B, and the contract holds (completion ≥ 0.995, on-time ≥ 0.995, forced 0), on the first twelve hash-ordered windows. These twelve are the development pool; the reading of §2.2 is taken on them.
 
-Recommendation: (B). The window pool is what every gate consumes, and (A) cannot supply a headroom-gated, unread six-window judgement set plus a development set.
+### 2.2 Headroom gate, threshold fixed before any reading
+A window has headroom iff (C_B − C_ST) / C_B ≥ 0.15 and (C_B − C_ST) ≥ 0.05 · C_brown, where C_brown is the window's carbon if every job ran on brown power alone (the physical all-brown bound of the fleet, computed from the trace and the fleet's power model; no arm is read for it). Both numbers are frozen here. Development windows = the six hash-earliest windows of the pool that pass the gate; fewer than six → STOP_WINDOW_SPLIT. Rejected windows are archived and never reused. The same gate is the confirmation test of §1 (applied to the pooled six 2020 windows, never per window, never to swap them).
 
-### 1.2 Window rule with a headroom gate (frozen before any window is read)
+## 3. Action and executor
 
-Candidate offsets: every legal start of a 2,922-row footprint; order by sha256("scene-interface-v1:" + offset); walk in that order and accept a window iff (a) it does not overlap an accepted window and (b) it passes the headroom gate, until six judgement windows and six development windows are accepted (development first in hash order, then judgement, disjoint from each other and from everything read). Fewer than twelve → STOP_WINDOW_SPLIT.
+(DC, dispatch-offset) as in OPTION_ACTION_DESIGN §8 / Addendum C, grid = every step 0..W (W = the wait cap in steps, 72 on the HZ cell; 73 values), no quantisation. Executor, legality mask, ledger, timing truth and the gate-3 contract exactly as Addendum C and the placement repair of §34 (fixed-start reservation, no green read, illegal offsets masked never clipped, route→start ≤ 1 step). No third action.
 
-Headroom gate, read from two analytic arms only, both step-wise and already frozen: B = `reactive_wait_planner` (blind) and ST = the reserving godeye planner. A window passes iff (C_B − C_ST) / C_B ≥ 0.15 and C_B − C_ST ≥ h_min kg, with h_min set from the certification runs of the new turbines as the 25th percentile of the per-window gap over the first twelve hash-ordered candidates that pass the relative gate (recorded, then frozen; no policy is read). The rule reads carbon of two analytic arms and nothing else; the arms' rows on rejected windows are archived and never reused.
+## 4. Gates, in order; a later gate is not read if an earlier one fails
 
-Interpretation fixed now: a window that fails the gate is a scene in which the forecast has nothing to add, and no method is judged on it.
+### 4.1 Expressibility (development windows)
+oracle_off (every-step grid, truth curve) against B and ST. Pooled capture ≥ 0.80 and headroom-weighted window robustness Σ_w gap_w · [capture_w ≥ 0.70] / Σ_w gap_w ≥ 0.80, gap_w = C_B,w − C_ST,w. Expected to pass from the §35 diagnostic; kept because the scene is new.
 
-## 2. Action
+### 4.2 Blind family, frozen, matched to the oracle
+fixed_off(κ) for every κ = 0..W (73 arms; site by current visible cost as in C3), reactive_off, persistence_off, climatology_off. All blind arms run first; blind* = lowest pooled carbon, frozen with row hashes before any informed row exists.
 
-(DC, dispatch-offset) as in OPTION_ACTION_DESIGN §8 / Addendum C, with two changes decided from the §35 diagnostic before any row exists:
+### 4.3 Predictive necessity
+oracle_off, shuffle_off, anti_off after the freeze; the three conditions of OPTION_ACTION_DESIGN §6 gate 2 at 0.95 on the pooled sum and the headroom-weighted window rule of §4.1. Failure ends the line at this gate: the gain is reservation, not prediction.
 
-- grid: every step from 0 to W (W = the scene's wait cap in steps; on the HZ cell W = 72, 73 values); the module's offset head has W + 1 outputs;
-- quantisation: none needed for the every-step grid; if a coarser grid is ever preregistered, the rule is nearest-legal, not down.
+### 4.4 Observation interface (one new key)
+`cand_green_cover[j, d, κ]`, shape (NB, n·(W+1)), float32: the share of job j's energy over its full runtime, started at t + κ + lag at site d, that the arm's forecast green at d covers **after subtracting the site's static draw and the load already committed on the reservation grid for those steps**, clipped to [0, 1]; zero on padding slots and on illegal (j, d, κ). Committed load is the executor's grid (every route and every held reservation the env has seen), so two jobs cannot claim the same green. The curve is the arm's own: truth for godeye, the TimeCAP output for timecap arms, the perturbed curve for shuffle / anti / calibrated arms, through one function in the env; no arm sees another arm's curve or any answer. Feasibility is the existing legality mask; the deadline margin is derived in the module from the existing per-job time-to-deadline and κ (no new key). The four per-site summaries stay.
 
-Executor, legality mask, ledger, timing truth and gate-3 contract exactly as Addendum C (fixed-start reservation, no green read, illegal offsets masked never clipped, route→start ≤ 1 step).
+Volume: one key of 128 × 365 float32 = 187 kB per step. Before anything else is built on it, a memory-and-throughput smoke: one env-runner with RLlib's rollout batch at the Stage D setting, peak RSS and steps per second recorded against the D′ configuration; if peak RSS exceeds 1.5× the D′ figure or throughput drops below 0.5×, the key is stored as float16 or the candidate set is restricted to the mask's legal entries, and the smoke repeats; the choice is written down before §4.5.
 
-## 3. Observation interface
+### 4.5 Representation learnability (development set only)
+Corpus: oracle_off decisions on the six development windows (k0–k3 fit, k4–k5 held out), one decision per job. Three supervised fits with the frozen recipe of Addendum C4 (Adam 1e-3, one step per window, clip 1.0, no class weighting, default init, seed 20260905, 200 epochs, argmax decode):
+- F1: the D′ observation (four summaries, no candidate key);
+- F2: the candidate key computed from the truth curve;
+- F3: the candidate key computed from the TimeCAP forecast (the interface the RL will have).
+Gate on F3: p_delay lift ≥ 0.10 and balanced AUC ≥ 0.60 on the held-out windows, executed capture ≥ 0.50 against blind* and oracle_off on those windows, BC contract clean. F1 and F2 are the ablation, read together with F3 and never used to select anything: F1 fails while F2 passes → the summaries lost the information; F2 passes while F3 fails → the forecast quality on this scene; all fail → sample or architecture (reported as open). The confirmation windows are not touched by any fit.
 
-The policy's forecast view changes from four per-site summaries to features aligned with the candidate actions, every one computed from the forecast the arm is given (truth for godeye, the TimeCAP output for timecap arms, the perturbed curve for shuffle / anti / calibrated arms) through one shared function, so no arm can see the oracle's answer:
+### 4.6 RL and EU-CRD (separate preregistration, written only after 4.1–4.5 pass)
+Vanilla PPO and EU-CRD on the offset action with the F3 interface; the four-line design and the contract of Stage D; perturbation arms shuffle / anti / calibrated_shrink_hz_v2; seeds frozen at five paired seeds if both machines are available for the run, else the minimum of three paired seeds, decided from machine availability when that document is written and never from a deadline; the six 2020 confirmation windows read once; the SMDP credit question of OPTION_ACTION_DESIGN §3.2 resolved in that document.
 
-- `cand_green_cover[j, d, κ]`: the share of job j's energy draw that green would cover if it started at t + κ + lag at site d and ran its full runtime, under the arm's curve (0..1);
-- `cand_feasible[j, d, κ]`: the legality mask (deadline and reservation), already an obs key;
-- `cand_deadline_margin[j, κ]`: (latest start − (t + κ + lag)) / deadline scale, clipped;
-- the existing per-site held-ledger keys and per-job timing keys (obs_v31) stay; the four summaries stay as well (they are cheap and the ablation in §4.3 needs them).
+## 5. Order and cost
 
-Shape: (NB, n·(W+1)) per feature; on the HZ cell 128 × 365 per key. The score-based module's offset mode consumes them as candidate-aligned inputs added to logit(d, κ) through a small per-candidate MLP (site score + offset head + candidate-feature term); the candidate-feature term is the only new parameter block and is the object of the ablation.
+1. Turbine choice and data isolation (minutes; frozen file).
+2. Scene certification and calibration on 2021 (about one day of zero-RL runs; TimeCAP calibration included).
+3. Headroom gate → six development windows (one hour).
+4. Expressibility with the every-step grid (one hour).
+5. Full blind family (76 arms × 6 windows, about two hours) → freeze → necessity.
+6. Interface smoke, then F1 / F2 / F3 (about one hour).
+7. Only then the RL preregistration.
 
-## 4. Gates (zero training until §4.4), same order as before
-
-### 4.1 Expressibility
-oracle_off (every-step grid) against B and ST on the six development windows. Pooled capture ≥ 0.80 and headroom-weighted window robustness: Σ_w gap_w · [capture_w ≥ 0.70] / Σ_w gap_w ≥ 0.80 (a window's vote weighted by its own avoidable carbon), with the pooled and the weighted rule both frozen now. From the §35 diagnostic this gate is expected to pass; it is kept because the scene is new.
-
-### 4.2 Predictive necessity
-Blind family of Addendum C3 (fixed_off(κ) on the every-step grid is 73 arms; frozen to fixed_off(κ) for κ ∈ {0, 4, 8, …, 72} = 19 arms, plus reactive_off, persistence_off, climatology_off), run first, blind* frozen by pooled carbon, then oracle / shuffle / anti; the three conditions of §6 gate 2 with 0.95, on the pooled sum and the headroom-weighted window rule.
-
-### 4.3 Representation learnability (replaces gate 4 and Addendum D2)
-Three supervised fits, same corpus (oracle_off decisions on the development windows), same split, same frozen hyper-parameters (Addendum C4):
-- F1: the D′ observation (four summaries, no candidate features);
-- F2: the candidate-aligned features computed from the truth curve (the interface with perfect forecast);
-- F3: the candidate-aligned features computed from the TimeCAP forecast (the interface the RL will actually have).
-Classification gate on p_delay (lift ≥ 0.10, balanced AUC ≥ 0.60) and executed capture ≥ 0.50 on the held-out windows, read for F3 as the gate and for F1 / F2 as the ablation that says where the information is lost (F1 fails and F2 passes → representation; F2 passes and F3 fails → forecast quality on this scene; all fail → sample or architecture).
-
-### 4.4 RL and EU-CRD (separate preregistration after 4.1–4.3 pass)
-Vanilla PPO and EU-CRD on the offset action with the F3 interface, five new seeds, the six judgement windows one-shot, the four-line design of Stage D, the contract of Stage D, perturbation arms shuffle / anti / calibrated_shrink_hz_v2; the SMDP credit question of OPTION_ACTION_DESIGN §3.2 resolved in that document, not before.
-
-## 5. Costs and order
-
-Re-certification of the new turbines (scene gate, calibration, margin probe, P0′): about one day of zero-training runs. Window rule with headroom gate: one hour. Gates 4.1–4.3: two to three hours. RL: 400k steps × 5 seeds × 4 lines on two machines, two to three days. Nothing runs before Codex approves this document and it is frozen.
-
-## 6. Decisions requested from the user before this goes to Codex
-
-1. Option (A) or (B) for the turbines (recommendation: B).
-2. A target date, so the number of seeds and gates can be sized to it.
+Nothing runs before Codex freezes this document.
