@@ -120,6 +120,7 @@ sd_E_s2_r48_w72_c3_n35:
       anomaly_z: 1.0
       normalize_rho: true
       normalize_shares: true
+      responsibility_shrink_strength: 0.5
       reweight_warmup_calls: 450
       rho_min: 0.05
       share_scale_decay: 0.99
@@ -422,6 +423,7 @@ sd_NE_s2_r48_w72_c3_n35:
       anomaly_z: 1.0
       normalize_rho: true
       normalize_shares: true
+      responsibility_shrink_strength: 0.5
       reweight_warmup_calls: 450
       rho_min: 0.05
       share_scale_decay: 0.99
@@ -724,6 +726,7 @@ sd_NV_s2_r48_w72_c3_n35:
       anomaly_z: 1.0
       normalize_rho: true
       normalize_shares: true
+      responsibility_shrink_strength: 0.5
       reweight_warmup_calls: 450
       rho_min: 0.05
       share_scale_decay: 0.99
@@ -1026,6 +1029,7 @@ sd_V_s2_r48_w72_c3_n35:
       anomaly_z: 1.0
       normalize_rho: true
       normalize_shares: true
+      responsibility_shrink_strength: 0.5
       reweight_warmup_calls: 450
       rho_min: 0.05
       share_scale_decay: 0.99

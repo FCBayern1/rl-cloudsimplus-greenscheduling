@@ -127,3 +127,19 @@ On every drift checkpoint the negative-advantage DEFER transitions carry a lower
 ## 13. Mask margin frozen mechanically (2026-09-05 09:37)
 
 Saturated-dispatch probe: `nowait_planner` on the D′ config over the six development training windows (35 jobs each, gateway jar 58413f681b0bc8f7 with the route→exec-start export). Route→exec-start delay: max = p95 = 1.0 s on every window (one simulation step: a job routed at clock t starts at t + 1), forced = 0, on-time 1.000. Margin = ceil(1.0 / 1.0) + 1 = **2 steps = 2.0 s**, written into `DPRIME_OVERLAY` and the regenerated `config_stage_d_dprime.yml` (manifest SHA recorded there). Disclosure: on this development load the 35 jobs fit the fleet at once, so no queueing delay was observed; the margin covers the dispatch latency, not contention. It is frozen by the rule regardless and is not to be revisited on carbon or training results; if the development smoke shows forced > 0 under the mask, that is a STOP, not a margin retune.
+
+## 14. P0′ first run (2026-09-05 09:42; config c7d3d1e2…, margin 2 steps): STOP on one ledger field, every timing gate passed
+
+Pooled over the six development windows (discounted return γ = 0.99; carbon kg):
+
+| arm | discounted return | carbon |
+|---|---|---|
+| clean (ST, best window on time) | +9.31 | 0.0113 |
+| blind (reactive wait) | −7.02 | 0.0167 |
+| nodefer (S, start now) | −15.34 | 0.0181 |
+| shrink | −28.06 | 0.0224 |
+| always_defer (mask-routed) | −23.27 | 0.0296 |
+
+Gates: discounted order clean > nodefer > always_defer pooled and by window majority — pass; clean beats nodefer on carbon — pass; **always_defer routed legally by the mask on all six windows (on-time 1.000, forced 0)** — pass; legacy P0 order, clip, cap, defer-no-arbitrage, shrink-worse-both — pass. **Verdict STOP_P0_PRIME on `contract_green` alone**: blind window 4 has `planner_n_unplanned_start = 3` with 32 of 35 planner dispatches. Cause: the env-side mask re-routed three of the blind planner's DEFERs at the last safe step, and the planner's consistency ledger counts a job it did not dispatch as an unplanned start. That ledger field was built to catch planner bugs; under D′ the mask is meant to override every arm's DEFER there, so the field now also counts the mask's own interventions.
+
+**Rule amended before the rerun (disclosed):** the env exports its re-route count as `ep_mask_route_count`; the P0′ contract keeps completion ≥ 0.995, on-time ≥ 0.995, forced = 0 and every other zero-field, and requires `planner_n_unplanned_start ≤ ep_mask_route_count` (unplanned starts may be mask re-routes and nothing else). Run-1 rows are archived as `p0_dprime_run1_*` with their verdict; the rerun regenerates all thirty rows under the final D′ config (which now also carries the η = 0.5 guard in `crd.responsibility`, config SHA in the manifest). No threshold, arm, window or reward changed.

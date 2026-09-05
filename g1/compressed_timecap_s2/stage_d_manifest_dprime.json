@@ -1,9 +1,14 @@
 {
   "checkpoint_freq_timesteps": 40000,
   "config": "config_stage_d_dprime.yml",
-  "config_sha256": "c7d3d1e2a1382196d3b420b738e1af2dc9016d6a255845fd65e5055816cae599",
+  "config_sha256": "e74f9980c09f418b18ecdf89e349b4f14e324a0b9cf0e70ee868aa6d0db1b35c",
+  "crd_overlay": {
+    "responsibility": {
+      "responsibility_shrink_strength": 0.5
+    }
+  },
   "crd_source": {
-    "commit_at_build": "8eb3da4912ab4a326dccdcb1ae5edd9c543327e0",
+    "commit_at_build": "b7b46a59eb3bdaf4ec717fb5830b7a22cdb81d61",
     "file": "config_rl_step2_pilot.yml"
   },
   "crd_subtree_sha256": "700f3da6b8be34f0135f6e02bdfa10b4efe51acdb51b1e06da25447a0237fec6",

@@ -1,0 +1,106 @@
+{
+  "always_defer_legal_windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "cap_hits": {
+    "always_defer": 0.0,
+    "blind": 0.0,
+    "clean": 0.0,
+    "shrink": 0.0
+  },
+  "clip_rate": {
+    "always_defer": 0.0,
+    "blind": 0.0,
+    "clean": 0.0,
+    "shrink": 0.0
+  },
+  "contract_bad": [
+    [
+      "blind",
+      4
+    ]
+  ],
+  "gates": {
+    "always_defer_routed_legally_by_mask": true,
+    "clean_beats_nodefer_carbon_pooled": true,
+    "clean_better_both_pooled": true,
+    "clip_rate_le_5pc": true,
+    "contract_green": false,
+    "defer_no_arbitrage": true,
+    "disc_order_per_window_majority": true,
+    "disc_order_pooled": true,
+    "no_cap_hits": true,
+    "order_per_window_majority": true,
+    "order_pooled": true,
+    "shrink_worse_both_pooled": true
+  },
+  "per_window_wins": {
+    "always_defer_vs_blind": 6,
+    "clean_better_both": 6,
+    "clean_vs_blind": 6,
+    "defer_reward_below_blind": 6,
+    "shrink_vs_clean": 6,
+    "shrink_worse_both": 6
+  },
+  "per_window_wins_dprime": {
+    "clean_gt_nodefer_disc": 5,
+    "clean_lt_nodefer_carbon": 6,
+    "nodefer_gt_defer_disc": 4
+  },
+  "pooled": {
+    "always_defer": {
+      "carbon": 0.02960343017084266,
+      "reward": -380.2686034168531
+    },
+    "blind": {
+      "carbon": 0.016674303053240754,
+      "reward": -121.68606106481565
+    },
+    "clean": {
+      "carbon": 0.011339132071759272,
+      "reward": -14.982641435185423
+    },
+    "shrink": {
+      "carbon": 0.022374905564814824,
+      "reward": -235.69811129629642
+    }
+  },
+  "pooled_dprime": {
+    "always_defer": {
+      "carbon": 0.02960343017084266,
+      "reward_disc": -23.27369039733043
+    },
+    "blind": {
+      "carbon": 0.016674303053240754,
+      "reward_disc": -7.021531557967894
+    },
+    "clean": {
+      "carbon": 0.011339132071759272,
+      "reward_disc": 9.30931402505781
+    },
+    "nodefer": {
+      "carbon": 0.018093024111111126,
+      "reward_disc": -15.339712511700021
+    },
+    "shrink": {
+      "carbon": 0.022374905564814824,
+      "reward_disc": -28.05896225926547
+    }
+  },
+  "probe_always_defer_contract_bad_windows": [],
+  "reward_variant": "dprime",
+  "verdict": "STOP_P0_PRIME",
+  "windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ]
+}

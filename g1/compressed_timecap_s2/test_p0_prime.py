@@ -57,3 +57,15 @@ def test_prime_keeps_the_legacy_p0_gates():
         rows[("shrink", k)] = _row(0.5, -5.0, -4.5)          # shrink better than clean: legacy P0 fails
     out = pv.judge_dprime(rows, W)
     assert out["verdict"] == "STOP_P0_PRIME" and out["gates"]["shrink_worse_both_pooled"] is False
+
+
+def test_dprime_contract_accepts_mask_routed_unplanned_starts_only():
+    base = {"completion_rate_mi": "1.0", "ontime_mi_share": "1.0", "deadline_forced_count": "0",
+            "planner_n_stale_dropped": "0", "planner_n_wrong_dc": "0",
+            "planner_n_dispatched_never_started": "0", "planner_running_pes_over_cap": "0.0"}
+    ok = dict(base, planner_n_unplanned_start="3", ep_mask_route_count="3")
+    too_many = dict(base, planner_n_unplanned_start="4", ep_mask_route_count="3")
+    other_field = dict(base, planner_n_unplanned_start="0", ep_mask_route_count="0", planner_n_wrong_dc="1")
+    late = dict(base, planner_n_unplanned_start="0", ep_mask_route_count="0", ontime_mi_share="0.99")
+    assert pv.contract_ok_dprime(ok) and not pv.contract_ok_dprime(too_many)
+    assert not pv.contract_ok_dprime(other_field) and not pv.contract_ok_dprime(late)

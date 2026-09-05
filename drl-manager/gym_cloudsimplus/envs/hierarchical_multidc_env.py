@@ -1658,7 +1658,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                     value = info_java.get(key)
                     info[str(key)] = self._convert_java_value(value)
                 info["crd"] = self._collect_crd_info()
-                info["mask_route_count"] = int(getattr(self, "_mask_route_count", 0))
+                info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
                 if self._planner_channel is not None:
                     info["planner"] = self._planner_channel
                 return info
@@ -1674,7 +1674,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 value = info_java.get(key) if hasattr(info_java, "get") else None
             info[str(key)] = self._convert_java_value(value)
         info["crd"] = self._collect_crd_info()
-        info["mask_route_count"] = int(getattr(self, "_mask_route_count", 0))
+        info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
         return info
@@ -2502,7 +2502,7 @@ class HierarchicalMultiDCEnv(gym.Env):
                 info["episode_step"] = self.current_step
                 info["episode_reward"] = self.episode_reward
                 info["crd"] = self._collect_crd_info()
-                info["mask_route_count"] = int(getattr(self, "_mask_route_count", 0))
+                info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
                 if self._planner_channel is not None:
                     info["planner"] = self._planner_channel
                 return info
@@ -2520,7 +2520,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
-        info["mask_route_count"] = int(getattr(self, "_mask_route_count", 0))
+        info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
 
@@ -2694,7 +2694,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         info["episode_step"] = self.current_step
         info["episode_reward"] = self.episode_reward
         info["crd"] = self._collect_crd_info()
-        info["mask_route_count"] = int(getattr(self, "_mask_route_count", 0))
+        info["ep_mask_route_count"] = int(getattr(self, "_mask_route_count", 0))   # ep_ prefix: reaches the result rows
         if self._planner_channel is not None:
             info["planner"] = self._planner_channel
         return info

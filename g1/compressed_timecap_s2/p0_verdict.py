@@ -85,6 +85,24 @@ def judge(rows, windows):
 
 
 DPRIME_ARMS = ("blind", "clean", "shrink", "always_defer", "nodefer")
+
+
+def contract_ok_dprime(r):
+    """P0' contract. Under the deadline-safe DEFER mask the env may route a planner arm's
+    DEFER itself at the last safe step; the planner's ledger then counts that job as an
+    unplanned start. Those starts are the mask doing its job, so
+    planner_n_unplanned_start may equal, but not exceed, ep_mask_route_count. Every other
+    zero-field and the completion / on-time / forced terms are unchanged."""
+    f = lambda k: float(r.get(k, 0) or 0)  # noqa: E731
+    if f("completion_rate_mi") < ra.CONTRACT["completion_rate_mi"] or f("ontime_mi_share") < ra.CONTRACT["ontime_mi_share"]:
+        return False
+    for z in ra.ZERO_FIELDS:
+        if z == "planner_n_unplanned_start":
+            if f(z) > f("ep_mask_route_count"):
+                return False
+        elif f(z) != 0.0:
+            return False
+    return True
 DPRIME_DIRS = dict(DIRS, nodefer="p0_godeye_nodefer")
 ONTIME_MIN, FORCED_MAX = 0.995, 0
 
@@ -151,7 +169,9 @@ def load_rows(variant="", dprime=False):
                               "clip": f("ep_carbon_norm_clip_count"),
                               "samples": f("ep_carbon_norm_sample_count"),
                               "cap": f("ep_global_carbon_cap_count"),
-                              "contract_ok": bool(sv._contract_ok(r))}
+                              "mask_routed": f("ep_mask_route_count"),
+                              "unplanned": f("planner_n_unplanned_start"),
+                              "contract_ok": bool(contract_ok_dprime(r) if dprime else sv._contract_ok(r))}
     return rows, windows
 
 
