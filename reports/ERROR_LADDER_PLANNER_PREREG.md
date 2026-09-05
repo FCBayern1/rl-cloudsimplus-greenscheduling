@@ -1,0 +1,53 @@
+# Forecast-quality ladder on a dominance-safe planner (preregistration draft v0, 2026-09-06 01:20; for the user, then Codex; nothing frozen, nothing run)
+
+Follows the Codex ruling of STAGE_D_PRIME_DESIGN §40. Keeps the scene of SCENE_INTERFACE_DESIGN (turbines 133/78 | 22/81 | 94, the six 2021 development windows 16477, 4240, 9154, 33225, 13223, 49625, the sealed 2020 confirmation windows). Replaces the single calibrated-shrink error arm and the heuristic ST reference by a controlled error ladder measured against an exact, dominating schedule. Zero RL until §6.
+
+## 1. What is being measured
+
+For a window and a curve X (truth, or a degraded forecast), the loss of scheduling on X is
+
+    loss(X) = carbon( schedule(X) settled on truth ) − carbon( schedule(truth) settled on truth ),
+
+where schedule(·) is one exact solver. Reported as a curve over the ladder: forecast quality on the x-axis, loss on the y-axis, per window and pooled. No rung is selected by its loss; the whole curve is the result.
+
+## 2. The dominance-safe planner
+
+### 2.1 Model
+Time-indexed assignment, steps of one simulation second (the compressed rows), per window.
+- Jobs j: arrival a_j, runtime r_j = ceil(mi_j / (mips · u)) steps, PEs p_j, latest start L_j = deadline_j − r_j − ε (ε = 2, the frozen margin). Decision x[j, d, s] ∈ {0, 1}, s ∈ [a_j + lag, L_j], one per job.
+- Capacity: Σ_j Σ_{s ≤ t < s + r_j} p_j · x[j, d, s] ≤ cap_d for every site d and step t (cap = the VM PE count of the fleet: 640, 512, 640, 512, 192).
+- Power: load_{d,t} = P_dyn_pe · u · Σ p_j x (W), P_dyn_pe = (214 − 51.4)/64 W, static 0 on the zero-floor fleet. brown_{d,t} ≥ load_{d,t} − G^X_{d,t}, brown ≥ 0; green_{d,t} = load − brown.
+- Objective: Σ_{d,t} (f_brown,d · brown_{d,t} + f_green,d · green_{d,t}) / 3600 / 1000 [kg], the block's factors (0.5 and 0.01 kg/kWh). Because f_green < f_brown this is the carbon the simulator's ledger charges under the same power model.
+Solver: CP-SAT (ortools 9.15, installed) with integer-scaled costs, time limit 600 s per window and curve, optimality gap recorded; a solution counts only with gap ≤ 1 % (else the rung is INVALID_SOLVER for that window). Size on the HZ cell: 35 jobs × 5 sites × ≤ 73 starts ≈ 12.8k binaries, 5 × ~600 capacity rows.
+
+### 2.2 Settlement
+schedule(X) is a list of (job, site, start). It is settled on truth twice: (i) by the model's own objective with G = truth (model settlement); (ii) by the simulator, replayed through the every-step (DC, dispatch-offset) executor with the fixed starts as offsets (simulator settlement, the existing `offset_v1` path with its ledger and route→start check).
+
+### 2.3 Dominance and closure (gate 0, read on truth before any ladder rung)
+- Model dominance is by construction: schedule(truth) minimises the model's truth-settled objective, so model-loss(X) ≥ 0 for every X up to the solver gap.
+- Closure: on each development window, simulator settlement of schedule(truth) must agree with model settlement within 3 % of the model value, and the simulator must start every job at its scheduled step (route→start ≤ 1 step, forced 0, contract clean). A violation is a model error (power model, capacity, timing) and is fixed in the model, never by changing an arm; the fix is disclosed and gate 0 reruns; a second failure stops the line.
+- Simulator dominance check: for every rung X, simulator-loss(X) ≥ −3 % · carbon(truth). A wrong curve beating the truth schedule in the simulator by more than the closure tolerance is a model defect and stops the ladder until closed.
+
+## 3. The error ladder (frozen before any carbon; forecast side only)
+
+- Anchor (realistic): the deployed TimeCAP checkpoint at the deployed lead, producing, per window, the curve the planner sees through the same rolling inference the audit used (`timecap_error_audit.py` path).
+- Realistic rungs: the same checkpoint at longer leads, L ∈ {deployed, +24 rows, +48 rows, +96 rows}, chosen now; their forecast quality is measured on the 2021 design year by RMSE against truth (no carbon read) and is the x-coordinate. If a weaker checkpoint is wanted later, it is trained and frozen on validation loss alone, in its own addendum, before it produces any curve.
+- Controlled rungs: shrink toward the site's frozen full-year 2021 mean μ_d (the audit's definition), G^λ = μ + λ (G^truth − μ), λ ∈ {1.0, 0.75, 0.5, 0.25, 0}; λ = 1 is the truth rung and λ = 0 the persistence-like flat rung.
+- Extreme controls: shuffle and anti of the truth curve (the existing tiers), reported on the same curve, never described as deployed error.
+- x-axis for every rung: normalised RMSE of the curve against truth over the window's horizon; y-axis: model loss and simulator loss.
+
+## 4. Gates on the development windows (order fixed; zero RL)
+
+- Gate 0 (§2.3): closure and dominance on truth. STOP_PLANNER_CLOSURE on failure.
+- Gate L1, headroom: the no-forecast reference is schedule(flat μ) (λ = 0); headroom_w = carbon(schedule(λ=0)) − carbon(schedule(truth)), simulator-settled. A window with headroom below 15 % of the flat schedule's carbon or below 0.05 · C_brown_ref (the frozen reference of the scene design, 9.49e−4 kg) is INVALID for the ladder; fewer than four valid windows → STOP_LADDER_HEADROOM.
+- Gate L2, the load-bearing rung: a rung X is load-bearing iff pooled loss(X) ≥ 5 % of pooled carbon(truth) and Σ_w headroom_w · [loss_w(X) > 0] / Σ_w headroom_w ≥ 0.80 (the headroom-weighted rule of §40 item 6). The report states, for the anchor and for every rung, whether it is load-bearing; the claim available to the thesis is fixed by the weakest load-bearing rung: anchor or a realistic lead → "resists realistic forecast degradation"; a shrink rung λ ≤ 0.5 only → "resists moderate controlled degradation"; shuffle/anti only → "resists controlled severe contamination"; none → the scene cannot support the thesis and the line stops.
+
+## 5. What is not decided here (asked of Codex)
+
+1. The lead set L, the 3 % closure tolerance, the 1 % solver gap, the 600 s limit.
+2. Whether the every-step offset executor is the right settlement path for schedule(X) (it fixes starts; the simulator's local placement is the repaired ledger of §34).
+3. Whether the RL/EU-CRD preregistration that follows (own document) trains on the offset action with the ladder's rungs as its forecast inputs and judges once on the sealed 2020 windows.
+
+## 6. Cost and order
+
+Planner + closure (CP-SAT model, settlement through the executor, tests): about one day. Ladder curves on six windows × (4 realistic + 5 controlled + 2 extreme) rungs: solver time bounded by 11 × 6 × 600 s worst case, usually far less; simulator settlement 66 replays, about an hour. No carbon run before Codex freezes this document.
