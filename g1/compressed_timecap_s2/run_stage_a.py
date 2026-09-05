@@ -455,6 +455,21 @@ def main():
         todo = hz_jobs("discovery", HZ_ARMS, tier_mode=True)
         print(f"hz_main: {len(todo)} runs (x{HZ_MULT})")
         print(json.dumps(sweep(HZ_ARMS, todo=todo), indent=2))
+    elif phase == "hz_margin_probe":
+        # Stage D' mask margin (STAGE_D_PRIME_DESIGN §10): a saturated-dispatch probe on the
+        # fixed development load. nowait_planner routes every job the step it appears, so
+        # queues form and the route -> exec-start delay is at its worst. The margin is then
+        # set mechanically by margin_probe.py: ceil(max_delay / timestep) + 1 steps. Never
+        # from carbon or training. Runs under the D' config on the six training windows.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        cfg = os.path.join(HERE, "config_stage_d_dprime.yml")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        todo = [{"arm": "nowait_planner", "cell": cell, "k": k, "offset": off,
+                 "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}, "dir": "dprime_margin_probe"}
+                for k, off in enumerate(allow)]
+        print(f"hz_margin_probe: {len(todo)} saturated-dispatch runs")
+        print(json.dumps(sweep(("nowait_planner",), todo=todo), indent=2))
     elif phase == "hz_decomp":
         # Post-verdict mechanism diagnostic (HZ_DECOMPOSITION_DIAGNOSTIC.md): the S arm,
         # the truth-informed planner with deferral forbidden, on the confirmation set.
