@@ -84,3 +84,18 @@ def test_without_the_key_nothing_changes():
     mod = _build(with_mask=False)
     d = _defer_logits(mod, _batch(False, None))
     assert torch.isfinite(d).all() and torch.all(d > -1e6)
+
+
+def test_audit_switch_skips_the_mask_but_keeps_the_feature():
+    mod = _build(with_mask=True)
+    allowed = [0.0] * NB
+    masked = _defer_logits(mod, _batch(True, allowed))
+    assert torch.all(masked <= -1e8)
+    mod._audit_skip_defer_mask = True
+    try:
+        raw = _defer_logits(mod, _batch(True, allowed))
+    finally:
+        mod._audit_skip_defer_mask = False
+    assert torch.isfinite(raw).all() and torch.all(raw > -1e6)
+    again = _defer_logits(mod, _batch(True, allowed))          # switch off again: masked
+    assert torch.all(again <= -1e8)

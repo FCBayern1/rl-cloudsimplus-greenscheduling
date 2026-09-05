@@ -1412,7 +1412,10 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             # defer head and the factorized temporal gate go through here. Absent key ->
             # behaviour unchanged, so every frozen run is untouched.
             defer_allowed = obs.get("batch_cloudlet_defer_allowed") if isinstance(obs, dict) else None
-            if defer_allowed is not None:
+            # Audit switch (timing_selectivity.py): with `_audit_skip_defer_mask` set, the
+            # trunk still sees the defer_allowed feature but the -1e9 is not applied, which
+            # is the module's DEFER preference BEFORE the mask. Never set in training/eval.
+            if defer_allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
                 da = self._to_btD(defer_allowed, self.num_batch_slots)          # (B, T', N_b)
                 if da.shape[1] != scores.shape[1] and da.shape[1] == 1:
                     da = da.expand(da.shape[0], scores.shape[1], da.shape[2])

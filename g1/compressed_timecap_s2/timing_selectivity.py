@@ -129,13 +129,16 @@ def score_window(decisions_csv, obs_npz, module, nvec):
     with torch.no_grad():
         for t in range(n_steps):
             obs_dep = {k: torch.as_tensor(np.asarray(z[k][t])[None, ...]) for k in keys}
-            obs_raw = {k: v for k, v in obs_dep.items() if k != MASK_KEY}
             si = _to_state_in(state)
             b_dep = {"obs": {"observation": obs_dep, "action_mask": torch.ones(1, n_slots)}, "state_in": si}
-            b_raw = {"obs": {"observation": obs_raw, "action_mask": torch.ones(1, n_slots)}, "state_in": si}
+            module._audit_skip_defer_mask = False
             out_dep = module.forward_inference(b_dep)
             if t in wanted:
-                out_raw = module.forward_inference(b_raw)
+                # RAW = same observation (the trunk still sees defer_allowed as a feature),
+                # same memory, only the -1e9 on the DEFER column skipped
+                module._audit_skip_defer_mask = True
+                out_raw = module.forward_inference(b_dep)
+                module._audit_skip_defer_mask = False
                 ld = out_dep["action_dist_inputs"].reshape(-1, n_slots, n_choices)[-1]
                 lr = out_raw["action_dist_inputs"].reshape(-1, n_slots, n_choices)[-1]
                 pd_ = torch.softmax(ld, dim=-1)[:, defer_idx].cpu().numpy()
