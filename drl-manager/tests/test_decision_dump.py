@@ -32,3 +32,15 @@ def test_rows_without_planner_ids_use_mi_to_drop_padding():
 
 def test_no_action_gives_no_rows():
     assert decision_rows(1, 1, _obs(), None, None, 5) == []
+
+
+def test_option_mode_rows_name_the_hold_site_and_carry_the_legality_row():
+    import numpy as np
+    obs = _obs()
+    obs["batch_cloudlet_hold_allowed"] = np.array([[1, 0, 1, 1, 1], [0, 0, 0, 0, 0], [1, 1, 1, 1, 1]])
+    rows = decision_rows(1, 7, obs, [7, 2, 5], planner_ids=[11, 12, -1], num_dcs=5, option_mode=True)
+    assert [r["cloudlet_id"] for r in rows] == [11, 12]
+    assert rows[0]["is_defer"] == 1 and rows[0]["hold_dc"] == 2 and rows[0]["hold_allowed"] == "1;0;1;1;1"
+    assert rows[1]["is_defer"] == 0 and rows[1]["hold_dc"] == -1 and rows[1]["hold_allowed"] == "0;0;0;0;0"
+    legacy = decision_rows(1, 7, obs, [5, 2, 5], planner_ids=[11, 12, -1], num_dcs=5)
+    assert legacy[0]["is_defer"] == 1 and legacy[0]["hold_dc"] == -1 and legacy[0]["hold_allowed"] == ""

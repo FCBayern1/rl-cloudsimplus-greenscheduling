@@ -462,14 +462,18 @@ def _checkpoint_label_from_path(checkpoint_path: str) -> str:
         return "rllib"
 
 
-def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs):
+def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, option_mode=False):
     """Per-slot decision records for the Stage D' timing-selectivity corpus
     (STAGE_D_PRIME_DESIGN Q4). One row per real slot: what was decided (route index or
-    DEFER) next to the slot's timing facts as the policy saw them. Pure."""
+    DEFER) next to the slot's timing facts as the policy saw them. In option mode
+    (OPTION_ACTION_DESIGN §6 gate 4) an action >= num_dcs is HOLD_FOR_GREEN(action - num_dcs):
+    is_defer then means "held", hold_dc names the site, and hold_allowed carries the
+    slot's (site) legality row. Pure."""
     rows = []
     if global_action is None:
         return rows
     g = obs_global if isinstance(obs_global, dict) else {}
+    hold_mask = g.get("batch_cloudlet_hold_allowed") if option_mode else None
 
     def col(k, i):
         v = g.get(k)
@@ -496,6 +500,9 @@ def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs):
             "wait_age": col("batch_cloudlet_wait_age", slot),
             "is_deferred": col("batch_cloudlet_is_deferred", slot),
             "defer_allowed": col("batch_cloudlet_defer_allowed", slot),
+            "hold_dc": (int(a) - num_dcs) if (option_mode and int(a) >= num_dcs) else -1,
+            "hold_allowed": (";".join(str(int(float(x))) for x in np.asarray(hold_mask)[slot].reshape(-1))
+                             if hold_mask is not None and slot < len(hold_mask) else ""),
         })
     return rows
 
@@ -505,17 +512,19 @@ class _DecisionDump:
     EVAL_DECISION_DUMP_OBS=1, the raw global observation of every step to a sibling .npz so
     another policy can be replayed on the same states. Off unless the env var is set."""
 
-    def __init__(self, num_dcs):
+    def __init__(self, num_dcs, option_mode=False):
         self.path = os.environ.get("EVAL_DECISION_DUMP", "").strip() or None
         self.save_obs = bool(self.path) and os.environ.get("EVAL_DECISION_DUMP_OBS", "0") == "1"
         self.num_dcs = num_dcs
+        self.option_mode = bool(option_mode)
         self._rows, self._obs = [], []
 
     def record(self, ep, step, obs_global, global_action, info):
         if not self.path:
             return
         ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids") if isinstance(info, dict) else None
-        self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs))
+        self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs,
+                                        option_mode=self.option_mode))
         if self.save_obs and isinstance(obs_global, dict):
             self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
 
@@ -657,7 +666,8 @@ def run_evaluation(
         # not only the undiscounted sum). gamma = the training config's, default 0.99.
         _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
-        _dump = _DecisionDump(num_dcs)
+        _dump = _DecisionDump(num_dcs, option_mode=str((getattr(env, "config", {}) or {}).get(
+            "global_action_mode", "defer")) == "option_v1")
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
@@ -1240,7 +1250,8 @@ def run_rllib_evaluation(
         local_decision_ns: List[int] = []
         _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
-        _dump = _DecisionDump(num_dcs)
+        _dump = _DecisionDump(num_dcs, option_mode=str((getattr(env, "config", {}) or {}).get(
+            "global_action_mode", "defer")) == "option_v1")
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
