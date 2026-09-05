@@ -79,6 +79,18 @@ _DEFAULT_ALPHA_DR_LOCAL = 1.0
 _DEFAULT_RHO_MIN = 0.05
 
 # Custom batch column where M2.2 writes the per-transition R_forecast.
+def shrink_weights(w, eta):
+    """Symmetric responsibility guard: w' = 1 + eta * (w - 1). eta = 1 returns `w` itself
+    (bit-identical historical behaviour); eta = 0 returns all-ones (no reweighting). Keeps
+    the batch mean at 1 when w's mean is 1 and preserves the ordering of w."""
+    eta = float(eta)
+    if eta == 1.0:
+        return w
+    if eta == 0.0:
+        return torch.ones_like(w)
+    return 1.0 + eta * (w - 1.0)
+
+
 COL_CRD_FORECAST = "crd_forecast"
 # Custom batch column where M2.3 writes per-transition baseline action ã.
 COL_CRD_BASELINE_ACTION = "crd_baseline_action"
@@ -2275,6 +2287,14 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                     cap = float(cfg.get("normalize_rho_cap", float("inf")))
                     if cap < float("inf"):
                         w = w.clamp(max=cap)
+            # Stage D' symmetric guard (STAGE_D_PRIME_DESIGN §10, Codex 2026-09-05): shrink
+            # the normalised weight toward 1, w' = 1 + eta (w - 1). M5 showed the defect in
+            # the LOWER tail (corrective DEFER credit erased at w ~ 0.06-0.2), which a cap
+            # on the upper tail cannot touch. eta = 1 is bit-identical to the historical
+            # behaviour (default), eta = 0 removes the reweighting. Both weights are kept.
+            batch["crd_w_raw"] = w.detach()
+            w = shrink_weights(w, float(cfg.get("responsibility_shrink_strength", 1.0)))
+            batch["crd_w_guarded"] = w.detach()
             batch[Postprocessing.ADVANTAGES] = adv * w
             # v5.2 diagnostics honesty: a 0/1 signal that the multiply RAN
             # (warmup/bail paths leave it absent → logged 0 via metrics).
