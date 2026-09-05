@@ -487,11 +487,18 @@ def main():
         # from carbon or training. Runs under the D' config on the six training windows.
         man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime.json")))
         allow = [int(w["offset"]) for w in man["train_windows"]]
-        cfg = os.path.join(HERE, "config_stage_d_dprime.yml")
-        cell = "sd_V_s2_r48_w72_c3_n35"
-        todo = [{"arm": "nowait_planner", "cell": cell, "k": k, "offset": off,
-                 "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}, "dir": "dprime_margin_probe"}
-                for k, off in enumerate(allow)]
+        if os.environ.get("MARGIN_PROBE_CELLS", "").strip() == "all":
+            # design §16 Q3: the six D' cells x six development windows, no forecast effect read
+            cfg = os.path.join(HERE, "config_stage_d_eval_dprime_dev.yml")
+            todo = [{"arm": "nowait_planner", "cell": f"sde_{c}_godeye", "k": k, "offset": off,
+                     "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}, "dir": "dprime_margin_probe_cells"}
+                    for c in HZ_PILOT_CELLS for k, off in enumerate(allow)]
+        else:
+            cfg = os.path.join(HERE, "config_stage_d_dprime.yml")
+            cell = "sd_V_s2_r48_w72_c3_n35"
+            todo = [{"arm": "nowait_planner", "cell": cell, "k": k, "offset": off,
+                     "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}, "dir": "dprime_margin_probe"}
+                    for k, off in enumerate(allow)]
         print(f"hz_margin_probe: {len(todo)} saturated-dispatch runs")
         print(json.dumps(sweep(("nowait_planner",), todo=todo), indent=2))
     elif phase == "hz_decomp":

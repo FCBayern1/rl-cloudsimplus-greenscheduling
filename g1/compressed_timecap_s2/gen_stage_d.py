@@ -219,7 +219,14 @@ def build_eval(out_dir=None, reward_variant="physical", windows="certified", ove
     # allowlist and --reset-skip 0..5 selects them (long-run main verdict, Codex R-v).
     # windows="certified": the simulator schedule, --reset-skip 26/34/42 (health smoke,
     # secondary "certified benchmark evaluation").
-    allow = ";".join(str(o) for o in judgement_offsets()) if windows == "judgement" else None
+    if windows == "judgement":
+        allow = ";".join(str(o) for o in judgement_offsets())
+    elif windows == "dev":
+        # development windows = the Stage D training offsets, selected by --reset-skip 0..5
+        # (six-cell saturated probe, design §16 Q3)
+        allow = ";".join(str(w["offset"]) for w in json.load(open(WINDOWS))["train_windows"])
+    else:
+        allow = None
     blocks = {}
     for cell in EVAL_CELLS:
         for tier in EVAL_TIERS:
@@ -270,6 +277,11 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "eval_dprime_dev":
+        blocks, man = build_eval(windows="dev", overlay=DPRIME_OVERLAY,
+                                 out_name="config_stage_d_eval_dprime_dev.yml")
+        print(json.dumps(man, indent=1))
         raise SystemExit(0)
     if variant == "eval_dprime":
         # development-smoke deployment blocks: certified windows (already read), D' overlay

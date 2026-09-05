@@ -1468,6 +1468,7 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
         # cannot audit a ledger: it never recovers once a cloudlet finishes. These count
         # disagreements between what the planner committed and what actually ran.
         self.n_unplanned_start = 0      # started without this planner ever dispatching it
+        self.unplanned_start_ids = set()
         self.n_wrong_dc = 0             # started somewhere other than the committed site
         self.n_missing_start = 0        # dispatched, never seen to start
         self.n_running_unknown = 0      # executing, absent from the planner's active set
@@ -1729,6 +1730,7 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
             committed = self.dispatched_at.get(jid)
             if committed is None:
                 self.n_unplanned_start += 1
+                self.unplanned_start_ids.add(jid)     # Stage D' P0' per-id closure
             elif committed[0] != dc:
                 self.n_wrong_dc += 1
 
@@ -2066,6 +2068,11 @@ class CurveInformedPlannerGlobalScheduler(GlobalScheduler):
             "planner_drift_abs_mean": (self.drift_abs_sum / self.drift_n) if self.drift_n else 0.0,
             "planner_drift_step_max": self.drift_step_max,
             "planner_n_unplanned_start": self.n_unplanned_start,
+            # sorted ids of the unplanned starts, and their sha256, so a P0' contract can
+            # check they are exactly the jobs the deadline mask re-routed (design §16)
+            "planner_unplanned_start_ids": ";".join(str(i) for i in sorted(self.unplanned_start_ids)),
+            "planner_unplanned_start_ids_sha": __import__("hashlib").sha256(
+                ";".join(str(i) for i in sorted(self.unplanned_start_ids)).encode()).hexdigest()[:16],
             "planner_n_wrong_dc": self.n_wrong_dc,
             "planner_n_running_unknown": self.n_running_unknown,
             "planner_n_dispatched_never_started": len(

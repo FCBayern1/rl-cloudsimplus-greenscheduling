@@ -163,3 +163,15 @@ No threshold, arm, window, reward or margin changed across the four runs; only t
 **P0′ validity addition.** `planner_n_unplanned_start ≤ ep_mask_route_count` is a count relation only. Before a formal P0′: `unplanned_start_cloudlet_ids ⊆ mask_routed_cloudlet_ids`, with at least the sha256 of the sorted id sets stored. Run 1 is to be called a development-phase interface-contract repair (it exposed and prompted the contract revision), not an instrument fix; run 4 is the first valid P0′ under the revised contract once the per-id closure is added.
 
 The running smoke continues to completion as development smoke A; its selectivity score is recomputed with the recurrent, pre-mask, job-paired scorer without retraining.
+
+## 17. Window rule outcome (2026-09-05 11:30): STOP_WINDOW_SPLIT under the ruled exclusions; numbers for the ruling
+
+`stage_d_prime_windows.py` implements Q4 exactly (grid of PRE-spaced legal offsets, sha256("stage-d-prime-judgement-v1:"+offset) order, greedy non-overlap, six needed). The Stage D eval footprint is 2922 rows (tz 108 + max deadline 2518 + runtime 48 + horizon 144 + spline 4 + safety 100) on a 52,559-row turbine file.
+
+| excluded set | intervals | largest free gap | legal candidates | chosen | status |
+|---|---|---|---|---|---|
+| read (15 k) + Stage D judgement (6) + Stage D training (6) | 27 | 1040 | 0 | 0 | STOP_WINDOW_SPLIT |
+| read + Stage D judgement | 21 | 2119 | 0 | 0 | STOP_WINDOW_SPLIT |
+| read only | 15 | 7259 | 2296 | 6 | OK |
+
+So no fresh window of the Stage D footprint fits once the six Stage D judgement windows are excluded, regardless of the training windows: the binding term is the 2518-row maximum deadline of the c*_n50 cells inside the footprint. Not decided here; options for the ruling: (a) accept that the six Stage D judgement windows are "read" only for the E line's contract failure and not as carbon evidence for D′ — they remain excluded under the letter of Q4, so this option is a rule change; (b) shrink the footprint by tying the eval window to each cell's own maximum deadline instead of the global 2518 (the n20 cells are far shorter), which changes the preflight's definition; (c) move D′ to a second turbine series (the SDWPF set has others) with its own preflight, which changes the scene's wind data. Nothing is chosen; the rule as written returns STOP.
