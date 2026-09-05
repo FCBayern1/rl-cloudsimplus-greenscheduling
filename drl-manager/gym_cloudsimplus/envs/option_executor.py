@@ -27,7 +27,18 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-REASON_GREEN, REASON_MARGIN = "green", "margin"
+REASON_GREEN, REASON_MARGIN, REASON_OFFSET = "green", "margin", "offset"
+
+
+def offset_grid(wait_cap_steps: int):
+    """K(W) = {0} ∪ {2^q : 2^q < W} ∪ {W} (OPTION_ACTION_DESIGN Addendum A5), ascending."""
+    W = int(wait_cap_steps)
+    ks = {0, W}
+    q = 1
+    while q < W:
+        ks.add(q)
+        q *= 2
+    return sorted(ks)
 
 
 def runtime_steps(mi: float, vm_pe_mips: float, cpu_util: float, timestep_sec: float) -> int:
@@ -197,6 +208,62 @@ class OptionExecutor:
             out.append((jid, d, reason))
         return out
 
+    # ── (DC, dispatch-offset) fallback (Addenda A5, C1–C2) ──────────────────────────
+    # κ is the interval from creation to the route call; the job starts at t + κ + lag on
+    # the grid. Legality (deadline, capacity) is decided at creation; the release depends
+    # on t_c + κ only, never on green, occupancy or deadline.
+    def offset_legal(self, d: int, t: int, kappa: int, r: int, p: float, latest: int) -> bool:
+        s = int(t) + int(kappa) + self.lag
+        return s <= int(latest) and self.feasible(d, s, r, p)
+
+    def offset_allowed(self, t: int, ids, pes, mi, ttd, present, grid) -> np.ndarray:
+        """(NB, n * |K|) float32, index d * |K| + i for κ = grid[i]: 1 iff the slot holds a
+        real job and (d, κ) is legal now. Reads no green."""
+        ids = np.asarray(ids).reshape(-1)
+        nb, K = ids.shape[0], len(grid)
+        out = np.zeros((nb, self.n * K), dtype=np.float32)
+        for j in range(nb):
+            if int(ids[j]) < 0 or float(pes[j]) <= 0 or float(mi[j]) <= 0:
+                continue
+            r = self.runtime(mi[j])
+            latest = self.latest_start(t, ttd[j], bool(float(present[j]) >= 0.5), r)
+            for d in range(self.n):
+                for i, k in enumerate(grid):
+                    if self.offset_legal(d, t, k, r, float(pes[j]), latest):
+                        out[j, d * K + i] = 1.0
+        return out
+
+    def create_fixed(self, jid: int, d: int, t: int, kappa: int, pes, mi, ttd, present) -> bool:
+        """HOLD with a fixed dispatch offset κ > 0: reservation at t + κ + lag; False when
+        (d, κ) is not legal (nothing is clipped)."""
+        r = self.runtime(mi)
+        latest = self.latest_start(t, ttd, bool(present), r)
+        if int(kappa) <= 0 or not self.offset_legal(d, t, kappa, r, float(pes), latest):
+            self.n_refused += 1
+            return False
+        s = int(t) + int(kappa) + self.lag
+        self._hold(d, s, s + r, float(pes))
+        h = HeldJob(int(jid), int(d), int(pes), float(mi), r, int(t), latest, s)
+        h.extra["kappa"] = int(kappa)
+        self.held[int(jid)] = h
+        self.n_created += 1
+        return True
+
+    def releases_fixed(self, t: int) -> List[Tuple[int, int, str]]:
+        """Decision point t: release every held job whose t_c + κ has arrived. Time only."""
+        out = []
+        for jid in sorted(self.held, key=lambda i: (self.held[i].t_c + self.held[i].extra.get("kappa", 0), i)):
+            h = self.held[jid]
+            if h.t_c + int(h.extra.get("kappa", 0)) > int(t):
+                continue
+            h.t_release, h.reason = int(t), REASON_OFFSET
+            self.active[jid] = (h.dc, h.s_f, h.s_f + h.r, h.pes)
+            self.n_term_margin += 1
+            self.done[jid] = h
+            del self.held[jid]
+            out.append((jid, h.dc, REASON_OFFSET))
+        return out
+
     def record_release_reward(self, jid: int, r: float):
         h = self.done.get(int(jid))
         if h is not None:
@@ -224,7 +291,7 @@ class OptionExecutor:
             ts = st.get(jid)
             t_s = None if ts is None else float(ts - clock0) / self.dt
             rows.append({"id": jid, "dc": h.dc, "pes": h.pes, "mi": h.mi, "runtime_steps": h.r,
-                         "t_c": h.t_c, "latest": h.latest, "s_f": h.s_f,
+                         "t_c": h.t_c, "latest": h.latest, "s_f": h.s_f, "kappa": h.extra.get("kappa", ""),
                          "t_release": h.t_release, "reason": h.reason, "r_release": h.r_release,
                          "t_s": t_s, "k": (None if t_s is None else t_s - h.t_c),
                          "route_to_start_steps": (None if t_s is None or h.t_release is None

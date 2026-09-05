@@ -184,6 +184,57 @@ def plan_option_actions(actions, hold_allowed, ids, pes, mi, ttd, present, execu
     return out, stats
 
 
+def plan_offset_actions(actions, offset_allowed, ids, pes, mi, ttd, present, executor, t, num_dcs, grid):
+    """(DC, dispatch-offset) translation, one rule for every arm (OPTION_ACTION_DESIGN §8, C1–C3).
+
+    a = d * |K| + i, κ = K[i].  κ = 0 -> Java route d now (grid notes the route).
+    κ > 0 -> executor.create_fixed(); the executor releases it at t + κ. An illegal (d, κ)
+    (masked, or no longer fitting this step) is NOT clipped: it is counted as hold_masked /
+    hold_refused respectively and the job is routed to d now, so the ledger shows every
+    such event (gate 3 requires zero on analytic arms). Padding slots pass through as 0.
+    Returns (java_actions, stats) like plan_option_actions.
+    """
+    n, K = int(num_dcs), len(grid)
+    acts = [int(a) for a in actions]
+    stats = {"hold_masked": 0, "hold_refused": 0, "masked_ids": [], "holds": 0, "routes": 0}
+    if ids is None:
+        raise RuntimeError("offset mode needs the planner channel (stable cloudlet ids); the gateway is too old")
+    ids = np.asarray(ids).reshape(-1)
+    offset_allowed = None if offset_allowed is None else np.asarray(offset_allowed, dtype=np.float64)
+    out = []
+    for j, a in enumerate(acts):
+        jid = int(ids[j]) if j < ids.shape[0] else -1
+        p = float(pes[j]) if pes is not None and j < len(pes) else 0.0
+        d, i = a // K, a % K
+        kappa = int(grid[i])
+        if jid < 0 or p <= 0:
+            out.append(0)
+            continue
+        if kappa == 0:
+            executor.note_route(jid, d, t, p, float(mi[j]))
+            stats["routes"] += 1
+            out.append(d)
+            continue
+        legal = offset_allowed is not None and j < offset_allowed.shape[0] and float(offset_allowed[j, a]) >= 0.5
+        if not legal:
+            stats["hold_masked"] += 1
+            stats["masked_ids"].append(jid)
+            executor.note_route(jid, d, t, p, float(mi[j]))
+            stats["routes"] += 1
+            out.append(d)
+            continue
+        ok = executor.create_fixed(jid, d, t, kappa, p, float(mi[j]), float(ttd[j]), bool(float(present[j]) >= 0.5))
+        if not ok:
+            stats["hold_refused"] += 1
+            executor.note_route(jid, d, t, p, float(mi[j]))
+            stats["routes"] += 1
+            out.append(d)
+            continue
+        stats["holds"] += 1
+        out.append(n + 1 + d)                          # Java: hold, committed to d
+    return out, stats
+
+
 def route_disallowed_defers(actions, defer_allowed, pes, dc_green_ratio, dc_available_pes, num_dcs):
     """Replace DEFER (index num_dcs) on slots with defer_allowed == 0 by the greenest DC that
     has room for the slot's PEs (else the greenest DC). Returns (new_actions, n_routed). Pure."""
@@ -368,12 +419,18 @@ class HierarchicalMultiDCEnv(gym.Env):
         # the frozen dc + bare DEFER space; "option_v1" = ROUTE_NOW(d) | HOLD_FOR_GREEN(d),
         # 2n choices per slot, no bare DEFER, one shared executor in this env.
         self.global_action_mode = str(config.get("global_action_mode", "defer")).strip()
-        if self.global_action_mode not in ("defer", "option_v1"):
-            raise ValueError(f"global_action_mode must be 'defer' or 'option_v1', got {self.global_action_mode!r}")
-        if self.global_action_mode == "option_v1":
+        if self.global_action_mode not in ("defer", "option_v1", "offset_v1"):
+            raise ValueError(f"global_action_mode must be 'defer', 'option_v1' or 'offset_v1', got {self.global_action_mode!r}")
+        if self.global_action_mode in ("option_v1", "offset_v1"):
             if not (self.obs_v31_features and self.defer_deadline_mask and bool(config.get("global_defer_enabled", False))):
-                raise ValueError("global_action_mode=option_v1 requires obs_v31_features, "
+                raise ValueError(f"global_action_mode={self.global_action_mode} requires obs_v31_features, "
                                  "defer_deadline_mask and global_defer_enabled")
+        # (DC, dispatch-offset) fallback (OPTION_ACTION_DESIGN §8, Addenda A5, C): the grid
+        # K(W) from the scene's wait cap; action index d * |K| + i for κ = K[i].
+        self._offset_grid = None
+        if self.global_action_mode == "offset_v1":
+            from .option_executor import offset_grid
+            self._offset_grid = offset_grid(int(config.get("offset_wait_cap_steps", 72)))
         self._option_executor = None
         self._option_eps_steps = int(config.get("option_eps_steps", 2))
         self._opt_release_nan = 0
@@ -1115,11 +1172,17 @@ class HierarchicalMultiDCEnv(gym.Env):
             global_spaces["batch_cloudlet_defer_allowed"] = spaces.Box(
                 low=0.0, high=1.0, shape=(self.global_routing_batch_size,), dtype=np.float32)
 
-        if getattr(self, "global_action_mode", "defer") == "option_v1":
+        if getattr(self, "global_action_mode", "defer") in ("option_v1", "offset_v1"):
             # Option keys (OPTION_ACTION_DESIGN Addendum A3.1/A3.5): per (slot, site) HOLD
-            # legality and the per-site held ledger the policy must be able to see.
-            global_spaces["batch_cloudlet_hold_allowed"] = spaces.Box(
-                low=0.0, high=1.0, shape=(self.global_routing_batch_size, self.num_datacenters), dtype=np.float32)
+            # legality (or per (slot, site, κ) in offset mode) and the per-site held ledger
+            # the policy must be able to see.
+            if self.global_action_mode == "option_v1":
+                global_spaces["batch_cloudlet_hold_allowed"] = spaces.Box(
+                    low=0.0, high=1.0, shape=(self.global_routing_batch_size, self.num_datacenters), dtype=np.float32)
+            else:
+                global_spaces["batch_cloudlet_offset_allowed"] = spaces.Box(
+                    low=0.0, high=1.0, shape=(self.global_routing_batch_size, self.num_datacenters * len(self._offset_grid)),
+                    dtype=np.float32)
             for k in ("dc_held_count", "dc_held_pes", "dc_held_tightest_margin"):
                 global_spaces[k] = spaces.Box(low=0.0, high=1.0, shape=(self.num_datacenters,), dtype=np.float32)
 
@@ -1242,6 +1305,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         n_global_choices = self.num_datacenters + (1 if self.global_defer_enabled else 0)
         if getattr(self, "global_action_mode", "defer") == "option_v1":
             n_global_choices = 2 * self.num_datacenters          # ROUTE_NOW(d) | HOLD_FOR_GREEN(d)
+        elif getattr(self, "global_action_mode", "defer") == "offset_v1":
+            n_global_choices = self.num_datacenters * len(self._offset_grid)   # (d, κ)
         self.global_action_space = spaces.MultiDiscrete(
             [n_global_choices] * self.global_routing_batch_size
         )
@@ -1451,7 +1516,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             self._last_global_obs_for_crd = observations.get("global", {})
             self._mask_route_count = 0
             self._mask_routed_ids = set()
-            if getattr(self, "global_action_mode", "defer") == "option_v1":
+            if getattr(self, "global_action_mode", "defer") in ("option_v1", "offset_v1"):
                 self._option_executor = self._build_option_executor()
                 self._option_clock0 = None
                 self._opt_release_nan = 0
@@ -1542,9 +1607,11 @@ class HierarchicalMultiDCEnv(gym.Env):
         # the old clamp turned every defer into "route to the last DC", silently
         # killing the temporal lever.
         max_valid = self.num_datacenters + (1 if getattr(self, "global_defer_enabled", False) else 0) - 1
-        _option_mode = getattr(self, "global_action_mode", "defer") == "option_v1"
-        if _option_mode:
+        _option_mode = getattr(self, "global_action_mode", "defer") in ("option_v1", "offset_v1")
+        if self.global_action_mode == "option_v1":
             max_valid = 2 * self.num_datacenters - 1              # ROUTE_NOW(d) | HOLD_FOR_GREEN(d)
+        elif self.global_action_mode == "offset_v1":
+            max_valid = self.num_datacenters * len(self._offset_grid) - 1   # (d, κ)
         global_actions_filtered = []
         for i, action_val in enumerate(global_actions):
             action_int = int(action_val)
@@ -1690,7 +1757,7 @@ class HierarchicalMultiDCEnv(gym.Env):
         all_rewards = rewards["global"] + sum(rewards["local"].values())
         self.episode_reward += all_rewards
         self.done = terminated or truncated
-        if getattr(self, "global_action_mode", "defer") == "option_v1" and isinstance(info, dict):
+        if getattr(self, "global_action_mode", "defer") in ("option_v1", "offset_v1") and isinstance(info, dict):
             info.update(self._option_info(final=bool(self.done)))
 
         # Store observations for action masking
@@ -1869,7 +1936,7 @@ class HierarchicalMultiDCEnv(gym.Env):
             obs["batch_cloudlet_defer_allowed"] = defer_allowed_from(
                 ttd, present, mi, pes, self._v32_vm_mips, u,
                 self._defer_mask_margin_sec, float(self._v32_sim_timestep_sec))
-            if getattr(self, "global_action_mode", "defer") == "option_v1":
+            if getattr(self, "global_action_mode", "defer") in ("option_v1", "offset_v1"):
                 self._append_option_features(obs, ttd, present, mi, pes)
 
     def _build_option_executor(self):
@@ -1907,7 +1974,10 @@ class HierarchicalMultiDCEnv(gym.Env):
         if getattr(self, "_option_clock0", None) is None and ch.get("current_clock") is not None:
             # clock origin of the executor's step grid: the simulator clock at step 0
             self._option_clock0 = float(ch["current_clock"]) - t * float(self._v32_sim_timestep_sec)
-        rel = ex.releases(t, g.get("dc_current_green_power_w", np.zeros(n)), g.get("dc_available_pes", np.zeros(n)))
+        if self.global_action_mode == "offset_v1":
+            rel = ex.releases_fixed(t)                              # time only, no green read
+        else:
+            rel = ex.releases(t, g.get("dc_current_green_power_w", np.zeros(n)), g.get("dc_available_pes", np.zeros(n)))
         if rel:
             ids = [int(i) for i, _d, _r in rel]
             dcs = [int(d) for _i, d, _r in rel]
@@ -1922,10 +1992,17 @@ class HierarchicalMultiDCEnv(gym.Env):
                     ex.record_release_reward(jid, None)
                 else:
                     ex.record_release_reward(jid, r)
-        out, stats = plan_option_actions(
-            global_actions, g.get("batch_cloudlet_hold_allowed"), ch.get("batch_cloudlet_ids"),
-            ch.get("batch_cloudlet_pes"), ch.get("batch_cloudlet_mi"),
-            ch.get("batch_cloudlet_time_to_deadline"), ch.get("batch_cloudlet_deadline_present"), ex, t, n)
+        if self.global_action_mode == "offset_v1":
+            out, stats = plan_offset_actions(
+                global_actions, g.get("batch_cloudlet_offset_allowed"), ch.get("batch_cloudlet_ids"),
+                ch.get("batch_cloudlet_pes"), ch.get("batch_cloudlet_mi"),
+                ch.get("batch_cloudlet_time_to_deadline"), ch.get("batch_cloudlet_deadline_present"),
+                ex, t, n, self._offset_grid)
+        else:
+            out, stats = plan_option_actions(
+                global_actions, g.get("batch_cloudlet_hold_allowed"), ch.get("batch_cloudlet_ids"),
+                ch.get("batch_cloudlet_pes"), ch.get("batch_cloudlet_mi"),
+                ch.get("batch_cloudlet_time_to_deadline"), ch.get("batch_cloudlet_deadline_present"), ex, t, n)
         self._opt_hold_masked += stats["hold_masked"]
         self._opt_hold_refused += stats["hold_refused"]
         self._mask_route_count += stats["hold_masked"]
@@ -1965,20 +2042,27 @@ class HierarchicalMultiDCEnv(gym.Env):
         return info
 
     def _append_option_features(self, obs, ttd, present, mi, pes) -> None:
-        """HOLD legality per (slot, site) and the per-site held ledger, from the shared
-        executor (OPTION_ACTION_DESIGN Addendum A3). Zeros before the first reset."""
+        """HOLD legality per (slot, site) (option mode) or (slot, site, κ) (offset mode) and
+        the per-site held ledger, from the shared executor (OPTION_ACTION_DESIGN Addendum A3,
+        C2). Zeros before the first reset."""
         nb, n = self.global_routing_batch_size, self.num_datacenters
+        offset = self.global_action_mode == "offset_v1"
+        mask_key = "batch_cloudlet_offset_allowed" if offset else "batch_cloudlet_hold_allowed"
+        width = n * len(self._offset_grid) if offset else n
         ex = self._option_executor
         ch = self._planner_channel
         if ex is None or ch is None:
-            obs["batch_cloudlet_hold_allowed"] = np.zeros((nb, n), dtype=np.float32)
+            obs[mask_key] = np.zeros((nb, width), dtype=np.float32)
             for k in ("dc_held_count", "dc_held_pes"):
                 obs[k] = np.zeros(n, dtype=np.float32)
             obs["dc_held_tightest_margin"] = np.ones(n, dtype=np.float32)
             return
         t = int(self.current_step)
-        obs["batch_cloudlet_hold_allowed"] = ex.hold_allowed(
-            t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, obs["batch_cloudlet_defer_allowed"])
+        if offset:
+            obs[mask_key] = ex.offset_allowed(t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, self._offset_grid)
+        else:
+            obs[mask_key] = ex.hold_allowed(
+                t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, obs["batch_cloudlet_defer_allowed"])
         margin_scale = max(1.0, self._obs_v31_deadline_scale / float(self._v32_sim_timestep_sec))
         cnt, hp, tight = ex.observation(t, no_hold_margin=margin_scale)
         obs["dc_held_count"] = np.clip(cnt / self._obs_v31_defer_count_scale, 0.0, 1.0).astype(np.float32)

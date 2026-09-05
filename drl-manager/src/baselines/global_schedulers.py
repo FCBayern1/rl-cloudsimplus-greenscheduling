@@ -2488,6 +2488,189 @@ class ReactiveWaitPlannerOptionGlobalScheduler(OptionPlannerMixin, ReactiveWaitP
     cheapest feasible site now."""
 
 
+def offset_action(d, kappa, grid, num_dcs):
+    return int(d) * len(grid) + list(grid).index(int(kappa))
+
+
+def largest_legal_offset(mask_row, d, kappa_target, grid):
+    """Largest κ in the grid, not above kappa_target, that the (slot, site, κ) legality row
+    allows at site d; None when none is legal (Addendum C3: the analytic arm chooses, the
+    executor never clips). Pure."""
+    K = len(grid)
+    best = None
+    for i, k in enumerate(grid):
+        if k > kappa_target:
+            break
+        if mask_row is None or float(mask_row[d * K + i]) >= 0.5:
+            best = k
+    return best
+
+
+class OffsetPlannerMixin:
+    """(DC, dispatch-offset) front end for a CurveInformedPlanner arm (OPTION_ACTION_DESIGN
+    §8, Addenda A5, C2, C3).
+
+    The base planner decides with its own green view: a dispatch now to d, or a reservation
+    (d, s). A reservation becomes (d, κ) with κ the largest legal grid offset not above
+    s - t - lag (quantised down); a reactive-style wait (no reservation) becomes the largest
+    legal offset at the cheapest feasible site by current visible cost. If no positive offset
+    is legal at that site the job is dispatched now there. The base's reservation is kept on
+    its grid as the arm's model of the executor's start.
+    """
+
+    OPTION = True
+
+    def _grid(self, global_obs):
+        g = global_obs.get("offset_grid")
+        if g is None:
+            from gym_cloudsimplus.envs.option_executor import offset_grid
+            g = offset_grid(int(os.environ.get("OFFSET_WAIT_CAP_STEPS", "72")))
+        return list(g)
+
+    def _cheapest_site(self, start, r, p):
+        starts = np.array([start], dtype=np.int64)
+        best, site = None, None
+        for d in range(self.num_datacenters):
+            if not bool(self._feasible_all(d, starts, r, p)[0]):
+                continue
+            c = float(self._costs_all(d, starts, r, p)[0])
+            if np.isfinite(c) and (best is None or c < best):
+                best, site = c, d
+        return int(np.argmin(self.cb)) if site is None else site
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        grid = self._grid(global_obs)
+        planner = global_obs.get('planner') or {}
+        ids = np.asarray(planner.get('batch_cloudlet_ids', []), dtype=np.int64)
+        pes = np.asarray(planner.get('batch_cloudlet_pes', []), dtype=np.float64)
+        mi = np.asarray(planner.get('batch_cloudlet_mi', []), dtype=np.float64)
+        mask = global_obs.get('batch_cloudlet_offset_allowed')
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        t_decide = self.t
+        base = super().schedule(global_obs)          # advances self.t
+        out = []
+        for j, a in enumerate(base):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0)
+                continue
+            row = None if mask is None or j >= mask.shape[0] else mask[j]
+            p = max(1.0, float(pes[j]))
+            r = self._runtime_steps(float(mi[j]))
+            if a < n:
+                out.append(offset_action(a, 0, grid, n))          # dispatch now
+                continue
+            held = self.reservations.pop(jid, None)
+            if held is not None:
+                d, s, e, pp = held
+                site, target = int(d), max(0, int(s) - t_decide - self.START_LAG)
+                self.active[jid] = (d, s, e, pp)              # the base's own model of the start
+                kappa = largest_legal_offset(row, site, target, grid)
+            else:
+                site = self._cheapest_site(t_decide + self.START_LAG, r, p)
+                kappa = largest_legal_offset(row, site, grid[-1], grid)
+                start = t_decide + (kappa or 0) + self.START_LAG
+                self._hold(site, start, start + r, p)
+                self.active[jid] = (site, start, start + r, p)
+            self.dispatched_at[jid] = (site, t_decide)
+            if kappa is None:
+                kappa = 0
+                self.n_fallback += 1
+            out.append(offset_action(site, kappa, grid, n))
+        return out
+
+
+class OraclePlannerOffsetGlobalScheduler(OffsetPlannerMixin, CurveInformedPlannerGlobalScheduler):
+    """oracle_off: truth-curve reserving planner, planned start quantised down to the grid."""
+
+
+class PerturbedOraclePlannerOffsetGlobalScheduler(OffsetPlannerMixin, PerturbedOraclePlannerGlobalScheduler):
+    """shuffle_off / anti_off (and godeye through the tier): the perturbed curve, same rule."""
+
+
+class PersistencePlannerOffsetGlobalScheduler(OffsetPlannerMixin, PersistencePlannerGlobalScheduler):
+    """persistence_off (blind): flat future at the current level."""
+
+
+class ClimatologyPlannerOffsetGlobalScheduler(OffsetPlannerMixin, ClimatologyPlannerGlobalScheduler):
+    """climatology_off (blind): the mean curve."""
+
+
+class ReactiveWaitPlannerOffsetGlobalScheduler(OffsetPlannerMixin, ReactiveWaitPlannerGlobalScheduler):
+    """reactive_off (blind, C3): dispatch now where the meter covers the job, else the
+    largest legal offset at the cheapest feasible site by current visible cost."""
+
+
+class FixedOffsetGlobalScheduler(OffsetPlannerMixin, PersistencePlannerGlobalScheduler):
+    """fixed_off(κ) (blind, C3): every job takes the largest legal offset not above the
+    configured κ (FIXED_OFF_KAPPA), at the site of lowest current visible cost for that
+    start under the persistence view; κ = 0 is the no-wait arm, κ = W the latest-legal one.
+    Reads no curve beyond the current meter."""
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        grid = self._grid(global_obs)
+        kappa_cfg = int(os.environ.get("FIXED_OFF_KAPPA", "0"))
+        if kappa_cfg not in grid:
+            raise RuntimeError(f"FIXED_OFF_KAPPA={kappa_cfg} is not on the grid {grid}")
+        planner = global_obs.get('planner') or {}
+        ids = np.asarray(planner.get('batch_cloudlet_ids', []), dtype=np.int64)
+        pes = np.asarray(planner.get('batch_cloudlet_pes', []), dtype=np.float64)
+        mi = np.asarray(planner.get('batch_cloudlet_mi', []), dtype=np.float64)
+        mask = global_obs.get('batch_cloudlet_offset_allowed')
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        # The persistence base keeps the grid / clock / closure bookkeeping and makes its own
+        # commitment per slot (a dispatch held from t + lag, or a reservation). That
+        # commitment is undone below before this arm books its own, so the grid never
+        # carries a job twice.
+        t_decide = self.t
+        base = PersistencePlannerGlobalScheduler.schedule(self, dict(global_obs))
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0)
+                continue
+            row = None if mask is None or j >= mask.shape[0] else mask[j]
+            p = max(1.0, float(pes[j]))
+            r = self._runtime_steps(float(mi[j]))
+            self._undo_base_commitment(jid, t_decide)
+            best = None
+            for d in range(n):
+                k = largest_legal_offset(row, d, kappa_cfg, grid)
+                if k is None:
+                    continue
+                start = t_decide + k + self.START_LAG
+                c = float(self._costs_all(d, np.array([start], dtype=np.int64), r, p)[0])
+                if np.isfinite(c) and (best is None or (k, -c) > (best[0], -best[1])):
+                    best = (k, c, d)
+            if best is None:
+                out.append(offset_action(int(np.argmin(self.cb)), 0, grid, n))
+                self.n_fallback += 1
+                continue
+            k, _c, d = best
+            start = t_decide + k + self.START_LAG
+            self._hold(d, start, start + r, p)
+            self.active[jid] = (d, start, start + r, p)
+            self.dispatched_at[jid] = (d, t_decide)
+            out.append(offset_action(d, k, grid, n))
+        return out
+
+    def _undo_base_commitment(self, jid, t_decide):
+        """Release whatever the base planner booked for this job on this decision step."""
+        held = self.reservations.pop(jid, None)
+        if held is not None:
+            d, s, e, pp = held
+            self._release(d, s, e, pp)
+            return
+        act = self.active.get(jid)
+        if act is not None and self.dispatched_at.get(jid, (None, None))[1] == t_decide:
+            d, s, e, pp = act
+            self._release(d, s, e, pp)
+            del self.active[jid]
+
+
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
     """Adversarial contract arm (OPTION_ACTION_DESIGN §5): HOLD at the greenest site now on
     every slot the hold mask allows, ROUTE_NOW there otherwise. Exercises the executor's
@@ -2576,6 +2759,12 @@ class OptionBCGlobalScheduler(GlobalScheduler):
 
 
 GLOBAL_SCHEDULERS = {
+    'curve_planner_off': OraclePlannerOffsetGlobalScheduler,
+    'perturbed_oracle_planner_off': PerturbedOraclePlannerOffsetGlobalScheduler,
+    'persistence_planner_off': PersistencePlannerOffsetGlobalScheduler,
+    'climatology_planner_off': ClimatologyPlannerOffsetGlobalScheduler,
+    'reactive_wait_planner_off': ReactiveWaitPlannerOffsetGlobalScheduler,
+    'fixed_off': FixedOffsetGlobalScheduler,
     'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,

@@ -66,9 +66,13 @@ DPRIME_CRD_OVERLAY = {"responsibility": {"responsibility_shrink_strength": 0.5}}
 # latest-start margin in steps. Used by the four zero-training gates; no RL runs on it
 # until a separate preregistration is ruled.
 OPTION_OVERLAY = {**DPRIME_OVERLAY, "global_action_mode": "option_v1", "option_eps_steps": 2}
+# (DC, dispatch-offset) fallback (OPTION_ACTION_DESIGN §8, Addenda A5, C): the grid K(W)
+# with W = the scene's wait cap in steps (72 on HZ), fixed-start reservations, no green read.
+OFFSET_OVERLAY = {**DPRIME_OVERLAY, "global_action_mode": "offset_v1", "option_eps_steps": 2,
+                  "offset_wait_cap_steps": 72}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
-             "green_episode_offset_allowlist", *OPTION_OVERLAY, "wind_csv_year"}
+             "green_episode_offset_allowlist", *OPTION_OVERLAY, *OFFSET_OVERLAY, "wind_csv_year"}
 BETWEEN_LINES = {"experiment_name", "simulation_name", "forecast_mode", "crd"}
 
 
@@ -319,6 +323,11 @@ if __name__ == "__main__":
         blocks, man = build_eval(windows="certified", overlay=DPRIME_OVERLAY,
                                  out_name="config_stage_d_eval_dprime.yml")
         print(json.dumps(man, indent=1))
+        raise SystemExit(0)
+    if variant == "dprime_offset":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_dprime_offset.yml", overlay=OFFSET_OVERLAY)
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     if variant == "dprime_option":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
