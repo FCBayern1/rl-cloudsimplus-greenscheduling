@@ -63,7 +63,7 @@ DPRIME_OVERLAY = {"obs_v31_features": True, "obs_v32_job_forecast": False,
 DPRIME_CRD_OVERLAY = {"responsibility": {"responsibility_shrink_strength": 0.5}}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
-             "green_episode_offset_allowlist", *DPRIME_OVERLAY}
+             "green_episode_offset_allowlist", *DPRIME_OVERLAY, "wind_csv_year"}
 BETWEEN_LINES = {"experiment_name", "simulation_name", "forecast_mode", "crd"}
 
 
@@ -192,7 +192,7 @@ EVAL_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 EVAL_TIERS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
 EVAL_WHITELIST = {"experiment_name", "simulation_name", "green_oracle_mode", "perturb_tier",
                   "forecast_mode", "training", "wandb", "perturb_error_params",
-                  "green_episode_offset_allowlist", *DPRIME_OVERLAY} | REWARD_KEYS
+                  "green_episode_offset_allowlist", *DPRIME_OVERLAY, "wind_csv_year"} | REWARD_KEYS
 AUDIT_JSON = os.path.join(HERE, "timecap_error_audit.json")
 
 
@@ -203,7 +203,8 @@ def judgement_offsets():
     return [int(w["offset"]) for w in win["eval_windows"]]
 
 
-def build_eval(out_dir=None, reward_variant="physical", windows="certified", overlay=None, out_name=None):
+def build_eval(out_dir=None, reward_variant="physical", windows="certified", overlay=None, out_name=None,
+               allowlist_override=None):
     """Deployment blocks: six HZ cells x four provider tiers x {full, hollow} forecast.
 
     Each block is the HZ x2 cell block with the RL keys and the registered reward variant;
@@ -219,7 +220,9 @@ def build_eval(out_dir=None, reward_variant="physical", windows="certified", ove
     # allowlist and --reset-skip 0..5 selects them (long-run main verdict, Codex R-v).
     # windows="certified": the simulator schedule, --reset-skip 26/34/42 (health smoke,
     # secondary "certified benchmark evaluation").
-    if windows == "judgement":
+    if allowlist_override:
+        allow = allowlist_override
+    elif windows == "judgement":
         allow = ";".join(str(o) for o in judgement_offsets())
     elif windows == "dev":
         # development windows = the Stage D training offsets, selected by --reset-skip 0..5
@@ -277,6 +280,29 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "eval_dprime_2020":
+        # Formal D' judgement blocks (design §20): the 2020 series of the same turbines,
+        # allowlist = the six hash-selected 2020 windows, wind_csv_year 2020 everywhere,
+        # audit year 2020. Fail-fast on every one of those.
+        w20 = json.load(open(os.path.join(HERE, "stage_a_out", "stage_d_prime_windows_2020.json")))
+        if w20.get("status") != "OK" or len(w20.get("windows", [])) != 6:
+            raise SystemExit(f"2020 windows not OK: {w20.get('status')}")
+        aud = json.load(open(AUDIT_JSON))
+        if int(aud.get("year", 0)) != 2020:
+            raise SystemExit(f"audit year is {aud.get('year')}, must be 2020")
+        overlay = dict(DPRIME_OVERLAY, wind_csv_year=2020)
+        blocks, man = build_eval(windows="judgement", overlay=overlay,
+                                 out_name="config_stage_d_eval_dprime_2020.yml",
+                                 allowlist_override=";".join(str(o) for o in w20["windows"]))
+        bad = [n for n, b in blocks.items() if int(b.get("wind_csv_year", 0)) != 2020]
+        if bad:
+            raise SystemExit(f"blocks without wind_csv_year 2020: {bad[:3]}")
+        man.update({"year": 2020, "windows_2020": w20["windows"], "read_file_sha256": w20.get("read_file_sha256"),
+                    "audit_year": aud.get("year"), "audit_turbines": aud.get("dc_turbines")})
+        with open(os.path.join(HERE, "stage_d_manifest_eval_dprime_2020.json"), "w") as f:
+            json.dump(man, f, indent=2)
+        print(json.dumps({k: man[k] for k in ("config", "blocks", "allowlist", "config_sha256", "year", "windows_2020")}, indent=1))
         raise SystemExit(0)
     if variant == "eval_dprime_dev":
         blocks, man = build_eval(windows="dev", overlay=DPRIME_OVERLAY,

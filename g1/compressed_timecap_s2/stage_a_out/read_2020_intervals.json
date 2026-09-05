@@ -1,0 +1,65 @@
+{
+  "eval_footprint_rows": 2922,
+  "policy": "conservative: any 2020 offset named by a file mentioning a 2020 wind year, on any turbine of the array",
+  "read_intervals": [
+    [
+      2570,
+      5496
+    ],
+    [
+      11550,
+      14476
+    ],
+    [
+      13113,
+      16039
+    ],
+    [
+      19167,
+      22093
+    ],
+    [
+      22297,
+      25223
+    ]
+  ],
+  "rows_2020": 32225,
+  "scan": [
+    {
+      "file": "g1/config_C_2020.yml",
+      "hz_turbine_mentioned": true,
+      "offsets_named": []
+    },
+    {
+      "file": "reports/G1_PLANNER_GATE_VERDICT_2020.md",
+      "hz_turbine_mentioned": true,
+      "offsets_named": []
+    },
+    {
+      "file": "reports/PLANNER_GATE_PREREG.md",
+      "hz_turbine_mentioned": true,
+      "offsets_named": [
+        2574,
+        11554,
+        13117,
+        19171,
+        22301,
+        34306
+      ]
+    },
+    {
+      "file": "reports/STAGE_D_PRIME_DESIGN.md",
+      "hz_turbine_mentioned": true,
+      "offsets_named": []
+    }
+  ],
+  "sha256": "69bc36d599afbfbad4cd378871bcb9ac2ad195591580d2721e9e167dde62edb9",
+  "turbines": [
+    123,
+    10,
+    51,
+    53,
+    112
+  ],
+  "year": 2020
+}

@@ -218,3 +218,13 @@ def test_eval_dprime_blocks_carry_the_overlay_and_nothing_else_new():
         assert dp[n]["obs_v31_features"] is True and dp[n]["defer_deadline_mask"] is True
         assert dp[n]["defer_deadline_mask_margin_sec"] == 2.0
         assert "green_episode_offset_allowlist" not in dp[n]        # certified windows: schedule, not allowlist
+
+
+def test_eval_allowlist_override_and_year_overlay():
+    with tempfile.TemporaryDirectory() as d:
+        blocks, man = sd.build_eval(out_dir=d, windows="judgement", overlay=dict(sd.DPRIME_OVERLAY, wind_csv_year=2020),
+                                    out_name="config_stage_d_eval_dprime_2020.yml", allowlist_override="100;200;300;400;500;600")
+    assert man["config"] == "config_stage_d_eval_dprime_2020.yml" and man["allowlist"] == "100;200;300;400;500;600"
+    for b in blocks.values():
+        assert b["wind_csv_year"] == 2020 and b["green_episode_offset_allowlist"] == "100;200;300;400;500;600"
+        assert b["obs_v31_features"] is True and b["defer_deadline_mask"] is True

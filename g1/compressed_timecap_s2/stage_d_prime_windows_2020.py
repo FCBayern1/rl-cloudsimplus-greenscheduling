@@ -69,13 +69,19 @@ def scan_repo(repo=REPO):
 
 
 def build_read_file(eval_len):
+    """Conservative read set: every 2020 offset named by any tracked file that mentions a
+    2020 wind year, whether or not the HZ turbines were the ones used (the planner gate's
+    2020 confirmation ran on turbines 12/36, 95/91, 96 of the same array; excluding its
+    windows too costs nothing if six still fit and removes any doubt). Offsets beyond the
+    2020 file are 2021 numbers caught by prose and are dropped."""
     hits = scan_repo()
     intervals = []
     for h in hits:
-        if h["hz_turbine_mentioned"]:
-            for o in h["offsets_named"]:
+        for o in h["offsets_named"]:
+            if wp.PRE <= o <= ROWS_2020 - eval_len:
                 intervals.append([o - wp.PRE, o + eval_len])
-    doc = {"year": YEAR, "turbines": list(HZ_TURBINES), "eval_footprint_rows": eval_len,
+    doc = {"year": YEAR, "turbines": list(HZ_TURBINES), "eval_footprint_rows": eval_len, "rows_2020": ROWS_2020,
+           "policy": "conservative: any 2020 offset named by a file mentioning a 2020 wind year, on any turbine of the array",
            "scan": hits, "read_intervals": sorted(intervals)}
     text = json.dumps(doc, indent=2, sort_keys=True)
     doc["sha256"] = hashlib.sha256(text.encode()).hexdigest()
