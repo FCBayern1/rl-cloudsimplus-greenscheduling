@@ -1,0 +1,19 @@
+{
+  "dev_offsets": [
+    16477,
+    4240,
+    9154,
+    33225,
+    13223,
+    49625
+  ],
+  "error_gate": {
+    "pooled_shrink": 0.01338046950000002,
+    "pooled_st": 0.012479050337962962,
+    "ratio": 1.072234596193175,
+    "windows_above": 2,
+    "pass": false,
+    "verdict": "STOP_ERROR_NOT_LOAD_BEARING"
+  },
+  "verdict": "STOP_ERROR_NOT_LOAD_BEARING"
+}

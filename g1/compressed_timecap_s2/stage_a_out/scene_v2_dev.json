@@ -1,0 +1,64 @@
+{
+  "candidates": {
+    "tag": "scene-interface-v1:2021:",
+    "positions": [
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24
+    ],
+    "offsets": [
+      49625,
+      36713,
+      30299
+    ],
+    "footprint": 2922,
+    "kept_pool_k": [
+      3,
+      5,
+      6,
+      8,
+      9
+    ],
+    "rule": "Addendum C2: run B/ST in this order, stop at the first pass"
+  },
+  "results": [
+    {
+      "position": 13,
+      "offset": 49625,
+      "pool_k": 0,
+      "C_B": 0.005109753935185187,
+      "C_ST": 0.0039611570787037075,
+      "gap_rel": 0.22478516011747093,
+      "gap_abs": 0.0011485968564814795,
+      "contract_ok": true,
+      "pass": true
+    }
+  ],
+  "c_brown_ref_kg": 0.01897,
+  "status": "OK",
+  "dev_offsets": [
+    16477,
+    4240,
+    9154,
+    33225,
+    13223,
+    49625
+  ],
+  "dev_sources": [
+    "pool_k3",
+    "pool_k5",
+    "pool_k6",
+    "pool_k8",
+    "pool_k9",
+    "candidate_13"
+  ]
+}
