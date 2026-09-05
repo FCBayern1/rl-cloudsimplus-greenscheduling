@@ -959,10 +959,14 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             num_real_dcs = self.num_action_choices  # no per-DC keys → fall back
         self.num_dcs = num_real_dcs
         self.global_defer = (self.num_action_choices == self.num_dcs + 1)
-        if self.num_action_choices not in (self.num_dcs, self.num_dcs + 1):
+        # Option mode (reports/OPTION_ACTION_DESIGN.md §2): 2n choices per slot,
+        # [ROUTE_NOW(d) scores | HOLD_FOR_GREEN(d) scores], no bare DEFER column.
+        self.option_mode = (self.num_dcs > 1 and self.num_action_choices == 2 * self.num_dcs)
+        if self.num_action_choices not in (self.num_dcs, self.num_dcs + 1, 2 * self.num_dcs):
             raise ValueError(
                 f"Score-based action choices ({self.num_action_choices}) must equal "
-                f"num_dcs ({self.num_dcs}) or num_dcs+1 (defer); check global_defer_enabled."
+                f"num_dcs ({self.num_dcs}), num_dcs+1 (defer) or 2*num_dcs (option mode); "
+                "check global_defer_enabled / global_action_mode."
             )
         self._categorize_keys(inner)
 
@@ -1032,6 +1036,13 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         # learned function of the cloudlet + context (e.g. forecast says green soon).
         if self.global_defer:
             self.defer_head = nn.Linear(d_model, 1)
+        # Option mode: HOLD_FOR_GREEN(d) is scored pairwise like a route, through its own
+        # query projection of the cloudlet+context state against the same site keys, plus
+        # a per-slot hold bias. The site keys carry the per-site held ledger (dc_held_*),
+        # so "hold here" can read the backlog it would join.
+        if getattr(self, "option_mode", False):
+            self.hold_query = nn.Linear(d_model, d_model)
+            self.hold_bias = nn.Linear(d_model, 1)
 
         # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
         # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
@@ -1211,6 +1222,7 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         self.dc_feat_dim = 0
         self.cloudlet_feat_dim = 0
         self.context_dim = 0
+        self.has_hold_mask = False
 
         for key in sorted(obs_space.spaces.keys()):
             sub = obs_space.spaces[key]
@@ -1220,6 +1232,14 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 continue
 
             shape = tuple(sub.shape)
+            if key == "batch_cloudlet_hold_allowed":
+                # Option-mode legality mask (slot, site): consumed by the HOLD-column
+                # mask in _forward_pass, never a trunk feature.
+                if shape != (self.num_batch_slots, self.num_dcs):
+                    raise ValueError(
+                        f"{key!r} has shape {shape}, expected ({self.num_batch_slots}, {self.num_dcs})")
+                self.has_hold_mask = True
+                continue
             if key.startswith("dc_"):
                 if shape != (self.num_dcs,):
                     raise ValueError(
@@ -1425,6 +1445,20 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                     [scores[..., :-1],
                      torch.where(keep, defer_col, torch.full_like(defer_col, -1e9)).unsqueeze(-1)],
                     dim=-1)
+        if getattr(self, "option_mode", False):
+            qh = self.hold_query(q)
+            hold_scores = torch.einsum("btid,btjd->btij", qh, k) / (
+                math.sqrt(self.d_model) * self.score_temperature
+            ) + self.hold_bias(q)                                   # (B, T, N_b, num_dcs)
+            hold_allowed = obs.get("batch_cloudlet_hold_allowed") if isinstance(obs, dict) else None
+            if hold_allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
+                ha = hold_allowed.float() if hold_allowed.dtype != torch.float32 else hold_allowed
+                if ha.dim() == 3:                                    # (B, N_b, n) -> (B, 1, N_b, n)
+                    ha = ha.unsqueeze(1)
+                if ha.shape[1] != hold_scores.shape[1] and ha.shape[1] == 1:
+                    ha = ha.expand(ha.shape[0], hold_scores.shape[1], ha.shape[2], ha.shape[3])
+                hold_scores = torch.where(ha >= 0.5, hold_scores, torch.full_like(hold_scores, -1e9))
+            scores = torch.cat([scores, hold_scores], dim=-1)       # (B, T, N_b, 2 num_dcs)
         T = scores.shape[1]
         if os.environ.get("DEBUG_SHAPES"):
             logger.warning(

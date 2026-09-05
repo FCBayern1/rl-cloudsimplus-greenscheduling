@@ -910,12 +910,14 @@ public class MultiDatacenterSimulationCore {
      * per-action route reward. Returns one value per id; NaN marks an id that was not held
      * or a route the datacenter refused (the cloudlet is then requeued, never lost).
      */
-    public List<Double> releaseHeld(List<Long> ids, List<Integer> dcs) {
+    public List<Double> releaseHeld(List<? extends Number> ids, List<? extends Number> dcs) {
+        // Py4J hands Python ints over as Integer (or Long past 2^31), so both lists are
+        // read through Number rather than cast.
         List<Double> out = new ArrayList<>();
         if (ids == null) return out;
         for (int k = 0; k < ids.size(); k++) {
-            long id = ids.get(k);
-            int dc = (dcs != null && k < dcs.size()) ? dcs.get(k) : globalBroker.getHeldDc(id);
+            long id = ids.get(k).longValue();
+            int dc = (dcs != null && k < dcs.size()) ? dcs.get(k).intValue() : globalBroker.getHeldDc(id);
             Cloudlet c = globalBroker.takeHeld(id);
             if (c == null) {
                 epOptReleaseUnknown++;
@@ -948,10 +950,11 @@ public class MultiDatacenterSimulationCore {
      * option ledger's timing truth (Addendum A3.4). Finished cloudlets first, then the ones
      * still executing; ids that never started are absent.
      */
-    public Map<Long, Double> getStartTimesForIds(List<Long> ids) {
+    public Map<Long, Double> getStartTimesForIds(List<? extends Number> ids) {
         Map<Long, Double> out = new HashMap<>();
         if (ids == null || ids.isEmpty()) return out;
-        java.util.Set<Long> want = new java.util.HashSet<>(ids);
+        java.util.Set<Long> want = new java.util.HashSet<>();
+        for (Number n : ids) want.add(n.longValue());
         for (DatacenterInstance dc : datacenterInstances) {
             LoadBalancingBroker lb = dc.getLocalBroker();
             if (lb == null) continue;

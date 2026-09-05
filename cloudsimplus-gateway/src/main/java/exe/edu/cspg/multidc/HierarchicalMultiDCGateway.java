@@ -352,7 +352,7 @@ public class HierarchicalMultiDCGateway {
      * routed. Returns the per-action reward booked for each id (NaN when the id was not
      * held or the route was refused; both are counted in the episode stats).
      */
-    public List<Double> releaseHeld(List<Long> ids, List<Integer> dcs) {
+    public List<Double> releaseHeld(List<? extends Number> ids, List<? extends Number> dcs) {
         if (simulationCore == null) {
             throw new IllegalStateException("Simulation not initialized. Call reset() first.");
         }
@@ -371,7 +371,7 @@ public class HierarchicalMultiDCGateway {
      * Execution-start clock of the given cloudlets from the simulator's own start events
      * (finished or running), keyed by id; ids without a start are absent from the map.
      */
-    public Map<Long, Double> getStartTimesForIds(List<Long> ids) {
+    public Map<Long, Double> getStartTimesForIds(List<? extends Number> ids) {
         if (simulationCore == null) {
             return new java.util.HashMap<>();
         }
