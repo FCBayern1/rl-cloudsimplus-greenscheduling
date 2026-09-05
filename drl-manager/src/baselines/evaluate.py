@@ -300,6 +300,23 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
     return metrics
 
 
+def discount_gamma(config: Any, default: float = 0.99) -> float:
+    """The GLOBAL policy's PPO discount, for the discounted-return metric of P0'.
+
+    The hierarchical configs carry the global policy's gamma under `global_model`
+    (0.999 on Stage D') and a top-level `gamma` that belongs to the local policy /
+    legacy single-agent block (0.99). The metric is meant to be the global policy's
+    own objective, so `global_model.gamma` wins; the top-level key is the fallback
+    for flat configs; `default` when neither is present. Pure.
+    """
+    cfg = config or {}
+    gm = cfg.get("global_model") if isinstance(cfg, dict) else None
+    if isinstance(gm, dict) and gm.get("gamma") is not None:
+        return float(gm["gamma"])
+    top = cfg.get("gamma") if isinstance(cfg, dict) else None
+    return float(top) if top is not None else float(default)
+
+
 def _safe_get(d: Any, key: str, default: Any) -> Any:
     """Safely get a value from a dict-like object."""
     if d is None:
@@ -638,7 +655,7 @@ def run_evaluation(
         local_decision_ns: List[int] = []
         # PPO's own objective, for the Stage D' reward truth table P0' (discounted return,
         # not only the undiscounted sum). gamma = the training config's, default 0.99.
-        _gamma = float((getattr(env, "config", {}) or {}).get("gamma", 0.99) or 0.99)
+        _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
         _dump = _DecisionDump(num_dcs)
 
@@ -1201,7 +1218,7 @@ def run_rllib_evaluation(
         global_route_actions = 0
         global_decision_ns: List[int] = []
         local_decision_ns: List[int] = []
-        _gamma = float((getattr(env, "config", {}) or {}).get("gamma", 0.99) or 0.99)
+        _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
         _dump = _DecisionDump(num_dcs)
 
