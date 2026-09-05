@@ -1,0 +1,43 @@
+{
+  "NV": {
+    "init": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/NV_s20260903/checkpoint_init",
+    "final": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/NV_s20260903/multidc_gtrxl_training/PPO_multidc_env_b5cc0_00000_0_2026-09-05_09-56-40/checkpoint_000001",
+    "steps": 56000,
+    "steps_ok": true,
+    "init_loads": true,
+    "init_modules": "['global_policy', 'shared_local_policy']",
+    "final_loads": true,
+    "final_modules": "['global_policy', 'shared_local_policy']"
+  },
+  "V": {
+    "init": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/V_s20260903/checkpoint_init",
+    "final": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/V_s20260903/multidc_gtrxl_training/PPO_multidc_env_b5ce2_00000_0_2026-09-05_09-56-40/checkpoint_000001",
+    "steps": 56000,
+    "steps_ok": true,
+    "init_loads": true,
+    "init_modules": "['global_policy', 'shared_local_policy']",
+    "final_loads": true,
+    "final_modules": "['global_policy', 'shared_local_policy']"
+  },
+  "NE": {
+    "init": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/NE_s20260903/checkpoint_init",
+    "final": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/NE_s20260903/multidc_gtrxl_training/PPO_multidc_env_9258b_00000_0_2026-09-05_11-00-06/checkpoint_000001",
+    "steps": 56000,
+    "steps_ok": true,
+    "init_loads": true,
+    "init_modules": "['global_policy', 'shared_local_policy']",
+    "final_loads": true,
+    "final_modules": "['global_policy', 'shared_local_policy']"
+  },
+  "E": {
+    "init": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/E_s20260903/checkpoint_init",
+    "final": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/stage_d_dprime/E_s20260903/multidc_gtrxl_training/PPO_multidc_env_9264f_00000_0_2026-09-05_11-00-06/checkpoint_000001",
+    "steps": 56000,
+    "steps_ok": true,
+    "init_loads": true,
+    "init_modules": "['global_policy', 'shared_local_policy']",
+    "final_loads": true,
+    "final_modules": "['global_policy', 'shared_local_policy']"
+  },
+  "status": "CHECKPOINTS_OK"
+}

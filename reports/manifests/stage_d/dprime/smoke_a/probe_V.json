@@ -1,0 +1,33 @@
+{
+  "action_space": "MultiDiscrete([6] * 128)",
+  "checkpoint": "drl-manager/logs/stage_d_dprime/V_s20260903/multidc_gtrxl_training/PPO_multidc_env_b5ce2_00000_0_2026-09-05_09-56-40/checkpoint_000001",
+  "control_keys": [
+    "dc_green_ratio",
+    "dc_utilizations"
+  ],
+  "eps": 0.25,
+  "forecast_keys": [
+    "dc_future_short_mean",
+    "dc_future_short_trend",
+    "dc_future_long_mean",
+    "dc_future_long_peak_timing"
+  ],
+  "line": "V",
+  "module": "global_policy",
+  "n": 512,
+  "per_arm": {
+    "V": {
+      "argmax_flip_rate_control": 0.1866607666015625,
+      "argmax_flip_rate_forecast": 0.101531982421875,
+      "control_sensitivity_l1_mean": 0.06680493623660465,
+      "defer_prob_mean": 0.12748233825258765,
+      "entropy_fraction_of_uniform": 0.921889174883649,
+      "forecast_over_control_ratio": 0.496422444001547,
+      "forecast_sensitivity_l1_mean": 0.03316346971794279,
+      "forecast_sensitivity_l1_p90": 0.05179621934151057,
+      "per_slot_entropy_mean": 1.6518036586766165,
+      "top1_prob_mean": 0.27017263016319304
+    }
+  },
+  "seed": 20260903
+}

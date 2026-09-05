@@ -1,0 +1,37 @@
+{
+  "audit_E_last": {
+    "eta": 0.5,
+    "bitwise_max_abs_err": 5.960464477539063e-08,
+    "DEFER": {
+      "n": 1080,
+      "n_neg": 585,
+      "n_pos": 495,
+      "E_w_neg": 1.0454475664048113,
+      "E_w_pos": 0.9713938626300807,
+      "P_low_neg": 0.035897435897435895,
+      "P_low_pos": 0.10101010101010101,
+      "neg_mass_retained_raw": 0.9943611338504053,
+      "neg_mass_retained_guarded": 0.9971805636498596
+    },
+    "ROUTE": {
+      "n": 18920,
+      "n_neg": 9750,
+      "n_pos": 9170,
+      "E_w_neg": 1.0014698144778227,
+      "E_w_pos": 0.9970819740163136,
+      "P_low_neg": 0.09425641025641025,
+      "P_low_pos": 0.09640130861504907,
+      "neg_mass_retained_raw": 0.9793478784102517,
+      "neg_mass_retained_guarded": 0.9896739357895393
+    },
+    "low_weight_falls_on_negative": false,
+    "guard_recovers_negative_mass": false,
+    "guard_gate": {
+      "n_neg_ok": true,
+      "retained_ok": true,
+      "recovery_ok": true,
+      "bitwise_ok": true,
+      "pass": true
+    }
+  }
+}
