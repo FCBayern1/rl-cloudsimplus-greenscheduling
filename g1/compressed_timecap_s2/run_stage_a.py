@@ -476,6 +476,30 @@ def main():
                              "env": e, "dir": f"opt_{aname}"})
         print(f"hz_opt: {len(todo)} runs ({len(arms)} arms x {len(ks)} windows)")
         print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
+    elif phase == "hz_opt_corpus":
+        # Gate-4 corpus (OPTION_ACTION_DESIGN §6 gate 4): oracle_opt replayed on the six
+        # development windows under the option config, dumping every slot decision (with
+        # hold_dc and the legality row) and the global observation of every step. k0-k3
+        # train, k4-k5 held out; frozen once written.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime_option.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        cfg = os.path.join(HERE, "config_stage_d_dprime_option.yml")
+        cal = os.path.join(HERE, "timecap_error_audit.json")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        cdir = os.path.join(OUT, "option_corpus")
+        os.makedirs(cdir, exist_ok=True)
+        todo = []
+        for k, off in enumerate(allow):
+            dump = os.path.join(cdir, f"{cell}_k{k}_decisions.csv")
+            if os.path.exists(dump):
+                os.remove(dump)
+            todo.append({"arm": "perturbed_oracle_planner_opt", "cell": cell, "k": k, "offset": off,
+                         "env": {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, "PLANNER_PERTURB_TIER": "godeye",
+                                 "PLANNER_PERTURB_E": "1", "PLANNER_PERTURB_CAL": cal,
+                                 "EVAL_DECISION_DUMP": dump, "EVAL_DECISION_DUMP_OBS": "1"},
+                         "dir": "option_corpus"})
+        print(f"hz_opt_corpus: {len(todo)} oracle_opt runs with decision + observation dumps")
+        print(json.dumps(sweep(("perturbed_oracle_planner_opt",), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":
