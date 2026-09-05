@@ -212,3 +212,14 @@ Same config (e74f9980…), same arms and windows; rows now carry `ep_mask_routed
 Year wiring verified for §20 item 5: the simulator reads `wind_csv_year` (SimulationSettings, default 2021); the forecast turbine map reads `wind_csv_year` too and already fails fast when a TimeCAP `csv_year` disagrees with it. The D′ 2020 judgement blocks will set `wind_csv_year: 2020` and the generator will assert it on every block and on the audit.
 
 Prior 2020 usage of the HZ turbines: the planner gate's 2020 confirmation (`G1_PLANNER_GATE_VERDICT_2020.md`, `g1/config_C_2020.yml`) used turbines 12/36, 95/91, 96 — not the HZ set; TB12 calibration used turbines 100/101. The repository scan for `read_2020_intervals.json` is run and frozen before selection (§20 item 1).
+
+## 23. 2020 read set and a dry fit check (2026-09-05 12:30; nothing selected or frozen)
+
+Repository scan (tracked yml/json/md naming a 2020 wind year): the only 2020 offsets ever named are the planner gate's confirmation windows 2574 / 11554 / 13117 / 19171 / 22301 (`PLANNER_GATE_PREREG.md`), which ran on the sister turbines 12/36, 95/91, 96 — the HZ turbines 123/10, 51/53, 112 were never used on 2020. Two readings of §20 item 1:
+
+| read set | excluded intervals | six 2,922-row windows fit? |
+|---|---|---|
+| conservative: exclude the sister-turbine gate windows as well | 5 | **no** (STOP_WINDOW_SPLIT) |
+| strict, as worded ("offsets used for these five turbines"): empty | 0 | yes (6 × 2,926 = 17,556 of 32,225 rows) |
+
+The frozen file `read_2020_intervals.json` currently holds the conservative set (SHA 69bc36d5…). Not decided here: the strict reading follows the ruling's own logic (changing turbines changes the spatial structure, so the gate's 2020 windows are not these turbines' windows, and no green value of these turbines' 2020 series has ever been read); the conservative reading fails by the rule's item 6. Awaiting the ruling before any selection is written.
