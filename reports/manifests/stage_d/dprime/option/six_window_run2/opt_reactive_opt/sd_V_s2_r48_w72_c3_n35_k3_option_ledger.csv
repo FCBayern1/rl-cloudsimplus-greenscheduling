@@ -1,0 +1,5 @@
+episode,id,dc,pes,mi,runtime_steps,t_c,latest,s_f,t_release,reason,r_release,t_s,k,route_to_start_steps,stale
+1,5,2,32,1920000.0,48,92,163,163,94,green,1.0,94.0,2.0,0.0,False
+1,6,2,32,1920000.0,48,100,171,171,142,green,1.0,142.0,42.0,0.0,False
+1,10,1,32,1920000.0,48,159,230,230,166,green,1.0,166.0,7.0,0.0,False
+1,16,2,32,1920000.0,48,256,327,327,274,green,1.0,274.0,18.0,0.0,False
