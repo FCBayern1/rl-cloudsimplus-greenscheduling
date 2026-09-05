@@ -160,3 +160,45 @@ Estimated cost: gates 1–3 about ten arms × six windows of zero-training rollo
 - Runtime and draw must use the cpu-utilisation-aware formulas of the backstop and the mask (the u = 0.5 stretch found in the SQT2 audit), never the nominal length/mips.
 - Held jobs are invisible per job; if the RL policy needs the held backlog per site, that is an observation change and an addendum.
 - The margin was frozen from a probe at development load where route→start delay never exceeded 1 s; gate 3's contract check on always_hold is what catches a larger delay under a full hold backlog.
+
+---
+
+## Addendum A (2026-09-05, after the Codex review of v1; no option result has been read)
+
+Sections above stay as written; where this addendum conflicts with them, the addendum governs.
+
+### A1. §3.2 suspended; the four gates read raw rewards
+
+The claim in §3.2 that value targets are invariant under relocation is wrong for the states strictly between creation and termination (t_c < t ≤ t_s): their return-to-go included r_term before relocation and does not after it, so their value targets and the GAE change. Only the discounted return from the episode start and from states at or before t_c is preserved. The relocation connector is therefore not part of the four-gate phase; gates 1–4 use analytic arms and a supervised fit and need no PPO credit assignment. Gate 3 reads the raw per-step reward ledger, the option lifecycle and the physical contract; its "relocation closure" clause is withdrawn. The SMDP / credit-attribution design (relocation, or an option-level critic) is written as a separate RL preregistration only after all four gates pass, and is ruled before any training.
+
+### A2. Discount and λ corrected; a P0′ instrument discrepancy disclosed
+
+The global policy trains with γ = 0.999 and GAE λ = 0.98 (`config_stage_d_dprime.yml`, `global_model` block); the local policy with 0.99 / 0.95. Every "γ 0.99" in §3 and §7 refers to the global policy and is corrected to 0.999. Disclosure found while checking this: `evaluate.py` computes `global_reward_discounted_sum` with the top-level `gamma` key (0.99), not the global policy's 0.999, so the formal P0′ (STAGE_D_PRIME_DESIGN §21) was judged at 0.99. The reader is corrected to the `global_model` value with a test, and P0′ is re-read at 0.999 as a development-phase instrument repair, recorded in STAGE_D_PRIME_DESIGN with both readings; the 0.99 rows stay archived.
+
+### A3. Capacity commitment of HOLD_FOR_GREEN
+
+1. Fallback reservation at creation. HOLD(d) books, on d's reservation grid (active executions plus held fallback reservations, the planner's `occ` semantics kept in Java), the latest feasible start s_f ≤ latest_start_j for (pes_j, runtime_j). If no such start exists, HOLD(d) is illegal for that slot. Legality is exposed as a new observation key `batch_cloudlet_hold_allowed` of shape (NB, n): 1 iff the deadline rule of §2.4 allows waiting and a fallback reservation exists at d against the ledger at observation time. The module masks the HOLD(d) column with it (the per-slot deadline key stays for compatibility). Creations within one step are applied in slot order against the ledger; a HOLD whose reservation no longer fits when its turn comes is converted to ROUTE_NOW(d) and counted in `ep_opt_hold_refused`, which must be 0 for every analytic arm in gate 3 and is reported for the behaviour-cloned arm.
+2. T1 needs capacity as well as green: residual_green(d, t) ≥ draw(j) and free PEs at d ≥ pes_j, both evaluated after the releases already made earlier in the same step (local step accumulators for released draw and PEs; the simulator's next-step state is not waited for).
+3. T2 is the fallback reservation: the job starts at s_f, which is ≤ latest_start_j by construction. A T1 release frees its reservation.
+4. Timing truth. The ledger records both t_route (the executor's route call) and t_s, the simulator's execution-start event of the cloudlet (the start-time map already used by the margin probe). k, every timing statistic and the option's route→start delay use t_s; the per-option delay is a gate-3 reading and its maximum must stay within the frozen margin (≤ 1 step).
+5. Observation additions (§4 amended; these are the only new keys): per DC held count, held PEs and the tightest held margin (min over held jobs at d of latest_start − t, scaled by the v31 deadline scale), all (n,), plus the (NB, n) hold mask above. The ledger that shapes legal actions is thereby observable; nothing else about the held jobs is exposed.
+
+### A4. Gate 4 executed capture
+
+The threshold (C_blind* − C_BC) / (C_blind* − C_oracle_opt) ≥ 0.50 is approved and frozen.
+
+### A5. Fallback offset grid (§8 amended)
+
+The set {0, 1, 2, 4, 8, 16, 32, 64} is withdrawn: the HZ scene's wait cap is W = 72 steps and the grid must reach it. Rule without a free parameter: K(W) = {0} ∪ {2^q : 2^q < W} ∪ {W}; for W = 72 that is {0, 1, 2, 4, 8, 16, 32, 64, 72}. The oracle quantises its planned start down to the largest legal offset not later than it. An offset is legal iff t + κ ≤ latest_start_j and a reservation for (pes_j, runtime_j) fits at (d, t + κ). Illegal offsets are masked for the RL module through a (NB, n × |K|) key; nothing is clipped, so no two actions alias. Analytic arms choose only legal offsets because they read the ledger; an illegal choice from any arm is counted in `ep_off_illegal`, which gate 3 requires to be 0.
+
+### A6. Gate 1 denominator validity
+
+capture is computed only when C_B − C_ST > ε with ε = 0.10 × C_B (E1's pooled gap was 39 %). If the pooled denominator fails this, gate 1 is INVALID_DENOMINATOR: stop and report, no ratio. A window whose own denominator fails is dropped from the individual count, which then requires 0.70 on all but one of the remaining windows; fewer than four valid windows is INVALID_DENOMINATOR as well. ε = 0.10 is a proposal beyond the ruling and is flagged.
+
+### A7. Gate 4 corpus insufficiency
+
+If the frozen corpus (k0–k3 train, k4–k5 held out) fails the minimum of §6 gate 4, the gate is INVALID_CORPUS and the line stops; the corpus is not extended on the spot. An extension requires its own window-selection rule with a hash, written as an addendum and frozen before anything is read.
+
+### A8. What may be implemented now
+
+After this addendum is committed: the Java hold ledger with fallback reservations, the option and offset action modes in the env with their masks, the analytic arms of §5 and §8, and the four gates with their verdict script and tests. Not now: the learner connector of §3.2, any RL training, any change to the 2020 / turbine / `calibrated_shrink_hz_v2` items.
