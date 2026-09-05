@@ -3099,6 +3099,12 @@ public class MultiDatacenterSimulationCore {
             if (globalBroker.getGlobalWaitingCloudletsCount() > 0) {
                 return true;
             }
+            // Cloudlets held by the option executor (OPTION_ACTION_DESIGN §2.1): outside
+            // both queues until released, still unfinished work. Without this the episode
+            // ended with options open (gate-3 run of 2026-09-05: 5 stale holds on k1).
+            if (globalBroker.getHeldCount() > 0) {
+                return true;
+            }
         }
 
         // Check each LocalBroker for unfinished cloudlets
