@@ -110,8 +110,14 @@ class Capture:
             rho = batch.get("crd_rho_routing")
             if rho is None:
                 return
-            w = (adv_post / torch.where(adv_pre.abs() > 1e-12, adv_pre, torch.ones_like(adv_pre))).detach()
-            w = torch.where(adv_pre.abs() > 1e-12, w, torch.ones_like(w))
+            # the weight the learner actually applied (recorded by the guard); fall back to
+            # the advantage ratio for learners that predate crd_w_raw
+            w_raw = batch.get("crd_w_raw")
+            if w_raw is not None and w_raw.numel() == adv_pre.numel():
+                w = w_raw.detach().reshape(adv_pre.shape)
+            else:
+                w = (adv_post / torch.where(adv_pre.abs() > 1e-12, adv_pre, torch.ones_like(adv_pre))).detach()
+                w = torch.where(adv_pre.abs() > 1e-12, w, torch.ones_like(w))
             acts = batch[Columns.ACTIONS]
             mask = batch.get(Columns.LOSS_MASK)
             n = adv_pre.numel()
@@ -187,6 +193,8 @@ def main():
     ap.add_argument("--burnin", type=int, default=5)
     ap.add_argument("--minibatch", type=int, default=2048)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--save-raw", action="store_true",
+                    help="also save the per-transition arrays of the recorded batch (npz) for cross-statistics")
     a = ap.parse_args()
     ckpt = os.path.abspath(a.checkpoint)
     out = a.out or os.path.join(DRL, "results", "stage_d_credit_audit", f"{a.line}_{os.path.basename(ckpt)}.json")
@@ -225,6 +233,10 @@ def main():
            "shape_notes": cap.shape_notes[:6], "elapsed_s": round(time.time() - t0, 1)}
     with open(out, "w") as f:
         json.dump(res, f, indent=2, default=float)
+    if a.save_raw and cap.records:
+        m = cap.merged()
+        np.savez_compressed(os.path.splitext(out)[0] + "_raw.npz",
+                            **{k: np.asarray(v) for k, v in m.items()})
     print(json.dumps({k: res[k] for k in ("line", "checkpoint", "elapsed_s")}))
     if warmed:
         for cls in ("DEFER", "ROUTE"):
