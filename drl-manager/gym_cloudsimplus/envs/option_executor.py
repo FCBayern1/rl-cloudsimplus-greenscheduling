@@ -31,8 +31,14 @@ REASON_GREEN, REASON_MARGIN, REASON_OFFSET = "green", "margin", "offset"
 
 
 def offset_grid(wait_cap_steps: int):
-    """K(W) = {0} ∪ {2^q : 2^q < W} ∪ {W} (OPTION_ACTION_DESIGN Addendum A5), ascending."""
+    """K(W) = {0} ∪ {2^q : 2^q < W} ∪ {W} (OPTION_ACTION_DESIGN Addendum A5), ascending.
+
+    Diagnostic only: with OFFSET_GRID_DENSE=1 in the environment the grid is every step
+    0..W. Never set in a gate run; the frozen grid is the dyadic one."""
+    import os
     W = int(wait_cap_steps)
+    if os.environ.get("OFFSET_GRID_DENSE", "") == "1":
+        return list(range(W + 1))
     ks = {0, W}
     q = 1
     while q < W:

@@ -82,3 +82,10 @@ def test_ledger_rows_carry_kappa():
     row = ex.rows({5: 19.0})[0]
     assert row["kappa"] == 16 and row["reason"] == REASON_OFFSET and row["t_release"] == 18
     assert row["route_to_start_steps"] == 1.0
+
+
+def test_dense_grid_is_a_diagnostic_switch_only(monkeypatch):
+    monkeypatch.setenv("OFFSET_GRID_DENSE", "1")
+    assert offset_grid(8) == list(range(9))
+    monkeypatch.delenv("OFFSET_GRID_DENSE")
+    assert offset_grid(8) == [0, 1, 2, 4, 8]
