@@ -44,3 +44,10 @@ def test_option_mode_rows_name_the_hold_site_and_carry_the_legality_row():
     assert rows[1]["is_defer"] == 0 and rows[1]["hold_dc"] == -1 and rows[1]["hold_allowed"] == "0;0;0;0;0"
     legacy = decision_rows(1, 7, obs, [5, 2, 5], planner_ids=[11, 12, -1], num_dcs=5)
     assert legacy[0]["is_defer"] == 1 and legacy[0]["hold_dc"] == -1 and legacy[0]["hold_allowed"] == ""
+
+
+def test_offset_mode_rows_name_site_and_kappa():
+    grid = [0, 1, 2, 4, 8]
+    rows = decision_rows(1, 7, _obs(), [1 * 5 + 3, 0, 4], planner_ids=[11, 12, -1], num_dcs=5, offset_grid=grid)
+    assert rows[0]["site"] == 1 and rows[0]["kappa"] == 4 and rows[0]["is_defer"] == 1
+    assert rows[1]["site"] == 0 and rows[1]["kappa"] == 0 and rows[1]["is_defer"] == 0

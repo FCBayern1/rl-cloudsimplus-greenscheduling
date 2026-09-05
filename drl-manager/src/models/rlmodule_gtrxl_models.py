@@ -962,10 +962,19 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         # Option mode (reports/OPTION_ACTION_DESIGN.md §2): 2n choices per slot,
         # [ROUTE_NOW(d) scores | HOLD_FOR_GREEN(d) scores], no bare DEFER column.
         self.option_mode = (self.num_dcs > 1 and self.num_action_choices == 2 * self.num_dcs)
-        if self.num_action_choices not in (self.num_dcs, self.num_dcs + 1, 2 * self.num_dcs):
+        # (DC, dispatch-offset) mode (OPTION_ACTION_DESIGN §8, C): n * |K| choices, told
+        # apart from the option mode by the (slot, site * κ) legality key in the space.
+        _off = inner.spaces.get("batch_cloudlet_offset_allowed")
+        self.offset_mode = isinstance(_off, spaces.Box) and len(_off.shape) == 2 \
+            and _off.shape[1] == self.num_action_choices and self.num_action_choices % self.num_dcs == 0
+        if self.offset_mode:
+            self.option_mode = False
+            self.offset_k = self.num_action_choices // self.num_dcs
+        if not self.offset_mode and self.num_action_choices not in (self.num_dcs, self.num_dcs + 1, 2 * self.num_dcs):
             raise ValueError(
                 f"Score-based action choices ({self.num_action_choices}) must equal "
-                f"num_dcs ({self.num_dcs}), num_dcs+1 (defer) or 2*num_dcs (option mode); "
+                f"num_dcs ({self.num_dcs}), num_dcs+1 (defer), 2*num_dcs (option mode) or "
+                "num_dcs*|K| with the offset legality key (offset mode); "
                 "check global_defer_enabled / global_action_mode."
             )
         self._categorize_keys(inner)
@@ -1043,6 +1052,10 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         if getattr(self, "option_mode", False):
             self.hold_query = nn.Linear(d_model, d_model)
             self.hold_bias = nn.Linear(d_model, 1)
+        # Offset mode: logit(d, κ) = pairwise site score(d) + offset head(q)[κ], an additive
+        # factorisation of site and dispatch offset over the cloudlet + context state.
+        if getattr(self, "offset_mode", False):
+            self.offset_head = nn.Linear(d_model, int(self.offset_k))
 
         # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
         # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
@@ -1239,6 +1252,12 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                     raise ValueError(
                         f"{key!r} has shape {shape}, expected ({self.num_batch_slots}, {self.num_dcs})")
                 self.has_hold_mask = True
+                continue
+            if key == "batch_cloudlet_offset_allowed":
+                # Offset-mode legality mask (slot, site * κ): mask only, never a feature.
+                if shape != (self.num_batch_slots, self.num_action_choices):
+                    raise ValueError(
+                        f"{key!r} has shape {shape}, expected ({self.num_batch_slots}, {self.num_action_choices})")
                 continue
             if key.startswith("dc_"):
                 if shape != (self.num_dcs,):
@@ -1459,6 +1478,20 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                     ha = ha.expand(ha.shape[0], hold_scores.shape[1], ha.shape[2], ha.shape[3])
                 hold_scores = torch.where(ha >= 0.5, hold_scores, torch.full_like(hold_scores, -1e9))
             scores = torch.cat([scores, hold_scores], dim=-1)       # (B, T, N_b, 2 num_dcs)
+        if getattr(self, "offset_mode", False):
+            K = int(self.offset_k)
+            off = self.offset_head(q) / self.score_temperature      # (B, T, N_b, K)
+            full = scores.unsqueeze(-1) + off.unsqueeze(-2)         # (B, T, N_b, num_dcs, K)
+            full = full.reshape(full.shape[0], full.shape[1], full.shape[2], self.num_dcs * K)
+            allowed = obs.get("batch_cloudlet_offset_allowed") if isinstance(obs, dict) else None
+            if allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
+                al = allowed.float() if allowed.dtype != torch.float32 else allowed
+                if al.dim() == 3:
+                    al = al.unsqueeze(1)
+                if al.shape[1] != full.shape[1] and al.shape[1] == 1:
+                    al = al.expand(al.shape[0], full.shape[1], al.shape[2], al.shape[3])
+                full = torch.where(al >= 0.5, full, torch.full_like(full, -1e9))
+            scores = full
         T = scores.shape[1]
         if os.environ.get("DEBUG_SHAPES"):
             logger.warning(

@@ -462,7 +462,8 @@ def _checkpoint_label_from_path(checkpoint_path: str) -> str:
         return "rllib"
 
 
-def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, option_mode=False):
+def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, option_mode=False,
+                  offset_grid=None):
     """Per-slot decision records for the Stage D' timing-selectivity corpus
     (STAGE_D_PRIME_DESIGN Q4). One row per real slot: what was decided (route index or
     DEFER) next to the slot's timing facts as the policy saw them. In option mode
@@ -474,6 +475,7 @@ def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, opt
         return rows
     g = obs_global if isinstance(obs_global, dict) else {}
     hold_mask = g.get("batch_cloudlet_hold_allowed") if option_mode else None
+    grid = list(offset_grid) if offset_grid else None          # offset mode: a = d*|K| + i
 
     def col(k, i):
         v = g.get(k)
@@ -490,10 +492,14 @@ def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, opt
         mi = col("batch_cloudlet_mi", slot)
         if planner_ids is None and (mi is None or mi <= 0):
             continue                                   # padding slot without planner ids
+        if grid is not None:
+            _d, _i = int(a) // len(grid), int(a) % len(grid)
+            _kappa = int(grid[_i])
         rows.append({
             "episode": ep, "step": step, "slot": slot,
             "cloudlet_id": int(planner_ids[slot]) if planner_ids is not None and slot < len(planner_ids) else -1,
-            "action": int(a), "is_defer": int(int(a) >= num_dcs),
+            "action": int(a), "is_defer": int(_kappa > 0) if grid is not None else int(int(a) >= num_dcs),
+            "site": _d if grid is not None else -1, "kappa": _kappa if grid is not None else -1,
             "mi": mi, "pes": col("batch_cloudlet_pes", slot),
             "time_to_deadline": col("batch_cloudlet_time_to_deadline", slot),
             "deadline_present": col("batch_cloudlet_deadline_present", slot),
@@ -512,11 +518,12 @@ class _DecisionDump:
     EVAL_DECISION_DUMP_OBS=1, the raw global observation of every step to a sibling .npz so
     another policy can be replayed on the same states. Off unless the env var is set."""
 
-    def __init__(self, num_dcs, option_mode=False):
+    def __init__(self, num_dcs, option_mode=False, offset_grid=None):
         self.path = os.environ.get("EVAL_DECISION_DUMP", "").strip() or None
         self.save_obs = bool(self.path) and os.environ.get("EVAL_DECISION_DUMP_OBS", "0") == "1"
         self.num_dcs = num_dcs
         self.option_mode = bool(option_mode)
+        self.offset_grid = list(offset_grid) if offset_grid else None
         self._rows, self._obs = [], []
 
     def record(self, ep, step, obs_global, global_action, info):
@@ -524,7 +531,7 @@ class _DecisionDump:
             return
         ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids") if isinstance(info, dict) else None
         self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs,
-                                        option_mode=self.option_mode))
+                                        option_mode=self.option_mode, offset_grid=self.offset_grid))
         if self.save_obs and isinstance(obs_global, dict):
             self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
 
@@ -667,7 +674,7 @@ def run_evaluation(
         _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
         _dump = _DecisionDump(num_dcs, option_mode=str((getattr(env, "config", {}) or {}).get(
-            "global_action_mode", "defer")) == "option_v1")
+            "global_action_mode", "defer")) == "option_v1", offset_grid=getattr(env, "_offset_grid", None))
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
@@ -1254,7 +1261,7 @@ def run_rllib_evaluation(
         _gamma = discount_gamma(getattr(env, "config", {}) or {})
         global_reward_discounted_sum = 0.0
         _dump = _DecisionDump(num_dcs, option_mode=str((getattr(env, "config", {}) or {}).get(
-            "global_action_mode", "defer")) == "option_v1")
+            "global_action_mode", "defer")) == "option_v1", offset_grid=getattr(env, "_offset_grid", None))
 
         # Efficiency overhead: reset the GPU peak counter and start the
         # wall-clock for the whole simulated episode.
