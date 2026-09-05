@@ -195,8 +195,13 @@ def test_dprime_overlay_changes_only_the_six_registered_keys_on_every_line():
     assert man["config"] == "config_stage_d_dprime.yml" and man["overlay"] == sd.DPRIME_OVERLAY
     assert set(dp) == set(base)
     for n in base:
-        assert set(sd.diff_keys(base[n], dp[n])) <= set(sd.DPRIME_OVERLAY)
+        assert set(sd.diff_keys(base[n], dp[n])) <= set(sd.DPRIME_OVERLAY) | {"crd"}
         b = dp[n]
+        # the only crd difference is the frozen eta guard
+        c0, c1 = dict(base[n]["crd"]), dict(b["crd"])
+        assert c1["responsibility"]["responsibility_shrink_strength"] == 0.5
+        c1r = dict(c1["responsibility"]); c1r.pop("responsibility_shrink_strength"); c1["responsibility"] = c1r
+        assert c0 == c1 and man["crd_overlay"] == sd.DPRIME_CRD_OVERLAY
         assert b["obs_v31_features"] is True and b["obs_v32_job_forecast"] is False
         assert b["defer_deadline_mask"] is True and b["sla_mode"] == "ontime_mi" and b["sla_target"] == 0.995
         assert b["defer_base_cost"] == 0.0            # ledger-aligned reward untouched

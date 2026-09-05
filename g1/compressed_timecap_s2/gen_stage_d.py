@@ -56,6 +56,11 @@ RISK_LINES = {k: {"crd": False, "hollow": False, "risk": k} for k in RISK_CFG}
 DPRIME_OVERLAY = {"obs_v31_features": True, "obs_v32_job_forecast": False,
                   "defer_deadline_mask": True, "defer_deadline_mask_margin_sec": 2.0,
                   "sla_mode": "ontime_mi", "sla_target": 0.995}
+# D' EU-CRD guard (§10, frozen): symmetric shrink of the responsibility weight toward 1,
+# eta = 0.5, key responsibility_shrink_strength. Merged into crd.responsibility of every
+# line (inert where crd.enabled is false). The frozen v5.2 subtree is otherwise untouched;
+# the manifest records both the source subtree SHA and this overlay.
+DPRIME_CRD_OVERLAY = {"responsibility": {"responsibility_shrink_strength": 0.5}}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
              "green_episode_offset_allowlist", *DPRIME_OVERLAY}
@@ -136,6 +141,9 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
         b["perturb_tier"] = "godeye"                 # training is always clean
         b["forecast_mode"] = "none" if spec["hollow"] else "full"
         b["crd"] = dict(copy.deepcopy(crd), enabled=bool(spec["crd"]))
+        if overlay is DPRIME_OVERLAY or (overlay and overlay.get("defer_deadline_mask")):
+            for sub, vals in DPRIME_CRD_OVERLAY.items():
+                b["crd"][sub] = dict(b["crd"].get(sub, {}), **vals)
         if spec.get("cca"):
             b["crd"]["cca"] = copy.deepcopy(CCA_CFG)
         if spec.get("risk"):
@@ -160,6 +168,7 @@ def build(total_timesteps, out_dir=None, trace_dir=None, reward_variant="legacy"
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
     manifest = {"config": cfg_name, "reward_variant": reward_variant, "reward_overrides": overrides,
                 "overlay": overlay or {},
+                "crd_overlay": (DPRIME_CRD_OVERLAY if (overlay and overlay.get("defer_deadline_mask")) else {}),
                 "checkpoint_freq_timesteps": int(checkpoint_freq),
                 "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
                 "hz_source": {"file": "config_s2hz_m2.yml", "cell": HZ_CELL},
