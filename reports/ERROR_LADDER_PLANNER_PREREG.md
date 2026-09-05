@@ -81,6 +81,37 @@ Frozen:
 - The deployed TimeCAP remains the natural error anchor only through the causal rolling heuristic planner (the ST-style arm of the scene design, forecasts issued at each decision time), reported next to the ladder as a descriptive reference; it is not part of the dominance proof and is not presented as the same information condition as an offline curve. A longer-horizon checkpoint, if ever trained, is frozen on validation loss in its own addendum before it produces any curve.
 - The per-window offline solver knows every arrival in the window. Its schedules certify whether an error is load-bearing; they are not an online-achievable policy and are not used as leak-free behaviour-cloning labels.
 
-### A4. Claim ladder, restated for the exact rungs
+### A4. Claim ladder, restated for the exact rungs (see Addendum B for the optimality and closure rules that now apply to every rung)
 
 Weakest load-bearing rung under L2 → the claim: λ = 0.75 → "resists mild controlled degradation"; λ ≤ 0.5 → "resists moderate controlled degradation"; only shuffle / anti → "resists controlled severe contamination"; none → the scene does not support the thesis. Whether the deployed forecast's natural error is itself load-bearing is reported from the causal anchor separately, in the narrowed wording of STAGE_D_PRIME_DESIGN §39, and is not merged with the exact ladder's claim.
+
+---
+
+## Addendum B (2026-09-06 02:10; closes the two remaining points of the Codex review of Addendum A and locks two implementation constants; the document is frozen at the commit that carries it, after the final mechanical check)
+
+### B1. Every rung must be proven optimal; no uncertainty band
+
+A solver gap under a wrong curve X is a gap in X's objective, not in the truth-settled loss, so it cannot be propagated as a ±band on the reported loss. A2's "gap ≤ 1 % for error rungs" and its uncertainty band are withdrawn. All seven rungs of the exact ladder (truth, shrink λ ∈ {0.75, 0.5, 0.25, 0}, shuffle, anti) must return OPTIMAL within the 600 s limit on every required window; any required rung that does not is STOP_SOLVER_RUNG_UNRESOLVED for the line, and no window is dropped or replaced. The ladder is "exact" only under this rule.
+
+### B2. Closure is checked on every rung's schedule, not only on the truth schedule
+
+The active-host term H = ceil(Σ PEs / 64) is a packing approximation, and different curves pack differently, so closure on the truth schedule says nothing about a shrink or shuffle schedule. For every rung X and every required window, schedule(X) is settled on truth twice and must satisfy
+
+    | C_sim(schedule_X; truth) − C_model(schedule_X; truth) | / C_model(schedule_X; truth) ≤ 3 %,
+
+together with per-job start alignment (route→start ≤ 1 step for every job), forced = 0, completion ≥ 0.995 and on-time ≥ 0.995. Any rung that fails is STOP_PLANNER_CLOSURE_RUNG and the ladder does not enter gate L2; the failure is a model defect, fixed in the model and disclosed, never by changing the rung. Gate 0 (§2.3) is thereby the truth rung's instance of this rule, not a substitute for it.
+
+### B3. Integer scaling of the CP-SAT objective, with a precomputable quantisation bound
+
+Powers are integers in milliwatts: a job's dynamic draw is p_j × 2020 mW (2.02 W per PE), the active-host floor 1000 mW per host, and the green curve G_{d,t} is rounded to the nearest milliwatt. Carbon per (site, step) is (f_b · brown_{d,t} + f_g · green_{d,t}) with brown, green in mW over a one-second step; the objective coefficient is scaled by 10^13 and rounded to an integer: c_b = round(f_b / 3.6 · 10^13 / 10^9) = round(1388.9) = 1389 for f_b = 0.5 kg/kWh (per mW·s), c_g = round(27.8) = 28 for f_g = 0.01 (per mW·s; f_g coefficient relative rounding 0.8 %, applied only to the green part, which is at most a few per cent of the brown term at these factors). Quantisation bound per window, computable before any solve:
+
+    Δ ≤ Σ_{d,t} [ 0.5 mW × (c_b + c_g) + |round(c_b) − c_b| × brown_max + |round(c_g) − c_g| × green_max ] / 10^13 kg,
+
+with brown_max, green_max ≤ the site's capacity draw (640 PEs × 2.02 W + 10 W) in mW. On the HZ cell (5 sites, ≤ 600 steps, f_b = 0.5, f_g = 0.01) this evaluates to below 2 × 10^−6 kg, against 0.1 % × C_brown_ref = 1.9 × 10^−5 kg: the requirement Δ ≤ 0.1 % × C_brown_ref holds with a factor of about ten to spare. The bound is printed by the implementation and stored with each solve; a window whose bound exceeds the requirement is INVALID_QUANTISATION.
+
+### B4. Locked implementation facts
+
+- The 65.64 W draw of one 32-PE job (utilisation counted in MIPS) is the simulator's; the source comment quoting 81.8 W in `HostProfile.SPEC_ASUS_RS500A_DYN` is corrected during implementation (comment only, no behaviour change).
+- The offline ladder is seven rungs × six windows = 42 solves and 42 simulator replays; the TimeCAP causal anchor is reported separately and is not counted in the ladder.
+- 600 s solver limit, 3 % closure tolerance, the every-step offset executor as the settlement path, the TimeCAP / offline-curve separation, and the certification-only status of the offline solver: as in Addendum A.
+- No carbon run before the freeze.
