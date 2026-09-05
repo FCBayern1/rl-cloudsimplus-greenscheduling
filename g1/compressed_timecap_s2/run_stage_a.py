@@ -86,6 +86,21 @@ HZ_ENV = {"PLANNER_EXPECTED_CAP": "640;512;640;512;192",
 HZ_PILOT_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 
 
+def scene_dev_offsets():
+    """The scene's six development windows: the scene-v2 set (Addendum C, five kept + the
+    sixth found) when it exists with status OK, else the v1 certification's set."""
+    v2 = os.path.join(OUT, "scene_v2_dev.json")
+    if os.path.exists(v2):
+        d = json.load(open(v2))
+        if d.get("status") != "OK":
+            raise RuntimeError(f"scene-v2 development set is {d.get('status')}; nothing runs on it")
+        return list(d["dev_offsets"])
+    cert = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
+    if cert.get("development", {}).get("status") != "OK":
+        raise RuntimeError("no certified development set (scene_cert_verdict / scene_v2 search)")
+    return list(cert["development"]["dev_offsets"])
+
+
 def hz_jobs(part, arms, tier_mode=False, mult=None):
     """Scheme 2-HZ jobs (SCHEME2_HZ_PREREG): zero-floor fleet config, that part's windows.
 
@@ -582,7 +597,9 @@ def main():
         man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
         cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
         cell = man["configs"]["defer"]["block"]
-        windows = man["pool_2021"]["windows"]
+        # scene_cert reads the twelve pool windows; scene_cert_shrink (and the godeye rows it
+        # is judged against) run on the final six development windows into sc2_* (C3)
+        windows = man["pool_2021"]["windows"] if phase == "scene_cert" else scene_dev_offsets()
         if phase == "scene_cert":
             arms = {"reactive_wait_planner": {"g": "reactive_wait_planner", "tier": False},
                     "godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
@@ -593,16 +610,18 @@ def main():
             cal = os.environ.get("TIMECAP_CAL_V2", os.path.join(HERE, "timecap_error_audit_hz_v2.json"))
             if not os.path.exists(cal):
                 raise RuntimeError(f"scene_cert_shrink needs the v2 audit at {cal}")
-            arms = {"calibrated_shrink_hz_v2": {"g": "perturbed_oracle_planner", "tier": "calibrated_shrink_v1"}}
+            arms = {"godeye": {"g": "perturbed_oracle_planner", "tier": "godeye"},
+                    "calibrated_shrink_hz_v2": {"g": "perturbed_oracle_planner", "tier": "calibrated_shrink_v1"}}
         todo = []
+        prefix = "sc_" if phase == "scene_cert" else "sc2_"
         for aname, a in arms.items():
             for k, off in enumerate(windows):
                 e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
                 if a["tier"]:
                     e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1"})
-                    if cal:
+                    if cal and aname != "godeye":
                         e["PLANNER_PERTURB_CAL"] = cal
-                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off, "env": e, "dir": f"sc_{aname}"})
+                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": off, "env": e, "dir": f"{prefix}{aname}"})
         print(f"{phase}: {len(todo)} runs ({len(arms)} arms x {len(windows)} pool windows)")
         print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
     elif phase in ("scene_margin", "scene_p0"):
@@ -611,12 +630,9 @@ def main():
         # and P0' (blind / clean / calibrated shrink v2 / always_defer / nodefer on the
         # discounted return, judged by p0_verdict --scene). Zero RL.
         man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
-        cert = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
-        if cert.get("development", {}).get("status") != "OK":
-            raise RuntimeError("scene_margin / scene_p0 need the certified development set (scene_cert_verdict)")
         cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
         cell = man["configs"]["defer"]["block"]
-        dev = cert["development"]["dev_offsets"]
+        dev = scene_dev_offsets()
         cal = os.path.join(HERE, "timecap_error_audit_hz_v2.json")
         todo = []
         if phase == "scene_margin":

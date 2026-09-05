@@ -84,11 +84,11 @@ def brown_ref_from_trace(trace_path, block):
     return {"e_dynamic_wh": e, "f_brown_ref_kg_per_kwh": f, "c_brown_ref_kg": c_brown_ref_kg(e, f), "n_jobs": len(rows)}
 
 
-def load_rows(arms, windows, cell):
+def load_rows(arms, windows, cell, prefix="sc_"):
     rows = {}
     for a in arms:
         for k in windows:
-            p = os.path.join(OUT, f"sc_{a}", f"{cell}_k{k}.csv")
+            p = os.path.join(OUT, f"{prefix}{a}", f"{cell}_k{k}.csv")
             if not os.path.exists(p):
                 rows[(a, k)] = None
                 continue
@@ -109,13 +109,23 @@ def main():
     trace = os.path.join(REPO, "cloudsimplus-gateway", "src", "main", "resources", cfg["cloudlet_trace_file"])
     ref = brown_ref_from_trace(trace, cfg)
     if "--shrink" in sys.argv:
-        prev = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
-        if prev["development"]["status"] != "OK":
-            raise SystemExit("error gate is read only after the development set exists")
-        rows = load_rows(("godeye", "calibrated_shrink_hz_v2"), ks, cell)
-        prev["error_gate"] = error_gate(rows, prev["development"]["dev_k"])
+        # A2 on the final six development windows (scene-v2 set when it exists), rows in sc2_*
+        v2 = os.path.join(OUT, "scene_v2_dev.json")
+        if os.path.exists(v2):
+            dev = json.load(open(v2))
+            if dev.get("status") != "OK":
+                raise SystemExit(f"development set is {dev.get('status')}")
+            offsets = dev["dev_offsets"]
+        else:
+            prev0 = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
+            if prev0["development"]["status"] != "OK":
+                raise SystemExit("error gate is read only after the development set exists")
+            offsets = prev0["development"]["dev_offsets"]
+        dk = list(range(len(offsets)))
+        rows = load_rows(("godeye", "calibrated_shrink_hz_v2"), dk, cell, prefix="sc2_")
+        prev = {"dev_offsets": offsets, "error_gate": error_gate(rows, dk)}
         prev["verdict"] = prev["error_gate"]["verdict"]
-        res, path = prev, os.path.join(OUT, "scene_v1_cert.json")
+        res, path = prev, os.path.join(OUT, "scene_error_gate.json")
     else:
         rows = load_rows(("reactive_wait_planner", "godeye", "shuffle", "anti"), ks, cell)
         mech = mechanism_control(rows, ks)

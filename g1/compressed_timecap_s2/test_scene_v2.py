@@ -8,7 +8,9 @@ from scene_v2 import KEPT_POOL_K, candidates_13_24, first_passing  # noqa: E402
 
 def test_candidates_are_the_same_hash_sequence_continued():
     c = candidates_13_24(n_rows=52559)
-    assert len(c) == 12
+    # 52,559 rows hold at most 17 disjoint 2,922-row footprints; after the pool of twelve the
+    # greedy hash sequence has room for only a few more (three here), never more than twelve
+    assert 1 <= len(c) <= 12
     pool = draw_windows(52559, 12, "scene-interface-v1:2021:")["windows"]
     assert not set(c) & set(pool)
     for o in c:                                       # no overlap with the pool's footprints either
