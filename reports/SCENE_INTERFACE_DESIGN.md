@@ -59,3 +59,37 @@ Vanilla PPO and EU-CRD on the offset action with the F3 interface; the four-line
 7. Only then the RL preregistration.
 
 Nothing runs before Codex freezes this document.
+
+---
+
+## Addendum A (2026-09-06 00:05; closes the four points of the Codex review of v1; where it conflicts with the sections above, the addendum governs)
+
+### A1. The all-brown reference is a scheduling-free formula
+
+§2.2's C_brown is replaced by
+
+    C_brown_ref(window) = Σ_jobs  pes_j · P_dyn_pe · u · runtime_j(sec) / 3600  [Wh]  ×  f_brown_ref  [kg/Wh]
+
+with P_dyn_pe = (214 − 51.4) / 64 W (the fleet's dynamic draw per PE, the constant every planner and the executor already use), u = the block's `cloudlet_cpu_utilization`, runtime_j = mi_j / (vm_pe_mips · u) seconds (the backstop's unit), and f_brown_ref = the arithmetic mean of the block's per-datacentre brown carbon factors (kg per Wh), read from the configuration once and written into the frozen scene file. Static power is excluded (dynamic energy only); no site choice and no arm enters. Implemented as a pure function with a unit test on a hand-computed trace; the value per window is written next to the window record before B or ST is read on it. The headroom gate of §2.2 reads (C_B − C_ST) ≥ 0.05 · C_brown_ref.
+
+### A2. The real forecast error must be load-bearing before any RL
+
+New gate §4.0, read on the six development windows after §2.2 and before §4.1, with the shrink arm recalibrated on the new turbines (`calibrated_shrink_hz_v2`, sister-turbine calibration excluded): C_shrink ≥ 1.05 · C_ST on the pooled sum, and C_shrink,w > C_ST,w on at least four of the six windows. Failure → STOP_ERROR_NOT_LOAD_BEARING: the calibrated error does not harm the analytic scheduler on this scene, so nothing about resisting it can be shown; the line stops before RL. The same arm later serves as a perturbation arm in §4.3 and §4.6, but this is the only gate in which it is a pass condition.
+
+### A3. cand_green_cover: semantics narrowed, same-batch over-claim audited
+
+The claim "two jobs cannot claim the same green" is withdrawn. The key's definition is: the share of job j's energy over its runtime, started at t + κ + lag at site d, covered by the arm's forecast green at d **after subtracting the site's static draw and the load already committed on the reservation grid before this decision** (routes and reservations of earlier steps). Jobs of the same decision batch see the same residual and may claim it jointly.
+
+Audit, computed by the env at every step and exported per episode: for each (d, step) touched by the batch's chosen (d, κ) actions, over-claim = max(0, Σ_batch claimed green energy − residual green energy); exported as `ep_cover_overclaim_wh` (sum), `ep_cover_overclaim_ratio_p95` (per-step ratio of claimed to residual, 95th percentile) and `ep_cover_claimed_wh`. Interface-failure rule, frozen: on the executed behaviour-cloned arm of §4.5, if the realised green share of its jobs' energy (from the simulator's ledger) is below 0.5 × the mean cand_green_cover it acted on, the interface is judged to overstate available green and the verdict is STOP_INTERFACE_OVERCLAIM; this is an interface failure and is never attributed to the policy. The 0.5 is a proposal and is flagged.
+
+### A4. Resource degradation is an ordered rule, not a choice
+
+The smoke of §4.4 proceeds in this order and stops at the first step that passes:
+1. dense float32 (the definition);
+2. if peak RSS > 1.5 × D′ or throughput < 0.5 × D′: dense float16, admitted only with a test that the float16 key round-trips within 1e−3 of float32 on a saved observation set and that the legality mask is bit-identical;
+3. if still over: STOP_RESOURCE_INTERFACE.
+A sparse candidate representation is not an option of this document; it would need its own addendum before any use.
+
+### A5. Seeds
+
+§4.6's seeds are frozen now at five paired seeds. Machine availability changes the schedule, never the evidence standard.
