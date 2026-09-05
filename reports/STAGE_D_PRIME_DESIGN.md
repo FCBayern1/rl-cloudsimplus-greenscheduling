@@ -237,3 +237,22 @@ The frozen file `read_2020_intervals.json` currently holds the conservative set 
 **Option (b), a never-used turbine set: available.** Structured scan (every tracked YAML/JSON parsed for `turbine_ids` / `dc_turbines`, every report scanned for `Turbine_<id>_<year>`): 28 real turbines have been used in some experiment config, audit or report — 1, 3, 10, 12, 15, 30, 36, 47, 51, 52, 53, 54, 60, 71, 90, 91, 95, 96, 100, 101, 105, 112, 113, 114, 115, 118, 123, 130 — plus the synthetic stretched series (7xxx/8xxx/9xxx). **106 real turbines have never been used** and all have complete 2021 files (and 2020 files of 32,224 rows). Inventory saved as `stage_a_out/turbine_usage_inventory.json`.
 
 What (b) entails, per §24: a deterministic choice (hash-ordered, reading no wind value) of five never-used turbines mapped onto the HZ structure (two, two, one across DCs 0–2 with the same time-zone offsets); the zero-training HZ scene gate rerun on them (discovery + one-shot confirmation, including the capacity vector and the ×2 scarcity calibration, which depend on the turbines' power scale); `calibrated_shrink_hz_v2` audited on their development windows only; the wiring gate; then new training on the new turbines (the training scene changes) before any D′ judgement. The judgement windows for that scene follow the frozen hash rule on the new turbines' 2021 series with an empty read set (never-used turbines, never-used periods), or on 2020 if the ruling prefers cross-year — to be ruled. The selection rule is implemented (`stage_d_prime_turbines.py`) but not executed.
+
+## 26. Development smoke A, part 1: contract and behaviour readings (2026-09-05 12:58; seed 20260903, certified windows k = 26/34/42, 56k steps per line, D′ config e74f9980…, 252 rows, zero failed)
+
+Read as development only (§16, §24): the corruption here is the sister-turbine `calibrated_shrink_v1`, so nothing below is error-resistance evidence.
+
+| line | tier | on-time | completion | forced | defer rate | env mask re-routes | carbon (kg, mean of 18) |
+|---|---|---|---|---|---|---|---|
+| N_V | hollow | 1.000 | 1.000 | 0 | 0.580 | 0 | 0.00760 |
+| V | godeye | 1.000 | 1.000 | 0 | 0.504 | 0 | 0.00731 |
+| V | calibrated_shrink_v1 | 1.000 | 1.000 | 0 | 0.503 | 0 | 0.00724 |
+| V | shuffle | 1.000 | 1.000 | 0 | 0.515 | 0 | 0.00736 |
+| V | anti | 1.000 | 1.000 | 0 | 0.507 | 0 | 0.00738 |
+| N_E | hollow | 1.000 | 1.000 | 0 | 0.418 | 0 | 0.00704 |
+| E | godeye | 1.000 | 1.000 | 0 | 0.449 | 0 | 0.00679 |
+| E | calibrated_shrink_v1 | 1.000 | 1.000 | 0 | 0.439 | 0 | 0.00676 |
+| E | shuffle | 1.000 | 1.000 | 0 | 0.462 | 0 | 0.00686 |
+| E | anti | 1.000 | 1.000 | 0 | 0.460 | 0 | 0.00682 |
+
+Contract clean on all 72 clean deployments, forced = 0 everywhere, and the env-side re-route never fired on an RL row (the logit-level mask removed the DEFER choice first, as designed). No collapse in either direction: defer rates sit between 0.42 and 0.58 across the four lines, against 0.038 / 0.956 in Stage D. The health runner's own verdict read FIX_AND_RERUN only because it ran before the chain's probe step (`probe_missing`); the chain and the post-smoke script re-run it after the probes. The guard gate, the recurrent pre-mask selectivity and the six-criteria verdict follow in part 2.
