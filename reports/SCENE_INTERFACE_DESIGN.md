@@ -93,3 +93,27 @@ A sparse candidate representation is not an option of this document; it would ne
 ### A5. Seeds
 
 §4.6's seeds are frozen now at five paired seeds. Machine availability changes the schedule, never the evidence standard.
+
+---
+
+## Addendum B (2026-09-06 00:20; the unit correction and the coverage weighting Codex required; the document is frozen at the commit that carries this addendum)
+
+### B1. Unit of the brown factor
+
+The block's `brown_carbon_factor` is in kg per kWh (the Java ledger divides Wh by 1000 before multiplying, `DatacenterInstance.updateEnergyMetrics`). A1's formula, corrected:
+
+    E_dynamic_Wh  = Σ_jobs  pes_j · P_dyn_pe · u · runtime_j(sec) / 3600
+    C_brown_ref_kg = E_dynamic_Wh / 1000 · f_brown_ref  [kg per kWh]
+
+The unit test locks 1 Wh × 0.5 kg/kWh = 0.0005 kg. Implemented in `g1/compressed_timecap_s2/scene_v1.py` (`dynamic_energy_wh`, `c_brown_ref_kg`, `headroom_ok`), pure, tested.
+
+### B2. Coverage on one footing
+
+- The forecast coverage a policy sees and the audit's claimed coverage are weighted by each job's dynamic energy (pes · P_dyn_pe · u · runtime), never a plain mean over jobs.
+- The realised coverage of the executed arm is the realised green share of the same dynamic job energy, from the simulator's ledger; static power never enters the denominator.
+- When the forecast coverage of a job is zero the over-claim gate does not fire for it; the raw audit quantities are still recorded.
+- The 0.5 threshold of A3 is approved: realised dynamic green coverage below half of the forecast coverage the policy acted on → STOP_INTERFACE_OVERCLAIM.
+
+### B3. Freeze
+
+With this addendum the design is frozen. Step 1 of §5 (turbine choice and data isolation) may start immediately; no other step runs before the previous one is closed and recorded.
