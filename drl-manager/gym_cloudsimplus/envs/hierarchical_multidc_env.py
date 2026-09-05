@@ -146,6 +146,8 @@ def route_disallowed_defers(actions, defer_allowed, pes, dc_green_ratio, dc_avai
         if a != num_dcs or i >= da.shape[0] or da[i] >= 0.5:
             continue
         need = float(pes_a[i]) if i < pes_a.shape[0] else 1.0
+        if pes is not None and need <= 0.0:
+            continue            # padding slot: no job here, Java ignores it, never counted
         choice = next((int(d) for d in order if avail[d] >= need), int(order[0]))
         acts[i] = choice
         n_routed += 1

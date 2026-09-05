@@ -22,3 +22,9 @@ def test_falls_back_to_the_greenest_dc_when_nothing_has_room():
 def test_mask_off_or_missing_arrays_change_nothing():
     acts, n = route_disallowed_defers([3, 0], [1.0, 1.0], None, None, None, NUM_DCS)
     assert acts == [3, 0] and n == 0
+
+
+def test_padding_slots_are_never_rerouted_nor_counted():
+    # slot 2 is padding (pes 0) and carries a DEFER with defer_allowed 0: must stay untouched
+    acts, n = route_disallowed_defers([3, 3, 3], [0.0, 1.0, 0.0], [4, 4, 0], [0.2, 0.9, 0.5], [8, 8, 8], NUM_DCS)
+    assert acts == [1, 3, 3] and n == 1
