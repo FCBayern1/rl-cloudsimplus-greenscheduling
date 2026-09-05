@@ -183,3 +183,18 @@ So no fresh window of the Stage D footprint fits once the six Stage D judgement 
 - **Per-id closure**: env records the cloudlet ids the mask re-routes (`ep_mask_routed_ids`, sha, unknown count); the planner exports `planner_unplanned_start_ids`; `contract_ok_dprime` requires the unplanned set ⊆ the mask-routed set with zero unknown ids. P0′ run 5 with these columns is the formal one under the revised contract; run 4 stands as the first valid count-level PASS.
 - **Six-cell probe** (§16 Q3) running on `config_stage_d_eval_dprime_dev.yml` (allowlist = the six training offsets), 36 runs.
 - **Windows**: §17 STOP under the ruled exclusions; awaiting the ruling.
+
+## 20. Window ruling (2026-09-05 ~12:00): formal judgement moves to the 2020 files of the same five turbines — a cross-year confirmation
+
+Not adopted: relaxing "unread", reusing the six Stage D judgement windows, or per-cell footprints. Adopted: the same turbines, the same DC mapping, scarcity definition and action structure, with the formal judgement windows drawn from the turbines' 2020 series (32,225 rows each; six full footprints need 17,532 rows). Reasons as ruled: reusing old windows loses independent confirmation; per-cell weather confounds load scale with weather; changing turbines changes the spatial structure and would require re-certifying the HZ scene; changing the year keeps everything but adds a cross-year generalisation test.
+
+Execution rule, frozen:
+1. Collect every 2020 offset ever used in the repository for these five turbines and write their full-footprint intervals to `read_2020_intervals.json`, SHA frozen.
+2. On the remaining legal offsets compute sha256("stage-d-prime-judgement-v1:2020:" + offset).
+3. Greedily take six non-overlapping 2,922-row windows in hash order.
+4. Read no green value, carbon or policy result of any candidate window.
+5. `wind_csv_year`, the forecast provider's year and the audit's year must all be 2020, checked fail-fast at construction.
+6. Fewer than six after the exclusions → formal STOP_WINDOW_SPLIT; no fallback to 2021 and no reduction of the window count.
+7. Training keeps the frozen 2021 training windows; the judgement uses the new 2020 windows. This is written as a cross-year confirmation, not a same-year random split.
+
+Order: the three background tasks finish first (smoke A as development only; the six-cell probe decides whether the margin stays 2; P0′ run 5 must pass the per-id set closure to be the formal P0′). Only when margin, P0′ and the development smoke all pass are the 2020 windows generated and frozen. No analytic planner is run on 2020 beforehand to pick "valuable" weather: 2021 certified the scene; 2020 is a one-shot external confirmation.
