@@ -192,7 +192,7 @@ EVAL_CELLS = [f"s2_r48_w72_c{c}_n{n}" for c in (1, 3, 5) for n in (20, 50)]
 EVAL_TIERS = ("godeye", "calibrated_shrink_v1", "shuffle", "anti")
 EVAL_WHITELIST = {"experiment_name", "simulation_name", "green_oracle_mode", "perturb_tier",
                   "forecast_mode", "training", "wandb", "perturb_error_params",
-                  "green_episode_offset_allowlist"} | REWARD_KEYS
+                  "green_episode_offset_allowlist", *DPRIME_OVERLAY} | REWARD_KEYS
 AUDIT_JSON = os.path.join(HERE, "timecap_error_audit.json")
 
 
@@ -203,7 +203,7 @@ def judgement_offsets():
     return [int(w["offset"]) for w in win["eval_windows"]]
 
 
-def build_eval(out_dir=None, reward_variant="physical", windows="certified"):
+def build_eval(out_dir=None, reward_variant="physical", windows="certified", overlay=None, out_name=None):
     """Deployment blocks: six HZ cells x four provider tiers x {full, hollow} forecast.
 
     Each block is the HZ x2 cell block with the RL keys and the registered reward variant;
@@ -228,6 +228,11 @@ def build_eval(out_dir=None, reward_variant="physical", windows="certified"):
                     continue                      # a hollowed observation has no tier
                 b = copy.deepcopy(hz[cell])
                 b.update(copy.deepcopy(overrides))
+                if overlay:
+                    # D': the deployment observation must carry the same timing keys and
+                    # mask the policy was trained with; the SLA keys are training-side and
+                    # inert here but kept so one overlay describes both sides.
+                    b.update(copy.deepcopy(overlay))
                 name = f"sde_{cell}_{tier if mode == 'full' else 'hollow'}"
                 b["experiment_name"] = name
                 b["simulation_name"] = f"STAGED_EVAL_{name}"
@@ -245,13 +250,13 @@ def build_eval(out_dir=None, reward_variant="physical", windows="certified"):
                     b["green_episode_offset_allowlist"] = allow
                 blocks[name] = b
     text = yaml.safe_dump({"common": common, **blocks}, sort_keys=True, default_flow_style=False)
-    cfg_name = "config_stage_d_eval.yml" if windows == "certified" else "config_stage_d_eval_judgement.yml"
+    cfg_name = out_name or ("config_stage_d_eval.yml" if windows == "certified" else "config_stage_d_eval_judgement.yml")
     path = os.path.join(out_dir, cfg_name)
     with open(path, "w") as f:
         f.write(text)
     return blocks, {"config": cfg_name, "blocks": len(blocks), "windows": windows,
                     "allowlist": allow, "config_sha256": hashlib.sha256(text.encode()).hexdigest(),
-                    "reward_variant": reward_variant}
+                    "reward_variant": reward_variant, "overlay": overlay or {}}
 
 
 if __name__ == "__main__":
@@ -265,6 +270,12 @@ if __name__ == "__main__":
     if variant == "eval_judgement":
         _, m = build_eval(windows="judgement")
         print(json.dumps(m, indent=1))
+        raise SystemExit(0)
+    if variant == "eval_dprime":
+        # development-smoke deployment blocks: certified windows (already read), D' overlay
+        blocks, man = build_eval(windows="certified", overlay=DPRIME_OVERLAY,
+                                 out_name="config_stage_d_eval_dprime.yml")
+        print(json.dumps(man, indent=1))
         raise SystemExit(0)
     if variant == "dprime":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,

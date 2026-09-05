@@ -26,11 +26,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 DRL = os.path.join(REPO, "drl-manager")
 PY = os.path.join(DRL, ".venv/bin/python")
-CONFIG = os.path.join(HERE, "config_stage_d_physical.yml")
-EVAL_CONFIG = os.path.join(HERE, "config_stage_d_eval.yml")
+# Stage D health smoke by default; the D' development smoke passes its own configs and a
+# suffix (STAGE_D_CONFIG / STAGE_D_EVAL_CONFIG / STAGE_D_SUFFIX) so nothing frozen moves.
+SUFFIX = os.environ.get("STAGE_D_SUFFIX", "")
+CONFIG = os.environ.get("STAGE_D_CONFIG") or os.path.join(HERE, "config_stage_d_physical.yml")
+EVAL_CONFIG = os.environ.get("STAGE_D_EVAL_CONFIG") or os.path.join(HERE, "config_stage_d_eval.yml")
 JAR = os.path.join(REPO, "cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib/cloudsimplus-gateway.jar")
-LOGS = os.path.join(DRL, "logs/stage_d")
-RESULTS = os.path.join(DRL, "results/stage_d")
+LOGS = os.path.join(DRL, f"logs/stage_d{SUFFIX}")
+RESULTS = os.path.join(DRL, f"results/stage_d{SUFFIX}")
 SEED = int(os.environ.get("STAGE_D_SEED", "20260903"))
 STEPS = int(os.environ.get("STAGE_D_STEPS", "56000"))
 WORKERS = int(os.environ.get("STAGE_D_EVAL_WORKERS", "6"))
@@ -44,8 +47,9 @@ CLEAN = {"NV": "hollow", "NE": "hollow", "V": "godeye", "E": "godeye"}
 EXPECTED_FINAL, EXPECTED_INIT = 180, 72
 FROZEN_SOURCES = [
     "g1/compressed_timecap_s2/stage_d_run.py", "g1/compressed_timecap_s2/stage_d_health_verdict.py",
-    "g1/compressed_timecap_s2/gen_stage_d.py", "g1/compressed_timecap_s2/config_stage_d_physical.yml",
-    "g1/compressed_timecap_s2/config_stage_d_eval.yml", "g1/compressed_timecap_s2/stage_d_manifest_physical.json",
+    "g1/compressed_timecap_s2/gen_stage_d.py",
+    os.path.relpath(CONFIG, REPO), os.path.relpath(EVAL_CONFIG, REPO),
+    os.path.relpath(CONFIG, REPO).replace("config_stage_d", "stage_d_manifest").replace(".yml", ".json"),
     "drl-manager/src/baselines/evaluate.py", "drl-manager/src/learners/crd_q_loss.py",
     "drl-manager/src/training/train_rlmodule_gtrxl.py", "drl-manager/src/callbacks/init_checkpoint_callback.py",
     "drl-manager/gym_cloudsimplus/envs/hierarchical_multidc_env.py",

@@ -205,3 +205,16 @@ def test_dprime_overlay_changes_only_the_six_registered_keys_on_every_line():
         assert b["obs_v31_features"] is True and b["obs_v32_job_forecast"] is False
         assert b["defer_deadline_mask"] is True and b["sla_mode"] == "ontime_mi" and b["sla_target"] == 0.995
         assert b["defer_base_cost"] == 0.0            # ledger-aligned reward untouched
+
+
+def test_eval_dprime_blocks_carry_the_overlay_and_nothing_else_new():
+    with tempfile.TemporaryDirectory() as d:
+        base, _ = sd.build_eval(out_dir=d)
+        dp, man = sd.build_eval(out_dir=d, overlay=sd.DPRIME_OVERLAY, out_name="config_stage_d_eval_dprime.yml")
+    assert man["config"] == "config_stage_d_eval_dprime.yml" and man["overlay"] == sd.DPRIME_OVERLAY
+    assert set(dp) == set(base)
+    for n in base:
+        assert set(sd.diff_keys(base[n], dp[n])) <= set(sd.DPRIME_OVERLAY)
+        assert dp[n]["obs_v31_features"] is True and dp[n]["defer_deadline_mask"] is True
+        assert dp[n]["defer_deadline_mask_margin_sec"] == 2.0
+        assert "green_episode_offset_allowlist" not in dp[n]        # certified windows: schedule, not allowlist
