@@ -1,0 +1,32 @@
+{
+  "windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "gate3": {
+    "pass": true,
+    "violations": {},
+    "n_rows": 90
+  },
+  "blind_star": "persistence_off",
+  "gate1": {
+    "capture_pooled": 1.0774891684630084,
+    "capture_windows": [
+      1.2809309176593193,
+      1.1885251886594945,
+      null,
+      0.9782305305796094,
+      0.14989758933059444,
+      0.39735687266868247
+    ],
+    "n_valid_windows": 5,
+    "pass": false,
+    "verdict": "FAIL",
+    "windows_ge_0.70": 3
+  },
+  "verdict": "STOP_GATE1_FAIL_ACTION_SPACE_LINE_ENDS"
+}

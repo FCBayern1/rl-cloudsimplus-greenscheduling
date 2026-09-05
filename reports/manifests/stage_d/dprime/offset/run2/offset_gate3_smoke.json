@@ -1,0 +1,11 @@
+{
+  "windows": [
+    0
+  ],
+  "gate3": {
+    "pass": true,
+    "violations": {},
+    "n_rows": 12
+  },
+  "verdict": "PASS_GATE3_SMOKE"
+}
