@@ -290,6 +290,12 @@ def collect_metrics(info: Dict[str, Any], num_dcs: int) -> Dict[str, Any]:
         for k, v in gs.items():
             if isinstance(k, str) and (k.startswith('ep_') or k.startswith('defer_')):
                 metrics[k] = v
+    # Env-side per-episode counters (Python, not Java), same naming rule: e.g. the Stage D'
+    # mask's ep_mask_route_count. Java's keys win if both exist.
+    if isinstance(info, dict):
+        for k, v in info.items():
+            if isinstance(k, str) and k.startswith('ep_') and k not in metrics and not isinstance(v, (dict, list)):
+                metrics[k] = v
 
     return metrics
 
