@@ -59,19 +59,34 @@ def search():
     man = json.load(open(os.path.join(OUT, "scene_v1_manifest.json")))
     cert = json.load(open(os.path.join(OUT, "scene_v1_cert.json")))
     c_ref = cert["brown_ref"]["c_brown_ref_kg"]
-    cfg = os.path.join(HERE, man["configs"]["defer"]["file"])
-    cell = man["configs"]["defer"]["block"]
+    # The simulator takes its window from the block's allowlist by reset index (env
+    # episode_offset_rows: allow[k % len]); the planner takes ORACLE_OFFSET_ROWS. Both must
+    # name the same window, so the candidates get their own config whose allowlist is exactly
+    # the candidate list and k = position in it. (Run 1 of this search used the v1 config
+    # with k = 100 + i, which wrapped onto pool windows 4-6 for the simulator while the
+    # planner planned on the candidates: an invalid, disclosed run.)
+    import yaml
+    from gen_scene_v1 import BLOCK, scene_block
+    src_name = man["configs"]["defer"]["source"]
+    src = yaml.safe_load(open(os.path.join(HERE, src_name)))
+    cell = "sv2_defer_" + BLOCK[5:]
+    blk = scene_block(src[BLOCK], man["dc_turbines"], cand["offsets"], cell)
+    out_cfg = {k: v for k, v in src.items() if not k.startswith("sd_")}
+    out_cfg[cell] = blk
+    cfg = os.path.join(HERE, "config_scene_v2_defer.yml")
+    with open(cfg, "w") as f:
+        yaml.safe_dump(out_cfg, f, sort_keys=True)
     results = []
     sixth = None
     for i, off in enumerate(cand["offsets"]):
-        k = 100 + i                                   # distinct k so the rows never collide with the pool's
+        k = i                                          # position in the candidate allowlist
         todo = [{"arm": "reactive_wait_planner", "cell": cell, "k": k, "offset": off,
-                 "env": {"EVAL_CONFIG_PATH": cfg, **rs.HZ_ENV}, "dir": "sc_reactive_wait_planner"},
+                 "env": {"EVAL_CONFIG_PATH": cfg, **rs.HZ_ENV}, "dir": "scv2_reactive_wait_planner"},
                 {"arm": "perturbed_oracle_planner", "cell": cell, "k": k, "offset": off,
                  "env": {"EVAL_CONFIG_PATH": cfg, **rs.HZ_ENV, "PLANNER_PERTURB_TIER": "godeye", "PLANNER_PERTURB_E": "1"},
-                 "dir": "sc_godeye"}]
+                 "dir": "scv2_godeye"}]
         rs.sweep(("reactive_wait_planner", "perturbed_oracle_planner"), todo=todo)
-        rows = load_rows(("reactive_wait_planner", "godeye"), [k], cell)
+        rows = load_rows(("reactive_wait_planner", "godeye"), [k], cell, prefix="scv2_")
         b, s = rows[("reactive_wait_planner", k)], rows[("godeye", k)]
         if b is None or s is None:
             results.append({"position": 13 + i, "offset": off, "status": "FAILED_RUN"})
