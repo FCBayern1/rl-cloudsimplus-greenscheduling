@@ -49,3 +49,24 @@ def test_energy_weighted_coverage_prefers_big_jobs():
     v = energy_weighted([1.0, 0.0], pes=[32, 1], mi=[1920000.0, 40000.0], vm_pe_mips=40000.0, cpu_util=1.0)
     assert v > 0.99
     assert energy_weighted([], [], [], 40000.0, 1.0) == 0.0
+
+
+def test_ids_mentioned_catches_singular_list_block_and_filenames():
+    from scene_v1 import ids_mentioned
+    text = """
+  turbine_id: 57
+  datacenters:
+  - turbine_ids: [123, 10]
+  - turbine_ids:
+    - 51
+    - 53
+  - turbine_ids: []
+  wind: windProduction/split/Turbine_112_2021.csv
+"""
+    assert ids_mentioned(text) == {57, 123, 10, 51, 53, 112}
+    assert ids_mentioned("no turbines here") == set()
+
+
+def test_dataset_files_do_not_count_as_use():
+    from scene_v1 import DATASET_PATHS
+    assert any("windProduction/" in p for p in DATASET_PATHS)

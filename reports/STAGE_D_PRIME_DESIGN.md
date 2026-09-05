@@ -379,3 +379,14 @@ Dense-grid diagnostic result (2026-09-05 23:12; six windows, same block, same ja
 | k5 | 0.000309 | 0.000377 | 0.000309 | 1.000 |
 
 With an every-step grid the offset oracle reproduces the step-wise reserving planner's carbon to the last digit on all six windows, with route→start 0 everywhere. The k4/k5 failure of the frozen run was therefore entirely the dyadic grid's downward quantisation (a wait of 33–63 steps became 32), not a limit of the (DC, dispatch-offset) action; the dyadic grid's wins on k0/k1 (1.28/1.19) show the reserving planner is itself not optimal on wide windows. This is a diagnostic reading: the frozen verdict is unchanged, and the next design's grid rule is chosen before any of its rows exist.
+
+## 36. Scene + interface design frozen; step 1 (turbines and data isolation) done (2026-09-06 00:40)
+
+`reports/SCENE_INTERFACE_DESIGN.md` v1 with Addenda A and B is frozen at commit 0bbd6f7a (sha256 a01b46d4…): Codex approved the direction, the four v1 points (headroom-selected confirmation windows, data-dependent threshold, blind family narrower than the oracle, feature volume) closed in Addendum A, and the unit correction (brown factor in kg per kWh) and energy-weighted coverage closed in Addendum B; nothing else may change without an addendum.
+
+Step 1, by the frozen rules, reading no wind value:
+- Eligibility disclosure: the structured inventory (`turbine_usage_inventory.json`) had missed the legacy singular `turbine_id:` key, which the gateway still honours; a literal scan of every tracked yml/yaml/json/md/py outside the wind dataset and its preprocessing (`scene_v1.used_in_tracked_files`) excludes six more ids (57 and 124 as legacy defaults in configs; 2, 5, 9, 46 mentioned by tests, scripts or an old README), leaving 100 candidates. The first hash-ordered draw had taken 57 as the fifth turbine; that draw is discarded and recorded here.
+- Turbines (hash rule stage-d-prime-turbines-v1, first five of 100): DC0 ← 133, 78; DC1 ← 22, 81; DC2 ← 94; DC3, DC4 without turbines. Files and their row counts and hashes are in `stage_a_out/scene_v1_isolation.json` (2021: 52,559 rows each, design year; 2020: 32,224 rows each, confirmation year).
+- Confirmation windows (2020, sha256("scene-interface-v1:2020:" + offset), greedy non-overlap, all six kept whatever their headroom): 24398, 10829, 7479, 20843, 523, 14997. They are read only by §4.6 of the design.
+
+Next: step 2, scene certification and calibration on 2021 (mechanism control on the first twelve hash-ordered 2021 windows; TimeCAP error calibration on these turbines; margin probe; P0′), zero RL.

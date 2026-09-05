@@ -77,9 +77,56 @@ def energy_weighted(values, pes, mi, vm_pe_mips, cpu_util):
     return float(np.sum(v * w) / np.sum(w)) if np.sum(w) > 0 else 0.0
 
 
+def ids_mentioned(text):
+    """Turbine ids a tracked file refers to: the legacy singular `turbine_id: N`, the list
+    form `turbine_ids: [a, b]` (one line) or `- N` items under it, and `Turbine_N_` file
+    names. Pure."""
+    import re
+    ids = set()
+    for m in re.finditer(r"\bturbine_id:\s*(\d+)", text):
+        ids.add(int(m.group(1)))
+    for m in re.finditer(r"\bturbine_ids:\s*\[([^\]]*)\]", text):
+        ids.update(int(x) for x in re.findall(r"\d+", m.group(1)))
+    for m in re.finditer(r"\bturbine_ids:\s*\n((?:\s*-\s*\d+\s*\n?)+)", text):
+        ids.update(int(x) for x in re.findall(r"-\s*(\d+)", m.group(1)))
+    for m in re.finditer(r"Turbine_(\d+)_", text):
+        ids.add(int(m.group(1)))
+    return ids
+
+
+DATASET_PATHS = ("windProduction/", "scripts/wind/")     # the wind dataset and its preprocessing
+
+
+def used_in_tracked_files(repo=REPO):
+    """Ids referred to by any git-tracked yml/yaml/json/md/py file outside the wind dataset
+    itself (the inventory's structured scan missed the legacy singular key; this scan is the
+    design's 'never in any tracked experiment config, audit or report' applied literally).
+    Files under the dataset and its preprocessing (per-turbine data reports, conversion
+    scripts) describe availability of every turbine, not use, and are not counted."""
+    import subprocess
+    out = subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True, text=True).stdout.split("\n")
+    used = {}
+    for rel in out:
+        if not rel.endswith((".yml", ".yaml", ".json", ".md", ".py")) or "scene_v1_isolation" in rel:
+            continue
+        if any(p in rel for p in DATASET_PATHS):
+            continue
+        try:
+            text = open(os.path.join(repo, rel), errors="ignore").read()
+        except OSError:
+            continue
+        for i in ids_mentioned(text):
+            used.setdefault(i, []).append(rel)
+    return used
+
+
 def isolate():
     from stage_d_prime_turbines import choose, eligible
-    turbines = choose(eligible())
+    used = used_in_tracked_files()
+    cands = [i for i in eligible() if i not in used]
+    excluded_by_scan = sorted(i for i in eligible() if i in used)
+    turbines = choose(cands)
+    turbines["excluded_by_tracked_scan"] = {str(i): used[i][:3] for i in excluded_by_scan}
     if turbines["status"] != "OK":
         raise SystemExit(json.dumps(turbines))
     split = os.path.join(REPO, "cloudsimplus-gateway", "src", "main", "resources", "windProduction", "split")

@@ -1,0 +1,122 @@
+{
+  "design": "reports/SCENE_INTERFACE_DESIGN.md (v1 + Addenda A, B)",
+  "turbines": {
+    "status": "OK",
+    "tag": "stage-d-prime-turbines-v1",
+    "n_candidates": 100,
+    "turbines": [
+      133,
+      78,
+      22,
+      81,
+      94
+    ],
+    "dc_turbines": {
+      "0": [
+        133,
+        78
+      ],
+      "1": [
+        22,
+        81
+      ],
+      "2": [
+        94
+      ]
+    },
+    "excluded_by_tracked_scan": {
+      "2": [
+        "g1/compressed_timecap_s2/test_clean_dataset.py"
+      ],
+      "5": [
+        "g1/compressed_timecap_s2/test_clean_dataset.py"
+      ],
+      "9": [
+        "drl-manager/Code/new/README.md",
+        "drl-manager/Code/new/merge_ett_csvs.py"
+      ],
+      "46": [
+        "scripts/timecap/showcase_one_day.py"
+      ],
+      "57": [
+        "config_C.yml",
+        "drl-manager/temp_dcs.yml",
+        "g1/compressed_timecap_s2/config_s2.yml"
+      ],
+      "124": [
+        "drl-manager/temp_dcs.yml"
+      ]
+    }
+  },
+  "files": {
+    "133_2020": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_133_2020.csv",
+      "sha256": "8d860b449db7525d",
+      "rows": 32224
+    },
+    "133_2021": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_133_2021.csv",
+      "sha256": "94afc012659d4f2a",
+      "rows": 52559
+    },
+    "78_2020": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_78_2020.csv",
+      "sha256": "6aa511a3b2b070a7",
+      "rows": 32224
+    },
+    "78_2021": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_78_2021.csv",
+      "sha256": "045126ed0976635d",
+      "rows": 52559
+    },
+    "22_2020": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_22_2020.csv",
+      "sha256": "1c0a5305d88cec9d",
+      "rows": 32224
+    },
+    "22_2021": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_22_2021.csv",
+      "sha256": "405839ccc46c6698",
+      "rows": 52559
+    },
+    "81_2020": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_81_2020.csv",
+      "sha256": "f483215f9992a692",
+      "rows": 32224
+    },
+    "81_2021": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_81_2021.csv",
+      "sha256": "2a7b17dfae25b453",
+      "rows": 52559
+    },
+    "94_2020": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_94_2020.csv",
+      "sha256": "9a7f22d042a2effe",
+      "rows": 32224
+    },
+    "94_2021": {
+      "path": "cloudsimplus-gateway/src/main/resources/windProduction/split/Turbine_94_2021.csv",
+      "sha256": "2a163280961fb04a",
+      "rows": 52559
+    }
+  },
+  "design_year": 2021,
+  "confirmation_year": 2020,
+  "confirmation_windows": {
+    "status": "OK",
+    "tag": "scene-interface-v1:2020:",
+    "footprint": 2922,
+    "n_rows": 32224,
+    "windows": [
+      24398,
+      10829,
+      7479,
+      20843,
+      523,
+      14997
+    ]
+  },
+  "p_dyn_pe_w": 2.540625,
+  "rel_min": 0.15,
+  "abs_frac": 0.05
+}
