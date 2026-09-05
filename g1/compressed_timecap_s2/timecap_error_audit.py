@@ -234,7 +234,11 @@ def ranking_stats(pred_dc, truth_dc, dcs, mu):
     }
 
 
-def run(stride=STRIDE, device="cpu"):
+def run(stride=STRIDE, device="cpu", dc_turbines=None, year=None):
+    """dc_turbines / year default to the 2020 sister-turbine audit; scene v1 (SCENE_INTERFACE_DESIGN
+    §1) passes its own never-used turbines and the design year 2021 (`calibrated_shrink_hz_v2`)."""
+    dc_turbines = dc_turbines or DC_TURBINES
+    year = year or YEAR
     import torch
     torch.set_num_threads(1)
     os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -242,8 +246,8 @@ def run(stride=STRIDE, device="cpu"):
     sys.path.insert(0, os.path.join(REPO, "drl-manager"))
     from timecap_prediction.predictor import TimeCAP_GreenPredictor
 
-    paths = {t: os.path.join(SPL, f"Turbine_{t}_{YEAR}.csv")
-             for ts in DC_TURBINES.values() for t in ts}
+    paths = {t: os.path.join(SPL, f"Turbine_{t}_{year}.csv")
+             for ts in dc_turbines.values() for t in ts}
     truths = {t: _truth(p) for t, p in paths.items()}
     n = min(len(v) for v in truths.values())
     anchors = list(range(SEQ, n - PRED, stride))
@@ -265,10 +269,10 @@ def run(stride=STRIDE, device="cpu"):
             rows[a] = np.asarray(f, dtype=np.float64)
         per_turbine[t] = rows
 
-    dcs = sorted(DC_TURBINES)
+    dcs = sorted(dc_turbines)
     pred_dc, truth_dc, mu = {}, {}, {}
     for d in dcs:
-        ts = DC_TURBINES[d]
+        ts = dc_turbines[d]
         pred_dc[d] = np.stack([sum(per_turbine[t][a] for t in ts) for a in anchors])
         truth_dc[d] = np.stack([sum(truths[t][a + LABEL_OFFSET:a + LABEL_OFFSET + PRED]
                                     for t in ts) for a in anchors])
@@ -285,7 +289,7 @@ def run(stride=STRIDE, device="cpu"):
         lam_pool = float(np.cov(p_flat, t_flat, bias=True)[0, 1] / var_t) if var_t > 1e-12 else 0.0
         per_dc[str(d)] = {
             "mu": mu[d],
-            "turbines": list(DC_TURBINES[d]),
+            "turbines": list(dc_turbines[d]),
             "truth_mean_abs": float(np.mean(np.abs(T))),
             "pred_std_within_window_mean": float(np.mean(P.std(axis=1))),
             "truth_std_within_window_mean": float(np.mean(T.std(axis=1))),
@@ -381,9 +385,9 @@ def run(stride=STRIDE, device="cpu"):
         "checkpoint": os.path.relpath(CK, REPO),
         "source_checkpoint_sha": _sha(CK),
         "val_csv_shas": {os.path.basename(p): _sha(p) for p in paths.values()},
-        "year": YEAR, "stride": stride, "label_offset": LABEL_OFFSET,
+        "year": year, "stride": stride, "label_offset": LABEL_OFFSET,
         "seq_len": SEQ, "pred_len": PRED,
-        "dc_turbines": {str(k): list(v) for k, v in DC_TURBINES.items()},
+        "dc_turbines": {str(k): list(v) for k, v in dc_turbines.items()},
         "n_anchors": len(anchors), "device": device, "torch_num_threads": 1,
         "peak_percentile": PEAK_Q, "max_lag_searched": MAX_LAG,
         "per_dc": per_dc,
@@ -400,8 +404,13 @@ def main():
     ap.add_argument("--stride", type=int, default=STRIDE)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", default=os.path.join(HERE, "timecap_error_audit.json"))
+    ap.add_argument("--turbines", default="", help='per-DC ids, e.g. "133,78;22,81;94" (scene v1)')
+    ap.add_argument("--year", type=int, default=0, help="wind file year (scene v1: the design year 2021)")
     a = ap.parse_args()
-    out = run(stride=a.stride, device=a.device)
+    dct = None
+    if a.turbines:
+        dct = {i: tuple(int(x) for x in grp.split(",") if x.strip()) for i, grp in enumerate(a.turbines.split(";"))}
+    out = run(stride=a.stride, device=a.device, dc_turbines=dct, year=a.year or None)
     tmp = a.out + ".partial"
     with open(tmp, "w") as f:
         json.dump(out, f, indent=2, sort_keys=True)
