@@ -61,9 +61,14 @@ DPRIME_OVERLAY = {"obs_v31_features": True, "obs_v32_job_forecast": False,
 # line (inert where crd.enabled is false). The frozen v5.2 subtree is otherwise untouched;
 # the manifest records both the source subtree SHA and this overlay.
 DPRIME_CRD_OVERLAY = {"responsibility": {"responsibility_shrink_strength": 0.5}}
+# Option action mode (reports/OPTION_ACTION_DESIGN.md §2, Addenda A/B): the D' block plus
+# ROUTE_NOW(d) | HOLD_FOR_GREEN(d) through the shared env executor; eps = the frozen
+# latest-start margin in steps. Used by the four zero-training gates; no RL runs on it
+# until a separate preregistration is ruled.
+OPTION_OVERLAY = {**DPRIME_OVERLAY, "global_action_mode": "option_v1", "option_eps_steps": 2}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",
-             "green_episode_offset_allowlist", *DPRIME_OVERLAY, "wind_csv_year"}
+             "green_episode_offset_allowlist", *OPTION_OVERLAY, "wind_csv_year"}
 BETWEEN_LINES = {"experiment_name", "simulation_name", "forecast_mode", "crd"}
 
 
@@ -314,6 +319,11 @@ if __name__ == "__main__":
         blocks, man = build_eval(windows="certified", overlay=DPRIME_OVERLAY,
                                  out_name="config_stage_d_eval_dprime.yml")
         print(json.dumps(man, indent=1))
+        raise SystemExit(0)
+    if variant == "dprime_option":
+        blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,
+                            out_name="config_stage_d_dprime_option.yml", overlay=OPTION_OVERLAY)
+        print(json.dumps({k: v for k, v in man.items() if k not in ("train_windows", "eval_windows")}, indent=1))
         raise SystemExit(0)
     if variant == "dprime":
         blocks, man = build(steps, reward_variant="physical", checkpoint_freq=40000,

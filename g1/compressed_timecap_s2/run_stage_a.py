@@ -440,6 +440,42 @@ def main():
                              "env": e, "dir": f"p0{suffix}_{aname}"})
         print(f"hz_p0{suffix}: {len(todo)} runs (4 arms x {len(allow)} training windows)")
         print(json.dumps(sweep(("perturbed_oracle_planner",), todo=todo), indent=2))
+    elif phase == "hz_opt":
+        # Option four-gate rollouts (reports/OPTION_ACTION_DESIGN.md §5–§6, Addendum A):
+        # every option arm on the V training block under the option overlay, over the six
+        # development windows (the same train windows as P0'). OPT_WINDOWS="0" restricts
+        # to k0 for the gate-3 smoke. The step-wise references B and ST of gate 1 are the
+        # P0' run-6 rows (same windows, same block, defer mode) and are not rerun here.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime_option.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        ref = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime.json")))
+        if [int(w["offset"]) for w in ref["train_windows"]] != allow:
+            raise RuntimeError("option manifest train windows differ from the D' manifest; gate 1 references would not match")
+        cfg = os.path.join(HERE, "config_stage_d_dprime_option.yml")
+        cal = os.path.join(HERE, "timecap_error_audit.json")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        arms = {"oracle_opt": {"g": "perturbed_oracle_planner_opt", "tier": "godeye"},
+                "shuffle_opt": {"g": "perturbed_oracle_planner_opt", "tier": "shuffle"},
+                "anti_opt": {"g": "perturbed_oracle_planner_opt", "tier": "anti"},
+                "shrink_opt": {"g": "perturbed_oracle_planner_opt", "tier": "calibrated_shrink_v1"},
+                "persistence_opt": {"g": "persistence_planner_opt", "tier": False},
+                "climatology_opt": {"g": "climatology_planner_opt", "tier": False},
+                "reactive_opt": {"g": "reactive_wait_planner_opt", "tier": False},
+                "nowait_opt": {"g": "nowait_planner", "tier": False},
+                "always_hold": {"g": "always_hold", "tier": False}}
+        ks = os.environ.get("OPT_WINDOWS", "").strip()
+        ks = [int(x) for x in ks.split(",")] if ks else list(range(len(allow)))
+        todo = []
+        for aname, a in arms.items():
+            for k in ks:
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV}
+                if a["tier"]:
+                    e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1",
+                              "PLANNER_PERTURB_CAL": cal})
+                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": allow[k],
+                             "env": e, "dir": f"opt_{aname}"})
+        print(f"hz_opt: {len(todo)} runs ({len(arms)} arms x {len(ks)} windows)")
+        print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":
