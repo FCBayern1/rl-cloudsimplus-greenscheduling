@@ -28,7 +28,7 @@ def margin_from_delays(max_delays_sec, timestep_sec):
 
 def main():
     ts = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    d = os.path.join(HERE, "stage_a_out", "dprime_margin_probe")
+    d = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "stage_a_out", "dprime_margin_probe")
     rows = []
     for f in sorted(glob.glob(os.path.join(d, "*.csv"))):
         r = list(csv.DictReader(open(f)))[-1]

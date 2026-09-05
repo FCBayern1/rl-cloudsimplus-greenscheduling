@@ -1,22 +1,31 @@
-"""Stage D' timing-selectivity gate (STAGE_D_PRIME_DESIGN §2 Q4).
+"""Stage D' timing-selectivity gate (STAGE_D_PRIME_DESIGN §2 Q4, tightened by §16 Q2).
 
-Corpus: the truth-informed planner ST replayed on the frozen corpus windows with
-EVAL_DECISION_DUMP (per-slot decisions) and EVAL_DECISION_DUMP_OBS=1 (the global
-observation of every step). Labels: ST-defer (1) vs ST-route (0) per (step, slot).
-Score: the trained V line's probability of DEFER on the same observations, per slot.
+Corpus: the truth-informed planner ST replayed on the frozen development windows with
+EVAL_DECISION_DUMP (per-slot decisions incl. cloudlet_id and defer_allowed) and
+EVAL_DECISION_DUMP_OBS=1 (the global observation of every step).
 
-    lift = mean P_V(defer | ST-defer) - mean P_V(defer | ST-route)     >= 0.10
-    balanced AUC (rank statistic, each class weighted equally)          >= 0.60
+Main gate = job-paired, recurrent, PRE-mask:
+  * per job at most one deterministic ST-defer sample (its first sighting where DEFER was
+    legal) and one ST-route sample (its routing sighting, only if DEFER was legal there,
+    i.e. the route was not forced by the deadline mask); jobs lacking either are dropped;
+    metrics are job-equal-weighted (one pair per job);
+  * the V module is run over each window IN TIME ORDER carrying its GTrXL memory;
+  * two probabilities per scored slot: RAW = the module's DEFER preference with the mask
+    key removed from the observation (learning-selectivity gate), DEPLOYED = with the key
+    (safety diagnostic). Passing only after the mask means the safety layer works, not that
+    the policy learned timing.
+Appendix = the full decision-point corpus (every sighting, ~41:1), same recurrent pass.
 
-The module is scored per observation with a fresh recurrent state (no memory across
-steps), which is the stated caveat of this diagnostic. Pure metric in `lift_and_auc`.
+    lift = mean P(defer | ST-defer) - mean P(defer | ST-route)   >= 0.10
+    balanced AUC                                                >= 0.60
 
-Usage: python timing_selectivity.py <decisions.csv> <obs.npz> <checkpoint_dir> [--out json]
+Usage: python timing_selectivity.py <corpus_dir> <checkpoint_dir> [--out json]
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import glob
 import json
 import os
 import sys
@@ -26,6 +35,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 LIFT_MIN, AUC_MIN = 0.10, 0.60
+MASK_KEY = "batch_cloudlet_defer_allowed"
 
 
 def lift_and_auc(p, labels):
@@ -37,7 +47,6 @@ def lift_and_auc(p, labels):
         out.update({"lift": None, "auc": None, "pass": False, "reason": "one class empty"})
         return out
     lift = float(pos.mean() - neg.mean())
-    # balanced AUC = P(score_pos > score_neg) + 0.5 P(tie), equal class weighting by construction
     order = np.argsort(np.concatenate([pos, neg]), kind="mergesort")
     ranks = np.empty(order.size, float)
     allv = np.concatenate([pos, neg])[order]
@@ -49,73 +58,135 @@ def lift_and_auc(p, labels):
         ranks[order[i:j + 1]] = (i + j) / 2.0 + 1.0
         i = j + 1
     auc = float((ranks[:pos.size].sum() - pos.size * (pos.size + 1) / 2.0) / (pos.size * neg.size))
-    out.update({"lift": lift, "auc": auc,
-                "pass": lift >= LIFT_MIN and auc >= AUC_MIN,
+    out.update({"lift": lift, "auc": auc, "pass": lift >= LIFT_MIN and auc >= AUC_MIN,
                 "mean_p_defer_given_st_defer": float(pos.mean()),
                 "mean_p_defer_given_st_route": float(neg.mean())})
     return out
 
 
-def score_checkpoint(decisions_csv, obs_npz, checkpoint):
-    """P_V(defer) per (step, slot) of the corpus, from the checkpoint's global module."""
+def pair_corpus(rows):
+    """Pure. rows: dicts with step, slot, cloudlet_id, is_defer, defer_allowed (str/num).
+    Returns {cloudlet_id: {"defer": (step, slot), "route": (step, slot)}} for jobs that have
+    both a legal DEFER sample and a not-mask-forced ROUTE sample; plus counts."""
+    by_job = {}
+    for r in rows:
+        cid = int(float(r.get("cloudlet_id", -1) or -1))
+        if cid < 0:
+            continue
+        step, slot = int(float(r["step"])), int(float(r["slot"]))
+        is_defer = int(float(r.get("is_defer", 0) or 0))
+        da = r.get("defer_allowed")
+        legal = True if da in (None, "", "None") else float(da) >= 0.5
+        j = by_job.setdefault(cid, {"defer": None, "route": None, "route_forced": 0})
+        if is_defer and legal and j["defer"] is None:
+            j["defer"] = (step, slot)                         # first legal DEFER sighting
+        elif not is_defer:
+            if legal:
+                if j["route"] is None or (step, slot) < j["route"]:
+                    j["route"] = (step, slot)
+            else:
+                j["route_forced"] += 1                        # route forced by the mask: excluded
+    pairs = {c: {"defer": j["defer"], "route": j["route"]} for c, j in by_job.items()
+             if j["defer"] is not None and j["route"] is not None}
+    return {"pairs": pairs, "n_jobs": len(by_job), "n_paired": len(pairs),
+            "n_route_forced_excluded": sum(1 for j in by_job.values() if j["route"] is None and j["route_forced"] > 0),
+            "n_never_deferred": sum(1 for j in by_job.values() if j["defer"] is None)}
+
+
+def _to_state_in(state):
     import torch
-    import rl_step2_probe as rp
-    m, _key = rp.load_module(checkpoint)
+    if isinstance(state, dict):
+        return {k: (torch.as_tensor(v) if not hasattr(v, "shape") or not isinstance(v, torch.Tensor) else v)
+                for k, v in state.items()}
+    return {"gtrxl_mem": torch.as_tensor(state)}
+
+
+def _next_state(out, prev):
+    import torch
+    so = out.get("state_out")
+    if so is None:
+        return prev
+    if isinstance(so, dict):
+        return {k: (v[0] if isinstance(v, torch.Tensor) and v.dim() == 4 else v) for k, v in so.items()}
+    return {"gtrxl_mem": so[0] if isinstance(so, torch.Tensor) and so.dim() == 4 else so}
+
+
+def score_window(decisions_csv, obs_npz, module, nvec):
+    """Recurrent pass over one window. Returns per-(step, slot) RAW and DEPLOYED DEFER
+    probabilities for every sighting, and the rows."""
+    import torch
+    rows = list(csv.DictReader(open(decisions_csv)))
     z = np.load(obs_npz)
     keys = list(z.keys())
     n_steps = int(z[keys[0]].shape[0])
-    nvec = m.action_space.nvec
     n_slots, n_choices = len(nvec), int(nvec[0])
     defer_idx = n_choices - 1
-    rows = list(csv.DictReader(open(decisions_csv)))
-    by_step = {}
+    wanted = {}
     for r in rows:
-        by_step.setdefault(int(r["step"]), []).append((int(r["slot"]), int(r["is_defer"])))
-    probs, labels, meta = [], [], []
+        wanted.setdefault(int(float(r["step"])), []).append(int(float(r["slot"])))
+    raw_p, dep_p = {}, {}
+    state = module.get_initial_state()
     with torch.no_grad():
         for t in range(n_steps):
-            if t not in by_step:
-                continue
-            obs = {k: torch.as_tensor(np.asarray(z[k][t])[None, ...]) for k in keys}
-            batch = {"obs": {"observation": obs, "action_mask": torch.ones(1, n_slots)}}
-            try:
-                out = m.forward_inference(batch)
-            except Exception:
-                out = m.forward_exploration(batch)
-            logits = out["action_dist_inputs"]
-            logits = logits.reshape(-1, n_slots, n_choices)[-1]        # (slots, choices)
-            p_defer = torch.softmax(logits, dim=-1)[:, defer_idx].cpu().numpy()
-            for slot, lab in by_step[t]:
-                if slot < n_slots:
-                    probs.append(float(p_defer[slot])); labels.append(lab); meta.append((t, slot))
-    return np.asarray(probs), np.asarray(labels), meta
+            obs_dep = {k: torch.as_tensor(np.asarray(z[k][t])[None, ...]) for k in keys}
+            obs_raw = {k: v for k, v in obs_dep.items() if k != MASK_KEY}
+            si = _to_state_in(state)
+            b_dep = {"obs": {"observation": obs_dep, "action_mask": torch.ones(1, n_slots)}, "state_in": si}
+            b_raw = {"obs": {"observation": obs_raw, "action_mask": torch.ones(1, n_slots)}, "state_in": si}
+            out_dep = module.forward_inference(b_dep)
+            if t in wanted:
+                out_raw = module.forward_inference(b_raw)
+                ld = out_dep["action_dist_inputs"].reshape(-1, n_slots, n_choices)[-1]
+                lr = out_raw["action_dist_inputs"].reshape(-1, n_slots, n_choices)[-1]
+                pd_ = torch.softmax(ld, dim=-1)[:, defer_idx].cpu().numpy()
+                pr_ = torch.softmax(lr, dim=-1)[:, defer_idx].cpu().numpy()
+                for s in wanted[t]:
+                    if s < n_slots:
+                        raw_p[(t, s)] = float(pr_[s]); dep_p[(t, s)] = float(pd_[s])
+            state = _next_state(out_dep, state)          # the deployed trajectory's memory
+    return raw_p, dep_p, rows
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("decisions_csv", help="one decisions CSV, or a corpus DIRECTORY holding *_decisions.csv + *_obs.npz pairs")
-    ap.add_argument("obs_npz", nargs="?", default=None); ap.add_argument("checkpoint")
+    ap.add_argument("corpus_dir"); ap.add_argument("checkpoint")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    import glob
-    pairs = []
-    if os.path.isdir(a.decisions_csv):
-        for dec in sorted(glob.glob(os.path.join(a.decisions_csv, "*_decisions.csv"))):
-            obs = dec.replace("_decisions.csv", "_decisions_obs.npz")
-            if os.path.exists(obs):
-                pairs.append((dec, obs))
-    else:
-        pairs.append((a.decisions_csv, a.obs_npz))
-    ps, ys, per_window = [], [], {}
-    for dec, obs in pairs:
-        p, y, _meta = score_checkpoint(dec, obs, os.path.abspath(a.checkpoint))
-        ps.append(p); ys.append(y)
-        per_window[os.path.basename(dec)] = lift_and_auc(p, y)
-    p = np.concatenate(ps) if ps else np.array([]); y = np.concatenate(ys) if ys else np.array([])
-    res = lift_and_auc(p, y)
-    res.update({"checkpoint": a.checkpoint, "corpus": a.decisions_csv, "n_scored": int(p.size),
-                "overall_p_defer": float(p.mean()) if p.size else None, "per_window": per_window})
-    print(json.dumps(res, indent=1))
+    import rl_step2_probe as rp
+    module, _key = rp.load_module(os.path.abspath(a.checkpoint))
+    nvec = module.action_space.nvec
+    P = {"raw": [], "dep": []}; Y = []
+    A = {"raw": [], "dep": []}; AY = []
+    per_window, totals = {}, {"n_jobs": 0, "n_paired": 0, "n_route_forced_excluded": 0, "n_never_deferred": 0}
+    for dec in sorted(glob.glob(os.path.join(a.corpus_dir, "*_decisions.csv"))):
+        obs = dec.replace("_decisions.csv", "_decisions_obs.npz")
+        if not os.path.exists(obs):
+            continue
+        raw_p, dep_p, rows = score_window(dec, obs, module, nvec)
+        pc = pair_corpus(rows)
+        for k in totals:
+            totals[k] += pc[k]
+        wp, wy = {"raw": [], "dep": []}, []
+        for cid, pr in pc["pairs"].items():
+            for lab, key in ((1, pr["defer"]), (0, pr["route"])):
+                if key in raw_p:
+                    wp["raw"].append(raw_p[key]); wp["dep"].append(dep_p[key]); wy.append(lab)
+        for r in rows:                                          # appendix: every sighting
+            key = (int(float(r["step"])), int(float(r["slot"])))
+            if key in raw_p:
+                A["raw"].append(raw_p[key]); A["dep"].append(dep_p[key]); AY.append(int(float(r["is_defer"])))
+        per_window[os.path.basename(dec)] = {"paired_raw": lift_and_auc(wp["raw"], wy),
+                                             "paired_deployed": lift_and_auc(wp["dep"], wy),
+                                             "n_paired": pc["n_paired"]}
+        P["raw"] += wp["raw"]; P["dep"] += wp["dep"]; Y += wy
+    res = {"checkpoint": a.checkpoint, "corpus": a.corpus_dir, "pairing": totals,
+           "main_gate_raw_paired": lift_and_auc(P["raw"], Y),
+           "diagnostic_deployed_paired": lift_and_auc(P["dep"], Y),
+           "appendix_all_sightings_raw": lift_and_auc(A["raw"], AY),
+           "appendix_all_sightings_deployed": lift_and_auc(A["dep"], AY),
+           "per_window": per_window}
+    res["pass"] = bool(res["main_gate_raw_paired"].get("pass"))
+    print(json.dumps({k: res[k] for k in ("pairing", "main_gate_raw_paired", "diagnostic_deployed_paired", "pass")}, indent=1))
     if a.out:
         with open(a.out, "w") as f:
             json.dump(res, f, indent=2)

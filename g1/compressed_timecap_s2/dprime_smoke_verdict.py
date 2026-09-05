@@ -33,13 +33,20 @@ def judge(clean_rows, selectivity, audit_e_last, codirection):
     gates["contract_clean_all_lines"] = bool(clean_rows) and all(
         r["completion"] >= CONTRACT_MIN and r["ontime"] >= CONTRACT_MIN for r in clean_rows)
     gates["no_forced"] = bool(clean_rows) and all(r["forced"] == 0 for r in clean_rows)
-    lift, auc = selectivity.get("lift"), selectivity.get("auc")
+    # §16 Q2: the gate is the RAW (pre-mask), job-paired, recurrent selectivity; the deployed
+    # (post-mask) figure is reported as a safety diagnostic and never substitutes for it.
+    main = selectivity.get("main_gate_raw_paired", selectivity)
+    lift, auc = main.get("lift"), main.get("auc")
     gates["timing_selectivity"] = lift is not None and auc is not None and lift >= LIFT_MIN and auc >= AUC_MIN
     v_rates = [r["defer_rate"] for r in clean_rows if r["line"] == "V"]
     gates["defer_not_collapsed"] = bool(v_rates) and all(DEFER_MIN <= x <= DEFER_MAX for x in v_rates)
     s = (audit_e_last or {}).get("warmed") or {}
     d = s.get("DEFER", {})
-    gates["guard_no_mass_erasure"] = bool(d.get("n")) and d.get("lower_tail_suppression", 1.0) <= ERASE_MAX
+    # wiring sentinel (near-tautological under eta = 0.5, kept as such per §16 Q1)
+    gates["guard_wiring_sentinel"] = bool(d.get("n")) and d.get("lower_tail_suppression", 1.0) <= ERASE_MAX
+    # substantive guard gate from the cross statistics of E's last checkpoint (§16 Q1)
+    gg = ((audit_e_last or {}).get("cross") or {}).get("guard_gate") or {}
+    gates["guard_no_mass_erasure"] = bool(gg.get("pass"))
     gates["reward_carbon_codirection"] = bool(codirection) and all(codirection.get(L, False) for L in ("NV", "V", "NE", "E"))
     verdict = "PASS_DPRIME_SMOKE" if all(gates.values()) else "STOP_DPRIME_SMOKE"
     return {"verdict": verdict, "gates": gates,
@@ -58,8 +65,15 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "stage_a_out", "dprime_smoke_verdict.json"))
     ap.add_argument("--results", default=None, help="smoke results dir (derives clean rows and co-direction from the evaluation rows)")
     ap.add_argument("--logs", default=None)
+    ap.add_argument("--cross", default=None, help="cross_statistics.json of E's last checkpoint (guard_gate, §16 Q1)")
     a = ap.parse_args()
     h = json.load(open(a.health))
+    audit = json.load(open(a.audit))
+    if a.cross:
+        cs = json.load(open(a.cross))
+        # the cross file is keyed by audit name; take the single E entry (or the first)
+        entry = next((v for k, v in cs.items() if k.startswith("audit_E") or k.startswith("E_")), None) or next(iter(cs.values()), {})
+        audit["cross"] = entry
     clean_rows, codir = h.get("clean_rows", []), {L: bool(v.get("ok")) for L, v in (h.get("codirectional") or {}).items()}
     if a.results:
         # derive from the evaluation rows themselves, the same loader the health verdict uses
@@ -78,7 +92,7 @@ def main():
                 r1, r0 = sum(v["reward"] for v in last), sum(v["reward"] for v in first)
                 c1, c0 = sum(v["carbon"] for v in last), sum(v["carbon"] for v in first)
                 codir[L] = bool(r1 > r0 and c1 < c0)
-    out = judge(clean_rows, json.load(open(a.selectivity)), json.load(open(a.audit)), codir)
+    out = judge(clean_rows, json.load(open(a.selectivity)), audit, codir)
     with open(a.out, "w") as f:
         json.dump(out, f, indent=2)
     print(json.dumps(out, indent=1))
