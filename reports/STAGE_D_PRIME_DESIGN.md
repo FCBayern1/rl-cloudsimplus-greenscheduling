@@ -109,3 +109,17 @@ DEFER transitions receive **less** weight than ROUTE transitions (w difference �
 | Development smoke | not started; runs only after P0′ passes |
 
 Nothing has been run on the scene beyond the M5 audit and its re-sample.
+
+## 12. M5 cross-statistics (2026-09-05 09:34; drift checkpoints re-sampled with per-transition records, burn-in 5, 4000 steps per batch; `drl-manager/results/stage_d_credit_audit_raw/cross_statistics.json`)
+
+Does the low weight fall on the DEFER transitions whose advantage is negative, i.e. on the corrective signal? E line, DEFER-dominated class (n = 2280 / 3125 / 7635 at checkpoints 7 / 8 / 9):
+
+| ckpt | E[w \| DEFER, A<0] | E[w \| DEFER, A≥0] | P(w<0.2 \| A<0) | P(w<0.2 \| A≥0) | negative mass retained, raw | retained with η = 0.5 |
+|---|---|---|---|---|---|---|
+| 7 | 0.936 | 0.956 | 0.092 | 0.077 | 0.863 | 0.932 |
+| 8 | 0.953 | 0.980 | 0.082 | 0.058 | 0.908 | 0.954 |
+| 9 | 0.941 | 0.973 | 0.097 | 0.070 | 0.901 | 0.951 |
+
+On every drift checkpoint the negative-advantage DEFER transitions carry a lower weight than the positive ones and are erased more often; 9–14% of the corrective DEFER mass is lost to the reweighting, against 0–5% of the ROUTE class's (ROUTE at checkpoint 9 even amplifies its negative advantages: 1.036 vs 1.018). The η = 0.5 guard recovers about half of the loss (+0.069 / +0.046 / +0.050; two of three above the 0.05 mark set in the script beforehand, the third at 0.046). N_E control: the DEFER class holds 52–101 transitions and its statistics are erratic (P(w<0.2 | A<0) = 0.000 / 0.178 / 0.000); nothing is claimed from it.
+
+**Wording, per the ruling.** The cross-statistics support the reading that corrective credit against over-deferral is suppressed: the erasure concentrates on negative DEFER advantages consistently across the drift checkpoints, and the frozen guard restores about half of the lost corrective mass. The magnitude is modest (about a tenth of the corrective mass), so the guard is reported as a mechanism-supported regulariser of the identified defect, not as a demonstrated root-cause fix; policy-induced state-distribution shift and the re-warmed EMA/τ remain the stated limits, and this is not causal proof that the reweighting caused the collapse.

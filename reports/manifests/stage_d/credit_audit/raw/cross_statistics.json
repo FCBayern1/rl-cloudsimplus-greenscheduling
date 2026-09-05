@@ -1,0 +1,164 @@
+{
+  "E_checkpoint_000007": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 2280,
+      "n_neg": 1150,
+      "n_pos": 1130,
+      "E_w_neg": 0.9361779659306225,
+      "E_w_pos": 0.9558575874342855,
+      "P_low_neg": 0.09217391304347826,
+      "P_low_pos": 0.07699115044247788,
+      "neg_mass_retained_raw": 0.8633049276129464,
+      "neg_mass_retained_guarded": 0.9316524638064733
+    },
+    "ROUTE": {
+      "n": 17720,
+      "n_neg": 8230,
+      "n_pos": 9490,
+      "E_w_neg": 0.9740265316378556,
+      "E_w_pos": 1.0355150184995476,
+      "P_low_neg": 0.0919805589307412,
+      "P_low_pos": 0.06059009483667018,
+      "neg_mass_retained_raw": 0.9527547706860778,
+      "neg_mass_retained_guarded": 0.9763773853430389
+    },
+    "low_weight_falls_on_negative": true,
+    "guard_recovers_negative_mass": true
+  },
+  "E_checkpoint_000008": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 3125,
+      "n_neg": 1505,
+      "n_pos": 1620,
+      "E_w_neg": 0.95331285408763,
+      "E_w_pos": 0.9802506158956223,
+      "P_low_neg": 0.08172757475083056,
+      "P_low_pos": 0.05802469135802469,
+      "neg_mass_retained_raw": 0.9076321188671369,
+      "neg_mass_retained_guarded": 0.9538160594335684
+    },
+    "ROUTE": {
+      "n": 16875,
+      "n_neg": 8020,
+      "n_pos": 8855,
+      "E_w_neg": 0.9911122039155547,
+      "E_w_pos": 1.0195977395155347,
+      "P_low_neg": 0.08790523690773068,
+      "P_low_pos": 0.07182382834556747,
+      "neg_mass_retained_raw": 1.002556522783736,
+      "neg_mass_retained_guarded": 1.001278261391868
+    },
+    "low_weight_falls_on_negative": true,
+    "guard_recovers_negative_mass": false
+  },
+  "E_checkpoint_000009": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 7635,
+      "n_neg": 3705,
+      "n_pos": 3930,
+      "E_w_neg": 0.9414261216506382,
+      "E_w_pos": 0.9732672108702229,
+      "P_low_neg": 0.09716599190283401,
+      "P_low_pos": 0.06972010178117048,
+      "neg_mass_retained_raw": 0.9011361266123937,
+      "neg_mass_retained_guarded": 0.950568063306197
+    },
+    "ROUTE": {
+      "n": 12365,
+      "n_neg": 5555,
+      "n_pos": 6810,
+      "E_w_neg": 1.0360575242408967,
+      "E_w_pos": 1.0178820807306252,
+      "P_low_neg": 0.05328532853285328,
+      "P_low_pos": 0.07033773861967695,
+      "neg_mass_retained_raw": 1.0323396468886317,
+      "neg_mass_retained_guarded": 1.016169823444316
+    },
+    "low_weight_falls_on_negative": true,
+    "guard_recovers_negative_mass": false
+  },
+  "NE_checkpoint_000007": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 76,
+      "n_neg": 35,
+      "n_pos": 41,
+      "E_w_neg": 1.0596104779413769,
+      "E_w_pos": 0.9354390258469233,
+      "P_low_neg": 0.0,
+      "P_low_pos": 0.14634146341463414,
+      "neg_mass_retained_raw": 0.9585899954664047,
+      "neg_mass_retained_guarded": 0.9792949977332023
+    },
+    "ROUTE": {
+      "n": 21298,
+      "n_neg": 10898,
+      "n_pos": 10400,
+      "E_w_neg": 0.9961280451824652,
+      "E_w_pos": 1.0041112229303242,
+      "P_low_neg": 0.09754083318040008,
+      "P_low_pos": 0.09528846153846154,
+      "neg_mass_retained_raw": 0.9745218787551696,
+      "neg_mass_retained_guarded": 0.9872609393775849
+    },
+    "low_weight_falls_on_negative": false,
+    "guard_recovers_negative_mass": false
+  },
+  "NE_checkpoint_000008": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 101,
+      "n_neg": 45,
+      "n_pos": 56,
+      "E_w_neg": 0.8983972830904855,
+      "E_w_pos": 0.9837095165359122,
+      "P_low_neg": 0.17777777777777778,
+      "P_low_pos": 0.017857142857142856,
+      "neg_mass_retained_raw": 0.8697177358699711,
+      "neg_mass_retained_guarded": 0.9348588679349854
+    },
+    "ROUTE": {
+      "n": 21273,
+      "n_neg": 10789,
+      "n_pos": 10484,
+      "E_w_neg": 0.9854615017922266,
+      "E_w_pos": 1.0154845556620904,
+      "P_low_neg": 0.10019464269163036,
+      "P_low_pos": 0.08222052651659671,
+      "neg_mass_retained_raw": 0.9569261790202185,
+      "neg_mass_retained_guarded": 0.9784630895101093
+    },
+    "low_weight_falls_on_negative": true,
+    "guard_recovers_negative_mass": true
+  },
+  "NE_checkpoint_000009": {
+    "eta": 0.5,
+    "DEFER": {
+      "n": 52,
+      "n_neg": 26,
+      "n_pos": 26,
+      "E_w_neg": 0.9074998944997787,
+      "E_w_pos": 1.1306449725077703,
+      "P_low_neg": 0.0,
+      "P_low_pos": 0.0,
+      "neg_mass_retained_raw": 0.8687619089382494,
+      "neg_mass_retained_guarded": 0.9343809544691247
+    },
+    "ROUTE": {
+      "n": 21320,
+      "n_neg": 10604,
+      "n_pos": 10716,
+      "E_w_neg": 1.005752288640144,
+      "E_w_pos": 0.9942152598718429,
+      "P_low_neg": 0.08911731422104865,
+      "P_low_pos": 0.09929078014184398,
+      "neg_mass_retained_raw": 0.9662440533683334,
+      "neg_mass_retained_guarded": 0.9831220266841667
+    },
+    "low_weight_falls_on_negative": false,
+    "guard_recovers_negative_mass": true
+  }
+}
