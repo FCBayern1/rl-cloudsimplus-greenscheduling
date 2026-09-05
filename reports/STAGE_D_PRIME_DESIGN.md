@@ -308,3 +308,21 @@ Implemented and committed after Addendum A (design doc Addendum B records the sp
 ## 31. Six-window run 1: STOP_GATE3 on an instrument hole; repaired once and rerun from scratch (2026-09-05 20:53–21:0x)
 
 Gate 3 over the 54 rows failed on two: climatology_opt k1 (completion 0.857, five options still held at the episode end) and shrink_opt k1 (0.971, one). Cause, verified in the Java core: `hasUnfinishedCloudlets()` counted the unrouted queue and the datacentre brokers but not the hold ledger, so an episode whose last jobs were held ended as "all finished" while their fallback starts (s_f 557–620) lay beyond the step at which the simulator stopped (550). The step-wise arms never meet this because a deferred cloudlet stays in the global queue. Repair: held cloudlets count as unfinished (one condition in `hasUnfinishedCloudlets`). This is the one instrument repair gate 3 allows (§6): disclosed here, jar rebuilt, every option row and the gate-4 corpus deleted and regenerated under the repaired jar; nothing else changed. Gates 1 and 2 were not read from run 1 (the judge stops at gate 3 by construction).
+
+## 32. Six-window run 2 (repaired jar 16df1990…): gate 3 PASS, gate 1 FAIL → STOP_GATE1_FAIL_FALLBACK_OFFSET (2026-09-05 21:03)
+
+Gate 3: 54/54 rows clean (contract, forced 0, no refused or masked hold, every option released and started, route→start 0 steps, ledgers closed). Gate 1, expressibility of the oracle-driven option against the step-wise references (B = `reactive_wait_planner`, ST = reserving godeye planner, P0′ run-6 rows, same windows and block):
+
+| window | C_B | C_ST | C_oracle_opt | capture | options (green / margin) |
+|---|---|---|---|---|---|
+| k0 | 0.002634 | 0.001476 | 0.002114 | 0.449 | 30 (30 / 0) |
+| k1 | 0.005079 | 0.003191 | 0.004481 | 0.317 | 32 (31 / 1) |
+| k2 | 0.003876 | 0.003870 | 0.003608 | invalid denominator (gap 0.2 % of C_B) | 32 (30 / 2) |
+| k3 | 0.002718 | 0.000894 | 0.002188 | 0.290 | 30 (30 / 0) |
+| k4 | 0.001946 | 0.001600 | 0.001980 | −0.098 | 26 (23 / 3) |
+| k5 | 0.000422 | 0.000309 | 0.000634 | −1.883 | 23 (23 / 0) |
+| pooled | 0.016674 | 0.011339 | 0.015006 | **0.313** (need 0.80) | |
+
+Zero of five valid windows reach 0.70. Verdict by the frozen rule (§6, A6): gate 1 FAIL; gates 2 and 4 are not read; the option design is rejected as written and the preregistered discrete (DC, start-offset) fallback of §8 / A5 starts, with the option left unmodified.
+
+Reading, descriptive only: with the oracle choosing site and wait-or-not once, and the executor releasing at the first moment the meter covers the job, the option captures under a third of the reserving planner's advantage pooled and is worse than the blind reactive waiter on the two windows with the smallest gaps. The one thing the option cannot express is "wait past the first green moment for a better one", and that is the timing the reserving planner uses. The fallback's fixed start offset expresses exactly that and reads no green at all, so the ruling's executor risk does not arise there. Artefacts: `reports/manifests/stage_d/dprime/option/six_window_run2/` (54 rows, ledgers, the gate-4 corpus decisions, jar hash).
