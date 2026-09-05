@@ -903,6 +903,81 @@ public class MultiDatacenterSimulationCore {
     }
 
     /**
+     * Forensic per-VM dispatch snapshot, evaluator-only. One JSON line per dispatch decision
+     * when PLACEMENT_SNAPSHOT_FILE is set (optionally restricted to the cloudlet ids listed in
+     * PLACEMENT_SNAPSHOT_IDS, comma separated). For every VM of the datacentre: created,
+     * failed, suitable for the cloudlet, PEs in the scheduler's exec list, PEs in its waiting
+     * list, PEs of cloudlets this broker submitted to the VM that are in neither list nor
+     * finished (in flight), the selector's free-PE value, and the reason it was or was not
+     * chosen. Reads state only; never changes a decision.
+     */
+    private void placementSnapshot(DatacenterInstance dc, LoadBalancingBroker localBroker, Cloudlet next,
+                                   long need, Map<Long, Long> freePes, long chosenVmId,
+                                   List<long[]> dispatchedThisStep) {
+        String path = System.getenv("PLACEMENT_SNAPSHOT_FILE");
+        if (path == null || path.isEmpty() || next == null) return;
+        String idsEnv = System.getenv("PLACEMENT_SNAPSHOT_IDS");
+        if (idsEnv != null && !idsEnv.isEmpty()) {
+            boolean want = false;
+            for (String s : idsEnv.split(",")) {
+                if (s.trim().equals(String.valueOf(next.getId()))) { want = true; break; }
+            }
+            if (!want) return;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"clock\":").append(currentClock).append(",\"step\":").append(currentStep)
+          .append(",\"dc\":").append(dc.getId()).append(",\"cloudlet\":").append(next.getId())
+          .append(",\"need\":").append(need).append(",\"chosen_vm\":").append(chosenVmId)
+          .append(",\"dispatched_earlier_this_step\":[");
+        for (int i = 0; i < dispatchedThisStep.size(); i++) {
+            long[] p = dispatchedThisStep.get(i);
+            sb.append(i > 0 ? "," : "").append("[").append(p[0]).append(",").append(p[1]).append("]");
+        }
+        sb.append("],\"vms\":[");
+        boolean first = true;
+        for (Vm vm : dc.getVmPool()) {
+            long execPes = vm.getCloudletScheduler().getCloudletExecList().stream().mapToLong(ce -> ce.getPesNumber()).sum();
+            long waitPes = vm.getCloudletScheduler().getCloudletWaitingList().stream().mapToLong(ce -> ce.getPesNumber()).sum();
+            java.util.Set<Long> inLists = new java.util.HashSet<>();
+            for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletExecList()) inLists.add(ce.getCloudlet().getId());
+            for (CloudletExecution ce : vm.getCloudletScheduler().getCloudletWaitingList()) inLists.add(ce.getCloudlet().getId());
+            java.util.Set<Long> finished = new java.util.HashSet<>();
+            for (Cloudlet c : localBroker.getCloudletFinishedList()) finished.add(c.getId());
+            long inflightPes = 0;
+            StringBuilder inflightIds = new StringBuilder();
+            for (Cloudlet c : localBroker.getCloudletSubmittedList()) {
+                if (c.getVm() != null && c.getVm().getId() == vm.getId() && !inLists.contains(c.getId()) && !finished.contains(c.getId())) {
+                    inflightPes += c.getPesNumber();
+                    inflightIds.append(inflightIds.length() > 0 ? ";" : "").append(c.getId());
+                }
+            }
+            Long freeVal = freePes.get(vm.getId());
+            boolean suitable = vm.isSuitableForCloudlet(next);
+            String reason;
+            if (!vm.isCreated()) reason = "not_created";
+            else if (vm.isFailed()) reason = "failed";
+            else if (freeVal == null) reason = "absent_from_free_map";
+            else if (freeVal < need) reason = "insufficient_free";
+            else if (vm.getId() == chosenVmId) reason = "chosen_most_free";
+            else reason = "fits_but_less_free_or_tie";
+            sb.append(first ? "" : ",").append("{\"vm\":").append(vm.getId())
+              .append(",\"created\":").append(vm.isCreated()).append(",\"failed\":").append(vm.isFailed())
+              .append(",\"suitable\":").append(suitable).append(",\"pes\":").append(vm.getPesNumber())
+              .append(",\"exec_pes\":").append(execPes).append(",\"waiting_pes\":").append(waitPes)
+              .append(",\"inflight_pes\":").append(inflightPes).append(",\"inflight_ids\":\"").append(inflightIds).append("\"")
+              .append(",\"free_map\":").append(freeVal == null ? "null" : String.valueOf(freeVal))
+              .append(",\"reason\":\"").append(reason).append("\"}");
+            first = false;
+        }
+        sb.append("]}\n");
+        try (java.io.FileWriter w = new java.io.FileWriter(path, true)) {
+            w.write(sb.toString());
+        } catch (java.io.IOException e) {
+            LOGGER.warn("placement snapshot write failed: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Option executor release (reports/OPTION_ACTION_DESIGN.md Addendum B). Called by the
      * Python executor at a decision point BEFORE executeGlobalRouting(), so the clock is the
      * decision clock and the rewards booked here land in this step's global reward exactly
@@ -1274,6 +1349,7 @@ public class MultiDatacenterSimulationCore {
                 }
             }
             int placed = 0;
+            List<long[]> dispatchedThisStep = new ArrayList<>();   // (cloudletId, vmId) in order
             while (placed < dispatchCount && localBroker.hasWaitingCloudlets()) {
                 Cloudlet next = localBroker.peekWaitingCloudlet();
                 if (next == null) {
@@ -1290,11 +1366,16 @@ public class MultiDatacenterSimulationCore {
                         vmId = e.getKey();
                     }
                 }
+                // Evaluator-only forensic snapshot (Codex ruling 2026-09-05, gate-3 cell
+                // persistence_off k5): the selector's inputs and verdict per VM at the moment
+                // of this dispatch. Off unless PLACEMENT_SNAPSHOT_FILE is set; behaviour-neutral.
+                placementSnapshot(dc, localBroker, next, need, freePes, vmId, dispatchedThisStep);
                 if (vmId < 0) {
                     break; // no VM (accounting for in-step fills) can host the next cloudlet
                 }
                 if (localBroker.assignCloudletToVm(vmId)) {
                     freePes.put(vmId, freePes.get(vmId) - need);
+                    dispatchedThisStep.add(new long[]{next.getId(), vmId});
                     placed++;
                 } else {
                     break; // refused despite pre-check; avoid spinning
