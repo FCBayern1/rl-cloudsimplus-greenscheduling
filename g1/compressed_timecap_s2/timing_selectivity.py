@@ -93,13 +93,28 @@ def score_checkpoint(decisions_csv, obs_npz, checkpoint):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("decisions_csv"); ap.add_argument("obs_npz"); ap.add_argument("checkpoint")
+    ap.add_argument("decisions_csv", help="one decisions CSV, or a corpus DIRECTORY holding *_decisions.csv + *_obs.npz pairs")
+    ap.add_argument("obs_npz", nargs="?", default=None); ap.add_argument("checkpoint")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    p, y, meta = score_checkpoint(a.decisions_csv, a.obs_npz, os.path.abspath(a.checkpoint))
+    import glob
+    pairs = []
+    if os.path.isdir(a.decisions_csv):
+        for dec in sorted(glob.glob(os.path.join(a.decisions_csv, "*_decisions.csv"))):
+            obs = dec.replace("_decisions.csv", "_decisions_obs.npz")
+            if os.path.exists(obs):
+                pairs.append((dec, obs))
+    else:
+        pairs.append((a.decisions_csv, a.obs_npz))
+    ps, ys, per_window = [], [], {}
+    for dec, obs in pairs:
+        p, y, _meta = score_checkpoint(dec, obs, os.path.abspath(a.checkpoint))
+        ps.append(p); ys.append(y)
+        per_window[os.path.basename(dec)] = lift_and_auc(p, y)
+    p = np.concatenate(ps) if ps else np.array([]); y = np.concatenate(ys) if ys else np.array([])
     res = lift_and_auc(p, y)
     res.update({"checkpoint": a.checkpoint, "corpus": a.decisions_csv, "n_scored": int(p.size),
-                "overall_p_defer": float(p.mean()) if p.size else None})
+                "overall_p_defer": float(p.mean()) if p.size else None, "per_window": per_window})
     print(json.dumps(res, indent=1))
     if a.out:
         with open(a.out, "w") as f:

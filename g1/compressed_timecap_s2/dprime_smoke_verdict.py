@@ -56,10 +56,28 @@ def main():
     ap.add_argument("--selectivity", required=True, help="timing_selectivity.py output JSON")
     ap.add_argument("--audit", required=True, help="stage_d_credit_audit.py JSON of E's last checkpoint")
     ap.add_argument("--out", default=os.path.join(HERE, "stage_a_out", "dprime_smoke_verdict.json"))
+    ap.add_argument("--results", default=None, help="smoke results dir (derives clean rows and co-direction from the evaluation rows)")
+    ap.add_argument("--logs", default=None)
     a = ap.parse_args()
     h = json.load(open(a.health))
-    clean_rows = h.get("clean_rows", [])
-    codir = {L: bool(v.get("ok")) for L, v in (h.get("codirectional") or {}).items()}
+    clean_rows, codir = h.get("clean_rows", []), {L: bool(v.get("ok")) for L, v in (h.get("codirectional") or {}).items()}
+    if a.results:
+        # derive from the evaluation rows themselves, the same loader the health verdict uses
+        sys.path.insert(0, HERE)
+        import stage_d_health_verdict as hv
+        evals, _crd, _probe = hv.load(a.results, a.logs or a.results.replace("results", "logs"), a.results)
+        CLEAN = {"NV": "hollow", "NE": "hollow", "V": "godeye", "E": "godeye"}
+        clean_rows = [{"line": L, "completion": v["comp"], "ontime": v["ontime"], "forced": v["forced"],
+                       "defer_rate": v.get("defer_rate", 0.0)}
+                      for (L, tag, tier, _c, _k), v in evals.items() if tag == "last" and tier == CLEAN[L]]
+        codir = {}
+        for L in CLEAN:
+            last = [v for (l, tag, tier, _c, _k), v in evals.items() if l == L and tag == "last" and tier == CLEAN[L]]
+            first = [v for (l, tag, tier, _c, _k), v in evals.items() if l == L and tag == "first" and tier == CLEAN[L]]
+            if last and first:
+                r1, r0 = sum(v["reward"] for v in last), sum(v["reward"] for v in first)
+                c1, c0 = sum(v["carbon"] for v in last), sum(v["carbon"] for v in first)
+                codir[L] = bool(r1 > r0 and c1 < c0)
     out = judge(clean_rows, json.load(open(a.selectivity)), json.load(open(a.audit)), codir)
     with open(a.out, "w") as f:
         json.dump(out, f, indent=2)
