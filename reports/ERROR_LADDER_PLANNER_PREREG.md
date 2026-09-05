@@ -51,3 +51,36 @@ schedule(X) is a list of (job, site, start). It is settled on truth twice: (i) b
 ## 6. Cost and order
 
 Planner + closure (CP-SAT model, settlement through the executor, tests): about one day. Ladder curves on six windows × (4 realistic + 5 controlled + 2 extreme) rungs: solver time bounded by 11 × 6 × 600 s worst case, usually far less; simulator settlement 66 replays, about an hour. No carbon run before Codex freezes this document.
+
+---
+
+## Addendum A (2026-09-06 01:50; closes the three points of the Codex review of v0; where it conflicts with §1–§6 the addendum governs; the document is frozen at the commit that carries it)
+
+### A1. The power model is the simulator's zero-floor host model, not a per-PE constant
+
+§2.1's "P_dyn_pe = (214 − 51.4)/64 W per PE, static 0" is withdrawn. The simulator charges each host through the RS500A_DYN profile (`HostProfile.SPEC_ASUS_RS500A_DYN`, CloudSim's utilisation-linear host power model): a host with no running work draws 0 W (idle power-down); a host with running work draws
+
+    P_host = 1 W + 161.6 W × u_host,   u_host = Σ_{VMs on the host} PEs_used × 40000 / (64 × 50000),
+
+with 64 PEs per host at 50,000 MIPS and VM PEs at 40,000 MIPS (10 hosts = 640 PEs on DC0, matching the fleet capacity). One 32-PE job on an otherwise idle host therefore draws 1 + 161.6 × 0.4 = 65.64 W (the earlier micro-measurement), not 32 × 2.54 = 81.3 W; the v0 model overstated job power by about 24 % and would have failed its own 3 % closure. (The profile's own source comment quotes 81.8 W for that job, i.e. utilisation counted as PEs rather than MIPS; the measurement and the comment disagree, and the closure gate of §2.3 on the truth schedule is what settles which utilisation the simulator actually charges before any rung is read.)
+
+Model in the planner: load power at site d and step t = Σ_running jobs p_j × 2.02 W (= 40000/50000 × 161.6/64 W per PE) + 1 W × H_{d,t}, where H_{d,t} is the number of active hosts. H is an approximation term: the planner sets H_{d,t} = ceil(Σ_running p_j / 64), the packing that the repaired most-free-fitting placement approaches but does not guarantee. This term is stated as an approximation, is bounded by the 3 % model–simulator closure gate of §2.3, and the document does not claim "the same power model as the simulator" beyond that gate. Static draw of the fleet is 0 by the idle power-down, as before.
+
+### A2. Optimality: the truth schedule must be proven optimal
+
+- Truth rung: CP-SAT must return OPTIMAL (gap 0) within the 600 s limit on every required window; otherwise STOP_SOLVER_TRUTH_UNRESOLVED for that window, and a required window that is unresolved is never dropped or replaced (the line stops until the model is made solvable, disclosed).
+- Error rungs (shrink, shuffle, anti): a gap ≤ 1 % is accepted and recorded; the settled loss then carries a ±gap uncertainty band in the report.
+- The 600 s limit, the 3 % closure tolerance and the every-step offset executor as the simulator settlement path are approved and frozen.
+
+### A3. Forecast issuance: the exact offline ladder is a controlled-error mechanism experiment
+
+An offline solver needs one curve covering the whole schedule horizon. The deployed TimeCAP issues a fresh 144-step forecast at every decision time; stitching forecasts issued at future times into one horizon curve would hand the offline solver information that a causal policy never has, and one checkpoint's 144 steps cannot even cover wait cap 72 + runtime 48 = 120 steps at any longer lead. The lead set {deployed, +24, +48, +96} is withdrawn.
+
+Frozen:
+- The exact ladder of §3 contains only truth (λ = 1), the fixed shrink rungs λ ∈ {0.75, 0.5, 0.25, 0} around the frozen 2021 site means, and the extreme controls shuffle and anti of the truth curve. It is a controlled-error mechanism experiment and is described as such; its x-axis is the rung's normalised RMSE against truth.
+- The deployed TimeCAP remains the natural error anchor only through the causal rolling heuristic planner (the ST-style arm of the scene design, forecasts issued at each decision time), reported next to the ladder as a descriptive reference; it is not part of the dominance proof and is not presented as the same information condition as an offline curve. A longer-horizon checkpoint, if ever trained, is frozen on validation loss in its own addendum before it produces any curve.
+- The per-window offline solver knows every arrival in the window. Its schedules certify whether an error is load-bearing; they are not an online-achievable policy and are not used as leak-free behaviour-cloning labels.
+
+### A4. Claim ladder, restated for the exact rungs
+
+Weakest load-bearing rung under L2 → the claim: λ = 0.75 → "resists mild controlled degradation"; λ ≤ 0.5 → "resists moderate controlled degradation"; only shuffle / anti → "resists controlled severe contamination"; none → the scene does not support the thesis. Whether the deployed forecast's natural error is itself load-bearing is reported from the causal anchor separately, in the narrowed wording of STAGE_D_PRIME_DESIGN §39, and is not merged with the exact ladder's claim.
