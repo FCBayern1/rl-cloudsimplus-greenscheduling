@@ -254,3 +254,23 @@ p_delay = Σ_{d, κ>0} P(d, κ); label = [κ_oracle > 0]; lift ≥ 0.10 and bala
 ### C6. Order and consequence
 
 Gate 3 smoke (k0, blind arms and fixed_off(72)) → six-window blind rows → blind* frozen → oracle / shuffle / anti rows → gate 3 on all rows → gate 1 → gate 2 → gate 4. A fallback failure at gate 1 or gate 2 ends the action-space direction; no third action is added.
+
+---
+
+## Addendum D (2026-09-05 22:0x, written while the fallback chain runs and before any gate-4 number is read)
+
+### D1. What gate 4 can and cannot say
+
+The RL observation carries, per site, four forecast summaries (short mean, short trend, long mean, peak timing; `forecast_mode: full`, obs_v32 off). The oracle arms read the raw curve. A gate-4 failure therefore admits two readings that the preregistration did not separate: the four summaries do not carry what a (DC, dispatch-offset) choice needs (which offset covers the whole runtime with green, whether a better window follows), or 140-odd samples over 45 classes are too few for this architecture whatever the observation. Gate 4's verdict text is fixed now: a failure is reported as "the current forecast representation does not support this action under the frozen fit", never as "the forecast carries no information" (the raw-curve value is established: STAGE_D_PRIME_DESIGN §3, the 2-HZ record, and a fallback gate 2 pass if it comes).
+
+### D2. Representation diagnostic, preregistered, read only after gate 4
+
+One additional supervised fit, same corpus, same split, same hyper-parameters, same seed and architecture as gate 4, with one change: the observation gains, per (slot, site, κ), the oracle-representation feature future_covered_energy = the green energy the job would draw at site d starting at t + κ + lag over its runtime under the arm's curve view, normalised by the job's total draw (a (NB, n·|K|) key; zero on padding). It is a diagnostic of the interface, not a gate: it changes no threshold and never enters the RL preregistration by itself.
+
+Reading rule: gate 4 fails and the diagnostic passes → the representation is the bottleneck, and the next design item is an observation change (a candidate-offset feature of this kind) written as its own addendum before any RL. Both fail → sample size or architecture, and the report says the learnability question is open. Gate 4 passes → the diagnostic is reported descriptively only.
+
+### D3. Interpretation of the fallback gates, fixed before reading
+
+- oracle_off well below every fixed_off / reactive blind, shuffle and anti worse than blind*: the timing in the forecast is worth something beyond the licence to reserve.
+- some fixed_off(κ) close to oracle_off: the gain is reservation, spreading and de-peaking, not per-job prediction; the line ends at gate 2 as ruled.
+- oracle_off expresses ST (gate 1) but the fit cannot learn it (gate 4): see D1/D2.
