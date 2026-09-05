@@ -66,6 +66,13 @@ public class MultiDatacenterSimulationCore {
     // Stage D' mask-margin probe: clock at which each cloudlet was routed, so the episode
     // stats can export the route -> exec-start delay distribution (export-only).
     private final Map<Long, Double> cloudletRoutedAtById = new HashMap<>();
+    // Option hold ledger truth (reports/OPTION_ACTION_DESIGN.md Addendum B): clock at which
+    // each cloudlet entered the hold, and the lifecycle counters gate 3 reads.
+    private final Map<Long, Double> cloudletHeldAtById = new HashMap<>();
+    private int epOptCreated = 0;          // HOLD actions accepted into the ledger
+    private int epOptReleased = 0;         // releases routed successfully
+    private int epOptReleaseUnknown = 0;   // release asked for an id that was not held
+    private int epOptReleaseFailed = 0;    // held cloudlet refused by its datacenter (requeued)
     // SQT2.3 on-time accounting (Codex, 2026-08-19): MI per deadline-carrying
     // cloudlet, so ontime_mi_share can weight punctuality by work volume.
     private final Map<Long, Long> cloudletMiById = new HashMap<>();
@@ -269,6 +276,11 @@ public class MultiDatacenterSimulationCore {
         epGlobalCarbonMaxRatio = 0.0;
         epDeadlineForcedCount = 0;
         epDeferUrgencyCostSum = 0.0;
+        cloudletHeldAtById.clear();
+        epOptCreated = 0;
+        epOptReleased = 0;
+        epOptReleaseUnknown = 0;
+        epOptReleaseFailed = 0;
         lastGlobalCarbonSignal = 0.0;
         lastGlobalCarbonPenaltyNorm = 0.0;
         epLocalWaitSum.clear();
@@ -647,6 +659,36 @@ public class MultiDatacenterSimulationCore {
             Cloudlet cloudlet = cloudletsToRoute.get(i);
             int targetDcIndex = globalActions.get(i);
 
+            // HOLD_FOR_GREEN(d) (reports/OPTION_ACTION_DESIGN.md §2.1): action index
+            // deferActionIndex + 1 + d. The cloudlet leaves the queue into the hold ledger,
+            // committed to d, and is never batched again; the Python executor releases it
+            // through releaseHeld(). It pays what a first explicit DEFER pays on this step
+            // (base charge + urgency increment); the route reward comes at release.
+            if (deferEnabled && targetDcIndex > deferActionIndex
+                    && targetDcIndex <= deferActionIndex + datacenterInstances.size()) {
+                int holdDc = targetDcIndex - deferActionIndex - 1;
+                Long ddl = cloudletDeadlineById.get(cloudlet.getId());
+                double cost;
+                if ("incremental_urgency".equals(settings.getDeferCostMode())) {
+                    cost = PerActionRewardMath.firstDeferBaseCharge(
+                            settings.getDeferBaseCost(),
+                            globalBroker.isCloudletDeferred(cloudlet));
+                    cost += settleUrgencyIncrement(cloudlet, ddl);
+                } else {
+                    cost = -settings.getDeferBaseCost();
+                }
+                stepPerSlotReward[i] = cost;
+                if (cost != 0.0) {
+                    stepPerActionRewardSum += cost;
+                    epDeferUrgencyCostSum += cost;
+                }
+                globalBroker.holdCloudlet(cloudlet, holdDc);
+                cloudletHeldAtById.put(cloudlet.getId(), currentClock);
+                epOptCreated++;
+                deferredCount++;
+                continue;
+            }
+
             // DEFER: hold this cloudlet in the global queue (re-presented next step)
             // instead of routing it now — the temporal lever. The agent should defer
             // during brown and route during green (rewarded by the per-action carbon
@@ -858,6 +900,79 @@ public class MultiDatacenterSimulationCore {
             epDeferUrgencyCostSum += settlement;
         }
         return settlement;
+    }
+
+    /**
+     * Option executor release (reports/OPTION_ACTION_DESIGN.md Addendum B). Called by the
+     * Python executor at a decision point BEFORE executeGlobalRouting(), so the clock is the
+     * decision clock and the rewards booked here land in this step's global reward exactly
+     * as a route of the same cloudlet at this clock would: urgency settlement plus the
+     * per-action route reward. Returns one value per id; NaN marks an id that was not held
+     * or a route the datacenter refused (the cloudlet is then requeued, never lost).
+     */
+    public List<Double> releaseHeld(List<Long> ids, List<Integer> dcs) {
+        List<Double> out = new ArrayList<>();
+        if (ids == null) return out;
+        for (int k = 0; k < ids.size(); k++) {
+            long id = ids.get(k);
+            int dc = (dcs != null && k < dcs.size()) ? dcs.get(k) : globalBroker.getHeldDc(id);
+            Cloudlet c = globalBroker.takeHeld(id);
+            if (c == null) {
+                epOptReleaseUnknown++;
+                out.add(Double.NaN);
+                continue;
+            }
+            boolean routed = globalBroker.routeCloudletToDatacenter(c, dc);
+            if (!routed) {
+                epOptReleaseFailed++;
+                globalBroker.requeueCloudletToTail(c);
+                out.add(Double.NaN);
+                continue;
+            }
+            cloudletRoutedAtById.put(id, currentClock);
+            epOptReleased++;
+            double r = settleOnRouteIfIncremental(c);
+            try {
+                r += accumulatePerActionReward(c, dc);
+            } catch (Throwable t) {
+                LOGGER.error("release accumulatePerActionReward failed for cloudlet={} dc={}: {}",
+                        id, dc, t.getMessage(), t);
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    /**
+     * Execution-start clock per cloudlet id from the simulator's own start events, for the
+     * option ledger's timing truth (Addendum A3.4). Finished cloudlets first, then the ones
+     * still executing; ids that never started are absent.
+     */
+    public Map<Long, Double> getStartTimesForIds(List<Long> ids) {
+        Map<Long, Double> out = new HashMap<>();
+        if (ids == null || ids.isEmpty()) return out;
+        java.util.Set<Long> want = new java.util.HashSet<>(ids);
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker lb = dc.getLocalBroker();
+            if (lb == null) continue;
+            List<Cloudlet> fin = lb.getCloudletFinishedList();
+            if (fin != null) {
+                for (Cloudlet c : fin) {
+                    if (want.contains(c.getId()) && c.getStartTime() >= 0) {
+                        out.put(c.getId(), c.getStartTime());
+                    }
+                }
+            }
+            for (Vm vm : dc.getVmPool()) {
+                for (Cloudlet c : vm.getCloudletScheduler().getCloudletExecList().stream()
+                        .map(ce -> ce.getCloudlet()).collect(java.util.stream.Collectors.toList())) {
+                    if (want.contains(c.getId()) && c.getStartTime() >= 0 && !out.containsKey(c.getId())) {
+                        out.put(c.getId(), c.getStartTime());
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /**
@@ -2784,6 +2899,12 @@ public class MultiDatacenterSimulationCore {
             stats.put("ep_route_to_start_p95_sec", d[1]);
             stats.put("ep_route_to_start_n", (int) d[2]);
         }
+        // Option hold ledger lifecycle (reports/OPTION_ACTION_DESIGN.md §3.3, Addendum B).
+        stats.put("ep_opt_created", epOptCreated);
+        stats.put("ep_opt_released", epOptReleased);
+        stats.put("ep_opt_release_unknown", epOptReleaseUnknown);
+        stats.put("ep_opt_release_failed", epOptReleaseFailed);
+        stats.put("ep_opt_held_open", globalBroker == null ? 0 : globalBroker.getHeldCount());
         stats.put("defer_urgency_cost_sum", epDeferUrgencyCostSum);
         // R0 teacher-reward audit: per-term episode sums of the global
         // per-action reward (carbon level + completion + spatial; urgency is

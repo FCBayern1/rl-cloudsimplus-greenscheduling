@@ -242,6 +242,43 @@ public class GlobalBroker extends DatacenterBrokerSimple {
         return total;
     }
 
+    // === Option hold ledger (reports/OPTION_ACTION_DESIGN.md §2.1, Addendum B) ===
+    // A held cloudlet has left the routing queue for good: it is never batched again and
+    // comes back only through takeHeld() when the Python executor releases it. It counts
+    // in the deferred aggregates (the v31 backlog observation) like an explicit DEFER.
+    private final Map<Long, Cloudlet> heldById = new java.util.LinkedHashMap<>();
+    private final Map<Long, Integer> heldDcById = new HashMap<>();
+
+    /** Move a batched cloudlet into the hold ledger, committed to datacenter index {@code dc}. */
+    public void holdCloudlet(Cloudlet cloudlet, int dc) {
+        if (cloudlet == null) return;
+        long id = cloudlet.getId();
+        deferCountByCloudletId.merge(id, 1, Integer::sum);
+        deferredMiByCloudletId.putIfAbsent(id, Math.max(0L, cloudlet.getLength()));
+        heldById.put(id, cloudlet);
+        heldDcById.put(id, dc);
+    }
+
+    /** Remove and return a held cloudlet, or null when the id is not held. */
+    public Cloudlet takeHeld(long id) {
+        Cloudlet c = heldById.remove(id);
+        heldDcById.remove(id);
+        return c;
+    }
+
+    /** Committed datacenter index of a held cloudlet, -1 when not held. */
+    public int getHeldDc(long id) {
+        return heldDcById.getOrDefault(id, -1);
+    }
+
+    public int getHeldCount() {
+        return heldById.size();
+    }
+
+    public List<Long> getHeldIds() {
+        return new ArrayList<>(heldById.keySet());
+    }
+
     /** Package-private lifecycle hook used by the successful routing path. */
     void clearDeferredLifecycle(Cloudlet cloudlet) {
         if (cloudlet == null) return;

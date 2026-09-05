@@ -347,6 +347,38 @@ public class HierarchicalMultiDCGateway {
     }
 
     /**
+     * Option executor primitive (reports/OPTION_ACTION_DESIGN.md Addendum B): route held
+     * cloudlets to their datacenters at the current clock, before this step's batch is
+     * routed. Returns the per-action reward booked for each id (NaN when the id was not
+     * held or the route was refused; both are counted in the episode stats).
+     */
+    public List<Double> releaseHeld(List<Long> ids, List<Integer> dcs) {
+        if (simulationCore == null) {
+            throw new IllegalStateException("Simulation not initialized. Call reset() first.");
+        }
+        return simulationCore.releaseHeld(ids, dcs);
+    }
+
+    /** Number of cloudlets currently in the hold ledger. */
+    public int getHeldCount() {
+        if (simulationCore == null) {
+            return 0;
+        }
+        return simulationCore.getGlobalBroker().getHeldCount();
+    }
+
+    /**
+     * Execution-start clock of the given cloudlets from the simulator's own start events
+     * (finished or running), keyed by id; ids without a start are absent from the map.
+     */
+    public Map<Long, Double> getStartTimesForIds(List<Long> ids) {
+        if (simulationCore == null) {
+            return new java.util.HashMap<>();
+        }
+        return simulationCore.getStartTimesForIds(ids);
+    }
+
+    /**
      * Get the number of cloudlets arriving in the current time window.
      * Python needs this to know how many global actions to generate.
      * @deprecated Use getGlobalWaitingCloudletsCount() instead for batch routing mode.
