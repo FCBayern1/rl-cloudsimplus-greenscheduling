@@ -54,7 +54,7 @@ RISK_LINES = {k: {"crd": False, "hollow": False, "risk": k} for k in RISK_CFG}
 # channel, and the deadline-safe DEFER mask. The margin is a placeholder until the
 # development smoke fixes it; the D' preregistration freezes the final value.
 DPRIME_OVERLAY = {"obs_v31_features": True, "obs_v32_job_forecast": False,
-                  "defer_deadline_mask": True, "defer_deadline_mask_margin_sec": 0.0,
+                  "defer_deadline_mask": True, "defer_deadline_mask_margin_sec": 2.0,
                   "sla_mode": "ontime_mi", "sla_target": 0.995}
 WHITELIST = {"experiment_name", "simulation_name", "cloudlet_trace_file", "green_oracle_mode",
              "perturb_tier", "forecast_mode", "crd", "training", "wandb",

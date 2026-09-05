@@ -1,0 +1,56 @@
+{
+  "worst_delay_sec": 1.0,
+  "margin_steps": 2,
+  "margin_sec": 2.0,
+  "rows": [
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k0.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    },
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k1.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    },
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k2.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    },
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k3.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    },
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k4.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    },
+    {
+      "file": "sd_V_s2_r48_w72_c3_n35_k5.csv",
+      "max": 1.0,
+      "p95": 1.0,
+      "n": 35,
+      "forced": 0.0,
+      "ontime": 1.0
+    }
+  ],
+  "timestep_sec": 1.0
+}

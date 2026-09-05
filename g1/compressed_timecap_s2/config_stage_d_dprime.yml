@@ -247,7 +247,7 @@ sd_E_s2_r48_w72_c3_n35:
   defer_base_cost: 0.0
   defer_deadline_force_mode: latest_start
   defer_deadline_mask: true
-  defer_deadline_mask_margin_sec: 0.0
+  defer_deadline_mask_margin_sec: 2.0
   defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 0.0
   defer_urgency_window_sec: 3600.0
@@ -549,7 +549,7 @@ sd_NE_s2_r48_w72_c3_n35:
   defer_base_cost: 0.0
   defer_deadline_force_mode: latest_start
   defer_deadline_mask: true
-  defer_deadline_mask_margin_sec: 0.0
+  defer_deadline_mask_margin_sec: 2.0
   defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 0.0
   defer_urgency_window_sec: 3600.0
@@ -851,7 +851,7 @@ sd_NV_s2_r48_w72_c3_n35:
   defer_base_cost: 0.0
   defer_deadline_force_mode: latest_start
   defer_deadline_mask: true
-  defer_deadline_mask_margin_sec: 0.0
+  defer_deadline_mask_margin_sec: 2.0
   defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 0.0
   defer_urgency_window_sec: 3600.0
@@ -1153,7 +1153,7 @@ sd_V_s2_r48_w72_c3_n35:
   defer_base_cost: 0.0
   defer_deadline_force_mode: latest_start
   defer_deadline_mask: true
-  defer_deadline_mask_margin_sec: 0.0
+  defer_deadline_mask_margin_sec: 2.0
   defer_deadline_slack_sec: 0.0
   defer_urgency_weight: 0.0
   defer_urgency_window_sec: 3600.0

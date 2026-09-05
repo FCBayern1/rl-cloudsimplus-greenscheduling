@@ -1,9 +1,9 @@
 {
   "checkpoint_freq_timesteps": 40000,
   "config": "config_stage_d_dprime.yml",
-  "config_sha256": "003fd8464741434ec751b16a2305e7731b8857d6c43b4fbc3c6abbc1b2716d09",
+  "config_sha256": "c7d3d1e2a1382196d3b420b738e1af2dc9016d6a255845fd65e5055816cae599",
   "crd_source": {
-    "commit_at_build": "6d505461a7bc43cc646f211db367e82db190e50a",
+    "commit_at_build": "8eb3da4912ab4a326dccdcb1ae5edd9c543327e0",
     "file": "config_rl_step2_pilot.yml"
   },
   "crd_subtree_sha256": "700f3da6b8be34f0135f6e02bdfa10b4efe51acdb51b1e06da25447a0237fec6",
@@ -75,7 +75,7 @@
   },
   "overlay": {
     "defer_deadline_mask": true,
-    "defer_deadline_mask_margin_sec": 0.0,
+    "defer_deadline_mask_margin_sec": 2.0,
     "obs_v31_features": true,
     "obs_v32_job_forecast": false,
     "sla_mode": "ontime_mi",
