@@ -2397,7 +2397,135 @@ class DeferringGlobalScheduler(GlobalScheduler):
 
 
 # === Register all global schedulers ===
+class OptionPlannerMixin:
+    """Option-mode front end for a CurveInformedPlanner arm (reports/OPTION_ACTION_DESIGN.md §5).
+
+    The base planner decides per slot with its own green view exactly as before: dispatch
+    now to d, or wait. In option mode a wait becomes HOLD_FOR_GREEN(site): the reserved
+    site for a reserving arm, the cheapest feasible site now for the reactive arm (and for
+    a drain-phase wait). The held job never comes back, so the base's reservation is
+    turned into a permanent occupancy at its planned start, the best model the arm has of
+    when the executor will release it; the executor, not the planner, decides the real
+    start (T1 green / T2 fallback). A HOLD the env would mask (deadline or capacity) is
+    moved to the cheapest allowed site, and to ROUTE_NOW(site) when none is allowed, so an
+    analytic arm never emits an illegal hold.
+    """
+
+    OPTION = True
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        planner = global_obs.get('planner') or {}
+        ids = np.asarray(planner.get('batch_cloudlet_ids', []), dtype=np.int64)
+        pes = np.asarray(planner.get('batch_cloudlet_pes', []), dtype=np.float64)
+        mi = np.asarray(planner.get('batch_cloudlet_mi', []), dtype=np.float64)
+        mask = global_obs.get('batch_cloudlet_hold_allowed')
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        t_decide = self.t
+        base = super().schedule(global_obs)          # advances self.t
+        out = []
+        for j, a in enumerate(base):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0 or a < n:
+                out.append(int(a) if a < n else 0)   # dispatch now, or padding
+                continue
+            p = max(1.0, float(pes[j]))
+            r = self._runtime_steps(float(mi[j]))
+            held = self.reservations.pop(jid, None)
+            if held is not None:
+                d, s, e, pp = held
+                site = int(d)
+                self.active[jid] = (d, s, e, pp)      # occupancy already on the grid
+            else:
+                # cheapest feasible site at the decision step (self.t already advanced)
+                start = t_decide + self.START_LAG
+                starts = np.array([start], dtype=np.int64)
+                best, site = None, None
+                for d in range(n):
+                    if not bool(self._feasible_all(d, starts, r, p)[0]):
+                        continue
+                    c = float(self._costs_all(d, starts, r, p)[0])
+                    if np.isfinite(c) and (best is None or c < best):
+                        best, site = c, d
+                if site is None:
+                    site = int(np.argmin(self.cb))
+                self._hold(site, start, start + r, p)
+                self.active[jid] = (site, start, start + r, p)
+            self.dispatched_at[jid] = (site, t_decide)
+            allowed = None if mask is None or j >= mask.shape[0] else mask[j]
+            if allowed is not None and allowed[site] < 0.5:
+                cands = [d for d in range(n) if allowed[d] >= 0.5]
+                if cands:
+                    starts = np.array([t_decide + self.START_LAG], dtype=np.int64)
+                    costs = [float(self._costs_all(d, starts, r, p)[0]) for d in cands]
+                    site = int(cands[int(np.argmin(costs))])
+                else:
+                    out.append(site)                  # nothing allowed: ROUTE_NOW(site)
+                    self.n_fallback += 1
+                    continue
+            out.append(n + site)                      # HOLD_FOR_GREEN(site)
+        return out
+
+
+class OraclePlannerOptionGlobalScheduler(OptionPlannerMixin, CurveInformedPlannerGlobalScheduler):
+    """oracle_opt: the truth-curve reserving planner deciding ROUTE_NOW / HOLD once per job."""
+
+
+class PerturbedOraclePlannerOptionGlobalScheduler(OptionPlannerMixin, PerturbedOraclePlannerGlobalScheduler):
+    """shuffle_opt / anti_opt / calibrated arms: the perturbed curve through the same rule."""
+
+
+class PersistencePlannerOptionGlobalScheduler(OptionPlannerMixin, PersistencePlannerGlobalScheduler):
+    """persistence_opt (blind): flat future at the current level."""
+
+
+class ClimatologyPlannerOptionGlobalScheduler(OptionPlannerMixin, ClimatologyPlannerGlobalScheduler):
+    """climatology_opt (blind): the mean curve."""
+
+
+class ReactiveWaitPlannerOptionGlobalScheduler(OptionPlannerMixin, ReactiveWaitPlannerGlobalScheduler):
+    """reactive_opt (blind): ROUTE_NOW when the meter covers the job, else HOLD at the
+    cheapest feasible site now."""
+
+
+class AlwaysHoldGlobalScheduler(GlobalScheduler):
+    """Adversarial contract arm (OPTION_ACTION_DESIGN §5): HOLD at the greenest site now on
+    every slot the hold mask allows, ROUTE_NOW there otherwise. Exercises the executor's
+    fallback reservations and the deadline margin under a full hold backlog."""
+
+    HANDLES_DEFER = True
+    OPTION = True
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        green = np.asarray(global_obs.get('dc_current_green_power_w', [0.0] * n), dtype=np.float64)
+        planner = global_obs.get('planner') or {}
+        ids = np.asarray(planner.get('batch_cloudlet_ids', [-1] * self.batch_size), dtype=np.int64)
+        mask = global_obs.get('batch_cloudlet_hold_allowed')
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0)
+                continue
+            allowed = None if mask is None or j >= mask.shape[0] else mask[j]
+            if allowed is not None and float(allowed.max()) >= 0.5:
+                order = np.argsort(-green)
+                site = int(next(d for d in order if allowed[d] >= 0.5))
+                out.append(n + site)
+            else:
+                out.append(int(np.argmax(green)))
+        return out
+
+
 GLOBAL_SCHEDULERS = {
+    'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
+    'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,
+    'persistence_planner_opt': PersistencePlannerOptionGlobalScheduler,
+    'climatology_planner_opt': ClimatologyPlannerOptionGlobalScheduler,
+    'reactive_wait_planner_opt': ReactiveWaitPlannerOptionGlobalScheduler,
+    'always_hold': AlwaysHoldGlobalScheduler,
     'green_forecast_queue_balanced': GreenForecastQueueBalancedGlobalScheduler,
     'random': RandomGlobalScheduler,
     'round_robin': RoundRobinGlobalScheduler,

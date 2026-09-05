@@ -758,6 +758,20 @@ def run_evaluation(
 
         # Collect metrics at end of episode
         metrics = collect_metrics(info, num_dcs)
+        # Option ledger (OPTION_ACTION_DESIGN §3.3): one row per created option, written
+        # next to the results CSV so gate 3 can audit ids, sites, reasons and start times.
+        _ledger = info.get("option_ledger") if isinstance(info, dict) else None
+        if _ledger and output_csv:
+            _lp = Path(str(output_csv)).with_suffix("").as_posix() + "_option_ledger.csv"
+            Path(_lp).parent.mkdir(parents=True, exist_ok=True)
+            _new = not Path(_lp).exists() or ep == 0
+            with open(_lp, "w" if _new else "a", newline="") as _f:
+                _w = csv.DictWriter(_f, fieldnames=["episode"] + list(_ledger[0].keys()))
+                if _new:
+                    _w.writeheader()
+                for _r in _ledger:
+                    _w.writerow(dict(_r, episode=ep + 1))
+            metrics["option_ledger_path"] = _lp
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
         metrics['global_reward_sum'] = global_reward_sum
