@@ -15,7 +15,13 @@ lift >= 0.10 and balanced AUC >= 0.60 over one decision per job. Fewer than 60 h
 or fewer than 15 of either class -> INVALID_CORPUS (A7). Site agreement with the oracle is
 reported descriptively.
 
-Usage: python option_bc.py fit | score | all
+Offset mode (Addendum C4, `--offset`): the corpus is oracle_off's (`hz_off_corpus`), the label
+is the (site, κ) action; p_delay = Σ_{κ>0} P(d, κ) against the label [κ_oracle > 0] for the
+classification gate; exact-action accuracy, site accuracy and offset MAE are supporting
+readings. Hyper-parameters frozen in C4: Adam 1e-3, one optimiser step per window, clip 1.0,
+no class weighting, default initialisation, seed 20260905, 200 epochs, argmax decode.
+
+Usage: python option_bc.py fit | score | all [--offset]
 """
 from __future__ import annotations
 
@@ -37,6 +43,11 @@ CORPUS = os.path.join(OUT, "option_corpus")
 OUTD = os.path.join(OUT, "option_bc")
 CONFIG = os.path.join(HERE, "config_stage_d_dprime_option.yml")
 BLOCK = "sd_V_s2_r48_w72_c3_n35"
+OFFSET = "--offset" in sys.argv
+if OFFSET:
+    CORPUS = os.path.join(OUT, "offset_corpus")
+    OUTD = os.path.join(OUT, "option_bc_off")
+    CONFIG = os.path.join(HERE, "config_stage_d_dprime_offset.yml")
 TRAIN_K, HELD_K = (0, 1, 2, 3), (4, 5)
 SEED, EPOCHS, LR = 20260905, 200, 1e-3
 LIFT_MIN, AUC_MIN = 0.10, 0.60
@@ -44,18 +55,35 @@ MIN_HELD_JOBS, MIN_PER_CLASS = 60, 15
 
 
 # ── pure pieces ───────────────────────────────────────────────────────────────────────
-def first_decisions(rows, num_dcs):
-    """One (step, slot, action, is_hold, site) per job: its first sighting. Pure."""
+def first_decisions(rows, num_dcs, grid=None):
+    """One (step, slot, action, is_hold, site[, kappa]) per job: its first sighting. Option
+    mode: a >= n is HOLD(a - n). Offset mode (grid given): a = site * |K| + i, is_hold =
+    [κ > 0]. Pure."""
     by = {}
+    K = len(grid) if grid else None
     for r in rows:
         cid = int(float(r.get("cloudlet_id", -1) or -1))
         if cid < 0:
             continue
         step, slot, a = int(float(r["step"])), int(float(r["slot"])), int(float(r["action"]))
         if cid not in by or (step, slot) < (by[cid]["step"], by[cid]["slot"]):
-            by[cid] = {"id": cid, "step": step, "slot": slot, "action": a,
-                       "is_hold": int(a >= num_dcs), "site": a - num_dcs if a >= num_dcs else a}
+            if grid:
+                site, kappa = a // K, int(grid[a % K])
+                by[cid] = {"id": cid, "step": step, "slot": slot, "action": a,
+                           "is_hold": int(kappa > 0), "site": site, "kappa": kappa}
+            else:
+                by[cid] = {"id": cid, "step": step, "slot": slot, "action": a,
+                           "is_hold": int(a >= num_dcs), "site": a - num_dcs if a >= num_dcs else a}
     return by
+
+
+def delay_columns(nchoice, num_dcs, grid=None):
+    """Indices of the action columns that mean 'not now': HOLD columns in option mode,
+    κ > 0 columns in offset mode. Pure."""
+    if grid:
+        K = len(grid)
+        return [d * K + i for d in range(num_dcs) for i, k in enumerate(grid) if k > 0]
+    return list(range(num_dcs, nchoice))
 
 
 def corpus_valid(labels):
@@ -74,6 +102,14 @@ def model_config_from_block(cfg):
 def load_block(config=CONFIG, block=BLOCK):
     from src.baselines.option_bc_module import load_block as _l
     return _l(config, block)
+
+
+def grid_of(cfg):
+    """The offset grid of an offset-mode block, None for option mode."""
+    if str(cfg.get("global_action_mode", "defer")) != "offset_v1":
+        return None
+    from gym_cloudsimplus.envs.option_executor import offset_grid
+    return offset_grid(int(cfg.get("offset_wait_cap_steps", 72)))
 
 
 def build_module(cfg, seed=SEED):
@@ -119,11 +155,12 @@ def fit(out_dir=OUTD, corpus=CORPUS, epochs=EPOCHS, seed=SEED, lr=LR, train_k=TR
     mod, obs_space, act_space = build_module(cfg, seed)
     nvec = [int(x) for x in act_space.nvec]
     nb, nchoice = len(nvec), nvec[0]
-    n = nchoice // 2
+    grid = grid_of(cfg)
+    n = nchoice // len(grid) if grid else nchoice // 2
     windows = []
     for k in train_k:
         rows, z = load_window(k, corpus)
-        dec = first_decisions(rows, n)
+        dec = first_decisions(rows, n, grid)
         targets = {}
         for d in dec.values():
             targets.setdefault(d["step"], []).append((d["slot"], d["action"]))
@@ -163,9 +200,11 @@ def fit(out_dir=OUTD, corpus=CORPUS, epochs=EPOCHS, seed=SEED, lr=LR, train_k=TR
             print(f"epoch {ep + 1}/{epochs} loss {hist[-1]['loss']:.4f} top1 {hist[-1]['top1']:.3f}", flush=True)
     os.makedirs(out_dir, exist_ok=True)
     torch.save(mod.state_dict(), os.path.join(out_dir, "model.pt"))
-    meta = {"seed": seed, "epochs": epochs, "lr": lr, "train_windows": list(train_k), "n_samples": n_samples,
+    meta = {"seed": seed, "epochs": epochs, "lr": lr, "optimizer": "Adam", "step": "one per window",
+            "grad_clip": 1.0, "class_weighting": None, "train_windows": list(train_k), "n_samples": n_samples,
             "model_config": model_config_from_block(cfg), "history": hist, "decode": "argmax",
-            "corpus": corpus, "config": CONFIG, "block": BLOCK}
+            "corpus": corpus, "config": CONFIG, "block": BLOCK, "mode": "offset" if grid else "option",
+            "grid": grid}
     with open(os.path.join(out_dir, "fit.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print("written", os.path.join(out_dir, "model.pt"))
@@ -185,15 +224,19 @@ def score(out_dir=OUTD, corpus=CORPUS, held_k=HELD_K):
     import torch
     from timing_selectivity import lift_and_auc
     mod, act_space = load_fitted(out_dir)
+    cfg = load_block()
+    grid = grid_of(cfg)
     nvec = [int(x) for x in act_space.nvec]
     nb, nchoice = len(nvec), nvec[0]
-    n = nchoice // 2
+    n = nchoice // len(grid) if grid else nchoice // 2
+    delay_cols = torch.tensor(delay_columns(nchoice, n, grid))
     P = {"raw": [], "dep": []}
     Y, agree, per_window = [], [], {}
+    exact, site_ok, off_abs = [], [], []
     with torch.no_grad():
         for k in held_k:
             rows, z = load_window(k, corpus)
-            dec = first_decisions(rows, n)
+            dec = first_decisions(rows, n, grid)
             want = {}
             for d in dec.values():
                 want.setdefault(d["step"], []).append(d)
@@ -213,10 +256,17 @@ def score(out_dir=OUTD, corpus=CORPUS, held_k=HELD_K):
                     pr_ = torch.softmax(out_raw["action_dist_inputs"].reshape(-1, nb, nchoice)[-1], -1)
                     for d in want[t]:
                         s = d["slot"]
-                        wp["raw"].append(float(pr_[s, n:].sum())); wp["dep"].append(float(pd_[s, n:].sum()))
+                        wp["raw"].append(float(pr_[s, delay_cols].sum())); wp["dep"].append(float(pd_[s, delay_cols].sum()))
                         wy.append(d["is_hold"])
                         a = int(pd_[s].argmax())
-                        agree.append(int((a >= n) == bool(d["is_hold"]) and (a % n) == d["site"]))
+                        if grid:
+                            K = len(grid)
+                            a_site, a_kappa = a // K, int(grid[a % K])
+                            exact.append(int(a == d["action"])); site_ok.append(int(a_site == d["site"]))
+                            off_abs.append(abs(a_kappa - d["kappa"]))
+                            agree.append(int(a == d["action"]))
+                        else:
+                            agree.append(int((a >= n) == bool(d["is_hold"]) and (a % n) == d["site"]))
                 state = _next_state(out, state)
             per_window[k] = {"raw": lift_and_auc(wp["raw"], wy), "n": len(wy)}
             P["raw"] += wp["raw"]; P["dep"] += wp["dep"]; Y += wy
@@ -224,7 +274,11 @@ def score(out_dir=OUTD, corpus=CORPUS, held_k=HELD_K):
     res = {"held_windows": list(held_k), "corpus_check": val,
            "main_gate_raw": lift_and_auc(P["raw"], Y), "deployed": lift_and_auc(P["dep"], Y),
            "site_and_branch_agreement": float(np.mean(agree)) if agree else None,
-           "per_window": per_window, "decode": "argmax"}
+           "per_window": per_window, "decode": "argmax", "mode": "offset" if grid else "option"}
+    if grid:
+        res["supporting"] = {"exact_action_accuracy": float(np.mean(exact)) if exact else None,
+                             "site_accuracy": float(np.mean(site_ok)) if site_ok else None,
+                             "offset_mae_steps": float(np.mean(off_abs)) if off_abs else None}
     if not val["valid"]:
         res["verdict"] = "INVALID_CORPUS"
     else:

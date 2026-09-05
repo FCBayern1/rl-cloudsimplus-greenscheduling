@@ -518,6 +518,61 @@ def main():
                          "dir": "opt_bc"})
         print(f"hz_opt_bc: {len(todo)} executed-BC runs on the held-out windows")
         print(json.dumps(sweep(("option_bc",), todo=todo), indent=2))
+    elif phase in ("hz_off_blinds", "hz_off_oracle", "hz_off_corpus", "hz_off_bc"):
+        # (DC, dispatch-offset) fallback (OPTION_ACTION_DESIGN §8, Addendum C3/C6). Order:
+        # blinds (12 arms) -> offset_gates.py freeze (blind*) -> oracle/shuffle/anti -> gates.
+        man = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime_offset.json")))
+        allow = [int(w["offset"]) for w in man["train_windows"]]
+        ref = json.load(open(os.path.join(HERE, "stage_d_manifest_dprime.json")))
+        if [int(w["offset"]) for w in ref["train_windows"]] != allow:
+            raise RuntimeError("offset manifest train windows differ from the D' manifest")
+        cfg = os.path.join(HERE, "config_stage_d_dprime_offset.yml")
+        cal = os.path.join(HERE, "timecap_error_audit.json")
+        cell = "sd_V_s2_r48_w72_c3_n35"
+        blinds = {f"fixed_off_{k}": {"g": "fixed_off", "tier": False, "extra": {"FIXED_OFF_KAPPA": str(k)}}
+                  for k in (0, 1, 2, 4, 8, 16, 32, 64, 72)}
+        blinds.update({"reactive_off": {"g": "reactive_wait_planner_off", "tier": False},
+                       "persistence_off": {"g": "persistence_planner_off", "tier": False},
+                       "climatology_off": {"g": "climatology_planner_off", "tier": False}})
+        informed = {"oracle_off": {"g": "perturbed_oracle_planner_off", "tier": "godeye"},
+                    "shuffle_off": {"g": "perturbed_oracle_planner_off", "tier": "shuffle"},
+                    "anti_off": {"g": "perturbed_oracle_planner_off", "tier": "anti"}}
+        ks = os.environ.get("OPT_WINDOWS", "").strip()
+        ks = [int(x) for x in ks.split(",")] if ks else list(range(len(allow)))
+        todo = []
+        if phase == "hz_off_blinds":
+            arms = blinds
+        elif phase == "hz_off_oracle":
+            fz = os.path.join(OUT, "offset_blind_star.json")
+            if not os.path.exists(fz) or json.load(open(fz)).get("status") != "FROZEN":
+                raise RuntimeError("hz_off_oracle runs only after offset_gates.py --freeze wrote a FROZEN blind*")
+            arms = informed
+        elif phase == "hz_off_corpus":
+            arms = {"oracle_off": informed["oracle_off"]}
+        else:
+            model_dir = os.path.join(OUT, "option_bc_off")
+            if not os.path.exists(os.path.join(model_dir, "model.pt")):
+                raise RuntimeError("hz_off_bc needs the gate-4 fit (option_bc.py fit, offset mode) first")
+            arms = {"bc": {"g": "option_bc", "tier": False,
+                           "extra": {"OPTION_BC_MODEL": model_dir, "OPTION_BC_CONFIG": cfg, "OPTION_BC_BLOCK": cell}}}
+            ks = [4, 5]
+        for aname, a in arms.items():
+            for k in ks:
+                e = {"EVAL_CONFIG_PATH": cfg, **HZ_ENV, **a.get("extra", {})}
+                if a["tier"]:
+                    e.update({"PLANNER_PERTURB_TIER": a["tier"], "PLANNER_PERTURB_E": "1",
+                              "PLANNER_PERTURB_CAL": cal})
+                d = f"off_{aname}"
+                if phase == "hz_off_corpus":
+                    d = "offset_corpus"
+                    dump = os.path.join(OUT, d, f"{cell}_k{k}_decisions.csv")
+                    os.makedirs(os.path.join(OUT, d), exist_ok=True)
+                    if os.path.exists(dump):
+                        os.remove(dump)
+                    e.update({"EVAL_DECISION_DUMP": dump, "EVAL_DECISION_DUMP_OBS": "1"})
+                todo.append({"arm": a["g"], "cell": cell, "k": k, "offset": allow[k], "env": e, "dir": d})
+        print(f"{phase}: {len(todo)} runs ({len(arms)} arms x {len(ks)} windows)")
+        print(json.dumps(sweep(tuple(sorted({a['g'] for a in arms.values()})), todo=todo), indent=2))
     elif phase == "hz_manifest":
         print(json.dumps(hz_manifest(), sort_keys=True, indent=2))
     elif phase == "hz_blinds":

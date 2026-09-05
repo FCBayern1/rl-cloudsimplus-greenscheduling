@@ -31,3 +31,16 @@ def test_option_module_builds_from_the_option_block_without_a_jvm():
     nvec = [int(x) for x in act_space.nvec]
     assert nvec[0] == 2 * len(cfg["datacenters"]) and len(nvec) == int(cfg["global_routing_batch_size"])
     assert getattr(mod, "option_mode", False) and mod.has_hold_mask
+
+
+def test_offset_mode_decisions_and_delay_columns():
+    from option_bc import delay_columns
+    grid = [0, 1, 2, 4]
+    n = 2
+    rows = [{"cloudlet_id": "3", "step": "2", "slot": "0", "action": str(1 * 4 + 2)},   # site 1, κ=2
+            {"cloudlet_id": "4", "step": "2", "slot": "1", "action": "0"}]               # site 0, κ=0
+    d = first_decisions(rows, n, grid)
+    assert d[3] == {"id": 3, "step": 2, "slot": 0, "action": 6, "is_hold": 1, "site": 1, "kappa": 2}
+    assert d[4]["is_hold"] == 0 and d[4]["kappa"] == 0
+    assert delay_columns(8, n, grid) == [1, 2, 3, 5, 6, 7]
+    assert delay_columns(4, n, None) == [2, 3]

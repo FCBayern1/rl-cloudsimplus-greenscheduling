@@ -2725,9 +2725,9 @@ class OptionBCGlobalScheduler(GlobalScheduler):
             raise RuntimeError("option_bc needs OPTION_BC_MODEL, OPTION_BC_CONFIG and OPTION_BC_BLOCK")
         self.module, _obs_space, act_space = load_fitted_module(model_dir, cfg, block)
         nvec = [int(x) for x in act_space.nvec]
-        if len(nvec) != batch_size or nvec[0] != 2 * num_datacenters:
+        if len(nvec) != batch_size or nvec[0] % num_datacenters != 0 or nvec[0] < 2 * num_datacenters:
             raise RuntimeError(f"option_bc module space {nvec[:1]}x{len(nvec)} does not match the env "
-                               f"({2 * num_datacenters}x{batch_size})")
+                               f"(a multiple of {num_datacenters} choices x {batch_size} slots)")
         self.n_choices = nvec[0]
         self._state = None
         self.n_steps = 0
