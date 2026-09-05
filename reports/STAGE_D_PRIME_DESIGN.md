@@ -66,3 +66,23 @@ Root-cause prompt commit a3703679 (its footer originally mis-stated df2ce234; co
 | D′ preregistration | not written; waits for M5, P0′, the development smoke and the margin | — |
 
 Nothing above has been run on the scene except the M5 audit; no frozen run is affected (every change is behind a flag that the frozen configs do not set).
+
+## 9. M5 result (2026-09-05 02:52; 22 checkpoints, E and N_E, burn-in 5 batches, 4000 steps per batch, fresh rollouts on the training scene)
+
+Full tables: `drl-manager/results/stage_d_credit_audit/summary.json` (copied to `reports/manifests/stage_d/credit_audit/`). DEFER = timesteps where ≥ 50% of the valid slots chose DEFER; w = the multiplier the mean-preserving reweighting actually applied.
+
+**E (forecast).** The drift into deferring is late: the DEFER share of timesteps is 0.3–2.3% up to checkpoint 6, then 11.3% (7), 15.5% (8), 41.1% (9), i.e. after the reweighting warm-up (450 calls ≈ checkpoint 4–5). On the three checkpoints where deferring grows:
+
+| ckpt | defer % | w(DEFER) | w(ROUTE) | P(w<0.2) DEFER / ROUTE | P(w>1) DEFER / ROUTE | adv>0 DEFER / ROUTE | mean abs adv DEFER / ROUTE |
+|---|---|---|---|---|---|---|---|
+| 7 | 11.3 | 0.946 | 1.007 | 0.085 / 0.075 | 0.768 / 0.858 | 0.50 / 0.54 | 0.82 / 0.73 |
+| 8 | 15.5 | 0.967 | 1.006 | 0.069 / 0.079 | 0.782 / 0.849 | 0.52 / 0.53 | 0.83 / 0.77 |
+| 9 | 41.1 | 0.959 | 1.030 | 0.141 / 0.102 | 0.794 / 0.870 | 0.44 / 0.52 | 0.81 / 0.65 |
+
+DEFER transitions receive **less** weight than ROUTE transitions (w difference −0.04 to −0.07, negative on every checkpoint from 7 on), are amplified less often, and at the last checkpoint are erased (w < 0.2) 14.1% of the time against 10.2% — while carrying a larger and more often negative advantage. That is the "erased on the way out" half of the ratchet: the corrective signal against deferring is the one being suppressed. The "amplified on the way in" half is **not observed** at any checkpoint: DEFER never gets a systematically larger w than ROUTE (checkpoints 0–6 have w differences of ±0.03 on DEFER samples too small to read).
+
+**N_E (control, no forecast).** DEFER share stays 0.2–0.6% at every checkpoint; the DEFER class holds 40–120 transitions, so its statistics are noisy. The pattern above is absent: w(DEFER) − w(ROUTE) is mixed in sign (mean +0.02 after warm-up) and DEFER transitions are erased *less* often than ROUTE (0.00–0.09 vs 0.09–0.12).
+
+**Reading for Q3.** What the audit confirms is one-sided but the opposite side from the existing guard: the defect is in the **lower tail** (ρ near its floor → w ≈ 0.06–0.2 on the transitions that should correct over-deferral), not in upper-tail amplification. A `normalize_rho_cap` alone therefore does not address the observed mechanism. The candidate guard for the D′ preregistration is a floor on w or shrinkage toward 1 (w′ = 1 + λ(w − 1), λ < 1) applied symmetrically, with the value fixed in development before freezing. What starts the drift at checkpoints 6→7 is not shown by this audit; the flat defer axis (R2) is sufficient to start it, and the reweighting then fails to stop it.
+
+**Caveats, stated in advance and confirmed.** Fresh rollouts on the training scene (defer share 41% at checkpoint 9 here against 95% in the judgement evaluation, which used other cells, windows and windows' contract), learner-side EMA and τ re-warmed rather than restored, and DEFER samples too small before checkpoint 7 on E and everywhere on N_E to carry a sign.
