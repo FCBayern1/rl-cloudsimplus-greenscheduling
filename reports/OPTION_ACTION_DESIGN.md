@@ -201,4 +201,56 @@ If the frozen corpus (k0–k3 train, k4–k5 held out) fails the minimum of §6 
 
 ### A8. What may be implemented now
 
+(see also Addendum B below on where the executor's parts live)
+
 After this addendum is committed: the Java hold ledger with fallback reservations, the option and offset action modes in the env with their masks, the analytic arms of §5 and §8, and the four gates with their verdict script and tests. Not now: the learner connector of §3.2, any RL training, any change to the 2020 / turbine / `calibrated_shrink_hz_v2` items.
+
+---
+
+## Addendum B (2026-09-05, before implementation; where the executor's parts live)
+
+A3.1 says the reservation grid is "kept in Java". Checked against the code before implementing: the simulator does not expose future occupancy (remaining runtimes of executing cloudlets, local waiting queues) through any existing interface, while the Python planner already carries a tested occupancy grid (`occ`, `_hold`, `_release`, `_feasible_all`) built from committed dispatches and the same runtime formula the backstop and the mask use. Duplicating that grid in Java would create a second model of the same thing with its own drift. The split is therefore:
+
+- Java (truth and primitives): `holdCloudlet` removes a cloudlet from the routing queue into a held map that is never batched again and counts in the deferred aggregates; `releaseHeld(id, dc)` routes it through the ordinary route call at the current clock, books the urgency settlement and the per-action route reward exactly as a route would, and returns the reward; the creation charge is the first-defer base charge on the hold step; execution-start times per held id come from the simulator's own start events (the map the margin probe already builds). Gate 3's timing truth (t_s, route→start delay, forced count) is read from here only.
+- Python env layer (one executor for every arm): the option ledger, the reservation grid with the planner's semantics and constants (cap from the VM configuration, runtime = mi / (mips · u), per-PE dynamic draw, static draw from `PLANNER_STATIC_TOTAL_W`), the fallback reservation at creation, the T1 / T2 rule with same-step accumulators, the hold mask (NB, n), the per-DC held observation keys, and the env-side re-route of illegal HOLDs. Every arm, RL or analytic, acts through `env.step`, so the executor is shared by construction.
+
+The grid is a model of the simulator, as it is for the planner. What keeps it honest is gate 3: per-option route→start delay from the simulator's start events, forced = 0, `ep_opt_hold_refused` = 0 on analytic arms, completion and on-time on every arm including always_hold. The residual-green formula exists once, in the Python executor, and the planner's `_reactive_choice` is tested for equality against it.
+
+Commit status, stated as it was: this addendum was written before the executor was implemented but was not committed until Addendum C (the design-log entry §29 said "appended" without the `git add`); the option gates were therefore judged with Addendum B in the working tree only. Its content did not change between writing and commit.
+
+---
+
+## Addendum C (2026-09-05, Codex ruling on the option result; before any fallback code)
+
+The option result stands as archived (STAGE_D_PRIME_DESIGN §32): gate 3 PASS, gate 1 capture 0.313 pooled, no window ≥ 0.70. It is not revisited, not modified, not rerun. The preregistered fallback of §8 / A5 starts under the following amendments, all frozen before implementation.
+
+### C1. Executor reuse, with its own tests
+
+The fallback executor reuses the Java hold / release primitives and the Python reservation grid. Three independent tests are required before any fallback row is produced: (i) termination is a function of t_creation + κ only (green, occupancy and deadline enter legality at creation, never the release); (ii) given a fixed action sequence, replacing the entire green curve leaves every release step and site bitwise unchanged (an executor property, tested on the executor with scripted actions; the arms' choices may and should change with the curve); (iii) every arm, analytic or fitted, reaches the executor through the one env translation.
+
+### C2. κ is a dispatch offset
+
+κ is the interval from creation to the route call, not to execution start. The ledger records the route step and the simulator's execution start; gate 3 keeps route→start ≤ 1 step. The action is named (DC, dispatch-offset) in code and reports. Legality of (d, κ) at step t: the start t + κ + lag is not later than the job's latest start, and a reservation for (pes, runtime) fits at d from that start on the current grid.
+
+### C3. The no-forecast family and the order of reading
+
+Frozen blind arms, each through the same rule "κ illegal → the analytic arm itself takes the largest legal offset not above it; the executor never clips":
+- fixed_off(κ) for every κ ∈ K(72) = {0, 1, 2, 4, 8, 16, 32, 64, 72}, nine arms; site by the current visible cost (the persistence view: the meter as it reads now, priced at the chosen start on the grid), feasibility respected; fixed_off(0) is the no-wait arm and fixed_off(72) the latest-legal-offset arm, so neither gets a duplicate;
+- reactive_off: dispatch now at the site whose meter covers the job, else the largest legal offset with the site by current visible cost;
+- persistence_off and climatology_off: the reserving planner with the flat and the mean curve, its planned start quantised down to the largest legal offset.
+
+Procedure: the blind arms run on the six development windows first; blind* is frozen as the arm with the lowest pooled carbon, written to `stage_a_out/offset_blind_star.json` with the rows' hashes; only then are oracle_off, shuffle_off and anti_off produced and gates 1 and 2 read. Gate 3 is checked on every row of every arm, blind or not.
+
+### C4. Gate 4 in offset semantics
+
+p_delay = Σ_{d, κ>0} P(d, κ); label = [κ_oracle > 0]; lift ≥ 0.10 and balanced AUC ≥ 0.60 on this dispatch-now / delay split; executed capture ≥ 0.50 unchanged. Exact-action accuracy, site accuracy and offset MAE are supporting readings only. Fit hyper-parameters frozen now: Adam, learning rate 1e-3, one optimiser step per training window (the whole window's labelled slots, recurrent state carried, detached between steps), gradient-norm clip 1.0, no class weighting, the module's default initialisation with the block's `score_encoder_init_gain`, seed 20260905, 200 epochs, no early stopping, argmax decode for the executed arm.
+
+### C5. Procedural disclosures
+
+- Addendum B was written before implementation but committed only with this addendum (see the note under Addendum B).
+- A6's denominator validity (ε = 0.10 · C_B) was a proposal that the option gate-1 judge already applied; Codex ratifies it for the fallback. The option gate-1 conclusion does not depend on it (pooled 0.313; every valid window far below 0.70).
+- shrink_opt (the sister-turbine-calibrated arm) was never registered in §5; its rows are descriptive and enter no gate, option or fallback.
+
+### C6. Order and consequence
+
+Gate 3 smoke (k0, blind arms and fixed_off(72)) → six-window blind rows → blind* frozen → oracle / shuffle / anti rows → gate 3 on all rows → gate 1 → gate 2 → gate 4. A fallback failure at gate 1 or gate 2 ends the action-space direction; no third action is added.
