@@ -117,3 +117,24 @@ The unit test locks 1 Wh × 0.5 kg/kWh = 0.0005 kg. Implemented in `g1/compresse
 ### B3. Freeze
 
 With this addendum the design is frozen. Step 1 of §5 (turbine choice and data isolation) may start immediately; no other step runs before the previous one is closed and recorded.
+
+---
+
+## Addendum C (2026-09-06 00:30; Codex ruling on step 2a; written before any wind value of candidates 13–24 is read)
+
+### C1. v1 outcome kept
+
+Step 2a on the pool of twelve is STOP_WINDOW_SPLIT (STAGE_D_PRIME_DESIGN §37): five windows pass the headroom gate, six were required. The record stands permanently; it means the window pool was short, not that the forecast lacks value on the new turbines.
+
+### C2. Scene-v2 continuation, same thresholds, same 2021 design set
+
+- Candidates: the next twelve windows of the same hash sequence (positions 13–24 of `draw_windows(52559, 24, "scene-interface-v1:2021:")`), frozen with their offsets and footprints in `stage_a_out/scene_v2_candidates.json` before any of them is read.
+- Procedure: in that order, for one candidate at a time, run B (`reactive_wait_planner`) and ST (godeye) with the contract check; apply the two unchanged headroom gates (relative ≥ 0.15, absolute ≥ 0.05 · C_brown_ref = 9.49e−4 kg on this trace); the first candidate that passes becomes the sixth development window and the search stops; candidates after it are not run.
+- If none of the twelve passes: final STOP for this scene. No further extension, no threshold change, no switch to a per-window absolute rule.
+- The five windows that passed in step 2a (pool k3, k5, k6, k8, k9: offsets 16477, 4240, 9154, 33225, 13223) are kept: they are 2021 design windows chosen by the frozen B/ST gate only and have served no RL, BC or offset selection.
+- The mechanism control PASS and the TimeCAP audit v2 (λ ≈ 0.88 per DC) are inherited; the audit's parameters are frozen from now and are not recalibrated on candidates 13–24.
+- The 2020 confirmation windows stay sealed.
+
+### C3. Order after the sixth window
+
+On the final six development windows: A2 error gate (calibrated shrink v2) → margin probe → P0′ → every-step offset expressibility (§4.1) → 73 fixed offsets + three blind arms, blind* frozen (§4.2) → predictive necessity (§4.3) → F1 / F2 / F3 (§4.5). The development rows of the six windows are regenerated as one set (`sc2_*` directories) so every gate reads one consistent layout.
