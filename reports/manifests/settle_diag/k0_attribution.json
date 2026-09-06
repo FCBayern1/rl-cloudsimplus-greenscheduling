@@ -1,0 +1,87 @@
+{
+ "draw_wh": {
+  "model": 30.430611111111116,
+  "sim": 30.90013299094306,
+  "gap": 0.46952187983194993,
+  "A_extra_hosts": 0.20555555555555555,
+  "B_extra_job_steps": 0.2693333333333333,
+  "residual_DC2_host_model": -0.005367009056939022
+ },
+ "extra_host_steps": 740.0,
+ "extra_job_steps": 15.0,
+ "one_host_per_job_everywhere": true,
+ "max_concurrent_jobs_per_site": [
+  5.0,
+  4.0,
+  4.0,
+  0.0,
+  0.0
+ ],
+ "brown_wh": {
+  "model": 0.6377166689501869,
+  "sim_with_planner_curve": 0.6943610921170976,
+  "sim_with_its_own_curve": 0.7061046100987328,
+  "A_only": 0.007987035454644076,
+  "B_only": 0.04736851721869573,
+  "C_curve_tail_beyond_dump": 0.011743517981635199
+ },
+ "dump_rows": 599,
+ "planner_horizon_rows": 669,
+ "replay_rows": 638,
+ "rule_B": {
+  "jobs": 35,
+  "busy_at_start": [
+   2,
+   5,
+   8,
+   10,
+   12,
+   14,
+   17,
+   18,
+   19,
+   20,
+   21,
+   28,
+   32,
+   33,
+   34
+  ],
+  "plus_one_end_sample": [
+   2,
+   5,
+   8,
+   10,
+   12,
+   14,
+   17,
+   18,
+   19,
+   20,
+   21,
+   28,
+   32,
+   33,
+   34
+  ],
+  "agree": [
+   2,
+   5,
+   8,
+   10,
+   12,
+   14,
+   17,
+   18,
+   19,
+   20,
+   21,
+   28,
+   32,
+   33,
+   34
+  ],
+  "busy_no_plus": [],
+  "plus_not_busy": []
+ }
+}

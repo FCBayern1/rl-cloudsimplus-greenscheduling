@@ -1,0 +1,2 @@
+episode,id,dc,pes,mi,runtime_steps,t_c,latest,s_f,kappa,t_release,reason,r_release,t_s,k,route_to_start_steps,stale
+1,0,0,32,1920000.0,48,3,2949,20,16,19,offset,1.0,19.0,16.0,0.0,False

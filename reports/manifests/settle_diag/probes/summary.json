@@ -1,0 +1,146 @@
+{
+ "L1_single": {
+  "probe": "L1_single",
+  "plan": {
+   "0": [
+    0,
+    20
+   ]
+  },
+  "model_job_steps": 48,
+  "sim_job_steps": 48,
+  "model_host_steps": 48,
+  "sim_host_steps": 48,
+  "draw_model_wh": 0.8752,
+  "draw_sim_wh": 0.8752,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   67
+  ],
+  "model_active_rows": [
+   20,
+   67
+  ]
+ },
+ "L2_pair_same_start": {
+  "probe": "L2_pair_same_start",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ]
+  },
+  "model_job_steps": 96,
+  "sim_job_steps": 96,
+  "model_host_steps": 48,
+  "sim_host_steps": 96,
+  "draw_model_wh": 1.73707,
+  "draw_sim_wh": 1.7504,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   67
+  ],
+  "model_active_rows": [
+   20,
+   67
+  ]
+ },
+ "L3a_pair_staggered": {
+  "probe": "L3a_pair_staggered",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    40
+   ]
+  },
+  "model_job_steps": 96,
+  "sim_job_steps": 97,
+  "model_host_steps": 68,
+  "sim_host_steps": 97,
+  "draw_model_wh": 1.74262,
+  "draw_sim_wh": 1.76863,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   88
+  ],
+  "model_active_rows": [
+   20,
+   87
+  ]
+ },
+ "L3b_triple_reuse": {
+  "probe": "L3b_triple_reuse",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ],
+   "2": [
+    0,
+    80
+   ]
+  },
+  "model_job_steps": 140,
+  "sim_job_steps": 144,
+  "model_host_steps": 92,
+  "sim_host_steps": 144,
+  "draw_model_wh": 2.61227,
+  "draw_sim_wh": 2.6256,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   123
+  ],
+  "model_active_rows": [
+   20,
+   123
+  ]
+ },
+ "L3c_triple_fragment": {
+  "probe": "L3c_triple_fragment",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ],
+   "2": [
+    0,
+    30
+   ]
+  },
+  "model_job_steps": 144,
+  "sim_job_steps": 145,
+  "model_host_steps": 96,
+  "sim_host_steps": 145,
+  "draw_model_wh": 2.61227,
+  "draw_sim_wh": 2.64383,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   78
+  ],
+  "model_active_rows": [
+   20,
+   77
+  ]
+ }
+}
