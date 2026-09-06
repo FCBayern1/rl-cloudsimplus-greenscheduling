@@ -46,10 +46,10 @@ def test_late_start_and_masked_pair_are_counted_not_clipped_silently(tmp_path):
         arm.schedule(_obs([-1, -1, -1]))
     mask = np.ones((3, N * K)); mask[1, 0 * K + GRID.index(34)] = 0.0
     out = arm.schedule(_obs([7, 8, 9], mask=mask))                        # t = 5
-    assert out[0] == 1 * K + 0 and arm.n_late == 1                        # start 3 already past
+    assert out[0] == 1 * K + 0                                            # start 3 already past
     assert out[1] == 0 * K + 0 and arm.n_masked == 1                      # (0, 34) refused by the mask
     assert out[2] == 0 * K + 0                                            # start 5 = 5 - 5 - 1 < 0 -> late too
-    assert arm.n_late == 2
+    assert arm.n_late == 2                                                # jobs 7 and 9
 
 
 def test_unplanned_job_is_counted(tmp_path):
