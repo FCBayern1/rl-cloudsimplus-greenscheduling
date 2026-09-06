@@ -2829,43 +2829,6 @@ class CausalExpertGlobalScheduler(GlobalScheduler):
             self.n_unsolved += 1
         return sched, res
 
-
-def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, committed_occ,
-                  start_lag=1, plan_lag=2, time_limit_s=120.0):
-    """Pure core of the causal expert. new_jobs: {id: Job with arrival t}; masks: {id: the
-    executor's legality row (n*K) or None}; grid: offset grid; curve_w: (n, H) W the arm's
-    curve; committed_draw (n, H) mW and committed_occ (n, H+1) the reservations so far.
-    Candidate start s = t + kappa + start_lag for every legal kappa >= 1 within the job's
-    window. Returns ({id: (site, start)}, solver record); {} when not proven optimal."""
-    from ladder_planner import build_instance, solve_milp, Job
-    n, K = len(sites), len(grid)
-    H = int(np.asarray(curve_w).shape[1])
-    jobs, allowed = [], {}
-    for jid, jb in new_jobs.items():
-        job = Job(id=jid, arrival=t, runtime=jb.runtime, pes=jb.pes, deadline=jb.deadline)
-        jobs.append(job)
-        allowed[jid] = {}
-        latest = min(job.latest, H - job.runtime - 1)
-        row = masks.get(jid)
-        for d in range(n):
-            starts = []
-            for i, kappa in enumerate(grid):
-                if kappa < 1:
-                    continue
-                s = t + int(kappa) + start_lag
-                if s < t + plan_lag or s > latest:
-                    continue
-                if row is not None and float(row[d * K + i]) < 0.5:
-                    continue
-                starts.append(s)
-            allowed[jid][d] = starts
-    inst = build_instance(jobs, list(sites), np.asarray(curve_w), base_draw_mw=committed_draw,
-                          base_occ=committed_occ, starts_by_site=allowed)
-    res = solve_milp(inst, time_limit_s=time_limit_s)
-    if res.get("status") != "OPTIMAL":
-        return {}, res
-    return res["schedule"], res
-
     def schedule(self, global_obs):
         n = self.num_datacenters
         planner = global_obs.get("planner") or {}
@@ -2920,6 +2883,43 @@ def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, comm
                 "causal_curve_signature": self.curve_signature, "causal_truth_signature": self.truth_signature,
                 "causal_solve_wall_max_s": (max(self.solve_wall_s) if self.solve_wall_s else 0.0),
                 "causal_solve_wall_sum_s": float(sum(self.solve_wall_s))}
+
+
+def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, committed_occ,
+                  start_lag=1, plan_lag=2, time_limit_s=120.0):
+    """Pure core of the causal expert. new_jobs: {id: Job with arrival t}; masks: {id: the
+    executor's legality row (n*K) or None}; grid: offset grid; curve_w: (n, H) W the arm's
+    curve; committed_draw (n, H) mW and committed_occ (n, H+1) the reservations so far.
+    Candidate start s = t + kappa + start_lag for every legal kappa >= 1 within the job's
+    window. Returns ({id: (site, start)}, solver record); {} when not proven optimal."""
+    from ladder_planner import build_instance, solve_milp, Job
+    n, K = len(sites), len(grid)
+    H = int(np.asarray(curve_w).shape[1])
+    jobs, allowed = [], {}
+    for jid, jb in new_jobs.items():
+        job = Job(id=jid, arrival=t, runtime=jb.runtime, pes=jb.pes, deadline=jb.deadline)
+        jobs.append(job)
+        allowed[jid] = {}
+        latest = min(job.latest, H - job.runtime - 1)
+        row = masks.get(jid)
+        for d in range(n):
+            starts = []
+            for i, kappa in enumerate(grid):
+                if kappa < 1:
+                    continue
+                s = t + int(kappa) + start_lag
+                if s < t + plan_lag or s > latest:
+                    continue
+                if row is not None and float(row[d * K + i]) < 0.5:
+                    continue
+                starts.append(s)
+            allowed[jid][d] = starts
+    inst = build_instance(jobs, list(sites), np.asarray(curve_w), base_draw_mw=committed_draw,
+                          base_occ=committed_occ, starts_by_site=allowed)
+    res = solve_milp(inst, time_limit_s=time_limit_s)
+    if res.get("status") != "OPTIMAL":
+        return {}, res
+    return res["schedule"], res
 
 
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
