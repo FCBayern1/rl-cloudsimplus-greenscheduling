@@ -44,3 +44,17 @@ def test_offset_mode_decisions_and_delay_columns():
     assert d[4]["is_hold"] == 0 and d[4]["kappa"] == 0
     assert delay_columns(8, n, grid) == [1, 2, 3, 5, 6, 7]
     assert delay_columns(4, n, None) == [2, 3]
+
+
+def test_wait_class_threshold_for_the_causal_corpus():
+    # F_FITS_PREREG §3.2: the causal expert's earliest executable start is kappa = 1, so its
+    # "wait" class is kappa >= 2 (version-1 label [kappa > 0] stays the default)
+    from option_bc import delay_columns
+    grid = list(range(5)); n = 2; K = len(grid)
+    rows = [{"cloudlet_id": "1", "step": "3", "slot": "0", "action": str(0 * K + 1)},     # site 0, kappa 1
+            {"cloudlet_id": "2", "step": "3", "slot": "1", "action": str(1 * K + 3)}]     # site 1, kappa 3
+    d1 = first_decisions(rows, n, grid)
+    assert d1[1]["is_hold"] == 1 and d1[2]["is_hold"] == 1
+    d2 = first_decisions(rows, n, grid, hold_min_kappa=2)
+    assert d2[1]["is_hold"] == 0 and d2[2]["is_hold"] == 1 and d2[2]["kappa"] == 3
+    assert delay_columns(n * K, n, grid, hold_min_kappa=2) == [2, 3, 4, 7, 8, 9]

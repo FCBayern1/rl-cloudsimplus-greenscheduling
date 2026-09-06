@@ -48,6 +48,15 @@ if OFFSET:
     CORPUS = os.path.join(OUT, "offset_corpus")
     OUTD = os.path.join(OUT, "option_bc_off")
     CONFIG = os.path.join(HERE, "config_stage_d_dprime_offset.yml")
+# F1-F3 on the causal expert's corpus (reports/F_FITS_PREREG.md): the corpus, config, block and
+# output directory come from the environment; the recipe (seed, epochs, lr, clip, decode) does not.
+CORPUS = os.environ.get("OPTION_BC_CORPUS", CORPUS)
+OUTD = os.environ.get("OPTION_BC_OUT", OUTD)
+CONFIG = os.environ.get("OPTION_BC_CONFIG", CONFIG)
+BLOCK = os.environ.get("OPTION_BC_BLOCK", BLOCK)
+# the "wait" class of the classification gate: kappa >= HOLD_MIN_KAPPA (1 = version-1 label
+# [kappa > 0]; the causal expert's earliest executable start is kappa = 1, so its corpus uses 2)
+HOLD_MIN_KAPPA = int(os.environ.get("OPTION_BC_HOLD_MIN_KAPPA", "1"))
 TRAIN_K, HELD_K = (0, 1, 2, 3), (4, 5)
 SEED, EPOCHS, LR = 20260905, 200, 1e-3
 LIFT_MIN, AUC_MIN = 0.10, 0.60
@@ -55,12 +64,13 @@ MIN_HELD_JOBS, MIN_PER_CLASS = 60, 15
 
 
 # ── pure pieces ───────────────────────────────────────────────────────────────────────
-def first_decisions(rows, num_dcs, grid=None):
+def first_decisions(rows, num_dcs, grid=None, hold_min_kappa=None):
     """One (step, slot, action, is_hold, site[, kappa]) per job: its first sighting. Option
     mode: a >= n is HOLD(a - n). Offset mode (grid given): a = site * |K| + i, is_hold =
-    [κ > 0]. Pure."""
+    [κ >= hold_min_kappa] (default HOLD_MIN_KAPPA, 1 = [κ > 0]). Pure."""
     by = {}
     K = len(grid) if grid else None
+    hk = HOLD_MIN_KAPPA if hold_min_kappa is None else int(hold_min_kappa)
     for r in rows:
         cid = int(float(r.get("cloudlet_id", -1) or -1))
         if cid < 0:
@@ -70,19 +80,20 @@ def first_decisions(rows, num_dcs, grid=None):
             if grid:
                 site, kappa = a // K, int(grid[a % K])
                 by[cid] = {"id": cid, "step": step, "slot": slot, "action": a,
-                           "is_hold": int(kappa > 0), "site": site, "kappa": kappa}
+                           "is_hold": int(kappa >= hk), "site": site, "kappa": kappa}
             else:
                 by[cid] = {"id": cid, "step": step, "slot": slot, "action": a,
                            "is_hold": int(a >= num_dcs), "site": a - num_dcs if a >= num_dcs else a}
     return by
 
 
-def delay_columns(nchoice, num_dcs, grid=None):
+def delay_columns(nchoice, num_dcs, grid=None, hold_min_kappa=None):
     """Indices of the action columns that mean 'not now': HOLD columns in option mode,
-    κ > 0 columns in offset mode. Pure."""
+    κ >= hold_min_kappa columns in offset mode. Pure."""
     if grid:
         K = len(grid)
-        return [d * K + i for d in range(num_dcs) for i, k in enumerate(grid) if k > 0]
+        hk = HOLD_MIN_KAPPA if hold_min_kappa is None else int(hold_min_kappa)
+        return [d * K + i for d in range(num_dcs) for i, k in enumerate(grid) if k >= hk]
     return list(range(num_dcs, nchoice))
 
 
