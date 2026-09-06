@@ -90,6 +90,36 @@ def perturb_future_bins(bins, mode: str, capacity_w) -> "np.ndarray":
     return bins
 
 
+
+# Row shift between the Python forecast providers and the simulator's green (found 2026-09-06,
+# settlement/interface diagnostics): in COMPRESSED mode the Java GreenEnergyProvider drops the
+# first 12 CSV rows before building its SPLINE time axis (loadCsvData: rowIndex < 12), so the
+# simulator burns file row tz + episode_offset + clock + 12 while a Python provider fed only
+# tz + episode_offset read row tz + episode_offset + clock: every TimeCAP / perturbed-godeye
+# forecast feature was 12 rows stale (13 at the first future index) on every SPLINE scene.
+# The STEP / LINEAR modes index the raw rows directly (no skip).
+SIM_SPLINE_SKIP_ROWS = 12
+
+
+
+def future_series_from_raw(current_w: float, raw_w: np.ndarray, horizon: int, divisor: float = 1.0) -> np.ndarray:
+    """(H,) green series for steps t .. t + H - 1: index 0 the measured present, index h >= 1 the
+    provider's index h (its index 0 is the current row itself). Pure; beyond the provider's
+    length the present is repeated."""
+    out = np.full(int(horizon), float(current_w), dtype=np.float64)
+    arr = np.asarray(raw_w, dtype=np.float64).reshape(-1) / float(divisor)
+    n = min(int(horizon) - 1, max(0, arr.shape[0] - 1))
+    if n > 0:
+        out[1:1 + n] = np.maximum(0.0, arr[1:1 + n])
+    return out
+
+def simulator_row_shift(dc_cfg: dict) -> int:
+    """Rows to add to a Python provider's per-DC offset so its row 'clock' is the row the
+    simulator reads at that clock."""
+    compressed = str(dc_cfg.get("time_scaling_mode", "")).upper() == "COMPRESSED"
+    mode = str(dc_cfg.get("green_interpolation_mode", "SPLINE")).upper()
+    return SIM_SPLINE_SKIP_ROWS if (compressed and mode == "SPLINE") else 0
+
 def episode_offset_rows(episode_counter, offset_range, allowlist=None):
     """Green-window offset for one episode, mirrored bit-for-bit from the Java side
     (MultiDatacenterSimulationCore.episodeOffsetFor): a non-empty allowlist
@@ -662,7 +692,8 @@ class HierarchicalMultiDCEnv(gym.Env):
             dc_id = self.dc_ids[idx]
             dc_assignments[dc_id] = [int(t) for t in tids]
             dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0)) \
-                + int(getattr(self, "_green_episode_offset_rows", 0))
+                + int(getattr(self, "_green_episode_offset_rows", 0)) \
+                + simulator_row_shift(dc_cfg)
             for t in tids:
                 t = int(t)
                 csv_path = _P(csv_dir) / f"Turbine_{t}_{csv_year}.csv"
@@ -809,7 +840,8 @@ class HierarchicalMultiDCEnv(gym.Env):
             # replays. Without this the provider forecasts a different day and the
             # timecap arm silently measures garbage (the npy-desync bug class).
             dc_tz_offsets[dc_id] = int(dc_cfg.get("time_zone_offset_rows", 0)) \
-                + int(getattr(self, "_green_episode_offset_rows", 0))
+                + int(getattr(self, "_green_episode_offset_rows", 0)) \
+                + simulator_row_shift(dc_cfg)
             for t in tids:
                 t = int(t)
                 csv_path = csv_dir / f"Turbine_{t}_{csv_year}.csv"
@@ -2078,7 +2110,9 @@ class HierarchicalMultiDCEnv(gym.Env):
         if H <= 1 or self._v32_forecast_mode == "none":
             return out
         if self.timecap_provider is not None:
-            raw = self.timecap_provider.get_raw_forecast_per_dc(horizon=H - 1, normalize=False)
+            # provider index 0 is the simulator's current row (after the 2026-09-06 row-shift
+            # fix), so future step h is provider index h, never h - 1
+            raw = self.timecap_provider.get_raw_forecast_per_dc(horizon=H, normalize=False)
             if raw is None:
                 return out
             divisor = max(1e-9, float(self.config.get("compressed_power_divisor", 1.0)))
@@ -2087,10 +2121,8 @@ class HierarchicalMultiDCEnv(gym.Env):
                 arr = raw.get(dc_id)
                 if arr is None or len(arr) == 0:
                     continue
-                arr = np.asarray(arr, dtype=np.float64).reshape(-1)[:H - 1]
-                if compressed:
-                    arr = arr / divisor
-                out[dc_index, 1:1 + arr.shape[0]] = np.maximum(0.0, arr)
+                out[dc_index] = future_series_from_raw(current[dc_index], np.asarray(arr, dtype=np.float64).reshape(-1),
+                                                       H, divisor if compressed else 1.0)
             return out
         if self.java_env is not None and hasattr(self.java_env, "getFuturePerDcGreenPowerW"):
             secs = [max(1, int(round(h * float(self._v32_sim_timestep_sec)))) for h in range(1, H)]
