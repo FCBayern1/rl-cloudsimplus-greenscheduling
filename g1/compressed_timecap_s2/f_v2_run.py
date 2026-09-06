@@ -91,9 +91,13 @@ def sentinel():
                 G, _ = lr.truth_curve(blk, off, T + H + 2)
                 # 1: series index h at step t == simulator green at step t + h (F2 exact; F3: index 0 only)
                 err1 = 0.0
+                n_nan = 0
                 for t in range(T):
+                    if np.isnan(fgs[t]).any():                        # the reset observation carries no series
+                        n_nan += 1; continue
                     hmax = H if F == "F2" else 1                     # TimeCAP: only the present row is truth
                     err1 = max(err1, float(np.abs(fgs[t, :, :hmax] - G[:, t:t + hmax]).max()))
+                r["series_rows_without_channel"] = n_nan
                 r["series_max_abs_err_w"] = err1
                 r["obs_rows_match"] = bool(lr.curve_rows_match(G, G_obs.T)[0])
                 # 3: the key recomputed from the dumped series and committed grid == published key
@@ -107,6 +111,8 @@ def sentinel():
                 mask = np.asarray(z["batch_cloudlet_offset_allowed"], dtype=np.float64)
                 err3 = 0.0; checked = 0
                 for t, slots in ids_by_t.items():
+                    if np.isnan(fgs[t]).any():
+                        continue
                     ids = np.full(cov.shape[1], -1); pe = np.zeros(cov.shape[1]); mm = np.zeros(cov.shape[1])
                     for s_, cid in slots.items():
                         ids[s_] = cid; pe[s_] = pes[t, s_]; mm[s_] = mi[t, s_]

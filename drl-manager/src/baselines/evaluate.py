@@ -532,7 +532,7 @@ class _DecisionDump:
         self.offset_grid = list(offset_grid) if offset_grid else None
         self._rows, self._obs = [], []
 
-    def record(self, ep, step, obs_global, global_action, info):
+    def record(self, ep, step, obs_global, global_action, info, extra=None):
         if not self.path:
             return
         pl = (info.get("planner", {}) or {}) if isinstance(info, dict) else {}
@@ -543,10 +543,10 @@ class _DecisionDump:
                                         clock=pl.get("current_clock")))
         if self.save_obs and isinstance(obs_global, dict):
             rec = {k: np.asarray(v) for k, v in obs_global.items()}
-            if isinstance(pl, dict):
-                for key in ("future_green_series", "committed_pes", "committed_static_w", "committed_lag"):
-                    if pl.get(key) is not None:
-                        rec[key] = np.asarray(pl[key])                  # sentinel side channel, F_FITS_V2 §1
+            if isinstance(extra, dict):
+                for key, val in extra.items():
+                    if val is not None:
+                        rec[key] = np.asarray(val)                      # sentinel side channel, F_FITS_V2 §1
             self._obs.append(rec)
 
     def close(self):
@@ -562,7 +562,17 @@ class _DecisionDump:
                 w.writeheader()
             w.writerows(self._rows)
         if self.save_obs and self._obs:
-            stacked = {k: np.stack([o[k] for o in self._obs]) for k in self._obs[0] if all(k in o for o in self._obs)}
+            # a key missing on some steps (the sentinel side channel is absent on the reset
+            # observation) is padded with NaN of its shape instead of being dropped
+            keys = []
+            for o in self._obs:
+                for k in o:
+                    if k not in keys:
+                        keys.append(k)
+            stacked = {}
+            for k in keys:
+                proto = next(o[k] for o in self._obs if k in o)
+                stacked[k] = np.stack([o[k] if k in o else np.full(np.shape(proto), np.nan, dtype=np.float64) for o in self._obs])
             np.savez_compressed(os.path.splitext(self.path)[0] + "_obs.npz", **stacked)
 
 
@@ -772,7 +782,7 @@ def run_evaluation(
                         global_route_actions += 1
             except Exception:
                 pass
-            _dump.record(ep + 1, steps, obs['global'], global_action, info)
+            _dump.record(ep + 1, steps, obs['global'], global_action, info, extra=getattr(getattr(env, 'unwrapped', env), '_sentinel_channel', None))
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             if isinstance(rewards, dict):
@@ -1326,7 +1336,7 @@ def run_rllib_evaluation(
                 pass
             # 执行
             action = {'global': global_action, 'local': local_actions}
-            _dump.record(ep + 1, steps, obs['global'], global_action, info)
+            _dump.record(ep + 1, steps, obs['global'], global_action, info, extra=getattr(getattr(env, 'unwrapped', env), '_sentinel_channel', None))
             obs, rewards, terminated, truncated, info = env.step(action)
             steps += 1
             if isinstance(rewards, dict):
