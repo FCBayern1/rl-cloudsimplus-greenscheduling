@@ -463,7 +463,7 @@ def _checkpoint_label_from_path(checkpoint_path: str) -> str:
 
 
 def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, option_mode=False,
-                  offset_grid=None):
+                  offset_grid=None, planner_ttd=None):
     """Per-slot decision records for the Stage D' timing-selectivity corpus
     (STAGE_D_PRIME_DESIGN Q4). One row per real slot: what was decided (route index or
     DEFER) next to the slot's timing facts as the policy saw them. In option mode
@@ -506,6 +506,9 @@ def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, opt
             "wait_age": col("batch_cloudlet_wait_age", slot),
             "is_deferred": col("batch_cloudlet_is_deferred", slot),
             "defer_allowed": col("batch_cloudlet_defer_allowed", slot),
+            # raw seconds to deadline from the planner channel (the obs value above is the
+            # normalised policy feature); the ladder's job facts are built from this one
+            "ttd_sec": (float(planner_ttd[slot]) if planner_ttd is not None and slot < len(planner_ttd) else None),
             "hold_dc": (int(a) - num_dcs) if (option_mode and int(a) >= num_dcs) else -1,
             "hold_allowed": (";".join(str(int(float(x))) for x in np.asarray(hold_mask)[slot].reshape(-1))
                              if hold_mask is not None and slot < len(hold_mask) else ""),
@@ -529,9 +532,11 @@ class _DecisionDump:
     def record(self, ep, step, obs_global, global_action, info):
         if not self.path:
             return
-        ids = (info.get("planner", {}) or {}).get("batch_cloudlet_ids") if isinstance(info, dict) else None
+        pl = (info.get("planner", {}) or {}) if isinstance(info, dict) else {}
+        ids = pl.get("batch_cloudlet_ids")
         self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs,
-                                        option_mode=self.option_mode, offset_grid=self.offset_grid))
+                                        option_mode=self.option_mode, offset_grid=self.offset_grid,
+                                        planner_ttd=pl.get("batch_cloudlet_time_to_deadline")))
         if self.save_obs and isinstance(obs_global, dict):
             self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
 

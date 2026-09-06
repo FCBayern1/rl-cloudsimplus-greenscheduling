@@ -56,8 +56,12 @@ def jobs_from_dump(rows, vm_pe_mips, cpu_util, timestep_sec=1.0):
             continue
         step = int(float(r["step"]))
         if cid not in first or step < first[cid]["step"]:
+            ttd_raw = r.get("ttd_sec")
+            if ttd_raw in (None, "", "None"):
+                raise ValueError("the dump has no ttd_sec (raw seconds from the planner channel); "
+                                 "time_to_deadline is the normalised policy feature and cannot be used")
             first[cid] = {"step": step, "pes": int(float(r["pes"])), "mi": float(r["mi"]),
-                          "ttd": float(r["time_to_deadline"]), "present": float(r.get("deadline_present", 1) or 0) >= 0.5}
+                          "ttd": float(ttd_raw), "present": float(r.get("deadline_present", 1) or 0) >= 0.5}
     jobs = []
     for cid, f in sorted(first.items()):
         r = runtime_steps(f["mi"], vm_pe_mips, cpu_util, timestep_sec)

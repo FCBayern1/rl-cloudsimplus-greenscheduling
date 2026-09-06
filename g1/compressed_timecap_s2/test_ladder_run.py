@@ -8,9 +8,9 @@ from ladder_run import closure_check, gate_l1, gate_l2, jobs_from_dump, rung_cur
 
 
 def test_jobs_from_dump_take_first_sighting_and_deadline_step():
-    rows = [{"cloudlet_id": "3", "step": "9", "pes": "32", "mi": "1920000", "time_to_deadline": "120.0", "deadline_present": "1"},
-            {"cloudlet_id": "3", "step": "10", "pes": "32", "mi": "1920000", "time_to_deadline": "119.0", "deadline_present": "1"},
-            {"cloudlet_id": "-1", "step": "10", "pes": "0", "mi": "0", "time_to_deadline": "0", "deadline_present": "0"}]
+    rows = [{"cloudlet_id": "3", "step": "9", "pes": "32", "mi": "1920000", "time_to_deadline": "0.017", "ttd_sec": "120.0", "deadline_present": "1"},
+            {"cloudlet_id": "3", "step": "10", "pes": "32", "mi": "1920000", "time_to_deadline": "0.016", "ttd_sec": "119.0", "deadline_present": "1"},
+            {"cloudlet_id": "-1", "step": "10", "pes": "0", "mi": "0", "time_to_deadline": "0", "ttd_sec": "0", "deadline_present": "0"}]
     jobs = jobs_from_dump(rows, 40000.0, 1.0)
     assert len(jobs) == 1 and jobs[0].arrival == 9 and jobs[0].runtime == 48 and jobs[0].deadline == 129
     assert jobs[0].latest == 129 - 48 - 2

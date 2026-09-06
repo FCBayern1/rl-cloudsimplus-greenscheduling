@@ -51,3 +51,9 @@ def test_offset_mode_rows_name_site_and_kappa():
     rows = decision_rows(1, 7, _obs(), [1 * 5 + 3, 0, 4], planner_ids=[11, 12, -1], num_dcs=5, offset_grid=grid)
     assert rows[0]["site"] == 1 and rows[0]["kappa"] == 4 and rows[0]["is_defer"] == 1
     assert rows[1]["site"] == 0 and rows[1]["kappa"] == 0 and rows[1]["is_defer"] == 0
+
+
+def test_rows_carry_raw_seconds_to_deadline_from_the_planner_channel():
+    rows = decision_rows(1, 2, _obs(), [1, 2, 0], planner_ids=[11, 12, -1], num_dcs=5, planner_ttd=[120.0, 45.5, 0.0])
+    assert rows[0]["ttd_sec"] == 120.0 and rows[1]["ttd_sec"] == 45.5
+    assert decision_rows(1, 2, _obs(), [1, 2, 0], planner_ids=[11, 12, -1], num_dcs=5)[0]["ttd_sec"] is None
