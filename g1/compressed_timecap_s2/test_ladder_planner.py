@@ -67,3 +67,19 @@ def test_dominance_truth_schedule_never_beaten_in_model_settlement():
         alt = solve(build_instance(jobs, cap=[64, 32], curves_w=wrong), time_limit_s=60)
         assert alt["status"] == "OPTIMAL"
         assert settle(inst, alt["schedule"])["J_int"] >= j_truth
+
+
+def test_milp_agrees_with_cpsat_on_small_instances():
+    from ladder_planner import solve_milp
+    G = np.zeros((1, 10)); G[0, 4:6] = 100.0
+    jobs = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=8)]
+    inst = build_instance(jobs, cap=[64], curves_w=G)
+    r = solve_milp(inst, time_limit_s=30)
+    assert r["status"] == "OPTIMAL" and r["schedule"] == {1: (0, 4)} and r["J_int"] == 65640 * 2
+    rng = np.random.default_rng(1)
+    G2 = rng.uniform(0, 120, size=(2, 30))
+    jobs2 = [Job(id=i, arrival=i * 2, runtime=3, pes=32, deadline=25) for i in range(4)]
+    inst2 = build_instance(jobs2, cap=[64, 32], curves_w=G2)
+    a, b = solve(inst2, time_limit_s=60), solve_milp(inst2, time_limit_s=60)
+    assert a["status"] == "OPTIMAL" and b["status"] == "OPTIMAL"
+    assert settle(inst2, a["schedule"])["J_int"] == settle(inst2, b["schedule"])["J_int"] == b["J_int"]

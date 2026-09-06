@@ -103,8 +103,93 @@ def settle(inst: Instance, schedule: Dict[int, Tuple[int, int]], curves_mw: Opti
             "draw_mw": draw, "hosts": hosts, "pes": pes}
 
 
-def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8) -> dict:
-    """CP-SAT on the instance's curve. Returns status, schedule, J_int, C_kg, wall time."""
+def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: float = 0.0) -> dict:
+    """The same model as `solve`, as a MIP for HiGHS (scipy.optimize.milp): x binary, h integer,
+    brown continuous (integral at optimality since every coefficient is integer). Exactness:
+    OPTIMAL iff HiGHS reports optimal with the relative gap set to 0. Same return keys."""
+    import time
+    from scipy.optimize import milp, LinearConstraint, Bounds
+    from scipy.sparse import lil_matrix
+    n, T = inst.curves_mw.shape
+    xs = [(j.id, d, s) for j in inst.jobs for d in range(n) for s in inst.starts[j.id]]
+    if any(not inst.starts[j.id] for j in inst.jobs):
+        return {"status": "INFEASIBLE", "reason": "a job has no legal start"}
+    xi = {key: i for i, key in enumerate(xs)}
+    cells = [(d, t) for d in range(n) for t in range(T)]
+    ci = {c: i for i, c in enumerate(cells)}
+    nx, nc = len(xs), len(cells)
+    hoff, boff = nx, nx + nc
+    nvar = nx + 2 * nc
+    # objective: sum_{d,t} 49 * brown + draw, draw = 2020 * pes(d,t) + 1000 * h(d,t)
+    c = np.zeros(nvar)
+    by_id = {j.id: j for j in inst.jobs}
+    for (jid, d, s), i in xi.items():
+        j = by_id[jid]
+        c[i] += MW_PER_PE * j.pes * min(j.runtime, T - s)
+    c[hoff:hoff + nc] = HOST_FLOOR_MW
+    c[boff:boff + nc] = RATIO - 1
+    rows, lo, hi = [], [], []
+    A = lil_matrix((len(inst.jobs) + 3 * nc, nvar))
+    r = 0
+    for j in inst.jobs:                                             # exactly one start
+        for d in range(n):
+            for s in inst.starts[j.id]:
+                A[r, xi[(j.id, d, s)]] = 1.0
+        lo.append(1.0); hi.append(1.0); r += 1
+    pes_rows = {cell: r + k for k, cell in enumerate(cells)}
+    for (jid, d, s), i in xi.items():
+        j = by_id[jid]
+        for t in range(s, min(T, s + j.runtime)):
+            A[pes_rows[(d, t)], i] += j.pes
+    for k, (d, t) in enumerate(cells):                              # capacity: pes <= cap
+        lo.append(-np.inf); hi.append(float(inst.cap[d]))
+    r += nc
+    for k, (d, t) in enumerate(cells):                              # 64 h - pes >= 0
+        A[r + k, hoff + k] = HOST_PES
+        for (jid, dd, s), i in xi.items():
+            pass
+        lo.append(0.0); hi.append(np.inf)
+    # copy the pes coefficients into the host rows and the brown rows
+    A = A.tocsr()
+    pes_block = A[len(inst.jobs):len(inst.jobs) + nc, :nx]
+    A = A.tolil()
+    for k in range(nc):
+        for i, v in zip(pes_block.indices[pes_block.indptr[k]:pes_block.indptr[k + 1]], pes_block.data[pes_block.indptr[k]:pes_block.indptr[k + 1]]):
+            A[r + k, i] = -v
+    r += nc
+    for k, (d, t) in enumerate(cells):                              # brown - 2020 pes - 1000 h >= -G
+        A[r + k, boff + k] = 1.0
+        A[r + k, hoff + k] = -HOST_FLOOR_MW
+        for i, v in zip(pes_block.indices[pes_block.indptr[k]:pes_block.indptr[k + 1]], pes_block.data[pes_block.indptr[k]:pes_block.indptr[k + 1]]):
+            A[r + k, i] = -MW_PER_PE * v
+        lo.append(-float(inst.curves_mw[d, t])); hi.append(np.inf)
+    integrality = np.zeros(nvar); integrality[:nx] = 1; integrality[hoff:hoff + nc] = 1
+    ub = np.full(nvar, np.inf); ub[:nx] = 1.0
+    for k, (d, t) in enumerate(cells):
+        ub[hoff + k] = math.ceil(inst.cap[d] / HOST_PES)
+    t0 = time.time()
+    res = milp(c, constraints=LinearConstraint(A.tocsr(), np.array(lo), np.array(hi)), integrality=integrality,
+               bounds=Bounds(np.zeros(nvar), ub), options={"time_limit": float(time_limit_s), "mip_rel_gap": float(mip_gap), "disp": False})
+    out = {"wall_s": time.time() - t0, "milp_status": int(res.status), "milp_message": str(res.message)}
+    if res.x is None:
+        out["status"] = "INFEASIBLE" if res.status == 2 else "UNKNOWN"
+        return out
+    out["status"] = "OPTIMAL" if res.status == 0 else "FEASIBLE"
+    sched = {}
+    for (jid, d, s), i in xi.items():
+        if res.x[i] > 0.5:
+            sched[jid] = (d, s)
+    out["schedule"] = sched
+    st = settle(inst, sched)                  # exact integer objective from the schedule itself
+    out["J_int"], out["C_kg"] = st["J_int"], st["C_kg"]
+    out["bound"] = float(res.mip_dual_bound) if getattr(res, "mip_dual_bound", None) is not None else None
+    return out
+
+
+def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8, linearization_level: int = 2) -> dict:
+    """CP-SAT on the instance's curve. Returns status, schedule, J_int, C_kg, wall time.
+    linearization_level 2 (full LP relaxation) is a solver parameter, not a model change:
+    the default search could not close the gap on the development windows (design log)."""
     from ortools.sat.python import cp_model
     m = cp_model.CpModel()
     n, T = inst.curves_mw.shape
@@ -143,6 +228,7 @@ def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8) 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit_s)
     solver.parameters.num_workers = int(workers)
+    solver.parameters.linearization_level = int(linearization_level)
     status = solver.Solve(m)
     name = solver.StatusName(status)
     out = {"status": name, "wall_s": solver.WallTime()}
