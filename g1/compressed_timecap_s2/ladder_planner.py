@@ -103,6 +103,41 @@ def settle(inst: Instance, schedule: Dict[int, Tuple[int, int]], curves_mw: Opti
             "draw_mw": draw, "hosts": hosts, "pes": pes}
 
 
+def verify_schedule(inst: Instance, schedule: Dict[int, Tuple[int, int]]) -> List[str]:
+    """Integer re-check of a full schedule (Addendum D3): exactly one assignment per job,
+    start >= arrival + lag, start <= latest, capacity per (site, step). Returns violations."""
+    v = []
+    ids = {j.id for j in inst.jobs}
+    if set(schedule) != ids:
+        v.append(f"assignments {sorted(set(schedule) ^ ids)} missing or extra")
+    n, T = inst.curves_mw.shape
+    pes = np.zeros((n, T), dtype=np.int64)
+    for j in inst.jobs:
+        if j.id not in schedule:
+            continue
+        d, s = schedule[j.id]
+        if not (0 <= d < n):
+            v.append(f"job {j.id} site {d} out of range"); continue
+        if s < j.arrival + LAG:
+            v.append(f"job {j.id} starts {s} before arrival + lag {j.arrival + LAG}")
+        if s > j.latest:
+            v.append(f"job {j.id} starts {s} after latest {j.latest}")
+        if s + j.runtime > T:
+            v.append(f"job {j.id} runs past the horizon")
+        pes[d, s:s + j.runtime] += j.pes
+    for d in range(n):
+        over = np.where(pes[d] > inst.cap[d])[0]
+        if over.size:
+            v.append(f"site {d} over capacity at steps {over[:5].tolist()}")
+    return v
+
+
+def schedule_hash(schedule: Dict[int, Tuple[int, int]]) -> str:
+    import hashlib
+    sig = ";".join(f"{k}:{d}:{s}" for k, (d, s) in sorted(schedule.items()))
+    return hashlib.sha256(sig.encode()).hexdigest()[:16]
+
+
 def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: float = 0.0) -> dict:
     """The same model as `solve`, as a MIP for HiGHS (scipy.optimize.milp): x binary, h integer,
     brown continuous (integral at optimality since every coefficient is integer). Exactness:
@@ -170,19 +205,33 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     t0 = time.time()
     res = milp(c, constraints=LinearConstraint(A.tocsr(), np.array(lo), np.array(hi)), integrality=integrality,
                bounds=Bounds(np.zeros(nvar), ub), options={"time_limit": float(time_limit_s), "mip_rel_gap": float(mip_gap), "disp": False})
-    out = {"wall_s": time.time() - t0, "milp_status": int(res.status), "milp_message": str(res.message)}
+    out = {"wall_s": time.time() - t0, "milp_status": int(res.status), "milp_message": str(res.message),
+           "fun": (float(res.fun) if getattr(res, "fun", None) is not None else None),
+           "mip_gap": (float(res.mip_gap) if getattr(res, "mip_gap", None) is not None else None),
+           "mip_dual_bound": (float(res.mip_dual_bound) if getattr(res, "mip_dual_bound", None) is not None else None),
+           "mip_node_count": (int(res.mip_node_count) if getattr(res, "mip_node_count", None) is not None else None)}
     if res.x is None:
         out["status"] = "INFEASIBLE" if res.status == 2 else "UNKNOWN"
         return out
-    out["status"] = "OPTIMAL" if res.status == 0 else "FEASIBLE"
     sched = {}
     for (jid, d, s), i in xi.items():
         if res.x[i] > 0.5:
             sched[jid] = (d, s)
     out["schedule"] = sched
+    out["schedule_hash"] = schedule_hash(sched)
     st = settle(inst, sched)                  # exact integer objective from the schedule itself
     out["J_int"], out["C_kg"] = st["J_int"], st["C_kg"]
-    out["bound"] = float(res.mip_dual_bound) if getattr(res, "mip_dual_bound", None) is not None else None
+    out["bound"] = out["mip_dual_bound"]
+    # Addendum D3: OPTIMAL is a compound condition
+    checks = {"highs_optimal": res.status == 0,
+              "schedule_valid": not verify_schedule(inst, sched),
+              "objective_matches": out["fun"] is not None and abs(out["fun"] - out["J_int"]) < 0.5,
+              "bound_closes": (out["mip_dual_bound"] is not None and math.isfinite(out["mip_dual_bound"])
+                               and out["J_int"] - out["mip_dual_bound"] < 1.0),
+              "gap_finite": out["mip_gap"] is not None and math.isfinite(out["mip_gap"])}
+    out["checks"] = checks
+    out["verify_violations"] = verify_schedule(inst, sched)
+    out["status"] = "OPTIMAL" if all(checks.values()) else ("FEASIBLE" if res.status in (0, 1) else "UNKNOWN")
     return out
 
 

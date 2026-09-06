@@ -83,3 +83,21 @@ def test_milp_agrees_with_cpsat_on_small_instances():
     a, b = solve(inst2, time_limit_s=60), solve_milp(inst2, time_limit_s=60)
     assert a["status"] == "OPTIMAL" and b["status"] == "OPTIMAL"
     assert settle(inst2, a["schedule"])["J_int"] == settle(inst2, b["schedule"])["J_int"] == b["J_int"]
+
+
+def test_optimal_is_a_compound_condition_and_the_verifier_catches_violations():
+    from ladder_planner import solve_milp, verify_schedule, schedule_hash
+    G = np.zeros((1, 10)); G[0, 4:6] = 100.0
+    jobs = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=8), Job(id=2, arrival=0, runtime=2, pes=32, deadline=8)]
+    inst = build_instance(jobs, cap=[32], curves_w=G)
+    r = solve_milp(inst, time_limit_s=30)
+    assert r["status"] == "OPTIMAL" and all(r["checks"].values())
+    assert r["mip_dual_bound"] is not None and r["J_int"] - r["mip_dual_bound"] < 1.0
+    assert abs(r["fun"] - r["J_int"]) < 0.5 and r["verify_violations"] == []
+    assert len(r["schedule_hash"]) == 16 and r["schedule_hash"] == schedule_hash(r["schedule"])
+    assert r["mip_node_count"] is not None
+    # the verifier: overlap on a 32-PE site, a start before arrival + lag, a start past latest, a missing job
+    assert any("capacity" in v for v in verify_schedule(inst, {1: (0, 4), 2: (0, 5)}))
+    assert any("before arrival" in v for v in verify_schedule(inst, {1: (0, 0), 2: (0, 4)}))
+    assert any("after latest" in v for v in verify_schedule(inst, {1: (0, 6), 2: (0, 1)}))
+    assert any("missing" in v for v in verify_schedule(inst, {1: (0, 4)}))

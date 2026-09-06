@@ -34,7 +34,7 @@ from ladder_planner import (  # noqa: E402
     quantisation_bound_kg, runtime_steps, settle, solve)
 
 OUT = os.path.join(HERE, "stage_a_out")
-LAD = os.path.join(OUT, "ladder")
+LAD = os.path.join(OUT, "ladder_v2")          # fresh directory after Addendum D (HiGHS primary)
 LAMBDAS = (0.75, 0.5, 0.25, 0.0)
 RUNGS = ("truth", "shrink_0.75", "shrink_0.5", "shrink_0.25", "shrink_0", "shuffle", "anti")
 CLOSURE_REL = 0.03
@@ -220,7 +220,20 @@ def cmd_solve(rungs=RUNGS):
     os.makedirs(os.path.join(LAD, "solve"), exist_ok=True)
     sp = os.path.join(LAD, "solve_summary.json")
     summary = json.load(open(sp)) if os.path.exists(sp) else {}
-    summary = {int(k): v for k, v in summary.items()}
+    summary = {int(k): v for k, v in summary.items() if k != "environment"}
+    import platform, scipy, subprocess as _sp
+    try:
+        cpu = [l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")][0]
+        ncpu = os.cpu_count()
+    except Exception:
+        cpu, ncpu = platform.processor(), os.cpu_count()
+    try:
+        highs = _sp.run([sys.executable, "-c", "from scipy.optimize._highspy import _core; print(getattr(_core, 'HIGHS_VERSION', '?'))"],
+                        capture_output=True, text=True).stdout.strip() or "unknown"
+    except Exception:
+        highs = "unknown"
+    environment = {"cpu": cpu, "cpu_count": ncpu, "python": platform.python_version(), "scipy": scipy.__version__,
+                   "highs": highs, "time_limit_s": 600.0, "mip_rel_gap": 0.0, "one_solve_at_a_time": True}
     for k, off in enumerate(dev):
         rows = list(csv.DictReader(open(os.path.join(LAD, "dump", f"k{k}_decisions.csv"))))
         z = np.load(os.path.join(LAD, "dump", f"k{k}_decisions_obs.npz"))
@@ -238,16 +251,20 @@ def cmd_solve(rungs=RUNGS):
         for rung in rungs:
             G = rung_curve(truth, rung, mu, seed_key=f"ladder:{off}")
             inst = build_instance(jobs, cap, G)
-            # LADDER_SOLVER=milp selects the HiGHS twin of the same model (only after the
-            # solver substitution is ruled; CP-SAT remains the default of the frozen text)
-            if os.environ.get("LADDER_SOLVER", "cpsat") == "milp":
+            # Addendum D: HiGHS (scipy.optimize.milp, gap 0, 600 s) is the only judging solver;
+            # LADDER_SOLVER=cpsat is the cross-check path and never runs in a formal stage.
+            import time as _time
+            t_ext = _time.time()
+            if os.environ.get("LADDER_SOLVER", "milp") == "cpsat":
+                res = solve(inst)
+            else:
                 from ladder_planner import solve_milp
                 res = solve_milp(inst)
-            else:
-                res = solve(inst)
-            res["solver"] = os.environ.get("LADDER_SOLVER", "cpsat")
-            rec = {"status": res["status"], "wall_s": res.get("wall_s"), "solver": res.get("solver"),
-                   "bound": res.get("bound")}
+            res["solver"] = os.environ.get("LADDER_SOLVER", "milp")
+            res["external_wall_s"] = _time.time() - t_ext
+            rec = {k: res.get(k) for k in ("status", "wall_s", "external_wall_s", "solver", "bound", "fun", "mip_gap",
+                                            "mip_dual_bound", "mip_node_count", "milp_status", "milp_message",
+                                            "schedule_hash", "checks", "verify_violations")}
             if res["status"] == "OPTIMAL":
                 st = settle(inst_truth, res["schedule"])
                 rec.update({"J_on_rung": res["J_int"], "C_model_truth_kg": st["C_kg"], "J_model_truth": st["J_int"],
@@ -258,7 +275,7 @@ def cmd_solve(rungs=RUNGS):
             summary[k]["rungs"][rung] = rec
             print(f"k{k} {rung:12s} {rec['status']:10s} " + (f"C_model_truth {rec['C_model_truth_kg']:.6f}" if 'C_model_truth_kg' in rec else ""), flush=True)
     with open(sp, "w") as f:
-        json.dump({str(k): v for k, v in summary.items()}, f, indent=2)
+        json.dump({**{str(k): v for k, v in summary.items()}, "environment": environment}, f, indent=2)
 
 
 def cmd_replay(rungs=RUNGS):
@@ -279,7 +296,7 @@ def cmd_replay(rungs=RUNGS):
 def cmd_judge(rungs=RUNGS):
     dev = _dev()
     summary = json.load(open(os.path.join(LAD, "solve_summary.json")))
-    res = {"windows": {}, "rungs": list(rungs)}
+    res = {"windows": {}, "rungs": list(rungs), "environment": summary.get("environment")}
     c_sim, c_model = {r: {} for r in rungs}, {r: {} for r in rungs}
     unresolved, closure_fail = [], []
     for k, off in enumerate(dev):
