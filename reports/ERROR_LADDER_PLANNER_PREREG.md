@@ -173,3 +173,19 @@ Small instances must agree bitwise; at full size, if CP-SAT (linearization level
 
 ### D6. Order
 Fresh output directory; the six truth rungs first; only when all six are OPTIMAL and each closes on replay (B2 / C5) are the other six rungs generated.
+
+---
+
+## Addendum E (2026-09-06 02:45; Codex ruling on the D-stage truth result; precedence body < A < B < C < D < E; frozen at the commit that carries it, before the run it governs)
+
+### E1. Record of the D stage
+Under Addendum D (HiGHS, 600 s) the truth rung proved OPTIMAL on k0 (337 s, J = 222,043,518) and reached the 600 s limit on k1 without proof. The stage's logical outcome is STOP_SOLVER_RUNG_UNRESOLVED, meaning "a 600 s solve budget is insufficient", not a failure of the scene or of the error ladder. The archive of that stage must carry k1's status, wall time, incumbent, dual bound, gap and the terminal log; k1 is not rerun to produce them; k2–k5, already running at the time of the ruling, are labelled post-STOP diagnostics.
+
+### E2. Budget
+One uniform limit for every (window, rung): HiGHS `time_limit = 3600` s, `mip_rel_gap = 0`. Not per window, never extended on a result. Model, the seven rungs, the compound OPTIMAL condition, the closure gates and the judgement gates are unchanged. The 3600 s diagnostic solves of the D stage may be read as machine-time estimates only; they cannot move this limit.
+
+### E3. Execution
+Addendum E is committed before the run. Fresh output directory (`stage_a_out/ladder_v3/`). One HiGHS solve at a time, no other heavy load on the machine (the CP-SAT cross-check, the margin probe, P0′ and the interface smoke may run, never concurrently with a formal solve). Every solve, whatever its outcome (OPTIMAL, time limit, infeasible), writes its JSON atomically the moment it returns, so no record can be lost as k1's was. Any cell that reaches 3600 s without meeting the compound condition stops the ladder at once: no retry, no extension, no switch to CP-SAT. The six truth rungs first, each closed on replay, before any other rung is generated.
+
+### E4. Not adopted
+Formulation tightening and multi-threaded highspy are not used in this round: both add implementation surface, and bitwise agreement on small instances does not by itself prove equivalence of the full model's feasible set. If a cell is still unproven at 3600 s the ladder stays "computationally unresolved" and no Addendum F chases more time automatically.
