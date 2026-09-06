@@ -247,7 +247,7 @@ def schedule_hash(schedule: Dict[int, Tuple[int, int]]) -> str:
     return hashlib.sha256(sig.encode()).hexdigest()[:16]
 
 
-def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: float = 0.0) -> dict:
+def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: float = 0.0, envelope_cuts: bool = True) -> dict:
     """The model as a MIP for HiGHS (scipy.optimize.milp): x binary, brown continuous (integral
     at optimality since every coefficient is integer). Exactness: OPTIMAL iff HiGHS reports
     optimal with the relative gap set to 0 and the compound checks hold."""
@@ -260,6 +260,7 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     xs = [(j.id, d, s) for j in inst.jobs for d in range(n) for s in inst.starts[j.id]]
     xi = {key: i for i, key in enumerate(xs)}
     cells = [(d, t) for d in range(n) for t in range(T)]
+    ci = {c: k for k, c in enumerate(cells)}
     nx, nc = len(xs), len(cells)
     boff = nx
     nvar = nx + nc
@@ -296,6 +297,35 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     for k, (d, t) in enumerate(cells):                              # brown - draw >= -G
         A[brown_row[(d, t)], boff + k] = 1.0
         lo.append(-float(inst.curves_mw[d, t])); hi.append(np.inf)
+    # Equivalent tightening (2026-09-06): the convex envelope of brown = max(0, P n - G) over the
+    # INTEGER job counts n of a cell. With m = floor(G / P) the envelope between n = m and m + 1
+    # is brown >= (P (m + 1) - G) (n - m), stronger than the LP line where G is not a multiple of
+    # P (validity: RHS - true brown = (P m - G)(n - m - 1) <= 0 for n >= m + 1, RHS <= 0 for
+    # n <= m). Applied on cells whose jobs all draw the same P (true for a one-PE-class trace);
+    # it changes no integer solution, only the relaxation. Row count: one per such cell.
+    if envelope_cuts:
+        cut_rows = []
+        for (d, t) in cells:
+            i_list = [(xi[(jid, dd, ss)], by_id[jid]) for (jid, dd, ss) in xs if dd == d and ss <= t < ss + by_id[jid].runtime]
+            if not i_list:
+                continue
+            P = {inst.sites[d].job_power_mw(j.pes) for _, j in i_list}
+            if len(P) != 1:
+                continue
+            P = P.pop(); G = int(inst.curves_mw[d, t]); m = G // P
+            slope = P * (m + 1) - G
+            if slope <= 0 or slope >= P:
+                continue
+            cut_rows.append((d, t, slope, m, [i for i, _ in i_list]))
+        if cut_rows:
+            from scipy.sparse import vstack
+            C = lil_matrix((len(cut_rows), nvar))
+            for r_i, (d, t, slope, m, idx) in enumerate(cut_rows):
+                C[r_i, boff + ci[(d, t)]] = 1.0
+                for i in idx:
+                    C[r_i, i] = -slope
+                lo.append(-float(slope * m)); hi.append(np.inf)
+            A = vstack([A.tocsr(), C.tocsr()]).tolil()
     integrality = np.zeros(nvar); integrality[:nx] = 1
     ub = np.full(nvar, np.inf); ub[:nx] = 1.0
     t0 = time.time()
@@ -306,7 +336,7 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
            "mip_gap": (float(res.mip_gap) if getattr(res, "mip_gap", None) is not None else None),
            "mip_dual_bound": (float(res.mip_dual_bound) if getattr(res, "mip_dual_bound", None) is not None else None),
            "mip_node_count": (int(res.mip_node_count) if getattr(res, "mip_node_count", None) is not None else None),
-           "model_version": MODEL_VERSION, "n_binaries": nx, "n_cells": nc}
+           "model_version": MODEL_VERSION, "n_binaries": nx, "n_cells": nc, "envelope_cuts": bool(envelope_cuts)}
     if res.x is None:
         out["status"] = "INFEASIBLE" if res.status == 2 else "UNKNOWN"
         return out

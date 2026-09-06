@@ -144,3 +144,19 @@ def test_optimal_is_a_compound_condition_and_the_verifier_catches_violations():
     assert any("after latest" in v for v in verify_schedule(inst, {1: (0, 8), 2: (0, 2)}))
     assert any("more running jobs than hosts" in v for v in verify_schedule(inst, {1: (0, 2), 2: (0, 4)}))   # ends at 4 = start of 2
     assert any("missing" in v for v in verify_schedule(inst, {1: (0, 4)}))
+
+
+def test_envelope_cuts_change_no_optimum_and_tighten_the_relaxation():
+    # equivalent tightening: same optimum with and without the cuts on random small instances
+    from ladder_planner import solve_milp, site_from_profile
+    rng = np.random.default_rng(7)
+    sites = [site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=3, vms=6), site_from_profile("b", "SPEC_ASUS_RS700A_DYN", hosts=2, vms=4)]
+    for trial in range(6):
+        G = rng.uniform(0, 200, size=(2, 24))
+        jobs = [Job(id=i, arrival=int(rng.integers(0, 6)), runtime=int(rng.integers(2, 5)), pes=32, deadline=24) for i in range(4)]
+        inst = build_instance(jobs, sites, G)
+        a = solve_milp(inst, time_limit_s=60, envelope_cuts=False)
+        b = solve_milp(inst, time_limit_s=60, envelope_cuts=True)
+        assert a["status"] == "OPTIMAL" and b["status"] == "OPTIMAL"
+        assert a["J_int"] == b["J_int"] == settle(inst, b["schedule"])["J_int"]
+        assert b["envelope_cuts"] and not a["envelope_cuts"]
