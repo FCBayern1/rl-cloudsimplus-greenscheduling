@@ -238,8 +238,16 @@ def cmd_solve(rungs=RUNGS):
         for rung in rungs:
             G = rung_curve(truth, rung, mu, seed_key=f"ladder:{off}")
             inst = build_instance(jobs, cap, G)
-            res = solve(inst)
-            rec = {"status": res["status"], "wall_s": res.get("wall_s")}
+            # LADDER_SOLVER=milp selects the HiGHS twin of the same model (only after the
+            # solver substitution is ruled; CP-SAT remains the default of the frozen text)
+            if os.environ.get("LADDER_SOLVER", "cpsat") == "milp":
+                from ladder_planner import solve_milp
+                res = solve_milp(inst)
+            else:
+                res = solve(inst)
+            res["solver"] = os.environ.get("LADDER_SOLVER", "cpsat")
+            rec = {"status": res["status"], "wall_s": res.get("wall_s"), "solver": res.get("solver"),
+                   "bound": res.get("bound")}
             if res["status"] == "OPTIMAL":
                 st = settle(inst_truth, res["schedule"])
                 rec.update({"J_on_rung": res["J_int"], "C_model_truth_kg": st["C_kg"], "J_model_truth": st["J_int"],
