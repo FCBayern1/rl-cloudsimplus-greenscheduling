@@ -142,3 +142,12 @@ def test_atomic_json_writes_complete_records(tmp_path):
     atomic_json(p, {"status": "FEASIBLE", "wall_s": 3600.0})
     import json
     assert json.load(open(p))["status"] == "FEASIBLE" and not os.path.exists(p + ".tmp")
+
+
+def test_closure_gates_draw_and_brown_separately():
+    from ladder_run import closure_check
+    sched = {1: (0, 10)}; led = [{"id": "1", "dc": "0", "t_s": "10.0", "stale": "False"}]
+    ok = closure_check(1.0, 1.0, led, sched, {}, {"draw_model": 30.0, "draw_sim": 30.02, "brown_model": 0.65, "brown_sim": 0.651})
+    assert ok["pass"] and abs(ok["draw_rel_err"] - 0.02 / 30) < 1e-12
+    bad = closure_check(1.0, 1.0, led, sched, {}, {"draw_model": 30.0, "draw_sim": 30.5, "brown_model": 0.65, "brown_sim": 0.66})
+    assert not bad["pass"] and any("draw rel" in x for x in bad["violations"]) and any("brown abs" in x for x in bad["violations"])

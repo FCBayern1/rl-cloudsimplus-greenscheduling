@@ -1,0 +1,719 @@
+{
+  "0": {
+    "offset": 16477,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 4.006858587265015,
+        "external_wall_s": 7.495160102844238,
+        "solver": "milp",
+        "bound": 226384249.0,
+        "fun": 226384249.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 226384249.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "d7b5255fbc518e6a",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 226384249,
+        "J_on_rung": 226384249,
+        "C_model_truth_kg": 0.0006288451361111112,
+        "J_model_truth": 226384249,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.624533333333332,
+        "brown_model_wh": 0.6583669444444444,
+        "green_model_wh": 29.96616638888889
+      }
+    },
+    "curve": {
+      "offset": 16477,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 16490,
+          "row_end": 17159,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 16508,
+          "row_end": 17177,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 16544,
+          "row_end": 17213,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 16562,
+          "row_end": 17231,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 16598,
+          "row_end": 17267,
+          "files": []
+        }
+      ],
+      "signature": "fc1005d83f2aa78c",
+      "dump_rows": 599,
+      "dump_rows_match": true,
+      "rows_compared": 599,
+      "max_abs_diff_w": 3.0403645723708905e-05,
+      "first_bad_row": -1
+    }
+  },
+  "1": {
+    "offset": 4240,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 3.7227563858032227,
+        "external_wall_s": 7.020637512207031,
+        "solver": "milp",
+        "bound": 370233055.0,
+        "fun": 370233055.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 370233055.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "d16f972d046922f5",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 370233055,
+        "J_on_rung": 370233055,
+        "C_model_truth_kg": 0.0010284251527777778,
+        "J_model_truth": 370233055,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.6272,
+        "brown_model_wh": 1.4737819444444444,
+        "green_model_wh": 29.153418055555555
+      }
+    },
+    "curve": {
+      "offset": 4240,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 4253,
+          "row_end": 4922,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 4271,
+          "row_end": 4940,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 4307,
+          "row_end": 4976,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 4325,
+          "row_end": 4994,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 4361,
+          "row_end": 5030,
+          "files": []
+        }
+      ],
+      "signature": "624ec4548b4d59c8",
+      "dump_rows": 646,
+      "dump_rows_match": true,
+      "rows_compared": 646,
+      "max_abs_diff_w": 3.014322919625556e-05,
+      "first_bad_row": -1
+    }
+  },
+  "2": {
+    "offset": 9154,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 3.682288408279419,
+        "external_wall_s": 6.977372884750366,
+        "solver": "milp",
+        "bound": 441112165.0,
+        "fun": 441112165.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 441112165.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "46c8e2f6cb8213a8",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 441112165,
+        "J_on_rung": 441112165,
+        "C_model_truth_kg": 0.0012253115694444445,
+        "J_model_truth": 441112165,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.6256,
+        "brown_model_wh": 1.875623611111111,
+        "green_model_wh": 28.74997638888889
+      }
+    },
+    "curve": {
+      "offset": 9154,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 9167,
+          "row_end": 9836,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 9185,
+          "row_end": 9854,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 9221,
+          "row_end": 9890,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 9239,
+          "row_end": 9908,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 9275,
+          "row_end": 9944,
+          "files": []
+        }
+      ],
+      "signature": "7c9d51c0f7224e4c",
+      "dump_rows": 599,
+      "dump_rows_match": true,
+      "rows_compared": 599,
+      "max_abs_diff_w": 3.0110677130323893e-05,
+      "first_bad_row": -1
+    }
+  },
+  "3": {
+    "offset": 33225,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 4.405334234237671,
+        "external_wall_s": 7.73065185546875,
+        "solver": "milp",
+        "bound": 176058599.0,
+        "fun": 176058599.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 176058599.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "1036777abeebdcac",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 176058599,
+        "J_on_rung": 176058599,
+        "C_model_truth_kg": 0.0004890516638888889,
+        "J_model_truth": 176058599,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.6272,
+        "brown_model_wh": 0.37301972222222224,
+        "green_model_wh": 30.254180277777778
+      }
+    },
+    "curve": {
+      "offset": 33225,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 33238,
+          "row_end": 33907,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 33256,
+          "row_end": 33925,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 33292,
+          "row_end": 33961,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 33310,
+          "row_end": 33979,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 33346,
+          "row_end": 34015,
+          "files": []
+        }
+      ],
+      "signature": "98718613efac6c31",
+      "dump_rows": 599,
+      "dump_rows_match": true,
+      "rows_compared": 599,
+      "max_abs_diff_w": 3.0110677130323893e-05,
+      "first_bad_row": -1
+    }
+  },
+  "4": {
+    "offset": 13223,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 4.233011484146118,
+        "external_wall_s": 7.585855007171631,
+        "solver": "milp",
+        "bound": 189056423.0,
+        "fun": 189056423.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 189056423.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "1f384fce2e84be23",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 189056423,
+        "J_on_rung": 189056423,
+        "C_model_truth_kg": 0.0005251567305555555,
+        "J_model_truth": 189056423,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.623466666666666,
+        "brown_model_wh": 0.44677972222222223,
+        "green_model_wh": 30.176686944444445
+      }
+    },
+    "curve": {
+      "offset": 13223,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 13236,
+          "row_end": 13905,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 13254,
+          "row_end": 13923,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 13290,
+          "row_end": 13959,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 13308,
+          "row_end": 13977,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 13344,
+          "row_end": 14013,
+          "files": []
+        }
+      ],
+      "signature": "0903f49d251ebe0d",
+      "dump_rows": 599,
+      "dump_rows_match": true,
+      "rows_compared": 599,
+      "max_abs_diff_w": 3.043619790332741e-05,
+      "first_bad_row": -1
+    }
+  },
+  "5": {
+    "offset": 49625,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 3.7011404037475586,
+        "external_wall_s": 6.99702262878418,
+        "solver": "milp",
+        "bound": 777319162.0,
+        "fun": 777319162.0,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 777319162.0,
+        "mip_node_count": 1,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "f138517885042b68",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true,
+          "premise_ok": true
+        },
+        "verify_violations": [],
+        "time_limit_s": 3600.0,
+        "J_int_incumbent": 777319162,
+        "J_on_rung": 777319162,
+        "C_model_truth_kg": 0.0021592198944444443,
+        "J_model_truth": 777319162,
+        "rmse_vs_truth_w": 0.0,
+        "draw_model_wh": 30.629333333333335,
+        "brown_model_wh": 3.7814827777777777,
+        "green_model_wh": 26.847850555555556
+      }
+    },
+    "curve": {
+      "offset": 49625,
+      "T": 669,
+      "year": 2021,
+      "divisor": 3000.0,
+      "obs_clock_lag": 1,
+      "spline_skip_rows": 12,
+      "sites": [
+        {
+          "site": 0,
+          "tz_rows": 0,
+          "row_start": 49638,
+          "row_end": 50307,
+          "files": [
+            "Turbine_133_2021.csv",
+            "Turbine_78_2021.csv"
+          ]
+        },
+        {
+          "site": 1,
+          "tz_rows": 18,
+          "row_start": 49656,
+          "row_end": 50325,
+          "files": [
+            "Turbine_22_2021.csv",
+            "Turbine_81_2021.csv"
+          ]
+        },
+        {
+          "site": 2,
+          "tz_rows": 54,
+          "row_start": 49692,
+          "row_end": 50361,
+          "files": [
+            "Turbine_94_2021.csv"
+          ]
+        },
+        {
+          "site": 3,
+          "tz_rows": 72,
+          "row_start": 49710,
+          "row_end": 50379,
+          "files": []
+        },
+        {
+          "site": 4,
+          "tz_rows": 108,
+          "row_start": 49746,
+          "row_end": 50415,
+          "files": []
+        }
+      ],
+      "signature": "7d5d6546ec9ffe3a",
+      "dump_rows": 599,
+      "dump_rows_match": true,
+      "rows_compared": 599,
+      "max_abs_diff_w": 2.2786458202972426e-05,
+      "first_bad_row": -1
+    }
+  },
+  "environment": {
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "cpu_count": 8,
+    "python": "3.12.3",
+    "scipy": "1.17.1",
+    "highs": "?",
+    "time_limit_s": 3600.0,
+    "mip_rel_gap": 0.0,
+    "one_solve_at_a_time": true,
+    "model_version": 2,
+    "min_time_between_events": 1.0,
+    "datacenter_scheduling_interval": 1.0,
+    "sites": [
+      {
+        "name": "DC_Nordic",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 10,
+        "vms": 20,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_Germany",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 8,
+        "vms": 16,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_US_East",
+        "profile": "SPEC_ASUS_RS700A_DYN",
+        "hosts": 5,
+        "vms": 20,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 128,
+        "host_mips": 50000,
+        "max_w": 324.0,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_US_West",
+        "profile": "SPEC_ASUS_RS700A_DYN",
+        "hosts": 4,
+        "vms": 16,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 128,
+        "host_mips": 50000,
+        "max_w": 324.0,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_APAC",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 3,
+        "vms": 6,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      }
+    ]
+  }
+}

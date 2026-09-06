@@ -51,6 +51,10 @@ def atomic_json(path, obj):
 LAMBDAS = (0.75, 0.5, 0.25, 0.0)
 RUNGS = ("truth", "shrink_0.75", "shrink_0.5", "shrink_0.25", "shrink_0", "shuffle", "anti")
 CLOSURE_REL = 0.03
+# version-2 closure (prereg v2 §4): the energy terms are gated separately so nothing can hide
+# under the composite carbon figure
+CLOSURE_DRAW_REL = 0.001
+CLOSURE_BROWN_ABS_WH = 0.002
 QUANT_FRAC = 0.001
 C_BROWN_REF = 0.01897
 HEADROOM_REL, HEADROOM_ABS = 0.15, 0.05 * C_BROWN_REF
@@ -227,14 +231,25 @@ def rung_curve(truth_w, rung, mu_w, seed_key):
     raise ValueError(rung)
 
 
-def closure_check(c_model, c_sim, ledger_rows, schedule, counters):
-    """Per rung and window (B2 + C5). ledger_rows: option-ledger rows of the replay
+def closure_check(c_model, c_sim, ledger_rows, schedule, counters, energy=None):
+    """Per rung and window (B2 + C5, v2 §4). ledger_rows: option-ledger rows of the replay
     (id, dc, t_s, route_to_start_steps, stale); schedule: {id: (site, start)}; counters: dict
-    of the zero-required fields. Returns {"pass", "violations", "rel_err"}."""
+    of the zero-required fields; energy: optional {"draw_model", "draw_sim", "brown_model",
+    "brown_sim"} in Wh gated separately. Returns {"pass", "violations", "rel_err", ...}."""
     v = []
     rel = abs(c_sim - c_model) / c_model if c_model > 0 else float("inf")
     if rel > CLOSURE_REL:
         v.append(f"carbon rel err {rel:.4f} > {CLOSURE_REL}")
+    terms = {}
+    if energy:
+        dm, ds = float(energy["draw_model"]), float(energy["draw_sim"])
+        drel = abs(ds - dm) / dm if dm > 0 else float("inf")
+        babs = abs(float(energy["brown_sim"]) - float(energy["brown_model"]))
+        terms = {"draw_rel_err": drel, "brown_abs_err_wh": babs}
+        if drel > CLOSURE_DRAW_REL:
+            v.append(f"draw rel err {drel:.5f} > {CLOSURE_DRAW_REL}")
+        if babs > CLOSURE_BROWN_ABS_WH:
+            v.append(f"brown abs err {babs:.5f} Wh > {CLOSURE_BROWN_ABS_WH}")
     seen = {}
     for r in ledger_rows:
         jid = int(float(r["id"]))
@@ -259,7 +274,7 @@ def closure_check(c_model, c_sim, ledger_rows, schedule, counters):
     for k, val in counters.items():
         if float(val or 0) != 0:
             v.append(f"{k} = {val} != 0")
-    return {"pass": not v, "violations": v, "rel_err": rel}
+    return {"pass": not v, "violations": v, "rel_err": rel, **terms}
 
 
 def gate_l1(c_flat, c_truth):
@@ -415,7 +430,9 @@ def cmd_solve(rungs=RUNGS):
             if res["status"] == "OPTIMAL":
                 st = settle(inst_truth, res["schedule"])
                 rec.update({"J_on_rung": res["J_int"], "C_model_truth_kg": st["C_kg"], "J_model_truth": st["J_int"],
-                            "rmse_vs_truth_w": float(np.sqrt(np.mean((G - truth) ** 2)))})
+                            "rmse_vs_truth_w": float(np.sqrt(np.mean((G - truth) ** 2))),
+                            "draw_model_wh": float(st["draw_mw"].sum() / 3.6e6), "brown_model_wh": float(st["brown_mw"].sum() / 3.6e6),
+                            "green_model_wh": float(st["green_mw"].sum() / 3.6e6)})
             # Addendum E3: every outcome is written atomically the moment the solve returns
             atomic_json(os.path.join(LAD, "solve", f"k{k}_{rung}.json"),
                         {"window": k, "offset": off, "rung": rung,
@@ -569,7 +586,11 @@ def cmd_judge(rungs=RUNGS):
             counters["completion_short"] = max(0.0, 0.995 - float(row.get("completion_rate_mi", 1) or 1))
             counters["ontime_short"] = max(0.0, 0.995 - float(row.get("ontime_mi_share", 1) or 1))
             cs, cm = float(row["total_carbon_kg"]), float(rec["C_model_truth_kg"])
-            chk = closure_check(cm, cs, led, sched, counters)
+            energy = None
+            if rec.get("draw_model_wh") is not None:
+                energy = {"draw_model": rec["draw_model_wh"], "draw_sim": row.get("total_energy_wh", 0),
+                          "brown_model": rec["brown_model_wh"], "brown_sim": row.get("brown_used_wh", 0)}
+            chk = closure_check(cm, cs, led, sched, counters, energy)
             # diagnostic C: the replay's observed green rows must equal the planner's truth
             # curve row by row (signatures on both sides); a replay past the curve is a failure
             curve = sk.get("curve") or {}
