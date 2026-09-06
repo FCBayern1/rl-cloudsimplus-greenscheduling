@@ -102,7 +102,9 @@ def sentinel():
                 r["obs_rows_match"] = bool(lr.curve_rows_match(G, G_obs.T)[0])
                 # 3: the key recomputed from the dumped series and committed grid == published key
                 cov = np.asarray(z["cand_green_cover"], dtype=np.float64); occ = np.asarray(z["committed_pes"], dtype=np.float64)
-                st = np.asarray(z["committed_static_w"], dtype=np.float64); lag = int(np.asarray(z["committed_lag"]).reshape(-1)[0])
+                st = np.asarray(z["committed_static_w"], dtype=np.float64)
+                lag_arr = np.asarray(z["committed_lag"], dtype=np.float64).reshape(-1)
+                lag = int(lag_arr[np.isfinite(lag_arr)][0])
                 pes = np.asarray(z["batch_cloudlet_pes"]); mi = np.asarray(z["batch_cloudlet_mi"])
                 rows = list(csv.DictReader(open(dump)))
                 ids_by_t = {}
