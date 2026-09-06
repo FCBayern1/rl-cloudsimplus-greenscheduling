@@ -1,6 +1,6 @@
 # RL / EU-CRD on the certification twin (preregistration DRAFT, 2026-09-06)
 
-Status: DRAFT, not frozen. Conditional on F3 passing its executed-capture gate (reports/F_FITS_PREREG.md). Written after the offline ladder (LADDER_READ), the causal expert (CAUSAL_READ: capture 0.968, λ = 0.75 harms 6/6 windows by +51.8 %) and before any RL training. Order per the user's ruling of 2026-09-06. Freezing this document commits GPU-days on two machines; it is frozen only after the user has read it. The 2020 confirmation windows stay sealed until the freeze names them.
+Status: DRAFT, not frozen; to be rewritten as four lines after F_FITS_V2 (reports/F_FITS_V2_PREREG.md §7). Every RL number from Stage D or the step-2 pilot is stale-forecast legacy (STAGE_D_PREREG.md Addendum J) and is not used here. Written after the offline ladder (LADDER_READ), the causal expert (CAUSAL_READ: capture 0.968, λ = 0.75 harms 6/6 windows by +51.8 %) and before any RL training. Order per the user's ruling of 2026-09-06. Freezing this document commits GPU-days on two machines; it is frozen only after the user has read it. The 2020 confirmation windows stay sealed until the freeze names them.
 
 ## 1. Claim under test
 
