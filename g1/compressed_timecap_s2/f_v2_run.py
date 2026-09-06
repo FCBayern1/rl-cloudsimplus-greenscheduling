@@ -86,7 +86,7 @@ def sentinel():
             if ok:
                 z = np.load(dump.replace(".csv", "_obs.npz"))
                 G_obs = np.asarray(z["dc_current_green_power_w"], dtype=np.float64)          # (T, n)
-                fgs = np.asarray(z["future_green_series"], dtype=np.float64)                  # (T, n, H)
+                fgs = np.asarray(z["_sentinel_future_green_series"], dtype=np.float64)        # (T, n, H)
                 T, n, H = fgs.shape
                 G, _ = lr.truth_curve(blk, off, T + H + 2)
                 # 1: series index h at step t == simulator green at step t + h (F2 exact; F3: index 0 only)
@@ -101,9 +101,9 @@ def sentinel():
                 r["series_max_abs_err_w"] = err1
                 r["obs_rows_match"] = bool(lr.curve_rows_match(G, G_obs.T)[0])
                 # 3: the key recomputed from the dumped series and committed grid == published key
-                cov = np.asarray(z["cand_green_cover"], dtype=np.float64); occ = np.asarray(z["committed_pes"], dtype=np.float64)
-                st = np.asarray(z["committed_static_w"], dtype=np.float64)
-                lag_arr = np.asarray(z["committed_lag"], dtype=np.float64).reshape(-1)
+                cov = np.asarray(z["cand_green_cover"], dtype=np.float64); occ = np.asarray(z["_sentinel_committed_pes"], dtype=np.float64)
+                st = np.asarray(z["_sentinel_committed_static_w"], dtype=np.float64)
+                lag_arr = np.asarray(z["_sentinel_committed_lag"], dtype=np.float64).reshape(-1)
                 lag = int(lag_arr[np.isfinite(lag_arr)][0])
                 pes = np.asarray(z["batch_cloudlet_pes"]); mi = np.asarray(z["batch_cloudlet_mi"])
                 rows = list(csv.DictReader(open(dump)))

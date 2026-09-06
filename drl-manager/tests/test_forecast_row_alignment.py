@@ -48,3 +48,11 @@ def test_future_series_uses_provider_index_h_for_step_h():
     raw = np.array([100.0, 200.0, 300.0, 400.0]) * 3000.0        # provider: now, +1, +2, +3 (W before the divisor)
     out = future_series_from_raw(99.0, raw, 6, 3000.0)
     assert out.tolist() == [99.0, 200.0, 300.0, 400.0, 99.0, 99.0]   # index 0 measured present; h -> raw[h]; tail repeats
+
+
+def test_observation_row_is_the_clock_minus_the_event_spacing():
+    from gym_cloudsimplus.envs.hierarchical_multidc_env import obs_row_from_clock
+    assert obs_row_from_clock(4.0, 1.0, 99) == 3                # certification twin: step 3 at clock 4.0
+    assert obs_row_from_clock(33.01, 0.01, 99) == 33            # the discarded 0.01 s trial
+    assert obs_row_from_clock(0.0, 1.0, 0) == 0                 # reset: never negative
+    assert obs_row_from_clock(None, 1.0, 7) == 7                # no clock published: the counter

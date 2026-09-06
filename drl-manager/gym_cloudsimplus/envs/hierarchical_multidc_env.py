@@ -113,6 +113,15 @@ def future_series_from_raw(current_w: float, raw_w: np.ndarray, horizon: int, di
         out[1:1 + n] = np.maximum(0.0, arr[1:1 + n])
     return out
 
+
+def obs_row_from_clock(clock, min_time_between_events: float, fallback: int) -> int:
+    """Observation row index from the simulator clock: obs row t is sampled at clock t + mte
+    (measured: mte 1.0 -> step 3 at clock 4.0; mte 0.01 -> step 33 at clock 33.01). Falls back to
+    the env's own counter when no clock is published; never negative."""
+    if clock is None:
+        return int(fallback)
+    return max(0, int(round(float(clock) - float(min_time_between_events))))
+
 def simulator_row_shift(dc_cfg: dict) -> int:
     """Rows to add to a Python provider's per-DC offset so its row 'clock' is the row the
     simulator reads at that clock."""
@@ -2111,7 +2120,16 @@ class HierarchicalMultiDCEnv(gym.Env):
             return out
         if self.timecap_provider is not None:
             # provider index 0 is the simulator's current row (after the 2026-09-06 row-shift
-            # fix), so future step h is provider index h, never h - 1
+            # fix), so future step h is provider index h, never h - 1. The provider's cache is
+            # refreshed at THIS observation's clock first: the option features are built before
+            # the forecast summaries step the provider, and the stale cache of the previous step
+            # made index h describe row t + h - 1 (F_FITS_V2 sentinel, 2026-09-07).
+            ch = getattr(self, "_planner_channel", None) or {}
+            if ch.get("current_clock") is not None:
+                try:
+                    self.timecap_provider.step_and_get(int(round(float(ch["current_clock"]))))
+                except Exception as _e:  # noqa: BLE001
+                    logger.warning("forecast provider refresh failed: %s", _e)
             raw = self.timecap_provider.get_raw_forecast_per_dc(horizon=H, normalize=False)
             if raw is None:
                 return out
@@ -2150,7 +2168,11 @@ class HierarchicalMultiDCEnv(gym.Env):
             if offset and getattr(self, "cand_green_cover", False):
                 obs["cand_green_cover"] = np.zeros((nb, width), dtype=np.float32)
             return
-        t = int(self.current_step)
+        # The row this observation stands for. step() increments current_step only after the
+        # observation is built, so current_step is one behind the executor's step at which the
+        # action will be applied (start = t + kappa + 1 with t the observation's row, certified
+        # 2026-09-06). The clock carries the row exactly: obs row t <-> clock t + mte.
+        t = obs_row_from_clock(ch.get("current_clock"), float(self.config.get("min_time_between_events", 0.1)), int(self.current_step))
         if offset:
             obs[mask_key] = ex.offset_allowed(t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, self._offset_grid)
             if getattr(self, "cand_green_cover", False):
@@ -2160,10 +2182,12 @@ class HierarchicalMultiDCEnv(gym.Env):
                     # row-alignment sentinel (F_FITS_V2 §1): expose the series the key was built from
                     # and the executor's committed grid so the key can be recomputed exactly
                     # (the planner channel is rebuilt later in the step, so this lives on its own attribute)
-                    self._sentinel_channel = {"future_green_series": np.asarray(series, dtype=np.float64).copy(),
-                                              "committed_pes": np.asarray(ex.occ, dtype=np.float64).copy(),
-                                              "committed_static_w": np.asarray(ex.static, dtype=np.float64).copy(),
-                                              "committed_lag": int(ex.lag)}
+                    # attached to THIS observation dict (the builder may run more than once per
+                    # step; the executor's grid changes in between), keys the policy never reads
+                    obs["_sentinel_future_green_series"] = np.asarray(series, dtype=np.float64).copy()
+                    obs["_sentinel_committed_pes"] = np.asarray(ex.occ, dtype=np.float64).copy()
+                    obs["_sentinel_committed_static_w"] = np.asarray(ex.static, dtype=np.float64).copy()
+                    obs["_sentinel_committed_lag"] = np.asarray(int(ex.lag))
                 u = float(self.config.get("cloudlet_cpu_utilization", 1.0) or 1.0)
                 obs["cand_green_cover"] = _cover(
                     series, ex.occ, pes, mi, ch["batch_cloudlet_ids"], t, self._offset_grid,
