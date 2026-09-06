@@ -543,9 +543,10 @@ class _DecisionDump:
                                         clock=pl.get("current_clock")))
         if self.save_obs and isinstance(obs_global, dict):
             rec = {k: np.asarray(v) for k, v in obs_global.items()}
-            fgs = pl.get("future_green_series") if isinstance(pl, dict) else None
-            if fgs is not None:
-                rec["future_green_series"] = np.asarray(fgs)          # sentinel side channel, F_FITS_V2 §1
+            if isinstance(pl, dict):
+                for key in ("future_green_series", "committed_pes", "committed_static_w", "committed_lag"):
+                    if pl.get(key) is not None:
+                        rec[key] = np.asarray(pl[key])                  # sentinel side channel, F_FITS_V2 §1
             self._obs.append(rec)
 
     def close(self):

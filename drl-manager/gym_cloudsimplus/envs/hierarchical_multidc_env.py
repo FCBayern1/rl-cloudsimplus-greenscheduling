@@ -2158,7 +2158,11 @@ class HierarchicalMultiDCEnv(gym.Env):
                 series = self._future_green_series(obs, self._cand_horizon_steps)
                 if os.environ.get("FORECAST_ALIGN_DUMP", "") == "1":
                     # row-alignment sentinel (F_FITS_V2 §1): expose the series the key was built from
+                    # and the executor's committed grid so the key can be recomputed exactly
                     self._planner_channel["future_green_series"] = np.asarray(series, dtype=np.float64).copy()
+                    self._planner_channel["committed_pes"] = np.asarray(ex.occ, dtype=np.float64).copy()
+                    self._planner_channel["committed_static_w"] = np.asarray(ex.static, dtype=np.float64).copy()
+                    self._planner_channel["committed_lag"] = int(ex.lag)
                 u = float(self.config.get("cloudlet_cpu_utilization", 1.0) or 1.0)
                 obs["cand_green_cover"] = _cover(
                     series, ex.occ, pes, mi, ch["batch_cloudlet_ids"], t, self._offset_grid,

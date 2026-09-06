@@ -170,24 +170,31 @@ def curve_rows_match(G_planner, G_obs, tol_w=1e-3):
     return (bad.size == 0), int(n), float(diff.max() if n else 0.0), (int(bad[0]) if bad.size else -1)
 
 
-def cert_config(mode):
-    """The certification twin: the development twin of `mode` with the simulator's
-    min_time_between_events set to CERT_MIN_TIME_BETWEEN_EVENTS (diagnostic B). Written on every
-    call to config_ladder_cert_{mode}.yml; the scene's own configs are untouched."""
+def cert_config(mode, allowlist=None, tag=None):
+    """The certification twin: the development twin of `mode` with every datacenter's
+    cloudlet-processing updates aligned to the step grid (diagnostic B) and the scene's
+    min_time_between_events verified (the clock grid). Written on every call to
+    config_ladder_cert_{mode}[_{tag}].yml; the scene's own configs are untouched. `allowlist`
+    replaces the episode-offset allowlist (F_FITS_V2 windows): a --reset-skip k run then
+    simulates allowlist[k]."""
     import yaml
     import run_stage_a as rs
     src_path, cell = rs.scene_dev_config(mode)
     cfg = yaml.safe_load(open(src_path))
     blk = cfg[cell]
+    if allowlist is not None:
+        blk["green_episode_offset_allowlist"] = ";".join(str(int(o)) for o in allowlist)
     if abs(float(blk.get("min_time_between_events", 0.1)) - CERT_MIN_TIME_BETWEEN_EVENTS) > 1e-12:
         raise LadderStop(f"STOP_CLOCK_GRID: the scene's min_time_between_events is {blk.get('min_time_between_events')}, "
                          f"the certification mapping assumes {CERT_MIN_TIME_BETWEEN_EVENTS}")
     for d in blk["datacenters"]:
         d["datacenter_scheduling_interval"] = CERT_SCHEDULING_INTERVAL
-    path = os.path.join(HERE, f"config_ladder_cert_{mode}.yml")
+    path = os.path.join(HERE, f"config_ladder_cert_{mode}{'_' + tag if tag else ''}.yml")
     with open(path, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=True)
     return path, cell
+
+
 def jobs_from_dump(rows, vm_pe_mips, cpu_util, timestep_sec=1.0):
     """Jobs as the simulator presented them: first sighting step = arrival, deadline step =
     arrival + floor(ttd / timestep) at that sighting. Pure."""

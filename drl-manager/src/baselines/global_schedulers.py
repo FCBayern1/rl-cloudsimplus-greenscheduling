@@ -2789,6 +2789,8 @@ class CausalExpertGlobalScheduler(GlobalScheduler):
         self.vm_mips = float(self.blk["datacenters"][0].get("vm_pe_mips", 40000))
         self.util = float(self.blk.get("cloudlet_cpu_utilization", 1.0))
         self.time_limit_s = float(os.environ.get("CAUSAL_TIME_LIMIT_S", "120"))
+        # F_FITS_V2 §3: with CAUSAL_LABEL_COSTS=<path.npz> every decision's true candidate costs are written
+        self.label_path = os.environ.get("CAUSAL_LABEL_COSTS", "").strip() or None
         truth, meta = lr.truth_curve(self.blk, self.offset_rows, self.horizon_rows)
         self.curve_w = lr.rung_curve(truth, self.rung, lr._mu_w(self.blk), seed_key=f"ladder:{self.offset_rows}")
         self.curve_signature = lr.curve_signature(self.curve_w)
@@ -2806,6 +2808,9 @@ class CausalExpertGlobalScheduler(GlobalScheduler):
         self.n_unsolved = 0
         self.solve_wall_s = []
         self.solve_status = {}
+        self.labels = []
+        self.n_label_excluded = 0
+        self.n_label_inconsistent = 0
 
     def _job_facts(self, planner, j):
         from ladder_planner import Job
@@ -2852,6 +2857,23 @@ class CausalExpertGlobalScheduler(GlobalScheduler):
             slot_of[jid] = j
         if new_jobs:
             sched, _ = self.decide(t, new_jobs, masks, grid)
+            if self.label_path and sched:
+                labels = candidate_cost_rows(t, new_jobs, masks, grid, self.sites, self.curve_w, self.committed_draw,
+                                             self.committed_occ, start_lag=self.START_LAG, plan_lag=self.PLAN_LAG,
+                                             time_limit_s=self.time_limit_s)
+                for jid, lab in labels.items():
+                    d, s = sched.get(jid, (None, None))
+                    a = None if d is None else d * K + grid.index(s - t - self.START_LAG)
+                    finite = np.isfinite(lab["costs"])
+                    cmin = float(lab["costs"][finite].min()) if finite.any() else float("inf")
+                    in_min = bool(a is not None and np.isfinite(lab["costs"][a]) and lab["costs"][a] <= cmin + 0.5)
+                    self.labels.append({"id": int(jid), "t": int(t), "slot": int(slot_of[jid]), "action": (-1 if a is None else int(a)),
+                                        "costs": lab["costs"].astype(np.float64), "excluded": lab["excluded"],
+                                        "n_resolves": lab["n_resolves"], "action_in_min_set": in_min})
+                    if lab["excluded"]:
+                        self.n_label_excluded += 1
+                    if not lab["excluded"] and not in_min:
+                        self.n_label_inconsistent += 1
             for jid, (d, s) in sched.items():
                 jb = new_jobs[jid]
                 self.plan[jid] = (int(d), int(s))
@@ -2878,7 +2900,17 @@ class CausalExpertGlobalScheduler(GlobalScheduler):
         return out
 
     def counters(self):
+        if self.label_path and self.labels:
+            np.savez(self.label_path,
+                     ids=np.array([r["id"] for r in self.labels]), t=np.array([r["t"] for r in self.labels]),
+                     slot=np.array([r["slot"] for r in self.labels]), action=np.array([r["action"] for r in self.labels]),
+                     costs=np.stack([r["costs"] for r in self.labels]), excluded=np.array([r["excluded"] for r in self.labels]),
+                     n_resolves=np.array([r["n_resolves"] for r in self.labels]),
+                     action_in_min_set=np.array([r["action_in_min_set"] for r in self.labels]),
+                     curve_signature=np.array(self.curve_signature), rung=np.array(self.rung))
         return {"causal_decisions": self.n_decisions, "causal_unsolved": self.n_unsolved,
+                "causal_label_excluded": self.n_label_excluded, "causal_label_inconsistent": self.n_label_inconsistent,
+                "causal_labels": len(self.labels),
                 "causal_fallback": self.n_masked_fallback, "causal_rung": self.rung,
                 "causal_curve_signature": self.curve_signature, "causal_truth_signature": self.truth_signature,
                 "causal_solve_wall_max_s": (max(self.solve_wall_s) if self.solve_wall_s else 0.0),
@@ -2892,9 +2924,21 @@ def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, comm
     curve; committed_draw (n, H) mW and committed_occ (n, H+1) the reservations so far.
     Candidate start s = t + kappa + start_lag for every legal kappa >= 1 within the job's
     window. Returns ({id: (site, start)}, solver record); {} when not proven optimal."""
-    from ladder_planner import build_instance, solve_milp, Job
-    n, K = len(sites), len(grid)
-    H = int(np.asarray(curve_w).shape[1])
+    from ladder_planner import build_instance, solve_milp
+    jobs, allowed = legal_starts_by_site(t, new_jobs, masks, grid, len(sites), int(np.asarray(curve_w).shape[1]), start_lag, plan_lag)
+    inst = build_instance(jobs, list(sites), np.asarray(curve_w), base_draw_mw=committed_draw,
+                          base_occ=committed_occ, starts_by_site=allowed)
+    res = solve_milp(inst, time_limit_s=time_limit_s)
+    if res.get("status") != "OPTIMAL":
+        return {}, res
+    return res["schedule"], res
+
+
+def legal_starts_by_site(t, new_jobs, masks, grid, n, H, start_lag=1, plan_lag=2):
+    """(jobs, {id: {site: [starts]}}) for the newly visible jobs: start s = t + kappa + start_lag
+    for every kappa >= 1 the executor's legality row allows, inside [t + plan_lag, latest]."""
+    from ladder_planner import Job
+    K = len(grid)
     jobs, allowed = [], {}
     for jid, jb in new_jobs.items():
         job = Job(id=jid, arrival=t, runtime=jb.runtime, pes=jb.pes, deadline=jb.deadline)
@@ -2914,12 +2958,30 @@ def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, comm
                     continue
                 starts.append(s)
             allowed[jid][d] = starts
+    return jobs, allowed
+
+
+def candidate_cost_rows(t, new_jobs, masks, grid, sites, curve_w, committed_draw, committed_occ,
+                        start_lag=1, plan_lag=2, time_limit_s=120.0):
+    """F_FITS_V2 §3 labels for one step: {id: {"costs": (n*K,) float array with inf where illegal,
+    "excluded": bool, "n_resolves": int}} from ladder_planner.candidate_costs (single job: exact
+    increments; several jobs: fix-and-resolve)."""
+    from ladder_planner import build_instance, candidate_costs
+    n, K = len(sites), len(grid)
+    jobs, allowed = legal_starts_by_site(t, new_jobs, masks, grid, n, int(np.asarray(curve_w).shape[1]), start_lag, plan_lag)
     inst = build_instance(jobs, list(sites), np.asarray(curve_w), base_draw_mw=committed_draw,
                           base_occ=committed_occ, starts_by_site=allowed)
-    res = solve_milp(inst, time_limit_s=time_limit_s)
-    if res.get("status") != "OPTIMAL":
-        return {}, res
-    return res["schedule"], res
+    out = {}
+    for job in jobs:
+        others = [o for o in jobs if o.id != job.id]
+        cc = candidate_costs(inst, job, others, allowed, time_limit_s=time_limit_s)
+        arr = np.full(n * K, np.inf)
+        for (d, s), c in cc["costs"].items():
+            kappa = s - t - start_lag
+            if kappa in grid:
+                arr[d * K + grid.index(kappa)] = float(c)
+        out[job.id] = {"costs": arr, "excluded": bool(cc["excluded"]), "n_resolves": int(cc["n_resolves"])}
+    return out
 
 
 class CoverArgmaxGlobalScheduler(GlobalScheduler):
@@ -2978,6 +3040,55 @@ def cover_argmax_action(cover_row, mask_row, num_dcs):
     best = float(c.max())
     cands = np.where(c >= best - 1e-12)[0]
     return int(min(cands, key=lambda a: (a % K, a // K)))
+
+
+class CoverResidualGlobalScheduler(GlobalScheduler):
+    """cover_residual (F_FITS_V2 §4): the frozen candidate-shared scorer, score = cover +
+    residual(features), decoded by argmax over the legal candidates with exact ties broken by
+    smaller kappa then smaller site. COVER_RESIDUAL_MODEL names the directory of the fit."""
+
+    HANDLES_DEFER = True
+    OPTION = True
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        from src.baselines.cover_residual import load
+        path = os.environ.get("COVER_RESIDUAL_MODEL", "").strip()
+        if not path:
+            raise RuntimeError("cover_residual needs COVER_RESIDUAL_MODEL")
+        self.model, self.meta = load(path)
+        self.decided = set()
+        self.n_decisions = 0
+        self.n_no_cover = 0
+
+    def reset(self):
+        self.decided = set()
+
+    def schedule(self, global_obs):
+        from src.baselines.cover_residual import features_from_obs, decode
+        n = self.num_datacenters
+        planner = global_obs.get("planner") or {}
+        ids = np.asarray(planner.get("batch_cloudlet_ids", [-1] * self.batch_size), dtype=np.int64)
+        cover = global_obs.get("cand_green_cover")
+        K = int(np.asarray(cover).shape[-1] // n) if cover is not None else int(os.environ.get("OFFSET_WAIT_CAP_STEPS", "72")) + 1
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0); continue
+            if cover is None:
+                self.n_no_cover += int(jid not in self.decided); self.decided.add(jid)
+                out.append(0); continue
+            X, cov, legal = features_from_obs(global_obs, planner, j, n, K)
+            a = decode(self.model.scores_np(X), legal, K)
+            if jid not in self.decided:
+                self.decided.add(jid); self.n_decisions += 1
+            out.append(a)
+        return out
+
+    def counters(self):
+        return {"cover_residual_decisions": self.n_decisions, "cover_residual_missing": self.n_no_cover,
+                "cover_residual_model": os.environ.get("COVER_RESIDUAL_MODEL", "")}
 
 
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
@@ -3077,6 +3188,7 @@ GLOBAL_SCHEDULERS = {
     'schedule_replay': ScheduleReplayGlobalScheduler,
     'causal_expert': CausalExpertGlobalScheduler,
     'cover_argmax': CoverArgmaxGlobalScheduler,
+    'cover_residual': CoverResidualGlobalScheduler,
     'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,

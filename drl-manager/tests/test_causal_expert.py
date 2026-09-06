@@ -66,3 +66,19 @@ def test_cover_argmax_takes_the_best_legal_candidate_with_deterministic_ties():
     assert cover_argmax_action(cover, None, n) == 1 * K + 0          # legal now: kappa 0 wins the tie
     assert cover_argmax_action(cover, np.zeros(n * K), n) == 0       # nothing legal
     assert cover_argmax_action(None, mask, n) == 0
+
+
+def test_candidate_cost_rows_put_the_experts_action_in_the_minimum_set():
+    from src.baselines.global_schedulers import candidate_cost_rows
+    sites = _sites(); H = 200
+    curve = np.zeros((2, H)); curve[0, 30:36] = 70.0; curve[1, 60:66] = 140.0
+    zero = np.zeros((2, H), dtype=np.int64); occ = np.zeros((2, H + 1), dtype=np.int64)
+    jobs = {7: Job(id=7, arrival=10, runtime=6, pes=32, deadline=150), 8: Job(id=8, arrival=10, runtime=6, pes=32, deadline=150)}
+    sched, _ = causal_decide(10, jobs, {7: None, 8: None}, GRID, sites, curve, zero, occ)
+    labels = candidate_cost_rows(10, jobs, {7: None, 8: None}, GRID, sites, curve, zero, occ, time_limit_s=30)
+    K = len(GRID)
+    for jid, (d, s) in sched.items():
+        a = d * K + (s - 10 - 1)
+        c = labels[jid]["costs"]; assert not labels[jid]["excluded"] and np.isfinite(c[a])
+        assert c[a] <= c[np.isfinite(c)].min() + 0.5                                 # the expert's action is a minimum-cost candidate
+    assert labels[7]["n_resolves"] > 0                                               # joint state: fix-and-resolve was used

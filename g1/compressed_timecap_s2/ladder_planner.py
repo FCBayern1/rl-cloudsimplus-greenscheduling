@@ -455,3 +455,50 @@ def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8, 
         out["C_kg"] = out["J_int"] * KG_PER_UNIT
         out["bound"] = solver.BestObjectiveBound()
     return out
+
+
+def candidate_costs(inst: Instance, job: Job, other_jobs: Sequence[Job], allowed: Dict[int, Dict[int, Sequence[int]]],
+                    time_limit_s: float = 120.0) -> dict:
+    """F_FITS_V2 §3: the true cost of every legal candidate (site, start) of `job` on the
+    instance's committed load. Single new job (other_jobs empty): the exact objective increment
+    J(placed) - J(base) = sum over its rows of 49 * (brown(base + P) - brown(base)) + P, with a
+    candidate violating the occupancy premise marked illegal. Several new jobs: the candidate is
+    fixed (its draw and occupancy added to the base) and the others are re-solved to proven
+    optimality; the cost is the increment plus their optimal objective; an unproven re-solve
+    marks the state excluded. Returns {"costs": {(site, start): int}, "excluded": bool,
+    "n_resolves": int, "unproven": int}."""
+    n, T = inst.curves_mw.shape
+    Geff = inst.eff_curve_mw()
+    base_occ = inst.base_occ if inst.base_occ is not None else np.zeros((n, T + 1), dtype=np.int64)
+    costs: Dict[Tuple[int, int], int] = {}
+    n_res = unproven = 0
+    for d in range(n):
+        P = inst.sites[d].job_power_mw(job.pes)
+        for s in allowed.get(job.id, {}).get(d, []):
+            e = s + job.runtime
+            if e > T:
+                continue
+            if int((base_occ[d, s:e + 1] + 1).max()) > inst.sites[d].hosts:
+                continue                                                    # premise A: illegal
+            g = Geff[d, s:e]
+            brown_after = np.maximum(0, P - g).sum()                        # brown(base + P) - brown(base) per row = max(0, P - Geff) - max(0, -Geff)
+            brown_before = np.maximum(0, -g).sum()
+            inc = int((RATIO - 1) * (brown_after - brown_before) + P * job.runtime)
+            if other_jobs:
+                bd = (inst.base_draw_mw.copy() if inst.base_draw_mw is not None else np.zeros((n, T), dtype=np.int64))
+                bo = base_occ.copy()
+                bd[d, s:e] += P; bo[d, s:e + 1] += 1
+                sub = build_instance(list(other_jobs), inst.sites, inst.curves_mw / 1000.0, base_draw_mw=bd, base_occ=bo,
+                                     starts_by_site={o.id: allowed[o.id] for o in other_jobs})
+                res = solve_milp(sub, time_limit_s=time_limit_s)
+                n_res += 1
+                if res.get("status") != "OPTIMAL":
+                    unproven += 1
+                    return {"costs": {}, "excluded": True, "n_resolves": n_res, "unproven": unproven}
+                const = int(bd[:, :T].sum())
+                # J of the sub-solve counts brown on the full draw and the full draw; relative to the
+                # base (without this candidate) the others' increment is fun - (constant of base+cand)
+                others_inc = int(round(res["fun"] + const - int(settle(build_instance([], inst.sites, inst.curves_mw / 1000.0, base_draw_mw=bd, base_occ=bo), {})["J_int"])))
+                inc += others_inc
+            costs[(d, s)] = inc
+    return {"costs": costs, "excluded": False, "n_resolves": n_res, "unproven": unproven}

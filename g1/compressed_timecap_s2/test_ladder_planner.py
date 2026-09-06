@@ -192,3 +192,30 @@ def test_committed_load_and_masked_starts_are_exact():
     r3 = solve_milp(inst3, time_limit_s=30)
     assert r3["status"] == "OPTIMAL" and r3["schedule"][1][1] in (7, 8)
     assert any("not a legal" in v for v in verify_schedule(inst3, {1: (0, 10)}))
+
+
+def test_candidate_costs_agree_with_the_solver_on_single_and_joint_states():
+    from ladder_planner import site_from_profile, candidate_costs, solve_milp
+    site = site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=2, vms=4)
+    G = np.full((1, 40), 30.0); G[0, 10:16] = 70.0; G[0, 20:26] = 140.0
+    base_d = np.zeros((1, 40), dtype=np.int64); base_o = np.zeros((1, 41), dtype=np.int64)
+    job = Job(id=1, arrival=0, runtime=6, pes=32, deadline=39)
+    allowed = {1: {0: list(range(2, 30))}}
+    inst = build_instance([job], [site], G, base_draw_mw=base_d, base_occ=base_o, starts_by_site=allowed)
+    out = candidate_costs(inst, job, [], allowed)
+    assert not out["excluded"] and len(out["costs"]) == 28
+    best = min(out["costs"].values()); argmin = {k for k, v in out["costs"].items() if v == best}
+    sol = solve_milp(inst, time_limit_s=30)
+    assert sol["status"] == "OPTIMAL" and sol["schedule"][1] in argmin           # solver's choice is a minimum-cost candidate
+    # the increment equals the settled objective of the placement (base is empty)
+    s_best = sorted(argmin)[0]
+    assert settle(inst, {1: (0, s_best[1])})["J_int"] == best
+    # joint state: two new jobs, fix job 1 and re-solve job 2; the joint minimum matches the joint solver
+    job2 = Job(id=2, arrival=0, runtime=6, pes=32, deadline=39)
+    allowed2 = {1: allowed[1], 2: {0: list(range(2, 30))}}
+    inst2 = build_instance([job, job2], [site], G, base_draw_mw=base_d, base_occ=base_o, starts_by_site=allowed2)
+    out2 = candidate_costs(inst2, job, [job2], allowed2, time_limit_s=30)
+    assert not out2["excluded"] and out2["n_resolves"] == 28
+    joint = solve_milp(inst2, time_limit_s=30)
+    assert joint["status"] == "OPTIMAL" and min(out2["costs"].values()) == joint["J_int"]
+    assert out2["costs"][joint["schedule"][1]] == joint["J_int"]
