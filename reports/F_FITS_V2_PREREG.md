@@ -60,3 +60,7 @@ Sentinel → windows → labels → fit and validation selection → the selecte
 ## 7. RL (not started)
 
 `RL_CERT_PREREG_DRAFT.md` stays a draft. After F2_PASS it is rewritten with four lines (vanilla without / with forecast, EU-CRD without / with forecast), one architecture with the cover starting point, one action, one budget, paired seeds, `cover_argmax` as a mandatory baseline, every legacy RL number removed, and an explicit rule on whether the fixed cover term is trainable in RL. The GPU stays parked until F2 passes.
+
+## Addendum A (2026-09-07, before any draw: the footprint of the new windows)
+
+The 2021 file has no position at all that is 2922 rows from every read window (fifteen read offsets: the six development windows, the three certification candidates, the 2021 scene pool; capacity computed = 0). The 2022 files for this fleet are stubs (no data) and 2020 is sealed. The rows an episode actually touches are: TimeCAP history 96 rows before the window, the 13-row head, the largest time-zone shift 108, the planner horizon 669 and the candidate horizon 121, about 1007 rows. Windows separated by 1200 rows therefore touch disjoint data; the 2021 capacity at 1200 is 22. The draw uses footprint 1200 with everything else unchanged (seeded hash, accepted in draw order, ≥ 1200 rows from every read window and from each other, never replaced). This is a change of a constant made before the draw, recorded here with the computation; it does not affect the read windows or any gate.

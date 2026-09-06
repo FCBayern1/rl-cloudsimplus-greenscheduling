@@ -542,7 +542,11 @@ class _DecisionDump:
                                         planner_ttd=pl.get("batch_cloudlet_time_to_deadline"),
                                         clock=pl.get("current_clock")))
         if self.save_obs and isinstance(obs_global, dict):
-            self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
+            rec = {k: np.asarray(v) for k, v in obs_global.items()}
+            fgs = pl.get("future_green_series") if isinstance(pl, dict) else None
+            if fgs is not None:
+                rec["future_green_series"] = np.asarray(fgs)          # sentinel side channel, F_FITS_V2 §1
+            self._obs.append(rec)
 
     def close(self):
         if not self.path or not self._rows:

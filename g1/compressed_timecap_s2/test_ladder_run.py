@@ -151,3 +151,18 @@ def test_closure_gates_draw_and_brown_separately():
     assert ok["pass"] and abs(ok["draw_rel_err"] - 0.02 / 30) < 1e-12
     bad = closure_check(1.0, 1.0, led, sched, {}, {"draw_model": 30.0, "draw_sim": 30.5, "brown_model": 0.65, "brown_sim": 0.66})
     assert not bad["pass"] and any("draw rel" in x for x in bad["violations"]) and any("brown abs" in x for x in bad["violations"])
+
+
+def test_f_v2_window_draw_is_seeded_and_respects_the_footprint():
+    from f_v2_windows import draw, FOOTPRINT
+    read = [16477, 4240, 9154, 33225, 13223, 49625, 36713, 30299, 259, 27364, 39729, 43574, 23604, 19663, 46630]
+    d = draw(read, n_total=12)
+    offs = d["offsets"]
+    assert FOOTPRINT == 1200
+    assert len(offs) == 12 and len(set(offs)) == 12 and d["train"] + d["val"] + d["test"] == offs
+    for i, o in enumerate(offs):
+        assert all(abs(o - r) >= FOOTPRINT for r in read)
+        assert all(abs(o - p) >= FOOTPRINT for p in offs[:i])
+        assert 0 <= o <= d["max_offset"]
+    assert draw(read, n_total=12)["offsets"] == offs                      # deterministic
+    assert draw(read, tag="other", n_total=12)["offsets"] != offs
