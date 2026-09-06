@@ -432,6 +432,12 @@ class HierarchicalMultiDCEnv(gym.Env):
             from .option_executor import offset_grid
             self._offset_grid = offset_grid(int(config.get("offset_wait_cap_steps", 72)))
         self._option_executor = None
+        # Candidate-aligned forecast feature (SCENE_INTERFACE_DESIGN §4.4, A3, B2): offset mode
+        # only; computed from the arm's own future curve through one path for every arm.
+        self.cand_green_cover = bool(config.get("cand_green_cover", False))
+        if self.cand_green_cover and self.global_action_mode != "offset_v1":
+            raise ValueError("cand_green_cover requires global_action_mode=offset_v1")
+        self._cand_horizon_steps = int(config.get("cand_green_cover_horizon_steps", 121))
         self._option_eps_steps = int(config.get("option_eps_steps", 2))
         self._opt_release_nan = 0
         self._opt_hold_refused = 0
@@ -1185,6 +1191,10 @@ class HierarchicalMultiDCEnv(gym.Env):
                     dtype=np.float32)
             for k in ("dc_held_count", "dc_held_pes", "dc_held_tightest_margin"):
                 global_spaces[k] = spaces.Box(low=0.0, high=1.0, shape=(self.num_datacenters,), dtype=np.float32)
+            if getattr(self, "cand_green_cover", False):
+                global_spaces["cand_green_cover"] = spaces.Box(
+                    low=0.0, high=1.0, shape=(self.global_routing_batch_size, self.num_datacenters * len(self._offset_grid)),
+                    dtype=np.float32)
 
         if self.obs_v32_job_forecast:
             batch_shape = (self.global_routing_batch_size,)
@@ -2041,6 +2051,39 @@ class HierarchicalMultiDCEnv(gym.Env):
             info["ep_opt_ledger_sha"] = __import__("hashlib").sha256(sig.encode()).hexdigest()[:16]
         return info
 
+    def _future_green_series(self, obs, horizon_steps: int) -> np.ndarray:
+        """(n, H) green power in W for steps t .. t + H - 1 through the arm's own channel:
+        index 0 is the measured present; the TimeCAP / perturbed-godeye provider supplies
+        the rest (raw summed kW × 1000, divided by the COMPRESSED divisor as the v32 bins
+        are), the Java oracle supplies it for godeye, and a blind arm repeats the present."""
+        n, H = self.num_datacenters, int(horizon_steps)
+        current = np.asarray(obs.get("dc_current_green_power_w", np.zeros(n)), dtype=np.float64).reshape(n)
+        out = np.repeat(current[:, None], H, axis=1)
+        if H <= 1 or self._v32_forecast_mode == "none":
+            return out
+        if self.timecap_provider is not None:
+            raw = self.timecap_provider.get_raw_forecast_per_dc(horizon=H - 1, normalize=False)
+            if raw is None:
+                return out
+            divisor = max(1e-9, float(self.config.get("compressed_power_divisor", 1.0)))
+            compressed = any(str(dc.get("time_scaling_mode", "")).upper() == "COMPRESSED" for dc in self.dc_configs)
+            for dc_index, dc_id in enumerate(self.dc_ids):
+                arr = raw.get(dc_id)
+                if arr is None or len(arr) == 0:
+                    continue
+                arr = np.asarray(arr, dtype=np.float64).reshape(-1)[:H - 1]
+                if compressed:
+                    arr = arr / divisor
+                out[dc_index, 1:1 + arr.shape[0]] = np.maximum(0.0, arr)
+            return out
+        if self.java_env is not None and hasattr(self.java_env, "getFuturePerDcGreenPowerW"):
+            secs = [max(1, int(round(h * float(self._v32_sim_timestep_sec)))) for h in range(1, H)]
+            rows = self.java_env.getFuturePerDcGreenPowerW(secs)
+            arr = np.asarray([[float(v) for v in row] for row in rows], dtype=np.float64)
+            if arr.shape == (n, H - 1):
+                out[:, 1:] = np.maximum(0.0, arr)
+        return out
+
     def _append_option_features(self, obs, ttd, present, mi, pes) -> None:
         """HOLD legality per (slot, site) (option mode) or (slot, site, κ) (offset mode) and
         the per-site held ledger, from the shared executor (OPTION_ACTION_DESIGN Addendum A3,
@@ -2056,10 +2099,20 @@ class HierarchicalMultiDCEnv(gym.Env):
             for k in ("dc_held_count", "dc_held_pes"):
                 obs[k] = np.zeros(n, dtype=np.float32)
             obs["dc_held_tightest_margin"] = np.ones(n, dtype=np.float32)
+            if offset and getattr(self, "cand_green_cover", False):
+                obs["cand_green_cover"] = np.zeros((nb, width), dtype=np.float32)
             return
         t = int(self.current_step)
         if offset:
             obs[mask_key] = ex.offset_allowed(t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, self._offset_grid)
+            if getattr(self, "cand_green_cover", False):
+                from .option_executor import cand_green_cover as _cover
+                series = self._future_green_series(obs, self._cand_horizon_steps)
+                u = float(self.config.get("cloudlet_cpu_utilization", 1.0) or 1.0)
+                obs["cand_green_cover"] = _cover(
+                    series, ex.occ, pes, mi, ch["batch_cloudlet_ids"], t, self._offset_grid,
+                    float(self._v32_vm_mips), u, static_w=ex.static, lag=ex.lag,
+                    timestep_sec=float(self._v32_sim_timestep_sec)) * obs[mask_key]
         else:
             obs[mask_key] = ex.hold_allowed(
                 t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, obs["batch_cloudlet_defer_allowed"])

@@ -47,6 +47,13 @@
       "source_sha256": "25446146e66a8a1f",
       "sha256": "427fed12bb2fe4f5",
       "block": "sv1_offset_s2_r48_w72_c3_n35"
+    },
+    "interface": {
+      "file": "config_scene_v1_interface.yml",
+      "source": "config_stage_d_dprime_interface.yml",
+      "source_sha256": "6741c90a6c67372f",
+      "sha256": "0080ad25c89cab77",
+      "block": "sv1_interface_s2_r48_w72_c3_n35"
     }
   }
 }

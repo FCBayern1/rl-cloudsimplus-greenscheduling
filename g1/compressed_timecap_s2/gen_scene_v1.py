@@ -22,7 +22,8 @@ from scene_v1 import ROWS, draw_windows  # noqa: E402
 
 OUT = os.path.join(HERE, "stage_a_out")
 BLOCK = "sd_V_s2_r48_w72_c3_n35"
-SOURCES = {"defer": "config_stage_d_dprime.yml", "offset": "config_stage_d_dprime_offset.yml"}
+SOURCES = {"defer": "config_stage_d_dprime.yml", "offset": "config_stage_d_dprime_offset.yml",
+           "interface": "config_stage_d_dprime_interface.yml"}
 TAG_2021 = "scene-interface-v1:2021:"
 N_POOL = 12
 
