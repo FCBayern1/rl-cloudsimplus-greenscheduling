@@ -2922,6 +2922,64 @@ def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, comm
     return res["schedule"], res
 
 
+class CoverArgmaxGlobalScheduler(GlobalScheduler):
+    """cover_argmax (diagnostic for the F1-F3 reading, 2026-09-06): a zero-parameter arm that
+    at each job's first sighting takes the legal (site, κ) with the largest `cand_green_cover`
+    (ties: the smallest κ, then the lowest site). It reads exactly the F2/F3 interface key and
+    nothing else, so its executed capture says whether the key itself carries the causal
+    expert's value, separating "the interface is insufficient" from "the fit did not learn"."""
+
+    HANDLES_DEFER = True
+    OPTION = True
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        self.decided = set()
+        self.n_decisions = 0
+        self.n_no_cover = 0
+
+    def reset(self):
+        self.decided = set()
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        planner = global_obs.get("planner") or {}
+        ids = np.asarray(planner.get("batch_cloudlet_ids", [-1] * self.batch_size), dtype=np.int64)
+        cover = global_obs.get("cand_green_cover")
+        mask = global_obs.get("batch_cloudlet_offset_allowed")
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0); continue
+            a = cover_argmax_action(None if cover is None or j >= len(cover) else np.asarray(cover[j], dtype=np.float64),
+                                    None if mask is None or j >= len(mask) else np.asarray(mask[j], dtype=np.float64), n)
+            if jid not in self.decided:
+                self.decided.add(jid); self.n_decisions += 1
+                if cover is None:
+                    self.n_no_cover += 1
+            out.append(a)
+        return out
+
+    def counters(self):
+        return {"cover_decisions": self.n_decisions, "cover_missing": self.n_no_cover}
+
+
+def cover_argmax_action(cover_row, mask_row, num_dcs):
+    """Pure: index a = d * K + i of the legal candidate with the largest cover; ties broken by
+    the smallest offset index i, then the lowest site; 0 when nothing is legal or no cover."""
+    if cover_row is None:
+        return 0
+    K = cover_row.shape[0] // num_dcs
+    legal = np.ones_like(cover_row, dtype=bool) if mask_row is None else (mask_row >= 0.5)
+    if not legal.any():
+        return 0
+    c = np.where(legal, cover_row, -np.inf)
+    best = float(c.max())
+    cands = np.where(c >= best - 1e-12)[0]
+    return int(min(cands, key=lambda a: (a % K, a // K)))
+
+
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
     """Adversarial contract arm (OPTION_ACTION_DESIGN §5): HOLD at the greenest site now on
     every slot the hold mask allows, ROUTE_NOW there otherwise. Exercises the executor's
@@ -3018,6 +3076,7 @@ GLOBAL_SCHEDULERS = {
     'fixed_off': FixedOffsetGlobalScheduler,
     'schedule_replay': ScheduleReplayGlobalScheduler,
     'causal_expert': CausalExpertGlobalScheduler,
+    'cover_argmax': CoverArgmaxGlobalScheduler,
     'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,

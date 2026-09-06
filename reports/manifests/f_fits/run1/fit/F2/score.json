@@ -1,0 +1,65 @@
+{
+  "held_windows": [
+    4,
+    5
+  ],
+  "corpus_check": {
+    "n_jobs": 70,
+    "n_hold": 67,
+    "n_route": 3,
+    "valid": false
+  },
+  "main_gate_raw": {
+    "n_pos": 67,
+    "n_neg": 3,
+    "lift": -0.10184607616352359,
+    "auc": 0.18407960199004975,
+    "pass": false,
+    "mean_p_defer_given_st_defer": 0.8969011732808022,
+    "mean_p_defer_given_st_route": 0.9987472494443258
+  },
+  "deployed": {
+    "n_pos": 67,
+    "n_neg": 3,
+    "lift": -0.10188303334610671,
+    "auc": 0.18407960199004975,
+    "pass": false,
+    "mean_p_defer_given_st_defer": 0.8968641366253594,
+    "mean_p_defer_given_st_route": 0.9987471699714661
+  },
+  "site_and_branch_agreement": 0.0,
+  "per_window": {
+    "4": {
+      "raw": {
+        "n_pos": 33,
+        "n_neg": 2,
+        "lift": -0.09907721138248837,
+        "auc": 0.2727272727272727,
+        "pass": false,
+        "mean_p_defer_given_st_defer": 0.8990598454450568,
+        "mean_p_defer_given_st_route": 0.9981370568275452
+      },
+      "n": 35
+    },
+    "5": {
+      "raw": {
+        "n_pos": 34,
+        "n_neg": 1,
+        "lift": -0.10516164320356702,
+        "auc": 0.029411764705882353,
+        "pass": false,
+        "mean_p_defer_given_st_defer": 0.8948059914743199,
+        "mean_p_defer_given_st_route": 0.999967634677887
+      },
+      "n": 35
+    }
+  },
+  "decode": "argmax",
+  "mode": "offset",
+  "supporting": {
+    "exact_action_accuracy": 0.0,
+    "site_accuracy": 0.35714285714285715,
+    "offset_mae_steps": 28.614285714285714
+  },
+  "verdict": "INVALID_CORPUS"
+}

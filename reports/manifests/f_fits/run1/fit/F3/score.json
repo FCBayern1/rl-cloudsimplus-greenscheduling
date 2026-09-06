@@ -1,0 +1,65 @@
+{
+  "held_windows": [
+    4,
+    5
+  ],
+  "corpus_check": {
+    "n_jobs": 70,
+    "n_hold": 67,
+    "n_route": 3,
+    "valid": false
+  },
+  "main_gate_raw": {
+    "n_pos": 67,
+    "n_neg": 3,
+    "lift": -0.10963187158218957,
+    "auc": 0.2835820895522388,
+    "pass": false,
+    "mean_p_defer_given_st_defer": 0.8852665668714848,
+    "mean_p_defer_given_st_route": 0.9948984384536743
+  },
+  "deployed": {
+    "n_pos": 67,
+    "n_neg": 3,
+    "lift": -0.10964379255747914,
+    "auc": 0.2835820895522388,
+    "pass": false,
+    "mean_p_defer_given_st_defer": 0.8852529372297117,
+    "mean_p_defer_given_st_route": 0.9948967297871908
+  },
+  "site_and_branch_agreement": 0.014285714285714285,
+  "per_window": {
+    "4": {
+      "raw": {
+        "n_pos": 33,
+        "n_neg": 2,
+        "lift": -0.14728227139196615,
+        "auc": 0.2878787878787879,
+        "pass": false,
+        "mean_p_defer_given_st_defer": 0.8451018047265031,
+        "mean_p_defer_given_st_route": 0.9923840761184692
+      },
+      "n": 35
+    },
+    "5": {
+      "raw": {
+        "n_pos": 34,
+        "n_neg": 1,
+        "lift": -0.0756771506412941,
+        "auc": 0.17647058823529413,
+        "pass": false,
+        "mean_p_defer_given_st_defer": 0.9242500124827904,
+        "mean_p_defer_given_st_route": 0.9999271631240845
+      },
+      "n": 35
+    }
+  },
+  "decode": "argmax",
+  "mode": "offset",
+  "supporting": {
+    "exact_action_accuracy": 0.014285714285714285,
+    "site_accuracy": 0.38571428571428573,
+    "offset_mae_steps": 26.857142857142858
+  },
+  "verdict": "INVALID_CORPUS"
+}

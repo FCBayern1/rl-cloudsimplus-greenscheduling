@@ -1,0 +1,141 @@
+{
+ "interfaces": {
+  "F1": {
+   "windows": {
+    "4": {
+     "C_fit": 0.0034577312685185133,
+     "C_causal_truth": 0.0005445410648148163,
+     "C_flat": 0.0020997659074074044,
+     "capture": -0.8731633677143145,
+     "contract_violations": []
+    },
+    "5": {
+     "C_fit": 0.007935118416666664,
+     "C_causal_truth": 0.0026351610231481522,
+     "C_flat": 0.00798057100462964,
+     "capture": 0.008503106051816364,
+     "contract_violations": []
+    }
+   },
+   "pooled_capture": -0.1902017432612436,
+   "classification": {
+    "corpus_check": {
+     "n_jobs": 70,
+     "n_hold": 67,
+     "n_route": 3,
+     "valid": false
+    },
+    "main_gate_raw": {
+     "n_pos": 67,
+     "n_neg": 3,
+     "lift": -0.14618716756836392,
+     "auc": 0.263681592039801,
+     "pass": false,
+     "mean_p_defer_given_st_defer": 0.8523418295350093,
+     "mean_p_defer_given_st_route": 0.9985289971033732
+    },
+    "supporting": {
+     "exact_action_accuracy": 0.0,
+     "site_accuracy": 0.3,
+     "offset_mae_steps": 28.685714285714287
+    },
+    "valid": false
+   },
+   "capture_pass": false,
+   "complete": true
+  },
+  "F2": {
+   "windows": {
+    "4": {
+     "C_fit": 0.0028251600925925865,
+     "C_causal_truth": 0.0005445410648148163,
+     "C_flat": 0.0020997659074074044,
+     "capture": -0.4664239956300703,
+     "contract_violations": []
+    },
+    "5": {
+     "C_fit": 0.006541191138888902,
+     "C_causal_truth": 0.0026351610231481522,
+     "C_flat": 0.00798057100462964,
+     "capture": 0.26927398847371686,
+     "contract_violations": []
+    }
+   },
+   "pooled_capture": 0.10346666629346775,
+   "classification": {
+    "corpus_check": {
+     "n_jobs": 70,
+     "n_hold": 67,
+     "n_route": 3,
+     "valid": false
+    },
+    "main_gate_raw": {
+     "n_pos": 67,
+     "n_neg": 3,
+     "lift": -0.10184607616352359,
+     "auc": 0.18407960199004975,
+     "pass": false,
+     "mean_p_defer_given_st_defer": 0.8969011732808022,
+     "mean_p_defer_given_st_route": 0.9987472494443258
+    },
+    "supporting": {
+     "exact_action_accuracy": 0.0,
+     "site_accuracy": 0.35714285714285715,
+     "offset_mae_steps": 28.614285714285714
+    },
+    "valid": false
+   },
+   "capture_pass": false,
+   "complete": true
+  },
+  "F3": {
+   "windows": {
+    "4": {
+     "C_fit": 0.0022917966851851803,
+     "C_causal_truth": 0.0005445410648148163,
+     "C_flat": 0.0020997659074074044,
+     "capture": -0.12347460799150889,
+     "contract_violations": []
+    },
+    "5": {
+     "C_fit": 0.006962738699074082,
+     "C_causal_truth": 0.0026351610231481522,
+     "C_flat": 0.00798057100462964,
+     "capture": 0.1904123928906691,
+     "contract_violations": []
+    }
+   },
+   "pooled_capture": 0.1196703707457215,
+   "classification": {
+    "corpus_check": {
+     "n_jobs": 70,
+     "n_hold": 67,
+     "n_route": 3,
+     "valid": false
+    },
+    "main_gate_raw": {
+     "n_pos": 67,
+     "n_neg": 3,
+     "lift": -0.10963187158218957,
+     "auc": 0.2835820895522388,
+     "pass": false,
+     "mean_p_defer_given_st_defer": 0.8852665668714848,
+     "mean_p_defer_given_st_route": 0.9948984384536743
+    },
+    "supporting": {
+     "exact_action_accuracy": 0.014285714285714285,
+     "site_accuracy": 0.38571428571428573,
+     "offset_mae_steps": 26.857142857142858
+    },
+    "valid": false
+   },
+   "capture_pass": false,
+   "complete": true
+  }
+ },
+ "held_windows": [
+  4,
+  5
+ ],
+ "verdict": "ALL_FAIL_OPEN"
+}

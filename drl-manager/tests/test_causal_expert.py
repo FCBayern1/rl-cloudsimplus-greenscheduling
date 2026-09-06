@@ -55,3 +55,14 @@ def test_two_new_jobs_are_planned_jointly_without_sharing_a_host_row():
     jobs = {1: Job(id=1, arrival=5, runtime=6, pes=32, deadline=100), 2: Job(id=2, arrival=5, runtime=6, pes=32, deadline=100)}
     sched, res = causal_decide(5, jobs, {1: None, 2: None}, GRID, sites, curve, zero, occ)
     assert res["status"] == "OPTIMAL" and sched[1] == (0, 20) and sched[2] == (0, 20)   # both fit: two hosts on site a
+
+
+def test_cover_argmax_takes_the_best_legal_candidate_with_deterministic_ties():
+    from src.baselines.global_schedulers import cover_argmax_action
+    n, K = 2, 4
+    cover = np.array([0.1, 0.9, 0.9, 0.0,   0.9, 0.2, 0.0, 0.0])      # site 0: kappa 1,2 at 0.9; site 1: kappa 0 at 0.9
+    mask = np.ones(n * K); mask[1 * K + 0] = 0.0                     # (site 1, kappa 0) illegal
+    assert cover_argmax_action(cover, mask, n) == 0 * K + 1          # smallest kappa among the 0.9s that are legal
+    assert cover_argmax_action(cover, None, n) == 1 * K + 0          # legal now: kappa 0 wins the tie
+    assert cover_argmax_action(cover, np.zeros(n * K), n) == 0       # nothing legal
+    assert cover_argmax_action(None, mask, n) == 0
