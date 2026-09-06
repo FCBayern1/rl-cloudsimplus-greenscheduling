@@ -52,3 +52,11 @@ def test_gates_l1_and_l2():
     l2 = gate_l2(losses, l1, c_truth)
     assert l2["shrink_0.5"]["load_bearing"] is True and l2["shrink_0.75"]["load_bearing"] is False
     assert abs(l2["shrink_0.5"]["harm_headroom_share"] - 1.0) < 1e-12
+
+
+def test_atomic_json_writes_complete_records(tmp_path):
+    from ladder_run import atomic_json
+    p = str(tmp_path / "r.json")
+    atomic_json(p, {"status": "FEASIBLE", "wall_s": 3600.0})
+    import json
+    assert json.load(open(p))["status"] == "FEASIBLE" and not os.path.exists(p + ".tmp")

@@ -34,7 +34,20 @@ from ladder_planner import (  # noqa: E402
     quantisation_bound_kg, runtime_steps, settle, solve)
 
 OUT = os.path.join(HERE, "stage_a_out")
-LAD = os.path.join(OUT, "ladder_v2")          # fresh directory after Addendum D (HiGHS primary)
+# Addendum E: fresh directory, uniform HiGHS limit 3600 s, atomic per-solve records.
+# LADDER_DIR overrides the directory only for reading an older stage's artefacts.
+LAD = os.path.join(OUT, os.environ.get("LADDER_DIR", "ladder_v3"))
+TIME_LIMIT_S = float(os.environ.get("LADDER_TIME_LIMIT_S", "3600"))
+
+
+def atomic_json(path, obj):
+    """Write obj to path atomically (temp file + rename) so a record survives any crash."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 LAMBDAS = (0.75, 0.5, 0.25, 0.0)
 RUNGS = ("truth", "shrink_0.75", "shrink_0.5", "shrink_0.25", "shrink_0", "shuffle", "anti")
 CLOSURE_REL = 0.03
@@ -233,7 +246,7 @@ def cmd_solve(rungs=RUNGS):
     except Exception:
         highs = "unknown"
     environment = {"cpu": cpu, "cpu_count": ncpu, "python": platform.python_version(), "scipy": scipy.__version__,
-                   "highs": highs, "time_limit_s": 600.0, "mip_rel_gap": 0.0, "one_solve_at_a_time": True}
+                   "highs": highs, "time_limit_s": TIME_LIMIT_S, "mip_rel_gap": 0.0, "one_solve_at_a_time": True}
     for k, off in enumerate(dev):
         rows = list(csv.DictReader(open(os.path.join(LAD, "dump", f"k{k}_decisions.csv"))))
         z = np.load(os.path.join(LAD, "dump", f"k{k}_decisions_obs.npz"))
@@ -256,23 +269,31 @@ def cmd_solve(rungs=RUNGS):
             import time as _time
             t_ext = _time.time()
             if os.environ.get("LADDER_SOLVER", "milp") == "cpsat":
-                res = solve(inst)
+                res = solve(inst, time_limit_s=TIME_LIMIT_S)
             else:
                 from ladder_planner import solve_milp
-                res = solve_milp(inst)
+                res = solve_milp(inst, time_limit_s=TIME_LIMIT_S)
             res["solver"] = os.environ.get("LADDER_SOLVER", "milp")
             res["external_wall_s"] = _time.time() - t_ext
             rec = {k: res.get(k) for k in ("status", "wall_s", "external_wall_s", "solver", "bound", "fun", "mip_gap",
                                             "mip_dual_bound", "mip_node_count", "milp_status", "milp_message",
                                             "schedule_hash", "checks", "verify_violations")}
+            rec["time_limit_s"] = TIME_LIMIT_S
+            rec["J_int_incumbent"] = res.get("J_int")
             if res["status"] == "OPTIMAL":
                 st = settle(inst_truth, res["schedule"])
                 rec.update({"J_on_rung": res["J_int"], "C_model_truth_kg": st["C_kg"], "J_model_truth": st["J_int"],
                             "rmse_vs_truth_w": float(np.sqrt(np.mean((G - truth) ** 2)))})
-                with open(os.path.join(LAD, "solve", f"k{k}_{rung}.json"), "w") as f:
-                    json.dump({"window": k, "offset": off, "rung": rung, "schedule": {str(i): list(v) for i, v in res["schedule"].items()},
-                               "grid": list(range(73)), **rec}, f, indent=1)
+            # Addendum E3: every outcome is written atomically the moment the solve returns
+            atomic_json(os.path.join(LAD, "solve", f"k{k}_{rung}.json"),
+                        {"window": k, "offset": off, "rung": rung,
+                         "schedule": ({str(i): list(v) for i, v in res["schedule"].items()} if res.get("schedule") else None),
+                         "grid": list(range(73)), **rec})
             summary[k]["rungs"][rung] = rec
+            atomic_json(sp, {**{str(kk): vv for kk, vv in summary.items()}, "environment": environment})
+            if res["status"] != "OPTIMAL":
+                print(f"k{k} {rung}: {res['status']} at the {TIME_LIMIT_S:.0f} s limit -> STOP_SOLVER_RUNG_UNRESOLVED; no further solve", flush=True)
+                return
             print(f"k{k} {rung:12s} {rec['status']:10s} " + (f"C_model_truth {rec['C_model_truth_kg']:.6f}" if 'C_model_truth_kg' in rec else ""), flush=True)
     with open(sp, "w") as f:
         json.dump({**{str(k): v for k, v in summary.items()}, "environment": environment}, f, indent=2)
@@ -286,7 +307,7 @@ def cmd_replay(rungs=RUNGS):
     for k, off in enumerate(dev):
         for rung in rungs:
             sj = os.path.join(LAD, "solve", f"k{k}_{rung}.json")
-            if not os.path.exists(sj):
+            if not os.path.exists(sj) or json.load(open(sj)).get("status") != "OPTIMAL":
                 print(f"k{k} {rung}: no OPTIMAL schedule, skipped"); continue
             out_csv = os.path.join(LAD, "replay", f"k{k}_{rung}.csv")
             ok = _evaluate(cfg, cell, k, off, "schedule_replay", out_csv, {"SCHEDULE_JSON": sj})
