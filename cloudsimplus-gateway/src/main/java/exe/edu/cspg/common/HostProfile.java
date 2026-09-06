@@ -209,8 +209,9 @@ public class HostProfile {
      * Zero-floor twin of RS500A: the same 64 cores and MIPS, but only the dynamic part of
      * the SPEC curve (214 - 51.4 = 162.6 W at full load). CloudSim Plus refuses a static
      * power below 1 W, so the floor is 1.0 W (1.2% of a 32-PE job's draw) rather than 0.
-     * A 32-PE job draws 81.8 W on an otherwise idle host, so scheduling decisions move
-     * essentially the job's own energy and no host floor. Marginal-carbon accounting.
+     * A 32-PE job draws 65.64 W on an otherwise idle host (utilisation is counted in MIPS:
+     * 32 x 40000 / (64 x 50000) = 0.4, so 1 + 161.6 x 0.4; measured 2026-09-05), so scheduling
+     * decisions move essentially the job's own energy and no host floor. Marginal-carbon accounting.
      */
     public static final double DYN_TECHNICAL_FLOOR_W = 1.0;
 
