@@ -151,3 +151,25 @@ B2's closure requires, in addition to the 3 % carbon agreement, start alignment 
 ### C6. Unchanged
 
 All seven rungs OPTIMAL; per-rung replay closure; TimeCAP causal anchor separate from the offline ladder; 42 solves and 42 replays; 600 s; 3 %; every-step offset settlement; certification-only status of the solver; no carbon run before the freeze.
+
+---
+
+## Addendum D (2026-09-06 02:10; Codex ruling: solver engine changed to HiGHS; model, thresholds and questions unchanged; precedence body < A < B < C < D)
+
+### D1. Record of the CP-SAT stage
+Stage-1 run 1 (CP-SAT) was invalid on an instrument error (the dump carried the normalised time-to-deadline; fixed, `ttd_sec`). Stage-1 run 2 (CP-SAT, default parameters, 8 workers, 600 s per window) was interrupted on this ruling before completion: window k3 had returned OPTIMAL in 294.3 s, k0–k2 had returned without proof, k4–k5 had not finished. It is recorded as INCOMPLETE_INTERRUPTED, archived under `stage_a_out/ladder_cpsat_run2_interrupted/`, never as a STOP. The 30 s / 120 s CP-SAT probes and the 362 s HiGHS solve of k0 are POST-RUN SOLVER DIAGNOSTICS, not results.
+
+### D2. Primary solver
+All six windows × seven rungs are judged with HiGHS only: `scipy.optimize.milp`, `time_limit = 600` s, `mip_rel_gap = 0`; no per-cell mixing with CP-SAT.
+
+### D3. OPTIMAL is a compound condition
+A (window, rung) solve is OPTIMAL only if all of the following hold: HiGHS reports optimal / success (status 0); the full schedule passes an integer re-check of capacity per (site, step), arrival (start ≥ arrival + lag), deadline (start ≤ latest) and exactly one assignment per job; the exactly recomputed J_int equals round(res.fun); J_int − mip_dual_bound < 1 (an integer objective, so no lower integer objective exists); mip_gap and the dual bound exist and are finite. Per cell the implementation archives status, message, fun, mip_gap, mip_dual_bound, mip_node_count, wall_s (HiGHS) and the external wall clock, J_int and a schedule hash, plus hardware and SciPy / HiGHS versions once per stage.
+
+### D4. CP-SAT as cross-check only
+Small instances must agree bitwise; at full size, if CP-SAT (linearization level 2) returns OPTIMAL within 600 s its objective must equal HiGHS's; a CP-SAT FEASIBLE with a higher objective is not a failure, a CP-SAT feasible objective below HiGHS's optimum is an immediate model-implementation inconsistency. CP-SAT never runs concurrently with a formal HiGHS solve.
+
+### D5. Timing discipline
+600 s is HiGHS's internal wall-clock limit per (window, rung). One formal solve at a time; no training, evaluation or other solver sharing the CPU; OS background services need not be stopped. An external crash or power loss allows a rerun with the same configuration; a HiGHS solve that reaches 600 s without proof is STOP_SOLVER_RUNG_UNRESOLVED at once, with no extension and no retry.
+
+### D6. Order
+Fresh output directory; the six truth rungs first; only when all six are OPTIMAL and each closes on replay (B2 / C5) are the other six rungs generated.
