@@ -1,0 +1,161 @@
+{
+ "L1_single": {
+  "probe": "L1_single",
+  "plan": {
+   "0": [
+    0,
+    20
+   ]
+  },
+  "model_job_steps": 48,
+  "sim_job_steps": 48,
+  "model_host_steps": 48,
+  "sim_host_steps": 48,
+  "draw_model_wh": 0.8752,
+  "draw_sim_wh": 0.8752,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   67
+  ],
+  "model_active_rows": [
+   20,
+   67
+  ],
+  "model_version": 2,
+  "premise_ok": true,
+  "exact": true
+ },
+ "L2_pair_same_start": {
+  "probe": "L2_pair_same_start",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ]
+  },
+  "model_job_steps": 96,
+  "sim_job_steps": 96,
+  "model_host_steps": 96,
+  "sim_host_steps": 96,
+  "draw_model_wh": 1.7504,
+  "draw_sim_wh": 1.7504,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   67
+  ],
+  "model_active_rows": [
+   20,
+   67
+  ],
+  "model_version": 2,
+  "premise_ok": true,
+  "exact": true
+ },
+ "L3a_pair_staggered": {
+  "probe": "L3a_pair_staggered",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    40
+   ]
+  },
+  "model_job_steps": 96,
+  "sim_job_steps": 96,
+  "model_host_steps": 96,
+  "sim_host_steps": 96,
+  "draw_model_wh": 1.7504,
+  "draw_sim_wh": 1.7504,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   87
+  ],
+  "model_active_rows": [
+   20,
+   87
+  ],
+  "model_version": 2,
+  "premise_ok": true,
+  "exact": true
+ },
+ "L3b_triple_reuse": {
+  "probe": "L3b_triple_reuse",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ],
+   "2": [
+    0,
+    75
+   ]
+  },
+  "model_job_steps": 144,
+  "sim_job_steps": 144,
+  "model_host_steps": 144,
+  "sim_host_steps": 144,
+  "draw_model_wh": 2.6256,
+  "draw_sim_wh": 2.6256,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   122
+  ],
+  "model_active_rows": [
+   20,
+   122
+  ],
+  "model_version": 2,
+  "premise_ok": true,
+  "exact": true
+ },
+ "L3c_triple_fragment": {
+  "probe": "L3c_triple_fragment",
+  "plan": {
+   "0": [
+    0,
+    20
+   ],
+   "1": [
+    0,
+    20
+   ],
+   "2": [
+    0,
+    30
+   ]
+  },
+  "model_job_steps": 144,
+  "sim_job_steps": 144,
+  "model_host_steps": 144,
+  "sim_host_steps": 144,
+  "draw_model_wh": 2.6256,
+  "draw_sim_wh": 2.6256,
+  "power_on_other_sites_w_sum": 0.0,
+  "sim_active_rows": [
+   20,
+   77
+  ],
+  "model_active_rows": [
+   20,
+   77
+  ],
+  "model_version": 2,
+  "premise_ok": true,
+  "exact": true
+ }
+}

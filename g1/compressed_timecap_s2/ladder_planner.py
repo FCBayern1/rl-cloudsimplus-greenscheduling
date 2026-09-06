@@ -7,18 +7,21 @@ attributed the whole model-vs-simulator gap to four terms; this version closes t
 the model's (A, D) and keeps the interface of version 1:
 
   A  the simulator runs every job on its own host: VM i of a site sits on host i mod H (fixed
-     topology) and the placement ledger takes the most-free fitting VM, lowest id, so a job is
-     assigned VM id j only when VMs 0..j-1 are all busy; hence every VM id ever used is
-     <= (max concurrency - 1), and with concurrency <= H all concurrent jobs sit on distinct
-     hosts (`placement_hosts` reproduces the rule, `verify_schedule` enforces the premise).
-     Model: active hosts = running jobs; the premise "concurrent jobs <= H_d" is a hard
-     constraint of the planner and a fail-fast check of every settlement.
+     topology) and the placement ledger takes the most-free fitting VM, lowest id; a VM whose
+     job ends at row e is free again from row e + 1 (at row e the finish and the new routing
+     share the clock and the VM still counts as taken: k0 job 28). So a job is assigned VM id j
+     only when VMs 0..j-1 are busy or just freed, hence every VM id used is <= (occupancy - 1)
+     with occupancy(d, t) = jobs running at t + jobs ending at t, and with occupancy <= H all
+     concurrent jobs sit on distinct hosts (`placement_hosts` reproduces the rule,
+     `verify_schedule` enforces the premise). Model: active hosts = running jobs; the premise
+     "occupancy(d, t) <= H_d" is a hard constraint of the planner and a fail-fast check of
+     every settlement.
   D  per-site host profile: P_job(d, p) = idle_w + (max_w - idle_w) * p * vm_mips / (host_pes *
      host_mips), in integer mW (65,640 mW on RS500A_DYN, 65,600 mW on RS700A_DYN for 32 PEs).
 
 Exact time-indexed model, one window at a time:
-  x[j, d, s] in {0,1}: job j starts at site d at step s (s in [a_j + lag, L_j], L_j = D_j - r_j - eps)
-  PEs per (d, t) <= cap_d;  running jobs per (d, t) <= H_d   (premise A)
+  x[j, d, s] in {0,1}: job j starts at site d at step s (s in [a_j + LAG(2), L_j], L_j = D_j - r_j - eps)
+  PEs per (d, t) <= cap_d;  occupancy per (d, t) <= H_d   (premise A: running + ending jobs)
   draw_mW[d, t] = sum_j P_job(d, p_j) x                      (linear: no host variables)
   brown_mW[d, t] >= draw - G_mW[d, t], brown >= 0; green = draw - brown
   J_int = sum_{d,t} (50 * brown + 1 * green) = sum 49 brown + draw;  C_kg = J_int / 3.6e11
@@ -40,7 +43,13 @@ F_BROWN, F_GREEN = 0.5, 0.01
 RATIO = 50                  # F_BROWN / F_GREEN, exact
 KG_PER_UNIT = 1.0 / 3.6e11  # one mW*s at 0.01 kg/kWh
 TIME_LIMIT_S = 600.0
-EPS_STEPS, LAG = 2, 1
+# LAG: earliest executable start after a job's first sighting, in observation rows. Measured on
+# the certification twin (k0 closure, 2026-09-06): a job routed at its first sighting (row a,
+# the route-now path, kappa 0) begins executing at clock a + 2 = row a + 2; a held job (kappa
+# >= 1, released at row s - 1) begins exactly at row s. Version 1 used 1 and the two route-now
+# jobs of k0 ran one row late (the only residual of the closure). With 2 every planned start is
+# reached through the hold path and lands exactly.
+EPS_STEPS, LAG = 2, 2
 
 # host profiles of the gateway (HostProfile.java): PEs, MIPS per PE, full-load dynamic W, idle W
 HOST_PROFILES = {
@@ -154,13 +163,14 @@ def quantisation_bound_kg(n_sites: int, n_steps: int) -> float:
 def placement_hosts(schedule: Dict[int, Tuple[int, int]], jobs: Sequence[Job], sites: Sequence[Site]) -> Dict[int, Tuple[int, int]]:
     """The simulator's placement rule reproduced: per site, VM ids 0..vms-1 on host (id mod H);
     at each start step, in id order, the job takes the lowest free VM (most-free fitting with
-    all free VMs equal, lowest id). Returns {job id: (vm, host)}; raises if a job finds no VM."""
+    all free VMs equal, lowest id); a VM freed at row e is free from row e + 1. Returns
+    {job id: (vm, host)}; raises if a job finds no VM."""
     by_id = {j.id: j for j in jobs}
     busy_until: Dict[int, Dict[int, int]] = {d: {} for d in range(len(sites))}   # site -> vm -> end step
     out = {}
     for jid, (d, s) in sorted(schedule.items(), key=lambda kv: (kv[1][1], kv[0])):
         j = by_id[jid]
-        free = [v for v in range(sites[d].vms) if busy_until[d].get(v, -1) <= s]
+        free = [v for v in range(sites[d].vms) if busy_until[d].get(v, -10) + 1 <= s]
         if not free:
             raise ValueError(f"job {jid}: no free VM on site {d} at step {s}")
         v = min(free)
@@ -177,15 +187,17 @@ def settle(inst: Instance, schedule: Dict[int, Tuple[int, int]], curves_mw: Opti
     n, T = G.shape
     pes = np.zeros((n, T), dtype=np.int64)
     jobs = np.zeros((n, T), dtype=np.int64)
+    occ = np.zeros((n, T + 1), dtype=np.int64)          # running + ending (premise A)
     draw = np.zeros((n, T), dtype=np.int64)
     by_id = {j.id: j for j in inst.jobs}
     for jid, (d, s) in schedule.items():
         j = by_id[jid]
         pes[d, s:s + j.runtime] += j.pes
         jobs[d, s:s + j.runtime] += 1
+        occ[d, s:s + j.runtime + 1] += 1
         draw[d, s:s + j.runtime] += inst.sites[d].job_power_mw(j.pes)
     hosts = jobs.copy()
-    premise_ok = all(int(jobs[d].max()) <= inst.sites[d].hosts for d in range(n)) if T else True
+    premise_ok = all(int(occ[d].max()) <= inst.sites[d].hosts for d in range(n)) if T else True
     brown = np.maximum(0, draw - G)
     green = draw - brown
     J = int(RATIO * brown.sum() + green.sum())
@@ -204,7 +216,7 @@ def verify_schedule(inst: Instance, schedule: Dict[int, Tuple[int, int]]) -> Lis
         v.append(f"assignments {sorted(set(schedule) ^ ids)} missing or extra")
     n, T = inst.curves_mw.shape
     pes = np.zeros((n, T), dtype=np.int64)
-    cnt = np.zeros((n, T), dtype=np.int64)
+    cnt = np.zeros((n, T + 1), dtype=np.int64)
     for j in inst.jobs:
         if j.id not in schedule:
             continue
@@ -218,7 +230,7 @@ def verify_schedule(inst: Instance, schedule: Dict[int, Tuple[int, int]]) -> Lis
         if s + j.runtime > T:
             v.append(f"job {j.id} runs past the horizon")
         pes[d, s:s + j.runtime] += j.pes
-        cnt[d, s:s + j.runtime] += 1
+        cnt[d, s:s + j.runtime + 1] += 1
     for d in range(n):
         over = np.where(pes[d] > inst.sites[d].cap)[0]
         if over.size:
@@ -274,11 +286,12 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
         pw = inst.sites[d].job_power_mw(j.pes)
         for t in range(s, min(T, s + j.runtime)):
             A[pes_row[(d, t)], i] += j.pes
-            A[cnt_row[(d, t)], i] += 1.0
             A[brown_row[(d, t)], i] += -pw
+        for t in range(s, min(T, s + j.runtime + 1)):        # occupancy: running + ending (premise A)
+            A[cnt_row[(d, t)], i] += 1.0
     for (d, t) in cells:                                            # PEs <= cap
         lo.append(-np.inf); hi.append(float(inst.sites[d].cap))
-    for (d, t) in cells:                                            # running jobs <= hosts (premise A)
+    for (d, t) in cells:                                            # occupancy <= hosts (premise A)
         lo.append(-np.inf); hi.append(float(inst.sites[d].hosts))
     for k, (d, t) in enumerate(cells):                              # brown - draw >= -G
         A[brown_row[(d, t)], boff + k] = 1.0
@@ -334,21 +347,25 @@ def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8, 
             return {"status": "INFEASIBLE", "reason": f"job {j.id} has no legal start"}
         m.AddExactlyOne(x[(j.id, d, s)] for d in range(n) for s in inst.starts[j.id])
     running = {(d, t): [] for d in range(n) for t in range(T)}
+    occupying = {(d, t): [] for d in range(n) for t in range(T)}
     for j in inst.jobs:
         for d in range(n):
             pw = inst.sites[d].job_power_mw(j.pes)
             for s in inst.starts[j.id]:
                 for t in range(s, min(T, s + j.runtime)):
                     running[(d, t)].append((j.pes, pw, x[(j.id, d, s)]))
+                for t in range(s, min(T, s + j.runtime + 1)):
+                    occupying[(d, t)].append(x[(j.id, d, s)])
     objective_terms = []
     for d in range(n):
         max_draw = inst.sites[d].hosts * max(inst.sites[d].job_power_mw(j.pes) for j in inst.jobs)
         for t in range(T):
             terms = running[(d, t)]
+            if occupying[(d, t)]:
+                m.Add(sum(occupying[(d, t)]) <= inst.sites[d].hosts)
             if not terms:
                 continue
             m.Add(sum(p * v for p, _, v in terms) <= inst.sites[d].cap)
-            m.Add(sum(v for _, _, v in terms) <= inst.sites[d].hosts)
             draw = sum(pw * v for _, pw, v in terms)
             brown = m.NewIntVar(0, max_draw, f"b_{d}_{t}")
             m.Add(brown >= draw - int(inst.curves_mw[d, t]))

@@ -44,6 +44,32 @@ Mechanism of B (from the observation, not yet from the CloudSim source): the clo
 - D is small; a per-site host profile in the model (128-PE hosts on DC2) removes it.
 - With A, B, C, D closed on the micro probes first, the 3 % composite tolerance is reachable in principle; nothing here argues for widening it.
 
+## 6. Addendum (same day, under the user's direct authority): A–D closed, source-level B, exact closure
+
+Ruling applied: A model follows the simulator; B source trace first; C and D mandatory; then engineering closure without re-solving.
+
+**B, source level.** Per-step trace of the gateway (SETTLE_TRACE_CSV, new) on probe L3a: the lone cloudlet's progress is never updated between submission and its estimated-finish event (finish 68.0 exact, 48 s). The cloudlet submitted at 40.0 while the other runs is updated at the other's finish (68.0, credited 28 s), then at 69.01, then at 87.99 (credited 18.98 s, 401 MI left), and its finish is stamped 89.0: 49.0 s of execution and 49 utilisation samples. CloudSim Plus 8.5.5 source: `DatacenterSimple.updateHostsProcessing` clamps the next update delay to `minTimeBetweenEvents + 0.01`, `isTimeToUpdateCloudletsProcessing` refuses updates within `minTimeBetweenEvents` (1.0 s in the scene) of the last, and the datacenter's scheduling interval is left at 0 (updates only at estimated finishes), so a 0.01 s sliver plus the `(long)` truncation of partial MI leaves 401 MI that cannot be processed before the next permitted second. Reproduced in pure CloudSim (`CloudletBoundaryTraceTest`): min-time 1.0 and interval 0 give 48 s / 49 s; interval 1.0 gives 48 s / 48 s. Classification: a discrete-update artefact at the event-spacing boundary, not 49 s of work (the MI is complete at 88.0). Fix: the certification twin sets every datacenter's scheduling interval to the 1 s step (`datacenter_scheduling_interval`, new config key, default 0 = legacy so the scene's own configs are bit-identical); `min_time_between_events` stays 1.0 because the clock grid depends on it (a trial with 0.01 s shifted the clock of every observation by 0.99 s and every start by one row, and was discarded).
+
+**C.** `truth_curve` builds the curve from the wind files: row(t) = episode offset + tz + t + ⌊min_time_between_events⌋ + 12, the last term being the 12 rows `GreenEnergyProvider.loadCsvData` drops in COMPRESSED mode before building the time axis, the clock term measured (step 3 at clock 4.0) and confirmed by the per-step trace (`green_row` column). Exact on every step of all six development windows (max 3e-5 W, float32). Signatures on both sides, per-row equality at closure, STOP past the file's end (no wrap, no hold-last).
+
+**D.** Per-site host profile from the config: RS500A_DYN 64 PEs (65,640 mW per 32-PE job), RS700A_DYN 128 PEs (65,600 mW); DC2 and DC3 are RS700A.
+
+**A.** VM i of a site sits on host i mod H (trace: DC0 VMs 0–4 on hosts 0–4, DC1 VMs 20–23 on hosts 0–3, DC2 VMs 36–39 on hosts 0–3); the ledger takes the lowest free VM, and a VM whose job ends at row e is free again from row e + 1 (at row e the finish and the new routing share the clock: k0 job 28, starting at 522 as jobs 26/27 end there, took VM 2, not VM 0; the same-row variant of the rule matched 34/35 jobs, the one-row-later rule 35/35, `k0lag2_placement_check.json`). Theorem: a job takes VM id j only when VMs 0..j−1 are busy or just freed, so every VM id used is ≤ occupancy − 1 with occupancy(d, t) = jobs running at t + jobs ending at t; with occupancy ≤ H all concurrent jobs sit on distinct hosts. The premise "occupancy ≤ H_d" is a constraint of the planner (running and ending jobs both count on a row) and a fail-fast check of every settlement, and the model charges one host per job. Property test: 200 random schedules.
+
+**LAG.** The only residual of the first certification closure: the two jobs the planner started at sighting + 1 (route-now path) executed at sighting + 2 (4 cells of ±65.64 W, draw conserved, brown +0.019 Wh). Held jobs land exactly. The planner's earliest start is now sighting + 2.
+
+**Engineering closure (fixed schedules, no solve), certification twin, model version 2:**
+
+| case | draw model / sim Wh | brown model / sim Wh | carbon rel err | per-step max diff |
+|---|---|---|---|---|
+| probes L1, L2, L3a, L3b, L3c | equal | equal (same-run curve) | 0 | 0 |
+| k0 archived v1 schedule | 30.62667 / 30.62667 | 0.64685 / 0.66569 | 1.48 % (passes 3 %, but the LAG residual is visible) | 65.64 W on 4 cells |
+| k0 v1 schedule with the two route-now jobs at sighting + 2 | 30.62667 / 30.62667 | 0.665695 / 0.665694 | 4.3e-7 | 1.2e-5 W |
+
+Every term is closed individually; nothing cancels. Legacy-twin attribution (section 1) is archived as produced with model version 1.
+
+**Solver feasibility gate.** Version 2 has no host variables (draw is linear in x) and the concurrency constraint; the six truth rungs are being solved on the certification dumps (ladder_v4, HiGHS, 3600 s, gap 0). The gate is: k1 proven.
+
 ## 5. Not done, by ruling
 
 No re-solve, no re-registration, no new tolerance, no reading of the sealed 2020 windows, no RL. The 26 pre-existing unrelated drl-manager test failures (gateway-dependent PettingZoo tests, logback config, SQT2 preflight, plotting, checkpoint paths) are still listed and still unrelated; the ladder, replay-arm and probe tests pass (16 + 4).

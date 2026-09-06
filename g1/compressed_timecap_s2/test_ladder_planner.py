@@ -43,13 +43,14 @@ def test_solver_finds_the_green_window_and_respects_deadline_and_capacity():
     out = solve(inst, time_limit_s=30)
     assert out["status"] == "OPTIMAL" and out["schedule"] == {1: (0, 4)}
     assert out["J_int"] == 65640 * 2                                  # all green
-    # two 32-PE jobs on a 32-PE site cannot overlap: one must take the brown steps
-    jobs2 = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=8), Job(id=2, arrival=0, runtime=2, pes=32, deadline=8)]
+    # two 32-PE jobs on a one-VM, one-host site cannot overlap, and the VM is free only one row
+    # after a job ends (occupancy premise): starts at least runtime + 1 apart
+    jobs2 = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=11), Job(id=2, arrival=0, runtime=2, pes=32, deadline=11)]
     inst2 = build_instance(jobs2, cap=[32], curves_w=G)
     out2 = solve(inst2, time_limit_s=30)
     assert out2["status"] == "OPTIMAL"
     s = out2["schedule"]
-    assert abs(s[1][1] - s[2][1]) >= 2
+    assert abs(s[1][1] - s[2][1]) >= 3
     assert out2["J_int"] == settle(inst2, s)["J_int"]                # solver objective == settlement
 
 
@@ -101,12 +102,13 @@ def test_version2_sites_one_host_per_job_and_per_site_power():
     three = [Job(id=i, arrival=0, runtime=5, pes=32, deadline=20) for i in (1, 2, 3)]
     ph = placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 2)}, three, [rs500, rs700])
     assert ph == {1: (0, 0), 2: (1, 1), 3: (2, 2)}
-    # a freed VM is reused: job 3 after job 1 ends takes VM 0 again
-    assert placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 6)}, three, [rs500, rs700])[3] == (0, 0)
+    # a freed VM is reused one row after its job ends (k0 job 28: at the end row it still counts)
+    assert placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 7)}, three, [rs500, rs700])[3] == (0, 0)
+    assert placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 6)}, three, [rs500, rs700])[3] == (2, 2)
 
 
 def test_premise_a_theorem_concurrency_at_most_hosts_gives_distinct_hosts():
-    # VM id j is taken only when VMs 0..j-1 are busy, so ids used <= max concurrency - 1 <= H - 1
+    # VM id j is taken only when VMs 0..j-1 are busy or just freed, so ids used <= occupancy - 1 <= H - 1
     from ladder_planner import site_from_profile, placement_hosts, verify_schedule
     rng = np.random.default_rng(3)
     site = site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=4, vms=8)
@@ -128,7 +130,7 @@ def test_premise_a_theorem_concurrency_at_most_hosts_gives_distinct_hosts():
 def test_optimal_is_a_compound_condition_and_the_verifier_catches_violations():
     from ladder_planner import solve_milp, verify_schedule, schedule_hash
     G = np.zeros((1, 10)); G[0, 4:6] = 100.0
-    jobs = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=8), Job(id=2, arrival=0, runtime=2, pes=32, deadline=8)]
+    jobs = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=11), Job(id=2, arrival=0, runtime=2, pes=32, deadline=11)]
     inst = build_instance(jobs, cap=[32], curves_w=G)
     r = solve_milp(inst, time_limit_s=30)
     assert r["status"] == "OPTIMAL" and all(r["checks"].values())
@@ -139,5 +141,6 @@ def test_optimal_is_a_compound_condition_and_the_verifier_catches_violations():
     # the verifier: overlap on a 32-PE site, a start before arrival + lag, a start past latest, a missing job
     assert any("capacity" in v for v in verify_schedule(inst, {1: (0, 4), 2: (0, 5)}))
     assert any("before arrival" in v for v in verify_schedule(inst, {1: (0, 0), 2: (0, 4)}))
-    assert any("after latest" in v for v in verify_schedule(inst, {1: (0, 6), 2: (0, 1)}))
+    assert any("after latest" in v for v in verify_schedule(inst, {1: (0, 8), 2: (0, 2)}))
+    assert any("more running jobs than hosts" in v for v in verify_schedule(inst, {1: (0, 2), 2: (0, 4)}))   # ends at 4 = start of 2
     assert any("missing" in v for v in verify_schedule(inst, {1: (0, 4)}))

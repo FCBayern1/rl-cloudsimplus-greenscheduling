@@ -1,0 +1,106 @@
+{
+ "window": 0,
+ "offset": 16477,
+ "tag": "k0lag2",
+ "schedule_json": "stage_a_out/ladder_v4/k0v1_lag2_schedule.json",
+ "n_jobs": 35,
+ "model_version": 2,
+ "min_time_between_events": 1.0,
+ "datacenter_scheduling_interval": 1.0,
+ "curve": {
+  "offset": 16477,
+  "T": 639,
+  "year": 2021,
+  "divisor": 3000.0,
+  "obs_clock_lag": 1,
+  "spline_skip_rows": 12,
+  "sites": [
+   {
+    "site": 0,
+    "tz_rows": 0,
+    "row_start": 16490,
+    "row_end": 17129,
+    "files": [
+     "Turbine_133_2021.csv",
+     "Turbine_78_2021.csv"
+    ]
+   },
+   {
+    "site": 1,
+    "tz_rows": 18,
+    "row_start": 16508,
+    "row_end": 17147,
+    "files": [
+     "Turbine_22_2021.csv",
+     "Turbine_81_2021.csv"
+    ]
+   },
+   {
+    "site": 2,
+    "tz_rows": 54,
+    "row_start": 16544,
+    "row_end": 17183,
+    "files": [
+     "Turbine_94_2021.csv"
+    ]
+   },
+   {
+    "site": 3,
+    "tz_rows": 72,
+    "row_start": 16562,
+    "row_end": 17201,
+    "files": []
+   },
+   {
+    "site": 4,
+    "tz_rows": 108,
+    "row_start": 16598,
+    "row_end": 17237,
+    "files": []
+   }
+  ],
+  "signature": "5ca7961f973173c3",
+  "replay_rows": 637,
+  "rows_match": true,
+  "max_abs_diff_w": 3.0403645723708905e-05
+ },
+ "terms": {
+  "draw_wh": {
+   "model": 30.626666666666665,
+   "sim": 30.62666666666674,
+   "sim_samples": 30.626666327582466,
+   "max_abs_step_diff_w": 1.2207031261368684e-05
+  },
+  "brown_wh": {
+   "model": 0.665695,
+   "sim": 0.6656944444444445
+  },
+  "green_wh": {
+   "model": 29.96097166666667,
+   "sim": 29.960972222222296
+  },
+  "carbon_kg": {
+   "model": 0.0006324572166666667,
+   "sim": 0.0006324569444444448,
+   "rel_err": 4.3041997892609605e-07,
+   "abs_err": -2.7222222186932404e-10
+  }
+ },
+ "exec_spans_s": [
+  48.0
+ ],
+ "counters": {
+  "deadline_forced_count": "0",
+  "ep_opt_hold_refused": "0",
+  "ep_opt_hold_masked": "0",
+  "ep_opt_release_failed": "0",
+  "ep_opt_held_open": "0",
+  "ep_opt_stale": "0",
+  "completion_short": 0.0
+ },
+ "closure": {
+  "pass": true,
+  "violations": [],
+  "rel_err": 4.3041997892609605e-07
+ }
+}
