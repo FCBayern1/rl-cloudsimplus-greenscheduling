@@ -81,8 +81,10 @@ def build_corpus():
 
 def fit(F):
     cfg, cell = twin(F)
+    # the module is built on the dense every-step grid (the corpus masks have 5 x 73 columns);
+    # without OFFSET_GRID_DENSE the block's dyadic 9-value grid is assumed and the mask sizes clash
     env = dict(os.environ, OPTION_BC_CORPUS=os.path.join(OUT, "corpus", F), OPTION_BC_OUT=os.path.join(OUT, "fit", F),
-               OPTION_BC_CONFIG=cfg, OPTION_BC_BLOCK=cell, OPTION_BC_HOLD_MIN_KAPPA="2")
+               OPTION_BC_CONFIG=cfg, OPTION_BC_BLOCK=cell, OPTION_BC_HOLD_MIN_KAPPA="2", OFFSET_GRID_DENSE="1")
     log = os.path.join(OUT, f"fit_{F}.log"); os.makedirs(OUT, exist_ok=True)
     with open(log, "w") as f:
         rc = subprocess.run([PY, "option_bc.py", "all", "--offset"], cwd=HERE, env=env, stdout=f, stderr=subprocess.STDOUT).returncode
