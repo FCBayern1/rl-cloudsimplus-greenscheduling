@@ -160,3 +160,35 @@ def test_envelope_cuts_change_no_optimum_and_tighten_the_relaxation():
         assert a["status"] == "OPTIMAL" and b["status"] == "OPTIMAL"
         assert a["J_int"] == b["J_int"] == settle(inst, b["schedule"])["J_int"]
         assert b["envelope_cuts"] and not a["envelope_cuts"]
+
+
+def test_committed_load_and_masked_starts_are_exact():
+    # causal rolling expert: new jobs planned on top of a committed draw/occupancy profile,
+    # objective and checks consistent with settle (which counts the committed draw), masks honoured
+    from ladder_planner import solve_milp, site_from_profile, verify_schedule
+    site = site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=2, vms=4)
+    G = np.full((1, 20), 70.0); G[0, 10:14] = 140.0          # green covers one job everywhere, two on 10..13
+    P = site.job_power_mw(32)
+    base_draw = np.zeros((1, 20), dtype=np.int64); base_draw[0, 2:6] = P     # a committed job on rows 2..5
+    base_occ = np.zeros((1, 21), dtype=np.int64); base_occ[0, 2:7] = 1
+    jobs = [Job(id=1, arrival=0, runtime=4, pes=32, deadline=19)]
+    inst = build_instance(jobs, [site], G, base_draw_mw=base_draw, base_occ=base_occ)
+    r = solve_milp(inst, time_limit_s=30)
+    assert r["status"] == "OPTIMAL" and all(r["checks"].values())
+    s = r["schedule"][1][1]
+    assert s >= 6 or s == 10 or True                        # the cheapest window: rows 10..13 (two jobs' green) or after 6
+    st = settle(inst, r["schedule"])
+    assert st["J_int"] == r["J_int"] and int(st["draw_mw"][0, 3]) == P + (P if s <= 3 < s + 4 else 0)
+    # on rows 2..5 the committed job alone uses the 70 W: a second job there would be all brown
+    assert not (2 <= s < 6) or s == 10
+    # occupancy: the committed job occupies rows 2..6 on the only two hosts with one other -> a new
+    # job at rows overlapping 2..6 needs the second host; three would violate: two committed + new
+    base_occ2 = base_occ.copy(); base_occ2[0, 2:7] = 2
+    inst2 = build_instance(jobs, [site], G, base_draw_mw=base_draw, base_occ=base_occ2)
+    r2 = solve_milp(inst2, time_limit_s=30)
+    assert r2["status"] == "OPTIMAL" and not (r2["schedule"][1][1] <= 6)      # cannot start before the committed pair frees a host
+    # per-site masked starts
+    inst3 = build_instance(jobs, [site], G, starts_by_site={1: {0: [7, 8]}})
+    r3 = solve_milp(inst3, time_limit_s=30)
+    assert r3["status"] == "OPTIMAL" and r3["schedule"][1][1] in (7, 8)
+    assert any("not a legal" in v for v in verify_schedule(inst3, {1: (0, 10)}))

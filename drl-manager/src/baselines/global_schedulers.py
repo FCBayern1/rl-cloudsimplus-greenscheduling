@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from .base import GlobalScheduler
@@ -2745,6 +2746,182 @@ class ScheduleReplayGlobalScheduler(GlobalScheduler):
         return out
 
 
+class CausalExpertGlobalScheduler(GlobalScheduler):
+    """causal_expert (2026-09-06, the bridge between the offline exact ladder and RL): a rolling
+    exact planner that at every step decides only the jobs that have ARRIVED and are not yet
+    committed, using (i) those jobs, (ii) its own committed reservations (draw and occupancy
+    per site and row, exactly what the every-step offset executor will run), and (iii) the
+    arm's future green curve (CAUSAL_RUNG: truth, shrink_<lambda>, shuffle, anti, built from
+    the wind files for the window like the ladder's rungs). It never sees a job before the
+    simulator presents it. Each decision is the version-2 MILP of `ladder_planner` with the
+    committed load as base, solved to proven optimality (envelope cuts), and emitted as
+    (site, kappa) with kappa = start - t - 1 on the dense grid; the executor's legality mask
+    restricts the candidate starts per site. Reads no answer of any other arm."""
+
+    HANDLES_DEFER = True
+    OPTION = True
+    START_LAG = 1                      # executor: release at t + kappa, start at t + kappa + 1
+    PLAN_LAG = 2                       # earliest start after sighting (ladder_planner.LAG)
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        import yaml
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        lad_dir = os.path.join(repo, "g1", "compressed_timecap_s2")
+        if lad_dir not in sys.path:
+            sys.path.insert(0, lad_dir)
+        import ladder_run as lr                      # noqa: E402
+        from ladder_planner import runtime_steps     # noqa: E402
+        self._lr, self._runtime_steps = lr, runtime_steps
+        cfg_path = os.environ.get("EVAL_CONFIG_PATH", "").strip()
+        cell = os.environ.get("ORACLE_EXPERIMENT", "").strip()
+        if not cfg_path or not cell:
+            raise RuntimeError("causal_expert needs EVAL_CONFIG_PATH and ORACLE_EXPERIMENT")
+        cfg = yaml.safe_load(open(cfg_path))
+        self.blk = cfg[cell]
+        self.sites = lr.sites_from_config(cfg, self.blk)
+        if len(self.sites) != num_datacenters:
+            raise RuntimeError(f"causal_expert: config has {len(self.sites)} sites, env {num_datacenters}")
+        self.offset_rows = int(os.environ.get("ORACLE_OFFSET_ROWS", "0"))
+        self.rung = os.environ.get("CAUSAL_RUNG", "truth")
+        self.horizon_rows = int(os.environ.get("CAUSAL_HORIZON_ROWS", "1400"))
+        self.wait_cap = int(os.environ.get("OFFSET_WAIT_CAP_STEPS", "72"))
+        self.vm_mips = float(self.blk["datacenters"][0].get("vm_pe_mips", 40000))
+        self.util = float(self.blk.get("cloudlet_cpu_utilization", 1.0))
+        self.time_limit_s = float(os.environ.get("CAUSAL_TIME_LIMIT_S", "120"))
+        truth, meta = lr.truth_curve(self.blk, self.offset_rows, self.horizon_rows)
+        self.curve_w = lr.rung_curve(truth, self.rung, lr._mu_w(self.blk), seed_key=f"ladder:{self.offset_rows}")
+        self.curve_signature = lr.curve_signature(self.curve_w)
+        self.truth_signature = meta["signature"]
+        self.reset()
+
+    def reset(self):
+        n, H = self.num_datacenters, self.horizon_rows
+        self.t = 0
+        self.plan = {}                                   # job id -> (site, start)
+        self.committed_draw = np.zeros((n, H), dtype=np.int64)
+        self.committed_occ = np.zeros((n, H + 1), dtype=np.int64)
+        self.n_decisions = 0
+        self.n_masked_fallback = 0
+        self.n_unsolved = 0
+        self.solve_wall_s = []
+        self.solve_status = {}
+
+    def _job_facts(self, planner, j):
+        from ladder_planner import Job
+        pes = int(float(np.asarray(planner.get("batch_cloudlet_pes"))[j]))
+        mi = float(np.asarray(planner.get("batch_cloudlet_mi"))[j])
+        ttd = planner.get("batch_cloudlet_time_to_deadline")
+        present = planner.get("batch_cloudlet_deadline_present")
+        r = self._runtime_steps(mi, self.vm_mips, self.util)
+        has_dl = present is None or float(np.asarray(present)[j]) >= 0.5
+        deadline = self.t + int(np.floor(float(np.asarray(ttd)[j]))) if (ttd is not None and has_dl) else 10 ** 9
+        return Job(id=-1, arrival=self.t, runtime=r, pes=pes, deadline=deadline)
+
+    def decide(self, t, new_jobs, masks, grid):
+        """One proven-optimal MILP for the newly visible jobs on the committed load."""
+        sched, res = causal_decide(t, new_jobs, masks, grid, self.sites, self.curve_w, self.committed_draw,
+                                   self.committed_occ, start_lag=self.START_LAG, plan_lag=self.PLAN_LAG,
+                                   time_limit_s=self.time_limit_s)
+        self.solve_wall_s.append(float(res.get("wall_s", 0.0)))
+        self.solve_status[t] = res.get("status")
+        if not sched:
+            self.n_unsolved += 1
+        return sched, res
+
+
+def causal_decide(t, new_jobs, masks, grid, sites, curve_w, committed_draw, committed_occ,
+                  start_lag=1, plan_lag=2, time_limit_s=120.0):
+    """Pure core of the causal expert. new_jobs: {id: Job with arrival t}; masks: {id: the
+    executor's legality row (n*K) or None}; grid: offset grid; curve_w: (n, H) W the arm's
+    curve; committed_draw (n, H) mW and committed_occ (n, H+1) the reservations so far.
+    Candidate start s = t + kappa + start_lag for every legal kappa >= 1 within the job's
+    window. Returns ({id: (site, start)}, solver record); {} when not proven optimal."""
+    from ladder_planner import build_instance, solve_milp, Job
+    n, K = len(sites), len(grid)
+    H = int(np.asarray(curve_w).shape[1])
+    jobs, allowed = [], {}
+    for jid, jb in new_jobs.items():
+        job = Job(id=jid, arrival=t, runtime=jb.runtime, pes=jb.pes, deadline=jb.deadline)
+        jobs.append(job)
+        allowed[jid] = {}
+        latest = min(job.latest, H - job.runtime - 1)
+        row = masks.get(jid)
+        for d in range(n):
+            starts = []
+            for i, kappa in enumerate(grid):
+                if kappa < 1:
+                    continue
+                s = t + int(kappa) + start_lag
+                if s < t + plan_lag or s > latest:
+                    continue
+                if row is not None and float(row[d * K + i]) < 0.5:
+                    continue
+                starts.append(s)
+            allowed[jid][d] = starts
+    inst = build_instance(jobs, list(sites), np.asarray(curve_w), base_draw_mw=committed_draw,
+                          base_occ=committed_occ, starts_by_site=allowed)
+    res = solve_milp(inst, time_limit_s=time_limit_s)
+    if res.get("status") != "OPTIMAL":
+        return {}, res
+    return res["schedule"], res
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        planner = global_obs.get("planner") or {}
+        ids = np.asarray(planner.get("batch_cloudlet_ids", [-1] * self.batch_size), dtype=np.int64)
+        mask = global_obs.get("batch_cloudlet_offset_allowed")
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        grid = global_obs.get("offset_grid")
+        if grid is None:
+            from gym_cloudsimplus.envs.option_executor import offset_grid
+            grid = offset_grid(self.wait_cap)
+        grid = list(grid)
+        K = len(grid)
+        t = self.t
+        new_jobs, masks, slot_of = {}, {}, {}
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0 or jid in self.plan:
+                continue
+            new_jobs[jid] = self._job_facts(planner, j)
+            masks[jid] = None if mask is None or j >= mask.shape[0] else mask[j]
+            slot_of[jid] = j
+        if new_jobs:
+            sched, _ = self.decide(t, new_jobs, masks, grid)
+            for jid, (d, s) in sched.items():
+                jb = new_jobs[jid]
+                self.plan[jid] = (int(d), int(s))
+                P = self.sites[d].job_power_mw(jb.pes)
+                self.committed_draw[d, s:s + jb.runtime] += P
+                self.committed_occ[d, s:s + jb.runtime + 1] += 1
+                self.n_decisions += 1
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0 or jid not in self.plan:
+                out.append(0)
+                if jid >= 0:
+                    self.n_masked_fallback += 1           # unsolved this step: routed now (counted)
+                continue
+            d, s = self.plan[jid]
+            kappa = s - t - self.START_LAG
+            if kappa in grid:
+                out.append(d * K + grid.index(kappa))
+            else:
+                out.append(d * K + 0)
+                self.n_masked_fallback += 1
+        self.t += 1
+        return out
+
+    def counters(self):
+        return {"causal_decisions": self.n_decisions, "causal_unsolved": self.n_unsolved,
+                "causal_fallback": self.n_masked_fallback, "causal_rung": self.rung,
+                "causal_curve_signature": self.curve_signature, "causal_truth_signature": self.truth_signature,
+                "causal_solve_wall_max_s": (max(self.solve_wall_s) if self.solve_wall_s else 0.0),
+                "causal_solve_wall_sum_s": float(sum(self.solve_wall_s))}
+
+
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
     """Adversarial contract arm (OPTION_ACTION_DESIGN §5): HOLD at the greenest site now on
     every slot the hold mask allows, ROUTE_NOW there otherwise. Exercises the executor's
@@ -2840,6 +3017,7 @@ GLOBAL_SCHEDULERS = {
     'reactive_wait_planner_off': ReactiveWaitPlannerOffsetGlobalScheduler,
     'fixed_off': FixedOffsetGlobalScheduler,
     'schedule_replay': ScheduleReplayGlobalScheduler,
+    'causal_expert': CausalExpertGlobalScheduler,
     'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,

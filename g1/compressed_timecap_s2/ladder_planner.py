@@ -118,6 +118,22 @@ class Instance:
     curves_mw: np.ndarray                # (sites, T) integer mW
     T: int
     starts: Dict[int, range] = field(default_factory=dict)   # job id -> legal starts
+    # causal rolling expert (2026-09-06): load already committed on the reservation grid, per
+    # (site, row): draw in mW and occupancy (running + ending jobs); the new jobs are planned
+    # on top of it. None = nothing committed (the offline instance).
+    base_draw_mw: Optional[np.ndarray] = None
+    base_occ: Optional[np.ndarray] = None
+    # optional per-(job, site) legal starts (the executor's legality mask); default: starts
+    starts_by_site: Optional[Dict[int, Dict[int, Sequence[int]]]] = None
+
+    def legal_starts(self, jid: int, d: int):
+        if self.starts_by_site is not None and jid in self.starts_by_site:
+            return list(self.starts_by_site[jid].get(d, []))
+        return self.starts[jid]
+
+    def eff_curve_mw(self) -> np.ndarray:
+        """Green left for new jobs: curve minus committed draw (may be negative)."""
+        return self.curves_mw if self.base_draw_mw is None else self.curves_mw - self.base_draw_mw
 
     @property
     def cap(self) -> List[int]:
@@ -136,7 +152,9 @@ def runtime_steps(mi: float, vm_pe_mips: float, cpu_util: float, timestep_sec: f
     return max(1, int(math.ceil(float(mi) / rate / timestep_sec)))
 
 
-def build_instance(jobs: List[Job], sites: Sequence = None, curves_w: np.ndarray = None, cap: Sequence[int] = None) -> Instance:
+def build_instance(jobs: List[Job], sites: Sequence = None, curves_w: np.ndarray = None, cap: Sequence[int] = None,
+                   base_draw_mw: Optional[np.ndarray] = None, base_occ: Optional[np.ndarray] = None,
+                   starts_by_site: Optional[Dict[int, Dict[int, Sequence[int]]]] = None) -> Instance:
     """curves_w: (sites, T) green power in W (float); rounded to integer mW here. `sites` is a
     list of Site, or of PE capacities (legacy RS500A sites, see sites_from_caps); `cap` is the
     version-1 keyword for the latter."""
@@ -148,7 +166,10 @@ def build_instance(jobs: List[Job], sites: Sequence = None, curves_w: np.ndarray
     T = int(curves_mw.shape[1])
     if curves_mw.shape[0] != len(sites):
         raise ValueError(f"curve has {curves_mw.shape[0]} sites, topology has {len(sites)}")
-    inst = Instance(jobs=list(jobs), sites=list(sites), curves_mw=curves_mw, T=T)
+    inst = Instance(jobs=list(jobs), sites=list(sites), curves_mw=curves_mw, T=T,
+                    base_draw_mw=None if base_draw_mw is None else np.asarray(base_draw_mw, dtype=np.int64),
+                    base_occ=None if base_occ is None else np.asarray(base_occ, dtype=np.int64),
+                    starts_by_site=starts_by_site)
     for j in inst.jobs:
         lo = j.arrival + LAG
         hi = min(j.latest, T - j.runtime)
@@ -196,6 +217,10 @@ def settle(inst: Instance, schedule: Dict[int, Tuple[int, int]], curves_mw: Opti
         jobs[d, s:s + j.runtime] += 1
         occ[d, s:s + j.runtime + 1] += 1
         draw[d, s:s + j.runtime] += inst.sites[d].job_power_mw(j.pes)
+    if inst.base_draw_mw is not None:
+        draw = draw + inst.base_draw_mw[:, :T]
+    if inst.base_occ is not None:
+        occ[:, :T] += inst.base_occ[:, :T]
     hosts = jobs.copy()
     premise_ok = all(int(occ[d].max()) <= inst.sites[d].hosts for d in range(n)) if T else True
     brown = np.maximum(0, draw - G)
@@ -229,8 +254,12 @@ def verify_schedule(inst: Instance, schedule: Dict[int, Tuple[int, int]]) -> Lis
             v.append(f"job {j.id} starts {s} after latest {j.latest}")
         if s + j.runtime > T:
             v.append(f"job {j.id} runs past the horizon")
+        if inst.starts_by_site is not None and s not in set(inst.legal_starts(j.id, d)):
+            v.append(f"job {j.id} start {s} on site {d} is not a legal (masked) start")
         pes[d, s:s + j.runtime] += j.pes
         cnt[d, s:s + j.runtime + 1] += 1
+    if inst.base_occ is not None:
+        cnt[:, :T] += inst.base_occ[:, :T]
     for d in range(n):
         over = np.where(pes[d] > inst.sites[d].cap)[0]
         if over.size:
@@ -255,9 +284,11 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     from scipy.optimize import milp, LinearConstraint, Bounds
     from scipy.sparse import lil_matrix
     n, T = inst.curves_mw.shape
-    if any(not inst.starts[j.id] for j in inst.jobs):
+    xs = [(j.id, d, s) for j in inst.jobs for d in range(n) for s in inst.legal_starts(j.id, d)]
+    if any(not any(inst.legal_starts(j.id, d) for d in range(n)) for j in inst.jobs):
         return {"status": "INFEASIBLE", "reason": "a job has no legal start"}
-    xs = [(j.id, d, s) for j in inst.jobs for d in range(n) for s in inst.starts[j.id]]
+    Geff = inst.eff_curve_mw()
+    base_occ = inst.base_occ if inst.base_occ is not None else np.zeros((n, T + 1), dtype=np.int64)
     xi = {key: i for i, key in enumerate(xs)}
     cells = [(d, t) for d in range(n) for t in range(T)]
     ci = {c: k for k, c in enumerate(cells)}
@@ -276,7 +307,7 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     r = 0
     for j in inst.jobs:                                             # exactly one start
         for d in range(n):
-            for s in inst.starts[j.id]:
+            for s in inst.legal_starts(j.id, d):
                 A[r, xi[(j.id, d, s)]] = 1.0
         lo.append(1.0); hi.append(1.0); r += 1
     pes_row = {cell: r + k for k, cell in enumerate(cells)}
@@ -292,11 +323,11 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
             A[cnt_row[(d, t)], i] += 1.0
     for (d, t) in cells:                                            # PEs <= cap
         lo.append(-np.inf); hi.append(float(inst.sites[d].cap))
-    for (d, t) in cells:                                            # occupancy <= hosts (premise A)
-        lo.append(-np.inf); hi.append(float(inst.sites[d].hosts))
-    for k, (d, t) in enumerate(cells):                              # brown - draw >= -G
+    for (d, t) in cells:                                            # occupancy <= hosts (premise A), minus committed
+        lo.append(-np.inf); hi.append(float(inst.sites[d].hosts - int(base_occ[d, t])))
+    for k, (d, t) in enumerate(cells):                              # brown - draw_new >= -(G - committed draw)
         A[brown_row[(d, t)], boff + k] = 1.0
-        lo.append(-float(inst.curves_mw[d, t])); hi.append(np.inf)
+        lo.append(-float(Geff[d, t])); hi.append(np.inf)
     # Equivalent tightening (2026-09-06): the convex envelope of brown = max(0, P n - G) over the
     # INTEGER job counts n of a cell. With m = floor(G / P) the envelope between n = m and m + 1
     # is brown >= (P (m + 1) - G) (n - m), stronger than the LP line where G is not a multiple of
@@ -312,7 +343,7 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
             P = {inst.sites[d].job_power_mw(j.pes) for _, j in i_list}
             if len(P) != 1:
                 continue
-            P = P.pop(); G = int(inst.curves_mw[d, t]); m = G // P
+            P = P.pop(); G = int(Geff[d, t]); m = G // P
             slope = P * (m + 1) - G
             if slope <= 0 or slope >= P:
                 continue
@@ -348,12 +379,16 @@ def solve_milp(inst: Instance, time_limit_s: float = TIME_LIMIT_S, mip_gap: floa
     out["schedule_hash"] = schedule_hash(sched)
     st = settle(inst, sched)                  # exact integer objective from the schedule itself
     out["J_int"], out["C_kg"] = st["J_int"], st["C_kg"]
-    out["bound"] = out["mip_dual_bound"]
+    # with committed load the MILP objective omits the constant "draw of the committed jobs"
+    # (brown is on the full draw); settle counts it, so compare after adding it back
+    const = int(inst.base_draw_mw[:, :T].sum()) if inst.base_draw_mw is not None else 0
+    out["J_const_committed"] = const
+    out["bound"] = None if out["mip_dual_bound"] is None else out["mip_dual_bound"] + const
     checks = {"highs_optimal": res.status == 0,
               "schedule_valid": not verify_schedule(inst, sched),
-              "objective_matches": out["fun"] is not None and abs(out["fun"] - out["J_int"]) < 0.5,
+              "objective_matches": out["fun"] is not None and abs(out["fun"] + const - out["J_int"]) < 0.5,
               "bound_closes": (out["mip_dual_bound"] is not None and math.isfinite(out["mip_dual_bound"])
-                               and out["J_int"] - out["mip_dual_bound"] < 1.0),
+                               and out["J_int"] - (out["mip_dual_bound"] + const) < 1.0),
               "gap_finite": out["mip_gap"] is not None and math.isfinite(out["mip_gap"]),
               "premise_ok": st["premise_ok"]}
     out["checks"] = checks
@@ -368,20 +403,22 @@ def solve(inst: Instance, time_limit_s: float = TIME_LIMIT_S, workers: int = 8, 
     from ortools.sat.python import cp_model
     m = cp_model.CpModel()
     n, T = inst.curves_mw.shape
+    if inst.base_draw_mw is not None or inst.base_occ is not None:
+        raise NotImplementedError("CP-SAT cross-check has no committed-load support; use solve_milp")
     x = {}
     for j in inst.jobs:
         for d in range(n):
-            for s in inst.starts[j.id]:
+            for s in inst.legal_starts(j.id, d):
                 x[(j.id, d, s)] = m.NewBoolVar(f"x_{j.id}_{d}_{s}")
-        if not inst.starts[j.id]:
+        if not any(inst.legal_starts(j.id, d) for d in range(n)):
             return {"status": "INFEASIBLE", "reason": f"job {j.id} has no legal start"}
-        m.AddExactlyOne(x[(j.id, d, s)] for d in range(n) for s in inst.starts[j.id])
+        m.AddExactlyOne(x[(j.id, d, s)] for d in range(n) for s in inst.legal_starts(j.id, d))
     running = {(d, t): [] for d in range(n) for t in range(T)}
     occupying = {(d, t): [] for d in range(n) for t in range(T)}
     for j in inst.jobs:
         for d in range(n):
             pw = inst.sites[d].job_power_mw(j.pes)
-            for s in inst.starts[j.id]:
+            for s in inst.legal_starts(j.id, d):
                 for t in range(s, min(T, s + j.runtime)):
                     running[(d, t)].append((j.pes, pw, x[(j.id, d, s)]))
                 for t in range(s, min(T, s + j.runtime + 1)):

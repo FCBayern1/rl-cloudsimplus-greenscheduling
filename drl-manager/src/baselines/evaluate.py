@@ -798,6 +798,12 @@ def run_evaluation(
                 for _r in _ledger:
                     _w.writerow(dict(_r, episode=ep + 1))
             metrics["option_ledger_path"] = _lp
+        # arm-level counters (causal_expert: unsolved steps, fallbacks, curve signatures)
+        if hasattr(global_scheduler, "counters") and callable(getattr(global_scheduler, "counters")):
+            try:
+                metrics.update({str(k): v for k, v in global_scheduler.counters().items()})
+            except Exception as _e:  # noqa: BLE001
+                metrics["arm_counters_error"] = str(_e)
         metrics['episode'] = ep + 1
         metrics['episode_length'] = steps
         metrics['global_reward_sum'] = global_reward_sum
