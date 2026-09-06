@@ -56,7 +56,10 @@ CLOSURE_REL = 0.03
 CLOSURE_DRAW_REL = 0.001
 CLOSURE_BROWN_ABS_WH = 0.002
 QUANT_FRAC = 0.001
-C_BROWN_REF = 0.01897
+# prereg v2 §4: the all-brown carbon of the trace on the certification twin, 0.5 kg/kWh x
+# 35 jobs x 48 s x 65.64 W (RS500A_DYN, one host per job) = 0.015316 kg (version 1 used
+# 0.01897 kg from the version-1 power model)
+C_BROWN_REF = 0.015316
 HEADROOM_REL, HEADROOM_ABS = 0.15, 0.05 * C_BROWN_REF
 LOSS_MIN, HEADROOM_SHARE = 0.05, 0.80
 COMPRESSED_DIVISOR = 3000.0
