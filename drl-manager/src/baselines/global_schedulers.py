@@ -2671,6 +2671,75 @@ class FixedOffsetGlobalScheduler(OffsetPlannerMixin, PersistencePlannerGlobalSch
             del self.active[jid]
 
 
+class ScheduleReplayGlobalScheduler(GlobalScheduler):
+    """Replays a fixed schedule {cloudlet id: [site, start step]} (SCHEDULE_JSON) through the
+    (DC, dispatch-offset) executor (ERROR_LADDER_PLANNER_PREREG §2.2): at a job's first
+    sighting at step t it emits (site, κ) with κ = start − t − lag so the job is routed at
+    start − lag and begins at `start`; a start already in the past or a (site, κ) the
+    legality mask refuses is emitted as κ = 0 and counted (`n_late`, `n_masked`), never
+    clipped silently. Reads no green, no forecast.
+    """
+
+    HANDLES_DEFER = True
+    OPTION = True
+    START_LAG = 1
+
+    def __init__(self, num_datacenters: int, batch_size: int):
+        super().__init__(num_datacenters, batch_size)
+        import json as _json
+        path = os.environ.get("SCHEDULE_JSON", "").strip()
+        if not path:
+            raise RuntimeError("schedule_replay needs SCHEDULE_JSON")
+        raw = _json.load(open(path))
+        self.plan = {int(k): (int(v[0]), int(v[1])) for k, v in raw["schedule"].items()}
+        self.grid = list(raw.get("grid") or [])
+        self.t = 0
+        self.seen = set()
+        self.n_late = 0
+        self.n_masked = 0
+        self.n_unplanned = 0
+
+    def reset(self):
+        self.t = 0
+        self.seen = set()
+
+    def schedule(self, global_obs):
+        n = self.num_datacenters
+        planner = global_obs.get('planner') or {}
+        ids = np.asarray(planner.get('batch_cloudlet_ids', [-1] * self.batch_size), dtype=np.int64)
+        mask = global_obs.get('batch_cloudlet_offset_allowed')
+        mask = None if mask is None else np.asarray(mask, dtype=np.float64)
+        grid = self.grid
+        if not grid:
+            from gym_cloudsimplus.envs.option_executor import offset_grid
+            grid = offset_grid(int(os.environ.get("OFFSET_WAIT_CAP_STEPS", "72")))
+        K = len(grid)
+        out = []
+        for j in range(self.batch_size):
+            jid = int(ids[j]) if j < ids.shape[0] else -1
+            if jid < 0:
+                out.append(0)
+                continue
+            if jid not in self.plan:
+                self.n_unplanned += 1
+                out.append(0)
+                continue
+            site, start = self.plan[jid]
+            kappa = start - self.t - self.START_LAG
+            if kappa < 0:
+                self.n_late += 1
+                kappa = 0
+            if kappa not in grid:
+                kappa = max(g for g in grid if g <= kappa)       # every-step grid: exact
+            a = site * K + grid.index(kappa)
+            if kappa > 0 and mask is not None and j < mask.shape[0] and float(mask[j, a]) < 0.5:
+                self.n_masked += 1
+                a = site * K + 0
+            out.append(a)
+        self.t += 1
+        return out
+
+
 class AlwaysHoldGlobalScheduler(GlobalScheduler):
     """Adversarial contract arm (OPTION_ACTION_DESIGN §5): HOLD at the greenest site now on
     every slot the hold mask allows, ROUTE_NOW there otherwise. Exercises the executor's
@@ -2765,6 +2834,7 @@ GLOBAL_SCHEDULERS = {
     'climatology_planner_off': ClimatologyPlannerOffsetGlobalScheduler,
     'reactive_wait_planner_off': ReactiveWaitPlannerOffsetGlobalScheduler,
     'fixed_off': FixedOffsetGlobalScheduler,
+    'schedule_replay': ScheduleReplayGlobalScheduler,
     'option_bc': OptionBCGlobalScheduler,
     'curve_planner_opt': OraclePlannerOptionGlobalScheduler,
     'perturbed_oracle_planner_opt': PerturbedOraclePlannerOptionGlobalScheduler,
