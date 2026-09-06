@@ -85,3 +85,27 @@ def test_audit_switch_lifts_the_offset_mask():
     finally:
         mod._audit_skip_defer_mask = False
     assert torch.isfinite(raw).all() and torch.all(raw > -1e6)
+
+
+def test_candidate_key_enters_the_offset_logits_through_one_gain():
+    # F2/F3 (SCENE_INTERFACE_DESIGN §4.4): logit(d, κ) += cover_gain * cand_green_cover[j, d, κ]
+    inner = dict(_space()["observation"].spaces)
+    inner["cand_green_cover"] = spaces.Box(0.0, 1.0, (NB, N * K), np.float32)
+    space = spaces.Dict({"observation": spaces.Dict(inner), "action_mask": spaces.Box(0.0, 1.0, (NB,), np.float32)})
+    spec = RLModuleSpec(module_class=GTrXLScoreBasedGlobalRLModule, observation_space=space,
+                        action_space=spaces.MultiDiscrete([N * K] * NB), model_config=dict(TINY))
+    mod = spec.build()
+    assert hasattr(mod, "cover_gain") and float(mod.cover_gain) == 1.0
+    assert not hasattr(_build(), "cover_gain")                                   # absent key -> no parameter
+    mask = np.ones((NB, N * K), dtype=np.float32)
+    b0 = _batch(mask); b1 = _batch(mask)
+    cover = torch.rand(2, NB, N * K)
+    b0[Columns.OBS]["observation"]["cand_green_cover"] = torch.zeros(2, NB, N * K)
+    b1[Columns.OBS]["observation"]["cand_green_cover"] = cover
+    with torch.no_grad():
+        l0, l1 = _logits(mod, b0), _logits(mod, b1)
+    assert torch.allclose(l1 - l0, cover.unsqueeze(1), atol=1e-5)               # exactly gain (1.0) x cover
+    with torch.no_grad():
+        mod.cover_gain.fill_(2.5)
+        l2 = _logits(mod, b1)
+    assert torch.allclose(l2 - l0, 2.5 * cover.unsqueeze(1), atol=1e-4)

@@ -1056,6 +1056,11 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         # factorisation of site and dispatch offset over the cloudlet + context state.
         if getattr(self, "offset_mode", False):
             self.offset_head = nn.Linear(d_model, int(self.offset_k))
+            if getattr(self, "has_cover", False):
+                # F2/F3 candidate key: logit(d, κ) += cover_gain * cand_green_cover[j, d, κ].
+                # One scalar, initialised at 1.0 so an untrained module already ranks candidates
+                # by their forecast cover; absent key -> parameter absent, checkpoints unchanged.
+                self.cover_gain = nn.Parameter(torch.ones(1))
 
         # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
         # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
@@ -1258,6 +1263,15 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 if shape != (self.num_batch_slots, self.num_action_choices):
                     raise ValueError(
                         f"{key!r} has shape {shape}, expected ({self.num_batch_slots}, {self.num_action_choices})")
+                continue
+            if key == "cand_green_cover":
+                # Candidate key (SCENE_INTERFACE_DESIGN §4.4, F2/F3): per (slot, site * κ) the
+                # share of the job's energy the arm's forecast covers. Enters the offset logits
+                # additively through one learnable gain (see _forward_pass); never a trunk feature.
+                if shape != (self.num_batch_slots, self.num_action_choices):
+                    raise ValueError(
+                        f"{key!r} has shape {shape}, expected ({self.num_batch_slots}, {self.num_action_choices})")
+                self.has_cover = True
                 continue
             if key.startswith("dc_"):
                 if shape != (self.num_dcs,):
@@ -1483,6 +1497,14 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
             off = self.offset_head(q) / self.score_temperature      # (B, T, N_b, K)
             full = scores.unsqueeze(-1) + off.unsqueeze(-2)         # (B, T, N_b, num_dcs, K)
             full = full.reshape(full.shape[0], full.shape[1], full.shape[2], self.num_dcs * K)
+            cover = obs.get("cand_green_cover") if (isinstance(obs, dict) and getattr(self, "has_cover", False)) else None
+            if cover is not None:
+                cv = cover.float() if cover.dtype != torch.float32 else cover
+                if cv.dim() == 3:                                    # (B, N_b, n K) -> (B, 1, N_b, n K)
+                    cv = cv.unsqueeze(1)
+                if cv.shape[1] != full.shape[1] and cv.shape[1] == 1:
+                    cv = cv.expand(cv.shape[0], full.shape[1], cv.shape[2], cv.shape[3])
+                full = full + self.cover_gain * cv
             allowed = obs.get("batch_cloudlet_offset_allowed") if isinstance(obs, dict) else None
             if allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
                 al = allowed.float() if allowed.dtype != torch.float32 else allowed
