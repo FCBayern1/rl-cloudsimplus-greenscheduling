@@ -299,6 +299,13 @@ def cmd_solve(rungs=RUNGS):
         json.dump({**{str(k): v for k, v in summary.items()}, "environment": environment}, f, indent=2)
 
 
+def replay_env(schedule_json):
+    """Environment for one replay: the schedule and the every-step offset grid (OFFSET_GRID_DENSE=1);
+    without the dense grid the executor's 12-value dyadic mask and the replay arm's 73-value
+    action index disagree and every plan is silently mis-executed (found on ladder_v3 k0)."""
+    return {"SCHEDULE_JSON": schedule_json, "OFFSET_GRID_DENSE": "1"}
+
+
 def cmd_replay(rungs=RUNGS):
     import run_stage_a as rs
     dev = _dev()
@@ -310,7 +317,9 @@ def cmd_replay(rungs=RUNGS):
             if not os.path.exists(sj) or json.load(open(sj)).get("status") != "OPTIMAL":
                 print(f"k{k} {rung}: no OPTIMAL schedule, skipped"); continue
             out_csv = os.path.join(LAD, "replay", f"k{k}_{rung}.csv")
-            ok = _evaluate(cfg, cell, k, off, "schedule_replay", out_csv, {"SCHEDULE_JSON": sj})
+            # the frozen settlement path is the EVERY-STEP offset executor (prereg §2.2, A, D):
+            # the simulator's grid must be 0..W so the plan's (site, start) maps 1:1 onto an action
+            ok = _evaluate(cfg, cell, k, off, "schedule_replay", out_csv, replay_env(sj))
             print(f"replay k{k} {rung}: {'ok' if ok else 'FAILED'}", flush=True)
 
 
@@ -321,7 +330,9 @@ def cmd_judge(rungs=RUNGS):
     c_sim, c_model = {r: {} for r in rungs}, {r: {} for r in rungs}
     unresolved, closure_fail = [], []
     for k, off in enumerate(dev):
-        sk = summary[str(k)]
+        sk = summary.get(str(k))
+        if sk is None:  # Addendum E: the solve stopped at an earlier unproven cell; never reached
+            unresolved.extend(f"k{k}:{rung} (not solved: after the stop)" for rung in rungs); continue
         if not sk["quantisation_ok"]:
             res["verdict"] = "INVALID_QUANTISATION"; break
         for rung in rungs:

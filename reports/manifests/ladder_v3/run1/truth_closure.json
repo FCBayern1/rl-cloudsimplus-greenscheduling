@@ -1,0 +1,38 @@
+{
+  "windows": {
+    "0": {
+      "truth": {
+        "C_sim": 0.0006549926018518522,
+        "C_model": 0.00061678755,
+        "closure": {
+          "pass": false,
+          "violations": [
+            "carbon rel err 0.0619 > 0.03"
+          ],
+          "rel_err": 0.06194199583284741
+        }
+      }
+    }
+  },
+  "rungs": [
+    "truth"
+  ],
+  "environment": {
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "cpu_count": 8,
+    "python": "3.12.3",
+    "scipy": "1.17.1",
+    "highs": "?",
+    "time_limit_s": 3600.0,
+    "mip_rel_gap": 0.0,
+    "one_solve_at_a_time": true
+  },
+  "verdict": "STOP_SOLVER_RUNG_UNRESOLVED",
+  "unresolved": [
+    "k1:truth",
+    "k2:truth (not solved: after the stop)",
+    "k3:truth (not solved: after the stop)",
+    "k4:truth (not solved: after the stop)",
+    "k5:truth (not solved: after the stop)"
+  ]
+}

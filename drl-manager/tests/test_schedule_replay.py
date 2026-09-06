@@ -52,6 +52,15 @@ def test_late_start_and_masked_pair_are_counted_not_clipped_silently(tmp_path):
     assert arm.n_late == 2                                                # jobs 7 and 9
 
 
+def test_executor_on_another_grid_is_refused_not_misindexed(tmp_path):
+    # ladder_v3 k0: the simulator ran the dyadic 12-value grid while the plan used 0..72, so
+    # site*K + index pointed at the wrong (site, κ) and 26 holds were "masked"; refuse loudly.
+    import pytest
+    arm = _arm(tmp_path, {7: (1, 10)})
+    with pytest.raises(RuntimeError, match="OFFSET_GRID_DENSE"):
+        arm.schedule(_obs([7, -1, -1], mask=np.ones((3, N * 12))))
+
+
 def test_unplanned_job_is_counted(tmp_path):
     arm = _arm(tmp_path, {1: (0, 2)})
     arm.schedule(_obs([99, -1, -1]))

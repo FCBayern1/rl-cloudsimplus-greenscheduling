@@ -54,6 +54,32 @@ def test_gates_l1_and_l2():
     assert abs(l2["shrink_0.5"]["harm_headroom_share"] - 1.0) < 1e-12
 
 
+def test_judge_treats_windows_never_solved_as_unresolved(tmp_path, monkeypatch):
+    # Addendum E: the solve stops at the first unproven cell, so later windows never enter the
+    # summary; the judge must report them as unresolved instead of failing on the missing key.
+    import json
+    import ladder_run
+    monkeypatch.setattr(ladder_run, "LAD", str(tmp_path))
+    monkeypatch.setattr(ladder_run, "_dev", lambda: [16477, 4240, 9154])
+    os.makedirs(tmp_path / "solve"); os.makedirs(tmp_path / "replay")
+    summary = {"0": {"quantisation_ok": True, "rungs": {"truth": {"status": "OPTIMAL", "C_model_truth_kg": 1.0}}},
+               "1": {"quantisation_ok": True, "rungs": {"truth": {"status": "FEASIBLE"}}},
+               "environment": {}}
+    json.dump(summary, open(tmp_path / "solve_summary.json", "w"))
+    ladder_run.cmd_judge(("truth",))
+    res = json.load(open(tmp_path / "truth_closure.json"))
+    assert res["verdict"] == "STOP_SOLVER_RUNG_UNRESOLVED"
+    assert res["unresolved"] == ["k1:truth", "k2:truth (not solved: after the stop)"]
+
+
+def test_replay_uses_the_every_step_offset_grid():
+    # prereg §2.2 / Addendum A: settlement path = every-step (DC, offset) executor; the replay
+    # arm indexes actions on the 73-value grid, so the simulator must be told to use it too.
+    from ladder_run import replay_env
+    env = replay_env("/x/k0_truth.json")
+    assert env["OFFSET_GRID_DENSE"] == "1" and env["SCHEDULE_JSON"] == "/x/k0_truth.json"
+
+
 def test_atomic_json_writes_complete_records(tmp_path):
     from ladder_run import atomic_json
     p = str(tmp_path / "r.json")

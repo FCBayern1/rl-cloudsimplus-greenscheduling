@@ -1,0 +1,45 @@
+{
+  "0": {
+    "cpsat_status": "FEASIBLE",
+    "cpsat_J": 222043518,
+    "cpsat_wall": 600.903430202,
+    "highs_status": "OPTIMAL",
+    "highs_J": 222043518,
+    "inconsistent_below_optimum": false
+  },
+  "1": {
+    "cpsat_status": "FEASIBLE",
+    "cpsat_J": 352513519,
+    "cpsat_wall": 602.1255045290001,
+    "highs_status": "FEASIBLE",
+    "highs_J": null
+  },
+  "2": {
+    "cpsat_status": "FEASIBLE",
+    "cpsat_J": 424347006,
+    "cpsat_wall": 600.084322891,
+    "highs_status": "FEASIBLE",
+    "highs_J": null
+  },
+  "3": {
+    "cpsat_status": "OPTIMAL",
+    "cpsat_J": 170405256,
+    "cpsat_wall": 348.593187686,
+    "highs_status": "FEASIBLE",
+    "highs_J": null
+  },
+  "4": {
+    "cpsat_status": "FEASIBLE",
+    "cpsat_J": 186488733,
+    "cpsat_wall": 600.136716751,
+    "highs_status": "FEASIBLE",
+    "highs_J": null
+  },
+  "5": {
+    "cpsat_status": "FEASIBLE",
+    "cpsat_J": 694351483,
+    "cpsat_wall": 607.439115797,
+    "highs_status": "FEASIBLE",
+    "highs_J": null
+  }
+}

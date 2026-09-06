@@ -2714,6 +2714,11 @@ class ScheduleReplayGlobalScheduler(GlobalScheduler):
             from gym_cloudsimplus.envs.option_executor import offset_grid
             grid = offset_grid(int(os.environ.get("OFFSET_WAIT_CAP_STEPS", "72")))
         K = len(grid)
+        if mask is not None and mask.ndim == 2 and mask.shape[1] != n * K:
+            # the executor is on a different offset grid (e.g. the dyadic 12-value one without
+            # OFFSET_GRID_DENSE=1): the action index would land on the wrong (site, κ); refuse
+            raise RuntimeError(f"schedule_replay: executor grid has {mask.shape[1] // n} offsets, "
+                               f"the schedule's grid has {K}; set OFFSET_GRID_DENSE=1 for a 0..W plan")
         out = []
         for j in range(self.batch_size):
             jid = int(ids[j]) if j < ids.shape[0] else -1

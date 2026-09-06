@@ -1,0 +1,244 @@
+{
+  "0": {
+    "offset": 16477,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "OPTIMAL",
+        "wall_s": 337.2146439552307,
+        "external_wall_s": 339.6391360759735,
+        "solver": "milp",
+        "bound": 222043518.0,
+        "fun": 222043518.00000003,
+        "mip_gap": 0.0,
+        "mip_dual_bound": 222043518.0,
+        "mip_node_count": 16044,
+        "milp_status": 0,
+        "milp_message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "schedule_hash": "f56b0cfd709136ec",
+        "checks": {
+          "highs_optimal": true,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": true,
+          "gap_finite": true
+        },
+        "verify_violations": [],
+        "J_on_rung": 222043518,
+        "C_model_truth_kg": 0.00061678755,
+        "J_model_truth": 222043518,
+        "rmse_vs_truth_w": 0.0
+      }
+    }
+  },
+  "1": {
+    "offset": 4240,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "FEASIBLE",
+        "wall_s": 600.1834938526154,
+        "external_wall_s": 602.4712862968445,
+        "solver": "milp",
+        "bound": 282363624.0,
+        "fun": 394607920.0,
+        "mip_gap": 0.28444511706708775,
+        "mip_dual_bound": 282363624.0,
+        "mip_node_count": 6069,
+        "milp_status": 1,
+        "milp_message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+        "schedule_hash": "2642ffac6eb27b20",
+        "checks": {
+          "highs_optimal": false,
+          "schedule_valid": true,
+          "objective_matches": false,
+          "bound_closes": false,
+          "gap_finite": true
+        },
+        "verify_violations": []
+      }
+    }
+  },
+  "2": {
+    "offset": 9154,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "FEASIBLE",
+        "wall_s": 600.1769859790802,
+        "external_wall_s": 602.4727277755737,
+        "solver": "milp",
+        "bound": 372712639.0,
+        "fun": 429226186.0,
+        "mip_gap": 0.1316637913605765,
+        "mip_dual_bound": 372712639.0,
+        "mip_node_count": 12249,
+        "milp_status": 1,
+        "milp_message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+        "schedule_hash": "bb0994cf21314738",
+        "checks": {
+          "highs_optimal": false,
+          "schedule_valid": true,
+          "objective_matches": false,
+          "bound_closes": false,
+          "gap_finite": true
+        },
+        "verify_violations": []
+      }
+    }
+  },
+  "3": {
+    "offset": 33225,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "FEASIBLE",
+        "wall_s": 600.2764732837677,
+        "external_wall_s": 602.6546380519867,
+        "solver": "milp",
+        "bound": 160348501.0,
+        "fun": 177031009.0,
+        "mip_gap": 0.09423494840951847,
+        "mip_dual_bound": 160348501.0,
+        "mip_node_count": 25348,
+        "milp_status": 1,
+        "milp_message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+        "schedule_hash": "2e0adb306aed19d6",
+        "checks": {
+          "highs_optimal": false,
+          "schedule_valid": true,
+          "objective_matches": false,
+          "bound_closes": false,
+          "gap_finite": true
+        },
+        "verify_violations": []
+      }
+    }
+  },
+  "4": {
+    "offset": 13223,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "FEASIBLE",
+        "wall_s": 600.1512401103973,
+        "external_wall_s": 602.456672668457,
+        "solver": "milp",
+        "bound": 186465809.0,
+        "fun": 186488733.0,
+        "mip_gap": 0.0001229243162910008,
+        "mip_dual_bound": 186465809.0,
+        "mip_node_count": 17539,
+        "milp_status": 1,
+        "milp_message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+        "schedule_hash": "2137da1cf2148fb1",
+        "checks": {
+          "highs_optimal": false,
+          "schedule_valid": true,
+          "objective_matches": true,
+          "bound_closes": false,
+          "gap_finite": true
+        },
+        "verify_violations": []
+      }
+    }
+  },
+  "5": {
+    "offset": 49625,
+    "n_jobs": 35,
+    "T": 669,
+    "quantisation_bound_kg": 2.2764583333333333e-07,
+    "quantisation_ok": true,
+    "mu_w": [
+      215.97709597798158,
+      241.1818087098753,
+      115.58595383631727,
+      0.0,
+      0.0
+    ],
+    "rungs": {
+      "truth": {
+        "status": "FEASIBLE",
+        "wall_s": 600.1697330474854,
+        "external_wall_s": 602.4979660511017,
+        "solver": "milp",
+        "bound": 605040755.0,
+        "fun": 752484632.0,
+        "mip_gap": 0.19594270863461302,
+        "mip_dual_bound": 605040755.0,
+        "mip_node_count": 4364,
+        "milp_status": 1,
+        "milp_message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+        "schedule_hash": "4e5d7c5d3ba1eb8b",
+        "checks": {
+          "highs_optimal": false,
+          "schedule_valid": true,
+          "objective_matches": false,
+          "bound_closes": false,
+          "gap_finite": true
+        },
+        "verify_violations": []
+      }
+    }
+  },
+  "environment": {
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "cpu_count": 8,
+    "python": "3.12.3",
+    "scipy": "1.17.1",
+    "highs": "?",
+    "time_limit_s": 600.0,
+    "mip_rel_gap": 0.0,
+    "one_solve_at_a_time": true
+  }
+}
