@@ -26,16 +26,24 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "..", "drl-manager"))
 import ladder_run as lr  # noqa: E402
 from ladder_planner import Job, build_instance, settle  # noqa: E402
+import yaml  # noqa: E402
 
 CFG = os.path.join(HERE, "config_settle_probe.yml")
 OUT = os.path.join(HERE, "stage_a_out", "settle_diag", "probes")
-CAP = [640, 512, 640, 512, 192]
+CAP = [640, 512, 640, 512, 192]        # version-1 legacy (attribute_k0 only)
 DYN = 64.64
+
+
+def probe_sites():
+    """Per-site topology of the probe config (model version 2, diagnostics A and D)."""
+    cfg = yaml.safe_load(open(CFG))
+    blk = cfg[[k for k in cfg if k.startswith("sp_")][0]]
+    return lr.sites_from_config(cfg, blk)
 PROBES = {
     "L1_single": {0: (0, 20)},
     "L2_pair_same_start": {0: (0, 20), 1: (0, 20)},
     "L3a_pair_staggered": {0: (0, 20), 1: (0, 40)},
-    "L3b_triple_reuse": {0: (0, 20), 1: (0, 20), 2: (0, 80)},
+    "L3b_triple_reuse": {0: (0, 20), 1: (0, 20), 2: (0, 75)},   # 75 <= first sighting (3) + 72: the replay arm clips later starts
     "L3c_triple_fragment": {0: (0, 20), 1: (0, 20), 2: (0, 30)},
 }
 
@@ -76,7 +84,7 @@ def compare(name, plan, S, G):
     jobs = [Job(id=i, arrival=5, runtime=48, pes=32, deadline=3000) for i in sorted(plan)]
     T = max(S.shape[1], max(s for _, s in plan.values()) + 48 + 2)
     Gm = G if G.shape[1] >= T else np.concatenate([G, np.repeat(G[:, -1:], T - G.shape[1], axis=1)], axis=1)
-    inst = build_instance(jobs, CAP, Gm)
+    inst = build_instance(jobs, probe_sites(), Gm)
     st = settle(inst, plan)
     M = st["draw_mw"] / 1000.0
     Tc = min(M.shape[1], S.shape[1])
@@ -94,7 +102,9 @@ def compare(name, plan, S, G):
                "draw_model_wh": round(M.sum() / 3600, 5), "draw_sim_wh": round(S.sum() / 3600, 5),
                "power_on_other_sites_w_sum": other_sites,
                "sim_active_rows": [r[0] for r in rows if r[6] > 0.5][:1] + [r[0] for r in rows if r[6] > 0.5][-1:],
-               "model_active_rows": [r[0] for r in rows if r[3] > 0.5][:1] + [r[0] for r in rows if r[3] > 0.5][-1:]}
+               "model_active_rows": [r[0] for r in rows if r[3] > 0.5][:1] + [r[0] for r in rows if r[3] > 0.5][-1:],
+               "model_version": st["model_version"], "premise_ok": st["premise_ok"],
+               "exact": bool(np.allclose(M[:, :Tc], S[:, :Tc], atol=0.01))}
     return summary, rows
 
 
@@ -129,7 +139,8 @@ def attribute_k0():
     dump_rows = truth.shape[1]
     if need > dump_rows:
         truth = np.concatenate([truth, np.repeat(truth[:, -1:], need - dump_rows, axis=1)], axis=1)
-    inst = build_instance(jobs, CAP, truth)
+    from ladder_planner import sites_from_caps
+    inst = build_instance(jobs, sites_from_caps(CAP), truth)   # version-1 topology: this is the archived v1 attribution
     sched = {int(i): tuple(v) for i, v in json.load(open(f"{LAD}/solve/k0_truth.json"))["schedule"].items()}
     st = settle(inst, sched)
     a = np.load(os.path.join(diag, "k0_align.npz"))

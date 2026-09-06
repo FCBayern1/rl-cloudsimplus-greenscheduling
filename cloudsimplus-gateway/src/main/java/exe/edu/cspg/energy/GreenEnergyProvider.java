@@ -336,6 +336,38 @@ public class GreenEnergyProvider {
         return timeScalingMode != null ? timeScalingMode.getTypicalInterval() : 1.0;
     }
 
+    /**
+     * Settlement diagnostic C: the CSV row this provider reads at a simulation time under the
+     * row-index modes (STEP/LINEAR), i.e. floor((t + tz + warmup + episodeOffset) / rowSeconds)
+     * modulo the row count. Lets an offline curve builder prove it reads the same rows.
+     */
+    public int rowIndexAt(double simulationTime) {
+        if (rowPowers == null || rowPowers.length == 0) return -1;
+        int n = rowPowers.length;
+        int idx = (int) Math.floor((simulationTime + getTimeZoneOffsetSeconds()) / rowSeconds());
+        return ((idx % n) + n) % n;
+    }
+
+    public int getRowCount() {
+        return rowPowers == null ? 0 : rowPowers.length;
+    }
+
+    public int getTimeZoneOffsetRows() {
+        return timeZoneOffsetRows;
+    }
+
+    public int getSimulationWarmupRows() {
+        return simulationWarmupRows;
+    }
+
+    public int getEpisodeOffsetRows() {
+        return episodeOffsetRows;
+    }
+
+    public String getCsvFilePath() {
+        return csvFilePath;
+    }
+
     /** kW of the row that owns adjusted (already tz/offset-shifted, wrapped) time.
      *  Row i is valid on [i*rowSeconds, (i+1)*rowSeconds) - the STEP unit. */
     private double rowValueKW(double adjustedTime) {

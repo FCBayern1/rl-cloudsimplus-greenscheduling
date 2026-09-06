@@ -559,7 +559,8 @@ public class MultiDatacenterSimulationCore {
 
         // === Phase 3.2: Update Energy Metrics for All Datacenters ===
         updateAllDatacenterEnergyMetrics();
-        
+        writeSettleTrace();
+
         // === Phase 3.3: Update Cloudlet Completion Counts ===
         updateCloudletCompletionCounts();
 
@@ -1056,6 +1057,38 @@ public class MultiDatacenterSimulationCore {
         for (Number n : ids) {
             Double v = found.get(n.longValue());
             out.add(v == null ? Double.NaN : v);
+        }
+        return out;
+    }
+
+    /**
+     * Settlement diagnostic B (2026-09-06): exec start, finish time and total execution time of
+     * finished cloudlets, as a flat list aligned with {@code ids} (3 doubles per id, NaN when
+     * the cloudlet has not finished). Lets the replay ledger record the simulator's own
+     * execution span so the one-second end-boundary effect can be attributed to execution
+     * semantics or to the energy sampler.
+     */
+    public List<Double> getCloudletTimesForIds(List<? extends Number> ids) {
+        List<Double> out = new ArrayList<>();
+        if (ids == null || ids.isEmpty()) return out;
+        Map<Long, double[]> found = new HashMap<>();
+        java.util.Set<Long> want = new java.util.HashSet<>();
+        for (Number n : ids) want.add(n.longValue());
+        for (DatacenterInstance dc : datacenterInstances) {
+            LoadBalancingBroker lb = dc.getLocalBroker();
+            if (lb == null) continue;
+            List<Cloudlet> fin = lb.getCloudletFinishedList();
+            if (fin == null) continue;
+            for (Cloudlet c : fin) {
+                if (want.contains(c.getId()) && !found.containsKey(c.getId())) {
+                    found.put(c.getId(), new double[] {c.getStartTime(), c.getFinishTime(), c.getTotalExecutionTime()});
+                }
+            }
+        }
+        for (Number n : ids) {
+            double[] v = found.get(n.longValue());
+            if (v == null) { out.add(Double.NaN); out.add(Double.NaN); out.add(Double.NaN); }
+            else { out.add(v[0]); out.add(v[1]); out.add(v[2]); }
         }
         return out;
     }
@@ -1610,6 +1643,77 @@ public class MultiDatacenterSimulationCore {
         proceedClockTo(targetTime);
 
         LOGGER.debug("Simulation advanced to {}", currentClock);
+    }
+
+    /**
+     * Settlement diagnostic (Codex ruling 2026-09-06, items A/B/C): when the environment variable
+     * SETTLE_TRACE_CSV names a file, append one row per running or just-finished cloudlet per
+     * step, right after the energy sample: step, clock, dc, vm, host, cloudlet, status, exec
+     * start, finish, finished MI, remaining MI, the execution record's last processing time,
+     * host CPU utilisation, host power, DC power, DC green power, and the wind-file row each
+     * DC's first provider reads at this clock. Off unless the variable is set.
+     */
+    private java.io.PrintWriter settleTrace;
+    private boolean settleTraceChecked;
+
+    private void writeSettleTrace() {
+        if (!settleTraceChecked) {
+            settleTraceChecked = true;
+            String path = System.getenv("SETTLE_TRACE_CSV");
+            if (path != null && !path.isBlank()) {
+                try {
+                    boolean fresh = !new java.io.File(path).exists();
+                    settleTrace = new java.io.PrintWriter(new java.io.FileWriter(path, true));
+                    if (fresh) {
+                        settleTrace.println("step,clock,dc,vm,host,cloudlet,status,exec_start,finish,finished_mi,"
+                                + "remaining_mi,last_proc_time,host_util,host_power_w,dc_power_w,dc_green_w,"
+                                + "green_row,green_rows_total,tz_rows,warmup_rows,episode_offset_rows");
+                    }
+                } catch (java.io.IOException e) {
+                    LOGGER.warn("SETTLE_TRACE_CSV unwritable: {}", e.getMessage());
+                }
+            }
+        }
+        if (settleTrace == null) return;
+        for (int d = 0; d < datacenterInstances.size(); d++) {
+            DatacenterInstance dc = datacenterInstances.get(d);
+            double dcPower = dc.getCurrentPowerW();
+            double dcGreen = dc.getCurrentGreenPowerW(currentClock);
+            int row = -1, rows = 0, tz = 0, warm = 0, epo = 0;
+            if (!dc.getGreenEnergyProviders().isEmpty()) {
+                exe.edu.cspg.energy.GreenEnergyProvider p = dc.getGreenEnergyProviders().get(0);
+                row = p.rowIndexAt(currentClock); rows = p.getRowCount(); tz = p.getTimeZoneOffsetRows();
+                warm = p.getSimulationWarmupRows(); epo = p.getEpisodeOffsetRows();
+            }
+            for (Vm vm : dc.getVmPool()) {
+                Host h = vm.getHost();
+                double util = h == null ? Double.NaN : h.getCpuPercentUtilization();
+                double hp = (h == null || h.getPowerModel() == null) ? Double.NaN : h.getPowerModel().getPower(util);
+                for (org.cloudsimplus.cloudlets.CloudletExecution ce : vm.getCloudletScheduler().getCloudletExecList()) {
+                    Cloudlet c = ce.getCloudlet();
+                    settleTrace.printf(java.util.Locale.ROOT,
+                            "%d,%.3f,%d,%d,%d,%d,%s,%.3f,%.3f,%d,%d,%.3f,%.6f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d%n",
+                            currentStep, currentClock, d, vm.getId(), h == null ? -1 : h.getId(), c.getId(),
+                            c.getStatus(), c.getStartTime(), c.getFinishTime(), c.getFinishedLengthSoFar(),
+                            ce.getRemainingCloudletLength(), ce.getLastProcessingTime(), util, hp, dcPower, dcGreen,
+                            row, rows, tz, warm, epo);
+                }
+            }
+            LoadBalancingBroker lb = dc.getLocalBroker();
+            if (lb != null && lb.getCloudletFinishedList() != null) {
+                for (Cloudlet c : lb.getCloudletFinishedList()) {
+                    if (c.getFinishTime() > currentClock - timestepSize - 1e-9) {   // finished within this step
+                        settleTrace.printf(java.util.Locale.ROOT,
+                                "%d,%.3f,%d,%d,%d,%d,%s,%.3f,%.3f,%d,%d,%.3f,%.6f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d%n",
+                                currentStep, currentClock, d, c.getVm() == null ? -1 : c.getVm().getId(),
+                                (c.getVm() == null || c.getVm().getHost() == null) ? -1 : c.getVm().getHost().getId(),
+                                c.getId(), c.getStatus(), c.getStartTime(), c.getFinishTime(), c.getFinishedLengthSoFar(),
+                                0L, Double.NaN, Double.NaN, Double.NaN, dcPower, dcGreen, row, rows, tz, warm, epo);
+                    }
+                }
+            }
+        }
+        settleTrace.flush();
     }
 
     /**

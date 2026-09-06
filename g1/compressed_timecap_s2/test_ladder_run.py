@@ -2,6 +2,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ladder_run import closure_check, gate_l1, gate_l2, jobs_from_dump, rung_curve  # noqa: E402
@@ -78,6 +79,61 @@ def test_replay_uses_the_every_step_offset_grid():
     from ladder_run import replay_env
     env = replay_env("/x/k0_truth.json")
     assert env["OFFSET_GRID_DENSE"] == "1" and env["SCHEDULE_JSON"] == "/x/k0_truth.json"
+
+
+def _wind_dir(tmp_path, n_rows=100):
+    d = tmp_path / "wind"; d.mkdir()
+    for tid in (7, 8):
+        lines = ["timestamp,power_kw"] + [f"2021-01-01 00:{i:02d}:00,{(tid * 1000 + i):.2f}" for i in range(n_rows)]
+        (d / f"Turbine_{tid}_2021.csv").write_text("\n".join(lines) + "\n")
+    return str(d)
+
+
+def _blk():
+    return {"compressed_power_divisor": 3000.0, "wind_csv_year": 2021, "min_time_between_events": 1.0,
+            "datacenters": [{"datacenter_id": 0, "time_zone_offset_rows": 0, "turbine_ids": [7, 8], "green_energy_enabled": True,
+                             "host_count_spec_asus_rs500a_dyn": 10, "initial_s_vm_count": 20, "small_vm_pes": 32, "vm_pe_mips": 40000},
+                            {"datacenter_id": 1, "time_zone_offset_rows": 5, "turbine_ids": [7], "green_energy_enabled": True,
+                             "host_count_spec_asus_rs700a_dyn": 5, "initial_s_vm_count": 20, "small_vm_pes": 32, "vm_pe_mips": 40000},
+                            {"datacenter_id": 2, "time_zone_offset_rows": 9, "turbine_ids": [], "green_energy_enabled": False,
+                             "host_count_spec_asus_rs500a_dyn": 3, "initial_s_vm_count": 6, "small_vm_pes": 32, "vm_pe_mips": 40000}]}
+
+
+def test_truth_curve_reads_the_rows_the_simulator_reads(tmp_path):
+    # diagnostic C: row(t) = offset + tz + t + OBS_CLOCK_LAG(1) + SPLINE_SKIP_ROWS(12)
+    from ladder_run import truth_curve, LadderStop, OBS_CLOCK_LAG, SPLINE_SKIP_ROWS
+    wd = _wind_dir(tmp_path)
+    G, meta = truth_curve(_blk(), offset=10, T=4, wind_dir=wd)
+    assert G.shape == (3, 4) and (OBS_CLOCK_LAG, SPLINE_SKIP_ROWS) == (1, 12)
+    row0 = 10 + 0 + 1 + 12
+    assert abs(G[0, 0] - ((7000 + row0) + (8000 + row0)) * 1000 / 3000) < 1e-9
+    assert abs(G[1, 2] - (7000 + 10 + 5 + 2 + 13) * 1000 / 3000) < 1e-9       # tz 5, step 2
+    assert G[2].tolist() == [0.0] * 4                                            # no green on site 2
+    assert meta["sites"][1]["row_start"] == 10 + 5 + 13 and meta["sites"][1]["row_end"] == 10 + 5 + 13 + 4
+    assert len(meta["signature"]) == 16
+    with pytest.raises(LadderStop):                                              # past the file: STOP, no wrap
+        truth_curve(_blk(), offset=80, T=10, wind_dir=wd)
+
+
+def test_curve_rows_match_and_signature():
+    from ladder_run import curve_rows_match, curve_signature
+    P = np.array([[1.0, 2.0, 3.0, 4.0], [0.0, 0.0, 0.0, 0.0]])
+    ok, n, m, bad = curve_rows_match(P, P[:, :3])
+    assert ok and n == 3 and m == 0.0 and bad == -1
+    O = P[:, :3].copy(); O[0, 1] += 0.5
+    ok, n, m, bad = curve_rows_match(P, O)
+    assert not ok and bad == 1 and abs(m - 0.5) < 1e-12
+    assert not curve_rows_match(P, np.zeros((2, 5)))[0]                          # replay longer than the curve
+    assert curve_signature(P) == curve_signature(P + 1e-7) and curve_signature(P) != curve_signature(P + 0.01)
+
+
+def test_sites_from_config_uses_each_sites_host_profile():
+    from ladder_run import sites_from_config
+    s = sites_from_config({"common": {"host_pe_mips": 50000}}, _blk())
+    assert [x.profile for x in s] == ["SPEC_ASUS_RS500A_DYN", "SPEC_ASUS_RS700A_DYN", "SPEC_ASUS_RS500A_DYN"]
+    assert [x.hosts for x in s] == [10, 5, 3] and [x.cap for x in s] == [640, 640, 192]
+    assert s[0].job_power_mw(32) == 65640 and s[1].job_power_mw(32) == 65600          # RS500A vs RS700A (diagnostic D)
+    assert s[1].host_pes == 128
 
 
 def test_atomic_json_writes_complete_records(tmp_path):

@@ -85,6 +85,46 @@ def test_milp_agrees_with_cpsat_on_small_instances():
     assert settle(inst2, a["schedule"])["J_int"] == settle(inst2, b["schedule"])["J_int"] == b["J_int"]
 
 
+def test_version2_sites_one_host_per_job_and_per_site_power():
+    from ladder_planner import site_from_profile, placement_hosts, MODEL_VERSION
+    assert MODEL_VERSION == 2
+    rs500 = site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=10, vms=20)
+    rs700 = site_from_profile("b", "SPEC_ASUS_RS700A_DYN", hosts=5, vms=20)
+    assert rs500.job_power_mw(32) == 65640 and rs700.job_power_mw(32) == 65600 and rs500.cap == 640
+    jobs = [Job(id=1, arrival=0, runtime=2, pes=32, deadline=10), Job(id=2, arrival=0, runtime=2, pes=32, deadline=10)]
+    inst = build_instance(jobs, [rs500, rs700], np.zeros((2, 6)))
+    r = settle(inst, {1: (0, 1), 2: (0, 1)})                     # two concurrent jobs: two hosts, 2 x 65.64 W
+    assert r["draw_mw"][0, 1] == 2 * 65640 and r["hosts"][0, 1] == 2 and r["premise_ok"]
+    r2 = settle(inst, {1: (1, 1), 2: (1, 2)})                    # RS700A site: 65.6 W per job
+    assert r2["draw_mw"][1, 1] == 65600 and r2["draw_mw"][1, 2] == 2 * 65600
+    # placement rule: lowest free VM, VM i on host i mod H; the third concurrent job lands on host 2
+    three = [Job(id=i, arrival=0, runtime=5, pes=32, deadline=20) for i in (1, 2, 3)]
+    ph = placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 2)}, three, [rs500, rs700])
+    assert ph == {1: (0, 0), 2: (1, 1), 3: (2, 2)}
+    # a freed VM is reused: job 3 after job 1 ends takes VM 0 again
+    assert placement_hosts({1: (0, 1), 2: (0, 1), 3: (0, 6)}, three, [rs500, rs700])[3] == (0, 0)
+
+
+def test_premise_a_theorem_concurrency_at_most_hosts_gives_distinct_hosts():
+    # VM id j is taken only when VMs 0..j-1 are busy, so ids used <= max concurrency - 1 <= H - 1
+    from ladder_planner import site_from_profile, placement_hosts, verify_schedule
+    rng = np.random.default_rng(3)
+    site = site_from_profile("a", "SPEC_ASUS_RS500A_DYN", hosts=4, vms=8)
+    for trial in range(200):
+        n = int(rng.integers(1, 9))
+        jobs = [Job(id=i, arrival=0, runtime=int(rng.integers(1, 6)), pes=32, deadline=100) for i in range(n)]
+        sched = {j.id: (0, int(rng.integers(1, 12))) for j in jobs}
+        inst = build_instance(jobs, [site], np.zeros((1, 30)))
+        crowded = any("more running jobs than hosts" in v for v in verify_schedule(inst, sched))
+        if crowded:
+            continue                                              # premise violated: no claim
+        ph = placement_hosts(sched, jobs, [site])
+        for t in range(30):                                       # concurrent jobs sit on distinct hosts
+            running = [ph[j.id][1] for j in jobs if sched[j.id][1] <= t < sched[j.id][1] + j.runtime]
+            assert len(set(running)) == len(running)
+        assert settle(inst, sched)["premise_ok"]
+
+
 def test_optimal_is_a_compound_condition_and_the_verifier_catches_violations():
     from ladder_planner import solve_milp, verify_schedule, schedule_hash
     G = np.zeros((1, 10)); G[0, 4:6] = 100.0

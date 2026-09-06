@@ -370,9 +370,12 @@ public class DatacenterSetup {
                 .setCharacteristics(new DatacenterCharacteristicsSimple(0.75, 0.02, 0.001, 0.005));
 
         datacenter.setName(config.getDatacenterName());
+        if (config.getSchedulingInterval() > 0.0) {
+            datacenter.setSchedulingInterval(config.getSchedulingInterval());
+        }
 
-        LOGGER.info("Datacenter created: {} (ID: {}) with {} hosts",
-                config.getDatacenterName(), config.getDatacenterId(), hostList.size());
+        LOGGER.info("Datacenter created: {} (ID: {}) with {} hosts, scheduling interval {}",
+                config.getDatacenterName(), config.getDatacenterId(), hostList.size(), config.getSchedulingInterval());
 
         return datacenter;
     }

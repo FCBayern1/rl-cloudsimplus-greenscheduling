@@ -174,6 +174,17 @@ public class DatacenterConfig {
     private final double vmShutdownDelay;  // Time (sec) before idle VM is destroyed
 
     /**
+     * CloudSim datacenter scheduling interval (s): cloudlet-processing updates aligned to this
+     * grid. 0 (CloudSim's default, the legacy behaviour) updates only at estimated finishes,
+     * where the 0.01 s constant of DatacenterSimple.updateHostsProcessing plus the (long)
+     * truncation of partial MI leaves a sliver that, with min_time_between_events 1.0, delays a
+     * cloudlet started on a busy datacenter by one whole second (settlement diagnostic B,
+     * 2026-09-06). The certification twin sets it to the 1 s step.
+     */
+    @Builder.Default
+    private final double schedulingInterval = 0.0;
+
+    /**
      * Get total number of VMs in initial fleet.
      */
     public int getTotalInitialVmCount() {

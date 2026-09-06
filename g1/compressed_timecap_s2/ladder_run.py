@@ -30,8 +30,8 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(REPO, "drl-manager"))
 from ladder_planner import (  # noqa: E402
-    HOST_FLOOR_MW, MW_PER_PE, F_BROWN, F_GREEN, Job, build_instance, preflight_factors,
-    quantisation_bound_kg, runtime_steps, settle, solve)
+    HOST_FLOOR_MW, MW_PER_PE, F_BROWN, F_GREEN, MODEL_VERSION, Job, Site, build_instance, preflight_factors,
+    quantisation_bound_kg, runtime_steps, settle, site_from_profile, solve)
 
 OUT = os.path.join(HERE, "stage_a_out")
 # Addendum E: fresh directory, uniform HiGHS limit 3600 s, atomic per-solve records.
@@ -56,9 +56,131 @@ C_BROWN_REF = 0.01897
 HEADROOM_REL, HEADROOM_ABS = 0.15, 0.05 * C_BROWN_REF
 LOSS_MIN, HEADROOM_SHARE = 0.05, 0.80
 COMPRESSED_DIVISOR = 3000.0
+# Settlement diagnostic C (2026-09-06): the wind-file row behind observation step t.
+#   OBS_CLOCK_LAG      the simulator clock at observation step t is t + min_time_between_events
+#                      (the first clock advance lands on the event granularity; measured: step 3
+#                      at clock 4.0 with 1.0 s, step 33 at clock 33.01 with 0.01 s), and the
+#                      provider takes floor(clock) as the row
+#   SPLINE_SKIP_ROWS   in COMPRESSED mode the provider drops the first 12 CSV rows before
+#                      building its time axis (GreenEnergyProvider.loadCsvData: rowIndex < 12)
+# so row = episode_offset + tz_rows + t + floor(min_time_between_events) + SPLINE_SKIP_ROWS;
+# verified exactly on every step of the six development windows (1.0 s: +13).
+SPLINE_SKIP_ROWS = 12
+CERT_MIN_TIME_BETWEEN_EVENTS = 1.0          # the scene's value; the clock grid depends on it
+
+
+def obs_clock_lag(blk):
+    import math
+    return int(math.floor(float(blk.get("min_time_between_events", 0.1))))
+
+
+OBS_CLOCK_LAG = 1                            # for min_time_between_events = 1.0
+# Settlement diagnostic B: the certification twin aligns the datacenters' cloudlet-processing
+# updates to the 1 s step grid (datacenter_scheduling_interval = 1.0; the scene left CloudSim's
+# default 0 = update only at estimated finishes, where a 0.01 s scheduling constant plus the
+# (long) truncation of partial MI leaves a 401-MI sliver that waits a whole extra second on a
+# busy site: 49 s not 48). min_time_between_events stays 1.0 so the clock grid is unchanged.
+CERT_SCHEDULING_INTERVAL = 1.0
+WIND_DIR = os.path.join(REPO, "cloudsimplus-gateway", "src", "main", "resources", "windProduction", "simplified")
+
+
+class LadderStop(RuntimeError):
+    """A preregistered STOP raised by the harness (curve out of range, curve mismatch)."""
 
 
 # ── pure pieces ───────────────────────────────────────────────────────────────────────
+def sites_from_config(cfg_all, blk):
+    """Per-site topology and power function from the experiment block (diagnostic D): host
+    profile and count from the host_count_spec_* key, VM count/PEs/MIPS from the block."""
+    common = cfg_all.get("common", {}) if isinstance(cfg_all, dict) else {}
+    sites = []
+    for d in sorted(blk["datacenters"], key=lambda x: int(x["datacenter_id"])):
+        prof = [k for k in d if k.startswith("host_count_spec_")]
+        if len(prof) != 1:
+            raise ValueError(f"site {d.get('name')}: expected exactly one host_count_spec_* key, got {prof}")
+        profile = prof[0][len("host_count_"):].upper()
+        s = site_from_profile(str(d.get("name", d["datacenter_id"])), profile, hosts=int(d[prof[0]]),
+                              vms=int(d.get("initial_s_vm_count", 0)), vm_pes=int(d.get("small_vm_pes", common.get("small_vm_pes", 32))),
+                              vm_mips=float(d.get("vm_pe_mips", common.get("vm_pe_mips", 40000))))
+        hm = float(d.get("host_pe_mips", common.get("host_pe_mips", s.host_mips)))
+        if abs(hm - s.host_mips) > 1e-9:
+            s = Site(**{**s.__dict__, "host_mips": hm})
+        sites.append(s)
+    return sites
+
+
+def wind_rows_kw(turbine_id, year, wind_dir=WIND_DIR):
+    """The provider's raw row array: power_kw per file row, in file order, negatives clipped."""
+    p = os.path.join(wind_dir, f"Turbine_{turbine_id}_{year}.csv")
+    return np.array([max(0.0, float(r["power_kw"] or 0)) for r in csv.DictReader(open(p))], dtype=np.float64)
+
+
+def truth_curve(blk, offset, T, wind_dir=WIND_DIR):
+    """(G (sites, T) in W, meta) straight from the wind files for observation steps 0..T-1:
+    G[d, t] = sum over the site's turbines of kW[row(t)] * 1000 / divisor with
+    row(t) = offset + tz_d + t + OBS_CLOCK_LAG + SPLINE_SKIP_ROWS. No hold-last, no wrap:
+    a row past the file's end is a STOP (LadderStop). meta carries the per-site row range,
+    files and a signature of the exact values used."""
+    div = float(blk.get("compressed_power_divisor", COMPRESSED_DIVISOR))
+    year = int(blk.get("wind_csv_year", 2021))
+    dcs = sorted(blk["datacenters"], key=lambda x: int(x["datacenter_id"]))
+    G = np.zeros((len(dcs), int(T)), dtype=np.float64)
+    meta = {"offset": int(offset), "T": int(T), "year": year, "divisor": div, "obs_clock_lag": obs_clock_lag(blk),
+            "spline_skip_rows": SPLINE_SKIP_ROWS, "sites": []}
+    for i, d in enumerate(dcs):
+        tz = int(d.get("time_zone_offset_rows", 0))
+        start = int(offset) + tz + obs_clock_lag(blk) + SPLINE_SKIP_ROWS
+        end = start + int(T)
+        files = []
+        if d.get("green_energy_enabled", True):
+            for tid in d.get("turbine_ids", []) or []:
+                p = wind_rows_kw(tid, year, wind_dir)
+                if end > len(p):
+                    raise LadderStop(f"STOP_CURVE_OUT_OF_RANGE: site {i} turbine {tid} needs rows [{start}, {end}) "
+                                     f"of {len(p)} (offset {offset}, T {T})")
+                G[i] += p[start:end] * 1000.0 / div
+                files.append(f"Turbine_{tid}_{year}.csv")
+        meta["sites"].append({"site": i, "tz_rows": tz, "row_start": start, "row_end": end, "files": files})
+    meta["signature"] = curve_signature(G)
+    return G, meta
+
+
+def curve_signature(G):
+    """sha256 of the curve's values rounded to integer mW (the planner's quantisation)."""
+    mw = np.rint(np.asarray(G, dtype=np.float64) * 1000.0).astype(np.int64)
+    return hashlib.sha256(mw.tobytes() + str(mw.shape).encode()).hexdigest()[:16]
+
+
+def curve_rows_match(G_planner, G_obs, tol_w=1e-3):
+    """Per-row equality of the planner's curve and the simulator's observed green on the rows
+    the observation covers. Returns (ok, n_rows_compared, max_abs_diff_w, first_bad_row)."""
+    P = np.asarray(G_planner, dtype=np.float64); O = np.asarray(G_obs, dtype=np.float64)
+    n = min(P.shape[1], O.shape[1])
+    if O.shape[1] > P.shape[1]:
+        return False, n, float("inf"), int(P.shape[1])
+    diff = np.abs(P[:, :n] - O[:, :n])
+    bad = np.where(diff.max(axis=0) > tol_w)[0]
+    return (bad.size == 0), int(n), float(diff.max() if n else 0.0), (int(bad[0]) if bad.size else -1)
+
+
+def cert_config(mode):
+    """The certification twin: the development twin of `mode` with the simulator's
+    min_time_between_events set to CERT_MIN_TIME_BETWEEN_EVENTS (diagnostic B). Written on every
+    call to config_ladder_cert_{mode}.yml; the scene's own configs are untouched."""
+    import yaml
+    import run_stage_a as rs
+    src_path, cell = rs.scene_dev_config(mode)
+    cfg = yaml.safe_load(open(src_path))
+    blk = cfg[cell]
+    if abs(float(blk.get("min_time_between_events", 0.1)) - CERT_MIN_TIME_BETWEEN_EVENTS) > 1e-12:
+        raise LadderStop(f"STOP_CLOCK_GRID: the scene's min_time_between_events is {blk.get('min_time_between_events')}, "
+                         f"the certification mapping assumes {CERT_MIN_TIME_BETWEEN_EVENTS}")
+    for d in blk["datacenters"]:
+        d["datacenter_scheduling_interval"] = CERT_SCHEDULING_INTERVAL
+    path = os.path.join(HERE, f"config_ladder_cert_{mode}.yml")
+    with open(path, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=True)
+    return path, cell
 def jobs_from_dump(rows, vm_pe_mips, cpu_util, timestep_sec=1.0):
     """Jobs as the simulator presented them: first sighting step = arrival, deadline step =
     arrival + floor(ttd / timestep) at that sighting. Pure."""
@@ -203,9 +325,8 @@ def _evaluate(cfg, cell, k, offset, arm, out_csv, extra_env):
 
 
 def cmd_dump():
-    import run_stage_a as rs
     dev = _dev()
-    cfg, cell = rs.scene_dev_config("defer")
+    cfg, cell = cert_config("defer")
     os.makedirs(os.path.join(LAD, "dump"), exist_ok=True)
     for k, off in enumerate(dev):
         d = os.path.join(LAD, "dump", f"k{k}_decisions.csv")
@@ -222,13 +343,13 @@ def cmd_solve(rungs=RUNGS):
     the other six are solved only after truth closure (the freeze rule: no reading of the
     other rungs' carbon before tests, the quantisation preflight and the truth closure)."""
     import yaml
-    import run_stage_a as rs
     dev = _dev()
-    cfg_path, cell = rs.scene_dev_config("defer")
-    blk = yaml.safe_load(open(cfg_path))[cell]
+    cfg_path, cell = cert_config("defer")
+    cfg_all = yaml.safe_load(open(cfg_path))
+    blk = cfg_all[cell]
     preflight_factors(blk["datacenters"])
     mu = _mu_w(blk)
-    cap = [640, 512, 640, 512, 192]
+    sites = sites_from_config(cfg_all, blk)
     mips = float(blk["datacenters"][0].get("vm_pe_mips", 40000)); u = float(blk.get("cloudlet_cpu_utilization", 1.0))
     os.makedirs(os.path.join(LAD, "solve"), exist_ok=True)
     sp = os.path.join(LAD, "solve_summary.json")
@@ -246,24 +367,35 @@ def cmd_solve(rungs=RUNGS):
     except Exception:
         highs = "unknown"
     environment = {"cpu": cpu, "cpu_count": ncpu, "python": platform.python_version(), "scipy": scipy.__version__,
-                   "highs": highs, "time_limit_s": TIME_LIMIT_S, "mip_rel_gap": 0.0, "one_solve_at_a_time": True}
+                   "highs": highs, "time_limit_s": TIME_LIMIT_S, "mip_rel_gap": 0.0, "one_solve_at_a_time": True,
+                   "model_version": MODEL_VERSION, "min_time_between_events": blk.get("min_time_between_events"),
+                   "datacenter_scheduling_interval": CERT_SCHEDULING_INTERVAL,
+                   "sites": [s.__dict__ for s in sites]}
     for k, off in enumerate(dev):
         rows = list(csv.DictReader(open(os.path.join(LAD, "dump", f"k{k}_decisions.csv"))))
         z = np.load(os.path.join(LAD, "dump", f"k{k}_decisions_obs.npz"))
-        truth = np.asarray(z["dc_current_green_power_w"], dtype=np.float64).T      # (sites, T)
+        obs_green = np.asarray(z["dc_current_green_power_w"], dtype=np.float64).T   # (sites, T_obs)
         jobs = jobs_from_dump(rows, mips, u)
-        T = truth.shape[1]
-        need = max(j.latest + j.runtime for j in jobs) + 1
-        if need > T:                                                                  # pad with the last value
-            truth = np.concatenate([truth, np.repeat(truth[:, -1:], need - T, axis=1)], axis=1)
+        need = max(max(j.latest + j.runtime for j in jobs) + 1, obs_green.shape[1])
+        # diagnostic C: the truth curve comes from the wind files over the whole horizon; the
+        # dump's observation must agree with it row by row on the rows it covers, else STOP
+        truth, curve_meta = truth_curve(blk, off, need)
+        ok, n_cmp, max_diff, first_bad = curve_rows_match(truth, obs_green)
         qb = quantisation_bound_kg(truth.shape[0], truth.shape[1])
         prev = summary.get(k, {})
         summary[k] = {"offset": off, "n_jobs": len(jobs), "T": int(truth.shape[1]), "quantisation_bound_kg": qb,
-                      "quantisation_ok": qb <= QUANT_FRAC * C_BROWN_REF, "mu_w": mu, "rungs": prev.get("rungs", {})}
-        inst_truth = build_instance(jobs, cap, truth)
+                      "quantisation_ok": qb <= QUANT_FRAC * C_BROWN_REF, "mu_w": mu, "rungs": prev.get("rungs", {}),
+                      "curve": {**curve_meta, "dump_rows": int(obs_green.shape[1]), "dump_rows_match": bool(ok),
+                                "rows_compared": n_cmp, "max_abs_diff_w": max_diff, "first_bad_row": first_bad}}
+        atomic_json(sp, {**{str(kk): vv for kk, vv in summary.items()}, "environment": environment})
+        if not ok:
+            print(f"k{k}: STOP_CURVE_MISMATCH: wind-file curve differs from the dump at row {first_bad} "
+                  f"(max |diff| {max_diff:.4g} W); no solve", flush=True)
+            return
+        inst_truth = build_instance(jobs, sites, truth)
         for rung in rungs:
             G = rung_curve(truth, rung, mu, seed_key=f"ladder:{off}")
-            inst = build_instance(jobs, cap, G)
+            inst = build_instance(jobs, sites, G)
             # Addendum D: HiGHS (scipy.optimize.milp, gap 0, 600 s) is the only judging solver;
             # LADDER_SOLVER=cpsat is the cross-check path and never runs in a formal stage.
             import time as _time
@@ -288,7 +420,8 @@ def cmd_solve(rungs=RUNGS):
             atomic_json(os.path.join(LAD, "solve", f"k{k}_{rung}.json"),
                         {"window": k, "offset": off, "rung": rung,
                          "schedule": ({str(i): list(v) for i, v in res["schedule"].items()} if res.get("schedule") else None),
-                         "grid": list(range(73)), **rec})
+                         "grid": list(range(73)), "curve_signature": curve_meta["signature"],
+                         "rung_curve_signature": curve_signature(G), **rec})
             summary[k]["rungs"][rung] = rec
             atomic_json(sp, {**{str(kk): vv for kk, vv in summary.items()}, "environment": environment})
             if res["status"] != "OPTIMAL":
@@ -299,17 +432,21 @@ def cmd_solve(rungs=RUNGS):
         json.dump({**{str(k): v for k, v in summary.items()}, "environment": environment}, f, indent=2)
 
 
-def replay_env(schedule_json):
+def replay_env(schedule_json, dump_csv=None):
     """Environment for one replay: the schedule and the every-step offset grid (OFFSET_GRID_DENSE=1);
     without the dense grid the executor's 12-value dyadic mask and the replay arm's 73-value
-    action index disagree and every plan is silently mis-executed (found on ladder_v3 k0)."""
-    return {"SCHEDULE_JSON": schedule_json, "OFFSET_GRID_DENSE": "1"}
+    action index disagree and every plan is silently mis-executed (found on ladder_v3 k0).
+    With dump_csv the replay also records its per-step observations (the simulator's green rows,
+    checked against the planner's curve at closure, diagnostic C)."""
+    env = {"SCHEDULE_JSON": schedule_json, "OFFSET_GRID_DENSE": "1"}
+    if dump_csv:
+        env.update({"EVAL_DECISION_DUMP": dump_csv, "EVAL_DECISION_DUMP_OBS": "1"})
+    return env
 
 
 def cmd_replay(rungs=RUNGS):
-    import run_stage_a as rs
     dev = _dev()
-    cfg, cell = rs.scene_dev_config("offset")
+    cfg, cell = cert_config("offset")
     os.makedirs(os.path.join(LAD, "replay"), exist_ok=True)
     for k, off in enumerate(dev):
         for rung in rungs:
@@ -317,10 +454,91 @@ def cmd_replay(rungs=RUNGS):
             if not os.path.exists(sj) or json.load(open(sj)).get("status") != "OPTIMAL":
                 print(f"k{k} {rung}: no OPTIMAL schedule, skipped"); continue
             out_csv = os.path.join(LAD, "replay", f"k{k}_{rung}.csv")
+            dump = os.path.join(LAD, "replay", f"k{k}_{rung}_decisions.csv")
+            for p in (dump, dump.replace(".csv", "_obs.npz")):
+                if os.path.exists(p):
+                    os.remove(p)
             # the frozen settlement path is the EVERY-STEP offset executor (prereg §2.2, A, D):
             # the simulator's grid must be 0..W so the plan's (site, start) maps 1:1 onto an action
-            ok = _evaluate(cfg, cell, k, off, "schedule_replay", out_csv, replay_env(sj))
+            ok = _evaluate(cfg, cell, k, off, "schedule_replay", out_csv, replay_env(sj, dump))
             print(f"replay k{k} {rung}: {'ok' if ok else 'FAILED'}", flush=True)
+
+
+def _cert_block():
+    import yaml
+    path, cell = cert_config("defer")
+    return yaml.safe_load(open(path))[cell]
+
+
+def cmd_closure(k, schedule_json, tag="closure"):
+    """Engineering closure of one FIXED schedule on development window k (no solve): model
+    settlement (version 2, wind-file curve) vs the certification twin's replay, the 3 % gate,
+    per-job site/start, counters, curve rows, and the per-term decomposition (draw, brown,
+    green, carbon) so every known term is bounded individually. Writes
+    <LAD>/closure/<tag>_k<k>.json and prints the record."""
+    import yaml
+    dev = _dev(); off = dev[k]
+    cfg_path, cell = cert_config("defer")
+    cfg_all = yaml.safe_load(open(cfg_path)); blk = cfg_all[cell]
+    sites = sites_from_config(cfg_all, blk)
+    mips = float(blk["datacenters"][0].get("vm_pe_mips", 40000)); u = float(blk.get("cloudlet_cpu_utilization", 1.0))
+    rows = list(csv.DictReader(open(os.path.join(LAD, "dump", f"k{k}_decisions.csv"))))
+    jobs = jobs_from_dump(rows, mips, u)
+    raw = json.load(open(schedule_json))
+    sched = {int(i): tuple(v) for i, v in raw["schedule"].items()}
+    need = max(s + {j.id: j for j in jobs}[i].runtime for i, (d, s) in sched.items()) + 2
+    G, meta = truth_curve(blk, off, need)
+    inst = build_instance(jobs, sites, G)
+    from ladder_planner import verify_schedule
+    viol = verify_schedule(inst, sched)
+    st = settle(inst, sched)
+    out_dir = os.path.join(LAD, "closure"); os.makedirs(out_dir, exist_ok=True)
+    sj = os.path.join(out_dir, f"{tag}_k{k}_schedule.json")
+    json.dump({"schedule": {str(i): list(v) for i, v in sched.items()}, "grid": list(range(73))}, open(sj, "w"))
+    out_csv = os.path.join(out_dir, f"{tag}_k{k}.csv"); dump = os.path.join(out_dir, f"{tag}_k{k}_decisions.csv")
+    for p in (dump, dump.replace(".csv", "_obs.npz"), out_csv):
+        if os.path.exists(p):
+            os.remove(p)
+    cfg_off, cell_off = cert_config("offset")
+    ok = _evaluate(cfg_off, cell_off, k, off, "schedule_replay", out_csv, replay_env(sj, dump))
+    if not ok:
+        raise RuntimeError(f"replay failed: {out_csv.replace('.csv', '.log')}")
+    row = list(csv.DictReader(open(out_csv)))[-1]
+    led_p = out_csv.replace(".csv", "_option_ledger.csv")
+    led = list(csv.DictReader(open(led_p))) if os.path.exists(led_p) else []
+    counters = {c: row.get(c, 0) for c in ("deadline_forced_count", "ep_opt_hold_refused", "ep_opt_hold_masked",
+                                            "ep_opt_release_failed", "ep_opt_held_open", "ep_opt_stale")}
+    counters["completion_short"] = max(0.0, 0.995 - float(row.get("completion_rate_mi", 1) or 1))
+    z = np.load(dump.replace(".csv", "_obs.npz"))
+    S = np.asarray(z["dc_current_power_w"], dtype=np.float64).T
+    G_obs = np.asarray(z["dc_current_green_power_w"], dtype=np.float64).T
+    okc, ncmp, mdiff, bad = curve_rows_match(G, G_obs)
+    T = min(S.shape[1], G.shape[1])
+    M = st["draw_mw"][:, :T] / 1000.0
+    wh = lambda a: float(a.sum() / 3600.0)
+    brown_m = wh(st["brown_mw"][:, :T] / 1000.0); green_m = wh(st["green_mw"][:, :T] / 1000.0)
+    cs, cm = float(row["total_carbon_kg"]), float(st["C_kg"])
+    chk = closure_check(cm, cs, led, sched, counters)
+    if not okc:
+        chk["violations"].append(f"curve rows differ from row {bad} (max |diff| {mdiff:.4g} W)"); chk["pass"] = False
+    if viol:
+        chk["violations"].extend(f"schedule: {v}" for v in viol); chk["pass"] = False
+    if not st["premise_ok"]:
+        chk["violations"].append("premise A violated: more running jobs than hosts"); chk["pass"] = False
+    exec_spans = sorted(set(round(float(r["exec_s"]), 3) for r in led if r.get("exec_s") not in (None, "", "nan")))
+    rec = {"window": k, "offset": off, "tag": tag, "schedule_json": schedule_json, "n_jobs": len(sched),
+           "model_version": MODEL_VERSION, "min_time_between_events": blk.get("min_time_between_events"),
+           "datacenter_scheduling_interval": blk["datacenters"][0].get("datacenter_scheduling_interval"),
+           "curve": {**meta, "replay_rows": int(G_obs.shape[1]), "rows_match": bool(okc), "max_abs_diff_w": mdiff},
+           "terms": {"draw_wh": {"model": wh(M), "sim": float(row.get("total_energy_wh", 0)), "sim_samples": wh(S[:, :T]),
+                                 "max_abs_step_diff_w": float(np.abs(S[:, :T] - M).max())},
+                     "brown_wh": {"model": brown_m, "sim": float(row.get("brown_used_wh", 0))},
+                     "green_wh": {"model": green_m, "sim": float(row.get("green_used_wh", 0))},
+                     "carbon_kg": {"model": cm, "sim": cs, "rel_err": chk["rel_err"], "abs_err": cs - cm}},
+           "exec_spans_s": exec_spans, "counters": counters, "closure": chk}
+    atomic_json(os.path.join(out_dir, f"{tag}_k{k}.json"), rec)
+    print(json.dumps({kk: vv for kk, vv in rec.items() if kk != "curve"}, indent=1))
+    return rec
 
 
 def cmd_judge(rungs=RUNGS):
@@ -352,6 +570,21 @@ def cmd_judge(rungs=RUNGS):
             counters["ontime_short"] = max(0.0, 0.995 - float(row.get("ontime_mi_share", 1) or 1))
             cs, cm = float(row["total_carbon_kg"]), float(rec["C_model_truth_kg"])
             chk = closure_check(cm, cs, led, sched, counters)
+            # diagnostic C: the replay's observed green rows must equal the planner's truth
+            # curve row by row (signatures on both sides); a replay past the curve is a failure
+            curve = sk.get("curve") or {}
+            obs_p = p.replace(".csv", "_decisions_obs.npz")
+            if os.path.exists(obs_p) and curve:
+                G_obs = np.asarray(np.load(obs_p)["dc_current_green_power_w"], dtype=np.float64).T
+                G_plan, _ = truth_curve(_cert_block(), off, int(curve["T"]))
+                okc, ncmp, mdiff, bad = curve_rows_match(G_plan, G_obs)
+                chk["curve"] = {"rows_compared": ncmp, "max_abs_diff_w": mdiff, "first_bad_row": bad,
+                                "planner_signature": curve.get("signature"), "replay_signature": curve_signature(G_obs),
+                                "replay_rows": int(G_obs.shape[1]), "planner_rows": int(curve["T"]), "match": bool(okc)}
+                if not okc:
+                    chk["violations"].append(f"curve rows differ from row {bad} (max |diff| {mdiff:.4g} W)"); chk["pass"] = False
+            else:
+                chk["violations"].append("no replay observation dump or curve record: curve rows unverified"); chk["pass"] = False
             c_sim[rung][k], c_model[rung][k] = cs, cm
             res["windows"].setdefault(str(k), {})[rung] = {"C_sim": cs, "C_model": cm, "closure": chk}
             if not chk["pass"]:
@@ -386,5 +619,7 @@ if __name__ == "__main__":
         cmd_replay(("truth",) if "--truth-only" in sys.argv else RUNGS)
     elif what == "judge":
         cmd_judge(("truth",) if "--truth-only" in sys.argv else RUNGS)
+    elif what == "closure":                      # closure <k> <schedule.json> [tag]
+        cmd_closure(int(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else "closure")
     else:
         print(__doc__)

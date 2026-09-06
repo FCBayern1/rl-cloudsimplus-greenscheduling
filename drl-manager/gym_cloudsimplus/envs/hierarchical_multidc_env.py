@@ -2041,6 +2041,22 @@ class HierarchicalMultiDCEnv(gym.Env):
                     logger.warning("getStartTimesForIds failed: %s", e)
             clock0 = float(getattr(self, "_option_clock0", 0.0) or 0.0)
             rows = ex.rows(starts, clock0=clock0)
+            # settlement diagnostic B: the simulator's own finish time and executed span per
+            # cloudlet (NaN when unknown or on a gateway without the accessor)
+            times = {}
+            if ids:
+                try:
+                    raw = list(self.java_env.getCloudletTimesForIds([int(i) for i in ids]))
+                    for k, jid in enumerate(ids):
+                        s, f, e = (float(x) if x is not None else float("nan") for x in raw[3 * k:3 * k + 3])
+                        times[int(jid)] = (s, f, e)
+                except Exception as e:
+                    logger.warning("getCloudletTimesForIds unavailable: %s", e)
+            for r in rows:
+                s, f, e = times.get(int(r["id"]), (float("nan"),) * 3)
+                r["t_f"] = f
+                r["exec_s"] = e
+                r["t_s_exec"] = s
             self._option_rows = rows
             info["option_ledger"] = rows
             d = [r["route_to_start_steps"] for r in rows if r["route_to_start_steps"] is not None]

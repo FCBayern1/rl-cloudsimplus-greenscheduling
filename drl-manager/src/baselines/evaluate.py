@@ -463,7 +463,7 @@ def _checkpoint_label_from_path(checkpoint_path: str) -> str:
 
 
 def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, option_mode=False,
-                  offset_grid=None, planner_ttd=None):
+                  offset_grid=None, planner_ttd=None, clock=None):
     """Per-slot decision records for the Stage D' timing-selectivity corpus
     (STAGE_D_PRIME_DESIGN Q4). One row per real slot: what was decided (route index or
     DEFER) next to the slot's timing facts as the policy saw them. In option mode
@@ -497,6 +497,9 @@ def decision_rows(ep, step, obs_global, global_action, planner_ids, num_dcs, opt
             _kappa = int(grid[_i])
         rows.append({
             "episode": ep, "step": step, "slot": slot,
+            # simulator clock of this observation (settlement diagnostic C: the wind-file row
+            # of obs step t is offset + tz + clock(t), so the planner's curve must use it)
+            "clock": (float(clock) if clock is not None else None),
             "cloudlet_id": int(planner_ids[slot]) if planner_ids is not None and slot < len(planner_ids) else -1,
             "action": int(a), "is_defer": int(_kappa > 0) if grid is not None else int(int(a) >= num_dcs),
             "site": _d if grid is not None else -1, "kappa": _kappa if grid is not None else -1,
@@ -536,7 +539,8 @@ class _DecisionDump:
         ids = pl.get("batch_cloudlet_ids")
         self._rows.extend(decision_rows(ep, step, obs_global, global_action, ids, self.num_dcs,
                                         option_mode=self.option_mode, offset_grid=self.offset_grid,
-                                        planner_ttd=pl.get("batch_cloudlet_time_to_deadline")))
+                                        planner_ttd=pl.get("batch_cloudlet_time_to_deadline"),
+                                        clock=pl.get("current_clock")))
         if self.save_obs and isinstance(obs_global, dict):
             self._obs.append({k: np.asarray(v) for k, v in obs_global.items()})
 

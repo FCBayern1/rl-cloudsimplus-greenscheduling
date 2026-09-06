@@ -208,7 +208,9 @@ public class HierarchicalMultiDCGateway {
                 .greenCarbonFactor(getDoubleParam(dcParams, "green_carbon_factor", 0.01))
                 // VM lifecycle delays
                 .vmStartupDelay(getDoubleParam(dcParams, "vm_startup_delay", 0.0))
-                .vmShutdownDelay(getDoubleParam(dcParams, "vm_shutdown_delay", 0.0));
+                .vmShutdownDelay(getDoubleParam(dcParams, "vm_shutdown_delay", 0.0))
+                // Cloudlet-processing update grid (0 = legacy: finish events only)
+                .schedulingInterval(getDoubleParam(dcParams, "datacenter_scheduling_interval", 0.0));
 
         // Parse heterogeneous host profiles (SPEC servers)
         int specAcerR520 = getIntParam(dcParams, "host_count_spec_acer_r520", 0);
@@ -376,6 +378,14 @@ public class HierarchicalMultiDCGateway {
             return new java.util.ArrayList<>();
         }
         return simulationCore.getStartTimesForIds(ids);
+    }
+
+    /** Exec start, finish and total execution time per id (3 values each, NaN if unfinished). */
+    public List<Double> getCloudletTimesForIds(List<? extends Number> ids) {
+        if (simulationCore == null) {
+            return new java.util.ArrayList<>();
+        }
+        return simulationCore.getCloudletTimesForIds(ids);
     }
 
     /**

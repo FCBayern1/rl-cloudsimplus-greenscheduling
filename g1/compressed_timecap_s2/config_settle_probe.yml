@@ -127,6 +127,7 @@ sp_L1_single:
   datacenters:
   - brown_carbon_factor: 0.5
     datacenter_id: 0
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 10
@@ -152,6 +153,7 @@ sp_L1_single:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 1
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 8
@@ -177,6 +179,7 @@ sp_L1_single:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 2
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs700a_dyn: 5
@@ -201,6 +204,7 @@ sp_L1_single:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 3
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs700a_dyn: 4
@@ -224,6 +228,7 @@ sp_L1_single:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 4
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs500a_dyn: 3
@@ -433,6 +438,7 @@ sp_L2_pair_same_start:
   datacenters:
   - brown_carbon_factor: 0.5
     datacenter_id: 0
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 10
@@ -458,6 +464,7 @@ sp_L2_pair_same_start:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 1
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 8
@@ -483,6 +490,7 @@ sp_L2_pair_same_start:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 2
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs700a_dyn: 5
@@ -507,6 +515,7 @@ sp_L2_pair_same_start:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 3
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs700a_dyn: 4
@@ -530,6 +539,7 @@ sp_L2_pair_same_start:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 4
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs500a_dyn: 3
@@ -739,6 +749,7 @@ sp_L3a_pair_staggered:
   datacenters:
   - brown_carbon_factor: 0.5
     datacenter_id: 0
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 10
@@ -764,6 +775,7 @@ sp_L3a_pair_staggered:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 1
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 8
@@ -789,6 +801,7 @@ sp_L3a_pair_staggered:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 2
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs700a_dyn: 5
@@ -813,6 +826,7 @@ sp_L3a_pair_staggered:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 3
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs700a_dyn: 4
@@ -836,6 +850,7 @@ sp_L3a_pair_staggered:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 4
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs500a_dyn: 3
@@ -1045,6 +1060,7 @@ sp_L3b_triple_reuse:
   datacenters:
   - brown_carbon_factor: 0.5
     datacenter_id: 0
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 10
@@ -1070,6 +1086,7 @@ sp_L3b_triple_reuse:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 1
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 8
@@ -1095,6 +1112,7 @@ sp_L3b_triple_reuse:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 2
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs700a_dyn: 5
@@ -1119,6 +1137,7 @@ sp_L3b_triple_reuse:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 3
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs700a_dyn: 4
@@ -1142,6 +1161,7 @@ sp_L3b_triple_reuse:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 4
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs500a_dyn: 3
@@ -1351,6 +1371,7 @@ sp_L3c_triple_fragment:
   datacenters:
   - brown_carbon_factor: 0.5
     datacenter_id: 0
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 10
@@ -1376,6 +1397,7 @@ sp_L3c_triple_fragment:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 1
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs500a_dyn: 8
@@ -1401,6 +1423,7 @@ sp_L3c_triple_fragment:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 2
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: true
     host_count_spec_asus_rs700a_dyn: 5
@@ -1425,6 +1448,7 @@ sp_L3c_triple_fragment:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 3
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs700a_dyn: 4
@@ -1448,6 +1472,7 @@ sp_L3c_triple_fragment:
     wind_data_file: windProduction/simplified
   - brown_carbon_factor: 0.5
     datacenter_id: 4
+    datacenter_scheduling_interval: 1.0
     green_carbon_factor: 0.01
     green_energy_enabled: false
     host_count_spec_asus_rs500a_dyn: 3

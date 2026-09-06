@@ -30,6 +30,12 @@ def test_rows_without_planner_ids_use_mi_to_drop_padding():
     assert all(r["cloudlet_id"] == -1 for r in rows)
 
 
+def test_rows_carry_the_simulator_clock_when_given():
+    rows = decision_rows(1, 7, _obs(), [0, 1, 0], planner_ids=[11, 12, -1], num_dcs=5, clock=8.0)
+    assert all(r["clock"] == 8.0 for r in rows)
+    assert decision_rows(1, 7, _obs(), [0, 1, 0], planner_ids=[11, 12, -1], num_dcs=5)[0]["clock"] is None
+
+
 def test_no_action_gives_no_rows():
     assert decision_rows(1, 1, _obs(), None, None, 5) == []
 
