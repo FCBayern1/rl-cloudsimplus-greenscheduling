@@ -115,3 +115,39 @@ with brown_max, green_max ≤ the site's capacity draw (640 PEs × 2.02 W + 10 W
 - The offline ladder is seven rungs × six windows = 42 solves and 42 simulator replays; the TimeCAP causal anchor is reported separately and is not counted in the ladder.
 - 600 s solver limit, 3 % closure tolerance, the every-step offset executor as the settlement path, the TimeCAP / offline-curve separation, and the certification-only status of the offline solver: as in Addendum A.
 - No carbon run before the freeze.
+
+---
+
+## Addendum C (2026-09-06 02:30; corrects the quantisation arithmetic of B3 found by the Codex mechanical check; no experimental design changes; the document is frozen at the commit that carries it)
+
+### C1. B3's bound was wrong
+
+With c_b = 1389 and c_g = 28 the coefficient rounding alone (0.11 and 0.22 per mW·s against a site draw of up to 1.30 × 10^6 mW over 600 steps on 5 sites) bounds the objective error at about 6.8 × 10^−5 kg (tight) or 1.0 × 10^−4 kg by B3's own formula, against the registered threshold 0.1 % × C_brown_ref = 1.897 × 10^−5 kg. The "below 2 × 10^−6 kg" statement of B3 was an arithmetic error and is withdrawn.
+
+### C2. Exact integer objective
+
+Because f_brown / f_green = 0.5 / 0.01 = 50 exactly, the objective is the exact integer
+
+    J_int = Σ_{d,t} ( 50 × brown_mW[d,t] + 1 × green_mW[d,t] ),      C_kg = J_int / 3.6 × 10^11,
+
+with no coefficient rounding at all. A preflight assertion checks that every datacentre of the block carries brown_carbon_factor = 0.5 and green_carbon_factor = 0.01 and stops the run otherwise (a different pair of factors needs its own exact integer ratio and an addendum).
+
+### C3. The only remaining quantisation, with its bound
+
+Rounding the green curve to the nearest milliwatt is the only quantisation left. Worst case per window:
+
+    Δ ≤ 5 sites × 600 steps × 0.5 mW × (0.5 − 0.01) kg/kWh / 3.6 × 10^9 = 2.04 × 10^−7 kg,
+
+about 93 times below the 1.897 × 10^−5 kg threshold. The implementation prints this bound with the actual number of steps per window and stores it with each solve; INVALID_QUANTISATION applies as in B3.
+
+### C4. The three reference numbers, stated once
+
+C_brown_ref = 0.01897 kg (the trace's dynamic energy 37.94 Wh at 0.5 kg/kWh); 0.1 % × C_brown_ref = 1.897 × 10^−5 kg (the quantisation threshold); 5 % × C_brown_ref = 9.49 × 10^−4 kg (the absolute headroom gate). §4 gate L1 refers to the last of these; its wording "the frozen reference of the scene design, 9.49e−4 kg" is corrected to "the absolute headroom gate 0.05 · C_brown_ref = 9.49e−4 kg".
+
+### C5. Per-rung closure, per-job ledger conditions added
+
+B2's closure requires, in addition to the 3 % carbon agreement, start alignment and contract, that for every job of every rung's replay: the datacentre it ran on equals the planned datacentre; it was dispatched, started and finished exactly once; and the ledger counters wrong_dc, unplanned_start, dispatched_never_started, running_pes_over_cap and deadline_forced are all zero. Any non-zero value is STOP_PLANNER_CLOSURE_RUNG.
+
+### C6. Unchanged
+
+All seven rungs OPTIMAL; per-rung replay closure; TimeCAP causal anchor separate from the offline ladder; 42 solves and 42 replays; 600 s; 3 %; every-step offset settlement; certification-only status of the solver; no carbon run before the freeze.
