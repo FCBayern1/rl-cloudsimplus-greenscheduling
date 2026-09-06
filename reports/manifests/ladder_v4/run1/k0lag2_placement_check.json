@@ -1,0 +1,7 @@
+{
+ "jobs": 35,
+ "placement_rule_agrees": 35,
+ "verify_violations": [],
+ "premise_ok": true,
+ "rule": "lowest free VM; a VM freed at row e is free from row e + 1; VM i on host i mod H"
+}

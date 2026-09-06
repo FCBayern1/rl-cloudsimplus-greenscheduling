@@ -1,0 +1,1 @@
+{"status": "OPTIMAL", "wall_s": 4.061693429946899, "mip_gap": 0.0, "mip_node_count": 1, "J_int": 226384249, "mip_dual_bound": 226384249.0, "envelope_cuts": true}

@@ -1,0 +1,221 @@
+{
+  "windows": {
+    "0": {
+      "truth": {
+        "C_sim": 0.0006288449999999993,
+        "C_model": 0.0006288451361111112,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 2.1644615508671803e-07,
+          "draw_rel_err": 9.280699601540816e-16,
+          "brown_abs_err_wh": 2.7777777755755295e-07,
+          "curve": {
+            "rows_compared": 651,
+            "max_abs_diff_w": 3.0403645723708905e-05,
+            "first_bad_row": -1,
+            "planner_signature": "fc1005d83f2aa78c",
+            "replay_signature": "3cee318b491f9644",
+            "replay_rows": 651,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    },
+    "1": {
+      "truth": {
+        "C_sim": 0.0010284253796296317,
+        "C_model": 0.0010284251527777778,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 2.2058178304198183e-07,
+          "draw_rel_err": 1.7399796645467923e-15,
+          "brown_abs_err_wh": 4.6296296352110744e-07,
+          "curve": {
+            "rows_compared": 668,
+            "max_abs_diff_w": 3.014322919625556e-05,
+            "first_bad_row": -1,
+            "planner_signature": "624ec4548b4d59c8",
+            "replay_signature": "2c761001160cb652",
+            "replay_rows": 668,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    },
+    "2": {
+      "truth": {
+        "C_sim": 0.0012253117962962954,
+        "C_model": 0.0012253115694444445,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 1.8513809593100732e-07,
+          "draw_rel_err": 1.1600470452172368e-15,
+          "brown_abs_err_wh": 4.6296296307701823e-07,
+          "curve": {
+            "rows_compared": 668,
+            "max_abs_diff_w": 3.0110677130323893e-05,
+            "first_bad_row": -1,
+            "planner_signature": "7c9d51c0f7224e4c",
+            "replay_signature": "1a00909e4bb8acbe",
+            "replay_rows": 668,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    },
+    "3": {
+      "truth": {
+        "C_sim": 0.0004890515277777819,
+        "C_model": 0.0004890516638888889,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 2.7831641731873987e-07,
+          "draw_rel_err": 2.5519701746686286e-15,
+          "brown_abs_err_wh": 2.7777777777959756e-07,
+          "curve": {
+            "rows_compared": 642,
+            "max_abs_diff_w": 3.0110677130323893e-05,
+            "first_bad_row": -1,
+            "planner_signature": "98718613efac6c31",
+            "replay_signature": "bdb38ce8adc1eab8",
+            "replay_rows": 642,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    },
+    "4": {
+      "truth": {
+        "C_sim": 0.0005251566851851885,
+        "C_model": 0.0005251567305555555,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 8.639395524650495e-08,
+          "draw_rel_err": 3.0163324307550537e-15,
+          "brown_abs_err_wh": 9.259259253768803e-08,
+          "curve": {
+            "rows_compared": 657,
+            "max_abs_diff_w": 3.043619790332741e-05,
+            "first_bad_row": -1,
+            "planner_signature": "0903f49d251ebe0d",
+            "replay_signature": "b75d0ffaca03f86b",
+            "replay_rows": 657,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    },
+    "5": {
+      "truth": {
+        "C_sim": 0.00215921971296296,
+        "C_model": 0.0021592198944444443,
+        "closure": {
+          "pass": true,
+          "violations": [],
+          "rel_err": 8.40495610573079e-08,
+          "draw_rel_err": 1.6238679099514739e-15,
+          "brown_abs_err_wh": 3.7037036992870753e-07,
+          "curve": {
+            "rows_compared": 620,
+            "max_abs_diff_w": 2.2786458202972426e-05,
+            "first_bad_row": -1,
+            "planner_signature": "7d5d6546ec9ffe3a",
+            "replay_signature": "7217aec3dcf61a43",
+            "replay_rows": 620,
+            "planner_rows": 669,
+            "match": true
+          }
+        }
+      }
+    }
+  },
+  "rungs": [
+    "truth"
+  ],
+  "environment": {
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "cpu_count": 8,
+    "python": "3.12.3",
+    "scipy": "1.17.1",
+    "highs": "?",
+    "time_limit_s": 3600.0,
+    "mip_rel_gap": 0.0,
+    "one_solve_at_a_time": true,
+    "model_version": 2,
+    "min_time_between_events": 1.0,
+    "datacenter_scheduling_interval": 1.0,
+    "sites": [
+      {
+        "name": "DC_Nordic",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 10,
+        "vms": 20,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_Germany",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 8,
+        "vms": 16,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_US_East",
+        "profile": "SPEC_ASUS_RS700A_DYN",
+        "hosts": 5,
+        "vms": 20,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 128,
+        "host_mips": 50000,
+        "max_w": 324.0,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_US_West",
+        "profile": "SPEC_ASUS_RS700A_DYN",
+        "hosts": 4,
+        "vms": 16,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 128,
+        "host_mips": 50000,
+        "max_w": 324.0,
+        "idle_w": 1.0
+      },
+      {
+        "name": "DC_APAC",
+        "profile": "SPEC_ASUS_RS500A_DYN",
+        "hosts": 3,
+        "vms": 6,
+        "vm_pes": 32,
+        "vm_mips": 40000.0,
+        "host_pes": 64,
+        "host_mips": 50000,
+        "max_w": 162.6,
+        "idle_w": 1.0
+      }
+    ]
+  },
+  "verdict": "TRUTH_CLOSED"
+}
