@@ -1,0 +1,303 @@
+{
+ "gate_a": {
+  "windows": {
+   "0": {
+    "C_causal_truth": 0.0006976338518518537,
+    "C_truth_offline": 0.0006288449999999993,
+    "C_flat_offline": 0.005615844388888893,
+    "headroom": 0.004986999388888894,
+    "capture": 0.9862063644914181,
+    "contract_violations": [],
+    "valid": true
+   },
+   "1": {
+    "C_causal_truth": 0.0011858006759259275,
+    "C_truth_offline": 0.0010284253796296317,
+    "C_flat_offline": 0.005523344865740752,
+    "headroom": 0.00449491948611112,
+    "capture": 0.9649881834852502,
+    "contract_violations": [],
+    "valid": true
+   },
+   "2": {
+    "C_causal_truth": 0.001346564907407409,
+    "C_truth_offline": 0.0012253117962962954,
+    "C_flat_offline": 0.006625682666666669,
+    "headroom": 0.005400370870370374,
+    "capture": 0.9775472622118639,
+    "contract_violations": [],
+    "valid": true
+   },
+   "3": {
+    "C_causal_truth": 0.000549115203703706,
+    "C_truth_offline": 0.0004890515277777819,
+    "C_flat_offline": 0.006387452833333335,
+    "headroom": 0.005898401305555552,
+    "capture": 0.9898169566947994,
+    "contract_violations": [],
+    "valid": true
+   },
+   "4": {
+    "C_causal_truth": 0.0005445410648148163,
+    "C_truth_offline": 0.0005251566851851885,
+    "C_flat_offline": 0.0020997659074074044,
+    "headroom": 0.001574609222222216,
+    "capture": 0.9876894029603923,
+    "contract_violations": [],
+    "valid": true
+   },
+   "5": {
+    "C_causal_truth": 0.0026351610231481522,
+    "C_truth_offline": 0.00215921971296296,
+    "C_flat_offline": 0.00798057100462964,
+    "headroom": 0.005821351291666679,
+    "capture": 0.9182421251803672,
+    "contract_violations": [],
+    "valid": true
+   }
+  },
+  "n_windows": 6,
+  "pooled_capture": 0.9679590520923581,
+  "n_windows_ge_0.70": 6,
+  "pass": true
+ },
+ "gate_b": {
+  "pooled_loss_rel": 0.5179713187363251,
+  "n_windows_harmed": 6,
+  "n_windows": 6,
+  "pass": true
+ },
+ "profile": {
+  "shrink_0.75": {
+   "windows": {
+    "0": {
+     "C": 0.000793531509259259,
+     "loss": 9.589765740740527e-05,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.002099434490740743,
+     "loss": 0.0009136338148148155,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.0023378662175925972,
+     "loss": 0.0009913013101851883,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.0008879398888888936,
+     "loss": 0.0003388246851851876,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.0006310168796296302,
+     "loss": 8.647581481481385e-05,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.0038134952175925994,
+     "loss": 0.0011783341944444472,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.0036044674768518576,
+   "pooled_loss_rel": 0.5179713187363251,
+   "n_windows_harmed": 6
+  },
+  "shrink_0.5": {
+   "windows": {
+    "0": {
+     "C": 0.0031672291018518565,
+     "loss": 0.0024695952500000027,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.0038974914212963063,
+     "loss": 0.002711690745370379,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.003958715782407426,
+     "loss": 0.002612150875000017,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.0036508616018518644,
+     "loss": 0.0031017463981481584,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.0011413629999999953,
+     "loss": 0.000596821935185179,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.00518831805092594,
+     "loss": 0.0025531570277777874,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.014045162231481523,
+   "pooled_loss_rel": 2.0183262159047386,
+   "n_windows_harmed": 6
+  },
+  "shrink_0.25": {
+   "windows": {
+    "0": {
+     "C": 0.005611071990740756,
+     "loss": 0.004913438138888903,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.0061036823796296324,
+     "loss": 0.004917881703703705,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.005227595384259275,
+     "loss": 0.0038810304768518663,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.006952196435185201,
+     "loss": 0.006403081231481495,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.002224977916666661,
+     "loss": 0.0016804368518518447,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.0076403738750000175,
+     "loss": 0.005005212851851865,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.02680108125462968,
+   "pooled_loss_rel": 3.8513848412206078,
+   "n_windows_harmed": 6
+  },
+  "shrink_0": {
+   "windows": {
+    "0": {
+     "C": 0.005406890583333355,
+     "loss": 0.0047092567314815014,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.006103483657407413,
+     "loss": 0.004917682981481486,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.007292983611111128,
+     "loss": 0.005946418703703719,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.0071267765185185185,
+     "loss": 0.0065776613148148125,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.002039052981481485,
+     "loss": 0.0014945119166666688,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.009266491731481506,
+     "loss": 0.006631330708333353,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.03027686235648154,
+   "pooled_loss_rel": 4.350863594331022,
+   "n_windows_harmed": 6
+  },
+  "shuffle": {
+   "windows": {
+    "0": {
+     "C": 0.0051460232129629715,
+     "loss": 0.004448389361111118,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.005132502958333336,
+     "loss": 0.003946702282407408,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.005618885689814827,
+     "loss": 0.004272320782407418,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.005903014000000008,
+     "loss": 0.005353898796296302,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.0020338205462962933,
+     "loss": 0.0014892794814814771,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.007470264726851869,
+     "loss": 0.004835103703703717,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.02434569440740744,
+   "pooled_loss_rel": 3.498539387230178,
+   "n_windows_harmed": 6
+  },
+  "anti": {
+   "windows": {
+    "0": {
+     "C": 0.007523392500000007,
+     "loss": 0.0068257586481481535,
+     "contract_violations": []
+    },
+    "1": {
+     "C": 0.006763453541666673,
+     "loss": 0.005577652865740745,
+     "contract_violations": []
+    },
+    "2": {
+     "C": 0.007382154643518518,
+     "loss": 0.006035589736111109,
+     "contract_violations": []
+    },
+    "3": {
+     "C": 0.005791102851851838,
+     "loss": 0.005241987648148132,
+     "contract_violations": []
+    },
+    "4": {
+     "C": 0.002350497888888886,
+     "loss": 0.0018059568240740699,
+     "contract_violations": []
+    },
+    "5": {
+     "C": 0.007703530689814827,
+     "loss": 0.005068369666666675,
+     "contract_violations": []
+    }
+   },
+   "pooled_loss": 0.030555315388888886,
+   "pooled_loss_rel": 4.390878016802142,
+   "n_windows_harmed": 6
+  }
+ },
+ "contract": {
+  "truth_k0": [],
+  "truth_k1": [],
+  "truth_k2": [],
+  "truth_k3": [],
+  "truth_k4": [],
+  "truth_k5": []
+ },
+ "verdict": "CAUSAL_READ"
+}
