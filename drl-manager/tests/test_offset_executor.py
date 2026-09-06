@@ -89,3 +89,25 @@ def test_dense_grid_is_a_diagnostic_switch_only(monkeypatch):
     assert offset_grid(8) == list(range(9))
     monkeypatch.delenv("OFFSET_GRID_DENSE")
     assert offset_grid(8) == [0, 1, 2, 4, 8]
+
+
+def test_cand_green_cover_is_energy_weighted_residual_after_committed_load():
+    from gym_cloudsimplus.envs.option_executor import cand_green_cover, DYN_MW_PER_PE_MODEL
+    grid = [0, 2]
+    # one site, forecast 100 W for 10 steps; a 32-PE job draws 64.64 W over 2 steps
+    fut = np.full((1, 10), 100.0)
+    occ = np.zeros((1, 50))
+    c = cand_green_cover(fut, occ, pes=[32], mi=[2 * MIPS], ids=[7], t_now=0, grid=grid, vm_pe_mips=MIPS, cpu_util=U)
+    assert c.shape == (1, 2) and np.allclose(c, 1.0)                    # fully covered at both offsets
+    # committed load of 32 PEs on steps 1..2 (start 1) eats the residual: 100 - 64.64 - 1 = 34.36 W left
+    occ[0, 1:3] = 32
+    c = cand_green_cover(fut, occ, pes=[32], mi=[2 * MIPS], ids=[7], t_now=0, grid=grid, vm_pe_mips=MIPS, cpu_util=U)
+    assert abs(c[0, 0] - 34.36 / (32 * DYN_MW_PER_PE_MODEL)) < 1e-6      # κ=0: start 1..2, shared residual
+    assert abs(c[0, 1] - 1.0) < 1e-12                                     # κ=2: start 3..4, free again
+    # a small job on brown-only forecast: zero; padding: zero; beyond the horizon: nothing claimed
+    z = cand_green_cover(np.zeros((1, 10)), np.zeros((1, 50)), pes=[1], mi=[MIPS], ids=[3], t_now=0, grid=grid, vm_pe_mips=MIPS, cpu_util=U)
+    assert np.all(z == 0)
+    pad = cand_green_cover(fut, occ, pes=[0], mi=[0], ids=[-1], t_now=0, grid=grid, vm_pe_mips=MIPS, cpu_util=U)
+    assert np.all(pad == 0)
+    far = cand_green_cover(fut, np.zeros((1, 50)), pes=[32], mi=[2 * MIPS], ids=[7], t_now=0, grid=[9], vm_pe_mips=MIPS, cpu_util=U)
+    assert abs(far[0, 0] - 0.0) < 1e-12                                   # start 10..11 is past a 10-step horizon

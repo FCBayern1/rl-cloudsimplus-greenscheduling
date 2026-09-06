@@ -55,6 +55,54 @@ def runtime_steps(mi: float, vm_pe_mips: float, cpu_util: float, timestep_sec: f
     return max(1, int(np.ceil(sec / max(1e-9, float(timestep_sec)))))
 
 
+DYN_MW_PER_PE_MODEL = 2.02        # W per PE under the RS500A_DYN MIPS utilisation (the planner's model)
+HOST_FLOOR_W_MODEL = 1.0
+HOST_PES_MODEL = 64
+
+
+def cand_green_cover(future_w, committed_pes, pes, mi, ids, t_now, grid, vm_pe_mips, cpu_util,
+                     static_w=None, lag=1, timestep_sec=1.0):
+    """(NB, n * |K|) float32: for job j at site d with dispatch offset κ, the share of the job's
+    dynamic energy over its runtime that the arm's forecast green at d covers after the site's
+    static draw and the load already committed on the reservation grid before this decision
+    (SCENE_INTERFACE_DESIGN §4.4, Addenda A3, B2). Energy-weighted by construction (draw × steps);
+    same-batch jobs may co-claim the same residual (audited elsewhere). Pure.
+
+    future_w: (n, H) forecast green in W for steps t_now .. t_now + H - 1 (the arm's own curve);
+    committed_pes: (n, T) PEs committed on the executor grid (absolute steps);
+    beyond the forecast horizon the residual is taken as zero (nothing is claimed there).
+    """
+    future = np.asarray(future_w, dtype=np.float64)
+    n, H = future.shape
+    ids = np.asarray(ids).reshape(-1)
+    nb, K = ids.shape[0], len(grid)
+    out = np.zeros((nb, n * K), dtype=np.float32)
+    static = np.zeros(n) if static_w is None else np.asarray(static_w, dtype=np.float64).reshape(n)
+    occ = np.asarray(committed_pes, dtype=np.float64)
+    T = occ.shape[1]
+    rate = max(1.0, float(vm_pe_mips)) * min(1.0, max(1e-6, float(cpu_util)))
+    for j in range(nb):
+        if int(ids[j]) < 0 or float(pes[j]) <= 0 or float(mi[j]) <= 0:
+            continue
+        p = float(pes[j])
+        r = max(1, int(np.ceil(float(mi[j]) / rate / timestep_sec)))
+        draw = p * DYN_MW_PER_PE_MODEL
+        for d in range(n):
+            for i, k in enumerate(grid):
+                s = int(t_now) + int(k) + int(lag)               # absolute start step
+                covered = 0.0
+                for step in range(s, s + r):
+                    h = step - int(t_now)                          # index into the forecast
+                    if h < 0 or h >= H:
+                        continue                                   # beyond the horizon: nothing claimed
+                    c_pes = occ[d, step] if step < T else 0.0
+                    hosts = np.ceil(c_pes / HOST_PES_MODEL)
+                    resid = future[d, h] - static[d] - c_pes * DYN_MW_PER_PE_MODEL - hosts * HOST_FLOOR_W_MODEL
+                    covered += min(draw, max(0.0, resid))
+                out[j, d * K + i] = covered / (draw * r)
+    return np.clip(out, 0.0, 1.0)
+
+
 def residual_green(green_now_w: float, static_w: float, occupied_pes: float,
                    dyn_per_pe_w: float, cpu_util: float) -> float:
     """Green left on the meter at a site after its static draw and the dynamic draw of the
