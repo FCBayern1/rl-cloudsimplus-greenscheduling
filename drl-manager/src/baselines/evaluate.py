@@ -900,7 +900,10 @@ def _convert_global_obs_for_scheduler(
     # Option mode keys (OPTION_ACTION_DESIGN Addendum A3): the (slot, site) HOLD legality
     # and the per-site held ledger, forwarded when the env publishes them.
     for k in ("batch_cloudlet_defer_allowed", "batch_cloudlet_hold_allowed",
-              "dc_held_count", "dc_held_pes", "dc_held_tightest_margin"):
+              "dc_held_count", "dc_held_pes", "dc_held_tightest_margin",
+              # offset mode: the (slot, site*κ) legality mask and the F2/F3 candidate key
+              # (cover_argmax reads it; without this forward every arm saw None: found 2026-09-06)
+              "batch_cloudlet_offset_allowed", "cand_green_cover", "offset_grid"):
         if k in global_obs:
             converted[k] = global_obs[k]
     # The executed behaviour-cloned arm (gate 4) runs the policy module on the observation

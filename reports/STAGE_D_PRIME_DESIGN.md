@@ -518,3 +518,11 @@ Gate A: the causal expert (rolling exact MILP, only arrived jobs, 35 proven-opti
 ## 51. Causal gate B passed: CAUSAL_READ (2026-09-06, 20:32)
 
 The causal expert on the six error rungs: λ = 0.75 harms it on 6/6 windows, pooled +51.8 % of its truth carbon (gate 5 %, ≥ 5/6); the full profile 52 / 202 / 385 / 435 / 350 / 439 % tracks the offline ladder rung by rung. Reading `reports/CAUSAL_EXPERT_READING_2026_09_06.md`, archive `reports/manifests/causal_v1/run1`. Both bridges of the user's ruling are crossed; the F1–F3 chain started automatically on CAUSAL_READ.
+
+## 52. F1–F3: ALL_FAIL_OPEN (2026-09-06, 21:30)
+
+Corpora exact (the expert's schedule replayed on the offset and interface twins reproduces its carbon to the last digit). Two harness defects fixed append-only before any result: the dense-grid flag missing from the fit subprocess; the score module had no path for `cand_green_cover` (it crashed in the context concatenation), now one learnable gain on the offset logits (init 1.0, tested). Held-out executed capture: F1 −0.19, F2 0.10, F3 0.12 (gate 0.50); exact action ≈ 0, offset MAE ≈ 27 steps, training top-1 0.44 / 0.65 / 0.79; contracts green; classification INVALID as preregistered. Reading `reports/F_FITS_READING_2026_09_06.md`: sample or architecture, open; RL not started. Diagnostic launched outside the gates: `cover_argmax`, the zero-parameter arm that takes the best-covered legal candidate, on both interface twins, to tell whether the key carries the expert's value.
+
+## 53. cover_argmax: the interface carries the value; the fits are the failure (2026-09-06, 21:50)
+
+Harness defect fixed append-only: the evaluator never forwarded `cand_green_cover` or the offset legality mask to baseline arms (first run: capture −0.27, identical on both twins). With the forward: pooled capture 0.765 with the truth key (0.60–0.81 per window) and 0.637 with the TimeCAP key (0.23–0.79), contracts green, no parameters. Both exceed the 0.50 gate the fits failed, so F1–F3's failure is the learner (140 decisions, 365-way head, recurrent trunk memorising), not the interface; the module can represent the cover rule exactly. Reading updated (`F_FITS_READING_2026_09_06.md` §4). Frozen gates untouched; RL not started; the RL draft gains `cover_argmax` as a mandatory baseline line.

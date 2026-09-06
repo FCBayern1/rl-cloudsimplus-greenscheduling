@@ -22,6 +22,8 @@ On a scene where forecast error is certified to hurt an exact planner (offline a
 | V | clean truth curve (`perturbed_godeye`, tier `godeye`) | vanilla PPO |
 | E | the same clean curve | EU-CRD (the frozen v5.2 block, `crd.enabled: true`, nothing else changed) |
 
+Reference arms on every judgement window (frozen, zero parameters): the causal expert (truth curve), the offline exact planner (truth and λ = 0) and `cover_argmax` on the arm's own interface key (truth key for the clean reading, TimeCAP key for the timecap reading; 0.765 / 0.637 pooled capture on the development windows). Gate 1 below is read against `cover_argmax` as well: a learned policy that does not beat the zero-parameter rule on its own interface has not learned the interface.
+
 Deployment readings of the frozen last checkpoint (stochastic decode as registered; never argmax): N on its own channel once; V and E under the tiers godeye (clean), shrink λ ∈ {0.75, 0.5, 0.25, 0} (the ladder's rungs: shrink towards the site's full-year 2021 mean, implemented in `perturbed_godeye_provider` and equality-tested against `ladder_run.rung_curve` on one window), shuffle and anti (negative controls), and timecap (the natural TimeCAP error, descriptive only; it does not override the A2 STOP).
 
 ## 4. Windows

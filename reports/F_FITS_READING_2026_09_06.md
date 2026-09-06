@@ -26,4 +26,13 @@ What is not yet separated: whether the interface key itself carries the expert's
 
 ## 4. Diagnostics (appended as run; no gate is changed)
 
-- cover_argmax: [pending]
+`cover_argmax`: a zero-parameter arm that at each job's first sighting takes the legal (site, κ) with the largest `cand_green_cover` (ties: smallest κ). It reads only the F2/F3 key. A harness defect found on its first run and fixed append-only: the evaluator did not forward `cand_green_cover` (nor the offset legality mask) to baseline arms, so the first run saw no key and routed everything immediately (capture −0.27 on both twins, identical); with the forward in place:
+
+| twin | k0 | k1 | k2 | k3 | k4 | k5 | pooled capture |
+|---|---|---|---|---|---|---|---|
+| F2 key from truth | 0.751 | 0.802 | 0.798 | 0.812 | 0.596 | 0.713 | **0.765** |
+| F3 key from TimeCAP | 0.501 | 0.775 | 0.785 | 0.718 | 0.233 | 0.532 | **0.637** |
+
+Contracts green on all twelve runs. Reading: the interface key itself carries three quarters of the causal expert's headroom with no learning at all, and the TimeCAP version still carries 0.64 pooled (the natural forecast costs about 13 points of capture, most of it on k4). Both zero-parameter figures are above the 0.50 gate the fits failed. The F1–F3 failure is therefore the learner, not the interface: 140 labelled decisions, a 365-way head and a recurrent trunk memorise the training windows (top-1 0.65–0.79) and transfer nothing, even though the module can represent the cover-argmax rule exactly (cover gain large, everything else silent). This is the "sample or architecture" branch of the preregistered reading, now with the two halves separated.
+
+Consequences for the next design (decisions, not taken here): any learned policy on this interface must be compared against `cover_argmax` on its own twin, not only against the flat schedule; a fit or a policy should be able to start from the cover rule (large fixed cover gain, learned residual) rather than from a random trunk; more labelled windows are available cheaply (the expert labels a window in about 40 s; the unread 2021 pool has room for about a dozen more windows under the footprint rule). None of this reopens the frozen gates.
