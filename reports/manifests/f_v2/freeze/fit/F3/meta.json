@@ -1,0 +1,77 @@
+{
+ "n_features": 15,
+ "hidden": [
+  64,
+  64
+ ],
+ "features": [
+  "cover",
+  "kappa_norm",
+  "site_onehot",
+  "site_green_now",
+  "site_future_short",
+  "site_future_long",
+  "site_util",
+  "job_pes",
+  "job_mi",
+  "job_ttd",
+  "legal"
+ ],
+ "scale": {
+  "green_w": 1000.0,
+  "pes": 32.0,
+  "mi": 2000000.0,
+  "ttd": 1000.0
+ },
+ "seed": 20260907,
+ "twin": "F3",
+ "n_train": 420,
+ "n_val": 70,
+ "excluded_train": 0,
+ "excluded_val": 0,
+ "selection": {
+  "grid": [
+   {
+    "epochs": 50,
+    "weight_decay": 0.0,
+    "train_loss": 3.741547107696533,
+    "val_loss": 3.548553705215454
+   },
+   {
+    "epochs": 50,
+    "weight_decay": 0.0001,
+    "train_loss": 3.74179744720459,
+    "val_loss": 3.5465126037597656
+   },
+   {
+    "epochs": 100,
+    "weight_decay": 0.0,
+    "train_loss": 3.4397451877593994,
+    "val_loss": 3.3815765380859375
+   },
+   {
+    "epochs": 100,
+    "weight_decay": 0.0001,
+    "train_loss": 3.4306371212005615,
+    "val_loss": 3.3804831504821777
+   },
+   {
+    "epochs": 200,
+    "weight_decay": 0.0,
+    "train_loss": 3.1781535148620605,
+    "val_loss": 3.293076515197754
+   },
+   {
+    "epochs": 200,
+    "weight_decay": 0.0001,
+    "train_loss": 3.1594579219818115,
+    "val_loss": 3.269876480102539
+   }
+  ],
+  "selected": {
+   "epochs": 200,
+   "weight_decay": 0.0001,
+   "val_loss": 3.269876480102539
+  }
+ }
+}

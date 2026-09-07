@@ -1,0 +1,330 @@
+{
+ "windows": {
+  "F2_k0": {
+   "ok": true,
+   "series_rows_without_channel": 1,
+   "series_max_abs_err_w": 3.0403645723708905e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k1": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k2": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k3": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k4": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.043619790332741e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k5": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.2786458202972426e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k6": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0501302035190747e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k7": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0273437459982233e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k8": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k9": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.848307292424579e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k10": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k11": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k12": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0371093771464075e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k13": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.929687502728484e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k14": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k15": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k16": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F2_k17": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0501302035190747e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k0": {
+   "ok": true,
+   "series_rows_without_channel": 1,
+   "series_max_abs_err_w": 3.0403645723708905e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k1": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k2": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k3": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k4": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.043619790332741e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k5": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.2786458202972426e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k6": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0501302035190747e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k7": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0273437459982233e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k8": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k9": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.848307292424579e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k10": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677130323893e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k11": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k12": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0371093771464075e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k13": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 2.929687502728484e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k14": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0110677016637055e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k15": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k16": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.014322919625556e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  },
+  "F3_k17": {
+   "ok": true,
+   "series_rows_without_channel": 0,
+   "series_max_abs_err_w": 3.0501302035190747e-05,
+   "obs_rows_match": true,
+   "key_max_abs_err": 0.0,
+   "key_decisions_checked": 35,
+   "pass": true
+  }
+ },
+ "pass": true,
+ "verdict": "SENTINEL_PASS"
+}
