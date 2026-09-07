@@ -19,7 +19,8 @@ mkdir -p logs/rl_v2 $OUT/init $OUT/last $OUT/ref $OUT/flat
 READ=($($PY -c "import json; print(' '.join(str(o) for o in json.load(open('$OUT/manifest.json'))['windows']['read']))"))
 log "device: ${RL_V2_DEVICE:-gpu} | config: $CFG"
 log "references (flat on validation windows, cover_argmax on every tier)"
-( cd $G1 && $PY rl_v2_refs.py all 2>&1 | grep -v "WARNING\|Missing columns\|SWF" | grep -E "^cover|^flat|Traceback|Error" ) &
+PYABS=$PWD/$PY                      # the subshell cd's away, so the interpreter needs an absolute path
+( cd $G1 && $PYABS rl_v2_refs.py all 2>&1 | grep -v "WARNING\|Missing columns\|SWF" | grep -E "^cover|^flat|Traceback|Error|command not found" ) &
 REFPID=$!
 abort(){ log "ABORT: $1"; echo "$1" > $OUT/INVALID_RUN.txt; kill $REFPID 2>/dev/null; exit 1; }
 train(){ L=$1
@@ -59,9 +60,9 @@ for L in NV V NE E; do CK=$(initck $L)
   [ -n "$CK" ] || abort "INVALID_SMOKE_RUN2_NO_INIT_CHECKPOINT_${L}"
   for I in 0 1 2 3 4 5; do evalone $L $CK godeye $I init $OUT/init; done
   for I in 0 1 2 3 4 5; do evalone $L $CK godeye $I initstoch $OUT/init_stoch; done; done
-( cd $G1 && $PY rl_v2_judge.py init 2>&1 | tail -8 ); ( cd $G1 && $PY rl_v2_judge.py prior 2>&1 | tail -30 )
-V1=$($PY -c "import json; print(json.load(open('$OUT/init_check.json'))['verdict'])" 2>/dev/null)
-V2=$($PY -c "import json; print(json.load(open('$OUT/init_prior_check.json'))['verdict'])" 2>/dev/null)
+( cd $G1 && $PYABS rl_v2_judge.py init 2>&1 | tail -8 ); ( cd $G1 && $PYABS rl_v2_judge.py prior 2>&1 | tail -30 )
+V1=$($PYABS -c "import json; print(json.load(open('$OUT/init_check.json'))['verdict'])" 2>/dev/null)
+V2=$($PYABS -c "import json; print(json.load(open('$OUT/init_prior_check.json'))['verdict'])" 2>/dev/null)
 log "init verdicts: $V1 / $V2"
 [ "$V1" = "INIT_OK" ] || abort "$V1"
 [ "$V2" = "INIT_PRIOR_CARRIED" ] || abort "$V2"
@@ -71,7 +72,7 @@ for L in NV V NE E; do CK=$(lastck $L); [ -z "$CK" ] && { log "no last checkpoin
   for TIER in $TIERS; do for I in 0 1 2 3 4 5; do evalone $L $CK $TIER $I last $OUT/last; done; done; done
 log "crd statistics from the training logs"
 for L in NE E; do grep -oE "(delta_r|delta_r_mean|rho_mean|rho_min|responsibility_gate_active|crd_gate)[^,]*" logs/rl_v2/${L}_s$S.log | tail -12 > $OUT/crd_stats_$L.txt; done
-log "judge"; ( cd $G1 && $PY rl_v2_judge.py all 2>&1 | tail -80 )
+log "judge"; ( cd $G1 && $PYABS rl_v2_judge.py all 2>&1 | tail -80 )
 D=/home/joshua/rl-cloudsimplus-greenscheduling/reports/manifests/rl_v2/smoke; mkdir -p $D
 cp $OUT/*.json $OUT/crd_stats_*.txt $D/ 2>/dev/null; for sub in init last ref flat; do mkdir -p $D/$sub; cp $OUT/$sub/*.csv $D/$sub/ 2>/dev/null; rm -f $D/$sub/*_decisions.csv; done
 log "smoke finished"
