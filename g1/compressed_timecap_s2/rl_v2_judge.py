@@ -18,6 +18,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "stage_a_out", "rl_v2")
 FV2 = os.path.join(HERE, "stage_a_out", "f_v2")
 LINES = ("NV", "V", "NE", "E")
+# RL_V2_DET_PREREG: the deterministic-deployment readings live in last_det/; RL_V2_LAST_DIR
+# selects them. Gate 1b (the sampled-prior gate) is reported as a diagnostic there, never as a gate.
+LAST_DIR = os.environ.get("RL_V2_LAST_DIR", "last")
+DET = LAST_DIR != "last"
 CHAN = {"NV": "none", "V": "full", "NE": "none", "E": "full"}
 TIERS_FULL = ("godeye", "shrink75", "shrink50", "shrink25", "shrink0", "shuffle", "anti")
 CONTRACT = {"completion_rate_mi": 0.995, "ontime_mi_share": 0.995}
@@ -138,7 +142,7 @@ def judge():
         for tier in (TIERS_FULL if chan == "full" else ("godeye",)):
             tot = 0.0; num = den = 0.0; n = 0
             for k in READ_K:
-                r = _row(os.path.join(OUT, "last", f"{L}_{tier}_k{k}.csv"))
+                r = _row(os.path.join(OUT, LAST_DIR, f"{L}_{tier}_k{k}.csv"))
                 if r is None:
                     continue
                 if _contract(r):
@@ -175,8 +179,8 @@ def judge():
     g["6_not_ignoring"] = bool(C.get(("E", "godeye")) and C.get(("NE", "godeye")) and (C[("NE", "godeye")] - C[("E", "godeye")]) / C[("NE", "godeye")] >= 0.05)
     kl = None
     try:
-        a = np.concatenate([[v for v in _decisions(os.path.join(OUT, "last", f"E_godeye_k{k}_decisions.csv")).values()] for k in READ_K])
-        b = np.concatenate([[v for v in _decisions(os.path.join(OUT, "last", f"E_shrink75_k{k}_decisions.csv")).values()] for k in READ_K])
+        a = np.concatenate([[v for v in _decisions(os.path.join(OUT, LAST_DIR, f"E_godeye_k{k}_decisions.csv")).values()] for k in READ_K])
+        b = np.concatenate([[v for v in _decisions(os.path.join(OUT, LAST_DIR, f"E_shrink75_k{k}_decisions.csv")).values()] for k in READ_K])
         K = 73; ha = np.bincount(a % K, minlength=K) + 0.5; hb = np.bincount(b % K, minlength=K) + 0.5
         pa, pb = ha / ha.sum(), hb / hb.sum(); kl = float((pa * np.log(pa / pb)).sum())
     except Exception as e:  # noqa: BLE001
@@ -188,9 +192,14 @@ def judge():
     out["readings"] = {"policy_carbon": {f"{L}_{t}": v for (L, t), v in C.items()}, "policy_capture": {f"{L}_{t}": v for (L, t), v in cap.items()},
                        "reference_carbon": {f"cover_{c}_{t}": v for (c, t), v in R.items()}, "reference_capture": {f"cover_{c}_{t}": v for (c, t), v in Rcap.items()},
                        "loss_shrink75": {"V": lv, "E": le, "cover": lr_}, "references": ref}
-    hard = ("1_init", "1b_init_prior_carried", "2_trained_and_contracts", "3_prior_preserved", "4_shrink_hurts", "5_eucrd_keeps_more", "6_not_ignoring")
-    out["verdict"] = "PASS_SMOKE" if all(g[h] for h in hard) else "FAIL_SMOKE:" + ",".join(h for h in hard if not g[h])
-    json.dump(out, open(os.path.join(OUT, "smoke_verdict.json"), "w"), indent=1)
+    # RL_V2_DET: gate 1b is a diagnostic of exploration cost, not a gate (the deployment decode is
+    # deterministic); the smoke's own STOP stands on record and is never rewritten.
+    hard = (("1_init", "2_trained_and_contracts", "3_prior_preserved", "4_shrink_hurts", "5_eucrd_keeps_more", "6_not_ignoring") if DET
+            else ("1_init", "1b_init_prior_carried", "2_trained_and_contracts", "3_prior_preserved", "4_shrink_hurts", "5_eucrd_keeps_more", "6_not_ignoring"))
+    name = "PASS_DET_SMOKE" if DET else "PASS_SMOKE"
+    out["decode"] = "deterministic" if DET else "stochastic"
+    out["verdict"] = name if all(g[h] for h in hard) else ("FAIL_DET_SMOKE:" if DET else "FAIL_SMOKE:") + ",".join(h for h in hard if not g[h])
+    json.dump(out, open(os.path.join(OUT, "det_verdict.json" if DET else "smoke_verdict.json"), "w"), indent=1)
     print(json.dumps({"gates": g, "verdict": out["verdict"], "readings": out["readings"]}, indent=1)[:6000])
     return out
 
