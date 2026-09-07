@@ -5,7 +5,10 @@
 set -u
 cd /home/joshua/rl-cloudsimplus-greenscheduling/drl-manager
 PY=.venv/bin/python; G1=../g1/compressed_timecap_s2; T=/home/joshua/.claude/jobs/f676ac21/tmp
-CFG=$G1/config_rl_v2.yml; EVALCFG=$G1/config_rl_v2_eval.yml; OUT=$G1/stage_a_out/rl_v2
+# RL_V2_DEVICE=cpu selects the CPU-learner blocks (Addendum B: placement only, the two configs
+# differ in training.num_gpus and nothing else)
+CFG=$G1/config_rl_v2$([ "${RL_V2_DEVICE:-gpu}" = cpu ] && echo _cpu).yml
+EVALCFG=$G1/config_rl_v2_eval.yml; OUT=$G1/stage_a_out/rl_v2
 S=20260907; STEPS=56000
 export GATEWAY_LIBS=$PWD/../cloudsimplus-gateway/build/install/cloudsimplus-gateway/lib
 export PLANNER_EXPECTED_CAP="640;512;640;512;192" PLANNER_STATIC_TOTAL_W=0 OFFSET_GRID_DENSE=1
@@ -14,6 +17,7 @@ export ORACLE_WIND_DIR=$PWD/../cloudsimplus-gateway/src/main/resources/windProdu
 log(){ echo "[$(date '+%F %T')] $*"; }
 mkdir -p logs/rl_v2 $OUT/init $OUT/last $OUT/ref $OUT/flat
 READ=($($PY -c "import json; print(' '.join(str(o) for o in json.load(open('$OUT/manifest.json'))['windows']['read']))"))
+log "device: ${RL_V2_DEVICE:-gpu} | config: $CFG"
 log "references (flat on validation windows, cover_argmax on every tier)"
 ( cd $G1 && $PY rl_v2_refs.py all 2>&1 | grep -v "WARNING\|Missing columns\|SWF" | grep -E "^cover|^flat|Traceback|Error" ) &
 REFPID=$!

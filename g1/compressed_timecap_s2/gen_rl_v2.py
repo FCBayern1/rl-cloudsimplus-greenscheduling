@@ -45,7 +45,7 @@ def windows():
     return {"train": list(dev) + list(w["train"]), "read": list(w["val"]) + list(w["test"])}
 
 
-def build(total_timesteps=56000, checkpoint_freq=8000):
+def build(total_timesteps=56000, checkpoint_freq=8000, learner_device="gpu"):
     win = windows()
     src_path, cell = lr.cert_config("interface", allowlist=win["train"], tag="rl2")
     cfg = yaml.safe_load(open(src_path)); base = cfg[cell]
@@ -62,6 +62,10 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
         b["training"] = dict(b.get("training", {}), total_timesteps=int(total_timesteps),
                              checkpoint_freq_timesteps=int(checkpoint_freq), checkpoint_num_to_keep=0,
                              save_init_checkpoint=True)
+        if learner_device == "cpu":
+            # Addendum B: placement only. The 16 GB card cannot hold one line; the batch, the
+            # minibatch, the architecture and the budget are unchanged, the learner runs on CPU.
+            b["training"]["num_gpus"] = 0
         b["wandb"] = dict(b.get("wandb", {}), enabled=False)
         blocks[name] = b
         extra = sorted(k for k in set(b) | set(base) if b.get(k) != base.get(k))
@@ -75,7 +79,8 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
             if any(k not in BETWEEN_LINES for k in d):
                 raise RuntimeError(f"{a} vs {c}: lines differ outside the named keys: {d}")
     text = yaml.safe_dump({"common": cfg["common"], **blocks}, sort_keys=True, default_flow_style=False)
-    with open(OUT_CFG, "w") as f:
+    out_cfg = OUT_CFG if learner_device == "gpu" else OUT_CFG.replace(".yml", "_cpu.yml")
+    with open(out_cfg, "w") as f:
         f.write(text)
     # eval blocks: the reading windows as the allowlist, one block per (forecast channel, tier)
     read_path, read_cell = lr.cert_config("interface", allowlist=win["read"], tag="rl2read")
@@ -95,7 +100,7 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
         f.write(etext)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE, capture_output=True, text=True).stdout.strip()
     jar = os.path.join(lr.REPO, "cloudsimplus-gateway", "build", "install", "cloudsimplus-gateway", "lib", "cloudsimplus-gateway.jar")
-    man = {"config": os.path.basename(OUT_CFG), "config_sha256": hashlib.sha256(text.encode()).hexdigest()[:16],
+    man = {"config": os.path.basename(out_cfg), "learner_device": learner_device, "config_sha256": hashlib.sha256(text.encode()).hexdigest()[:16],
            "eval_config": os.path.basename(OUT_EVAL), "eval_config_sha256": hashlib.sha256(etext.encode()).hexdigest()[:16],
            "source": {"file": os.path.basename(src_path), "cell": cell},
            "crd_subtree_sha256": hashlib.sha256(json.dumps(base.get("crd", {}), sort_keys=True).encode()).hexdigest()[:16],
@@ -104,11 +109,11 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
            "tiers": list(TIERS), "commit_at_build": commit,
            "lines": {n: {"crd_enabled": b["crd"]["enabled"], "forecast_mode": b["forecast_mode"]} for n, b in blocks.items()}}
     os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
-    json.dump(man, open(MANIFEST, "w"), indent=1, sort_keys=True)
+    json.dump(man, open(MANIFEST if learner_device == "gpu" else MANIFEST.replace(".json", "_cpu.json"), "w"), indent=1, sort_keys=True)
     return blocks, eblocks, man
 
 
 if __name__ == "__main__":
     steps = int(sys.argv[sys.argv.index("--steps") + 1]) if "--steps" in sys.argv else 56000
-    b, e, m = build(steps)
+    b, e, m = build(steps, learner_device=("cpu" if "--cpu" in sys.argv else "gpu"))
     print(json.dumps({"lines": m["lines"], "config_sha256": m["config_sha256"], "eval_blocks": list(e), "train_windows": m["windows"]["train"], "read_windows": m["windows"]["read"]}, indent=1))
