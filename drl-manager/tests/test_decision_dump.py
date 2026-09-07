@@ -63,3 +63,20 @@ def test_rows_carry_raw_seconds_to_deadline_from_the_planner_channel():
     rows = decision_rows(1, 2, _obs(), [1, 2, 0], planner_ids=[11, 12, -1], num_dcs=5, planner_ttd=[120.0, 45.5, 0.0])
     assert rows[0]["ttd_sec"] == 120.0 and rows[1]["ttd_sec"] == 45.5
     assert decision_rows(1, 2, _obs(), [1, 2, 0], planner_ids=[11, 12, -1], num_dcs=5)[0]["ttd_sec"] is None
+
+
+def test_crd_info_dump_collects_numeric_crd_fields(tmp_path, monkeypatch):
+    # the zero-training forecast-signal gate reads info["crd"] per step; the dump is independent
+    # of EVAL_DECISION_DUMP and only keeps numeric fields
+    import csv as _csv
+    from src.baselines.evaluate import _DecisionDump
+    p = tmp_path / "crd.csv"
+    monkeypatch.setenv("CRD_INFO_DUMP", str(p))
+    monkeypatch.delenv("EVAL_DECISION_DUMP", raising=False)
+    d = _DecisionDump(num_dcs=5)
+    d.record(1, 0, _obs(), [0, 0, 0], {"crd": {"candidate_cover_mae": 0.25, "dc_queue_sizes": [1, 2]}})
+    d.record(1, 1, _obs(), [0, 0, 0], {"crd": {"candidate_cover_mae": 0.0}})
+    d.close()
+    rows = list(_csv.DictReader(open(p)))
+    assert [r["candidate_cover_mae"] for r in rows] == ["0.25", "0.0"]
+    assert "dc_queue_sizes" not in rows[0]

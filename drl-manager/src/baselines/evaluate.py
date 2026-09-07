@@ -531,8 +531,17 @@ class _DecisionDump:
         self.option_mode = bool(option_mode)
         self.offset_grid = list(offset_grid) if offset_grid else None
         self._rows, self._obs = [], []
+        self._crd_rows = []
 
     def record(self, ep, step, obs_global, global_action, info, extra=None):
+        # CRD_INFO_DUMP: one row per step of info["crd"] (the learner-only credit-assignment
+        # snapshot the env publishes). Used by the zero-training forecast-signal gate; it never
+        # feeds a policy and is independent of the decision dump.
+        crd_path = os.environ.get("CRD_INFO_DUMP", "").strip()
+        if crd_path and isinstance(info, dict) and isinstance(info.get("crd"), dict):
+            row = {"episode": ep, "step": step,
+                   **{k: v for k, v in info["crd"].items() if isinstance(v, (int, float))}}
+            self._crd_rows.append(row)
         if not self.path:
             return
         pl = (info.get("planner", {}) or {}) if isinstance(info, dict) else {}
@@ -550,6 +559,15 @@ class _DecisionDump:
             self._obs.append(rec)
 
     def close(self):
+        crd_path = os.environ.get("CRD_INFO_DUMP", "").strip()
+        if crd_path and self._crd_rows:
+            import csv as _csv
+            keys = sorted({k for r in self._crd_rows for k in r})
+            os.makedirs(os.path.dirname(os.path.abspath(crd_path)), exist_ok=True)
+            with open(crd_path, "w", newline="") as f:
+                w = _csv.DictWriter(f, fieldnames=keys); w.writeheader()
+                for r in self._crd_rows:
+                    w.writerow(r)
         if not self.path or not self._rows:
             return
         import csv as _csv
