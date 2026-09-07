@@ -1,0 +1,67 @@
+{
+ "checkpoint_freq": 8000,
+ "commit_at_build": "88e559768ebef925c07a8602075d91144443c61e",
+ "config": "config_rl_v2.yml",
+ "config_sha256": "ccb76479b47a789c",
+ "crd_subtree_sha256": "81782f256cd657b7",
+ "eval_config": "config_rl_v2_eval.yml",
+ "eval_config_sha256": "d09b85dda0f256f8",
+ "jar_sha256": "fd215aa03f8913e3",
+ "lines": {
+  "rl2_E_s2_r48_w72_c3_n35": {
+   "crd_enabled": true,
+   "forecast_mode": "full"
+  },
+  "rl2_NE_s2_r48_w72_c3_n35": {
+   "crd_enabled": true,
+   "forecast_mode": "none"
+  },
+  "rl2_NV_s2_r48_w72_c3_n35": {
+   "crd_enabled": false,
+   "forecast_mode": "none"
+  },
+  "rl2_V_s2_r48_w72_c3_n35": {
+   "crd_enabled": false,
+   "forecast_mode": "full"
+  }
+ },
+ "seed": 20260907,
+ "source": {
+  "cell": "svdev_interface_s2_r48_w72_c3_n35",
+  "file": "config_ladder_cert_interface_rl2.yml"
+ },
+ "tiers": [
+  "godeye",
+  "shrink75",
+  "shrink50",
+  "shrink25",
+  "shrink0",
+  "shuffle",
+  "anti"
+ ],
+ "total_timesteps": 56000,
+ "windows": {
+  "read": [
+   21850,
+   1839,
+   24859,
+   28745,
+   41897,
+   7934
+  ],
+  "train": [
+   16477,
+   4240,
+   9154,
+   33225,
+   13223,
+   49625,
+   38088,
+   5463,
+   11249,
+   44834,
+   31713,
+   35380
+  ]
+ }
+}

@@ -68,6 +68,10 @@ NEUTRAL_FEATURES = np.array([0.5, 0.0, 0.5, 0.5], dtype=np.float32)
 # Tiers this provider accepts. godeye is the identity and must reproduce Java's God's Eye
 # bit for bit; the rest are the frozen ladder's.
 SUPPORTED_TIERS = ("godeye", "s05", "s15", "s30", "s60",
+                   # RL_V2: the ladder's amplitude-shrink rungs (view = m + lam * (truth - m), m the
+                   # turbine's full-series mean; per-DC sums shrink around the DC's mean exactly as
+                   # ladder_run.rung_curve does), tested equal to rung_curve on one window
+                   "shrink75", "shrink50", "shrink25", "shrink0",
                    "shrink75", "shrink50", "shrink25", "shrink0",
                    "shuffle", "anti", "calibrated_shrink_v1")
 DEFAULT_TIER = "godeye"

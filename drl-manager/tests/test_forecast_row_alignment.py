@@ -56,3 +56,27 @@ def test_observation_row_is_the_clock_minus_the_event_spacing():
     assert obs_row_from_clock(33.01, 0.01, 99) == 33            # the discarded 0.01 s trial
     assert obs_row_from_clock(0.0, 1.0, 0) == 0                 # reset: never negative
     assert obs_row_from_clock(None, 1.0, 7) == 7                # no clock published: the counter
+
+
+def test_provider_shrink_tiers_equal_the_ladders_rungs_on_one_window():
+    import ladder_run as lr
+    from src.prediction.perturbed_godeye_provider import from_config
+    from gym_cloudsimplus.envs.hierarchical_multidc_env import simulator_row_shift
+    blk = {"compressed_power_divisor": 3000.0, "wind_csv_year": 2021, "min_time_between_events": 1.0,
+           "green_oracle_mode": "perturbed_godeye",
+           "datacenters": [{"datacenter_id": 0, "time_zone_offset_rows": 18, "turbine_ids": [22, 81], "green_energy_enabled": True,
+                            "time_scaling_mode": "COMPRESSED"}]}
+    offset = 4240; dc = blk["datacenters"][0]
+    tz = {0: dc["time_zone_offset_rows"] + offset + simulator_row_shift(dc)}
+    paths = {t: str(WIND / "split" / f"Turbine_{t}_2021.csv") for t in (22, 81)}
+    G, _ = lr.truth_curve(blk, offset, 400)
+    mu = lr._mu_w(blk)
+    t = 40; clock = t + 1
+    for tier, rung in (("shrink75", "shrink_0.75"), ("shrink50", "shrink_0.5"), ("shrink0", "shrink_0")):
+        prov = from_config({**blk, "dc_tz_offsets": tz, "perturb_tier": tier}, {0: [22, 81]}, paths)
+        prov.step_and_get(clock)
+        raw = prov.get_raw_forecast_per_dc(horizon=60, normalize=False)[0] / 3000.0
+        want = lr.rung_curve(G, rung, mu, seed_key="x")[0, t:t + 60]
+        # lead 0 is the measured present (the provider never perturbs it); leads 1.. follow the rung
+        assert abs(raw[0] - G[0, t]) < 1e-6
+        assert np.abs(raw[1:60] - want[1:60]).max() < 1e-3, tier

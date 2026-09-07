@@ -21,6 +21,7 @@ def model_config_from_block(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "dropout": gm.get("dropout", 0.0), "max_seq_len": int(gm.get("max_seq_len", 128)),
         "mem_len": int(gm.get("mem_len", 16)), "use_score_based": bool(gm.get("use_score_based", False)),
         "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
+        "cover_prior_fixed": bool(gm.get("cover_prior_fixed", False)),
         "score_temperature": float(gm.get("score_temperature", 2.0)),
         "critic_separate_trunk": bool(gm.get("critic_separate_trunk", False)),
         "factorized_temporal_gate": bool(gm.get("factorized_temporal_gate", False)),

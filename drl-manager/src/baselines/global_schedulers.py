@@ -3015,7 +3015,8 @@ class CoverArgmaxGlobalScheduler(GlobalScheduler):
             if jid < 0:
                 out.append(0); continue
             a = cover_argmax_action(None if cover is None or j >= len(cover) else np.asarray(cover[j], dtype=np.float64),
-                                    None if mask is None or j >= len(mask) else np.asarray(mask[j], dtype=np.float64), n)
+                                    None if mask is None or j >= len(mask) else np.asarray(mask[j], dtype=np.float64), n,
+                                    tie=os.environ.get("COVER_TIE", "kappa"))
             if jid not in self.decided:
                 self.decided.add(jid); self.n_decisions += 1
                 if cover is None:
@@ -3024,12 +3025,15 @@ class CoverArgmaxGlobalScheduler(GlobalScheduler):
         return out
 
     def counters(self):
-        return {"cover_decisions": self.n_decisions, "cover_missing": self.n_no_cover}
+        return {"cover_decisions": self.n_decisions, "cover_missing": self.n_no_cover,
+                "cover_tie": os.environ.get("COVER_TIE", "kappa")}
 
 
-def cover_argmax_action(cover_row, mask_row, num_dcs):
-    """Pure: index a = d * K + i of the legal candidate with the largest cover; ties broken by
-    the smallest offset index i, then the lowest site; 0 when nothing is legal or no cover."""
+def cover_argmax_action(cover_row, mask_row, num_dcs, tie="kappa"):
+    """Pure: index a = d * K + i of the legal candidate with the largest cover. Ties: "kappa"
+    (F_FITS_V2 reference) = smallest offset index i, then the lowest site; "index" (RL_V2
+    reference, the order torch.argmax uses on equal logits) = the smallest a = lowest site,
+    then smallest i. 0 when nothing is legal or no cover."""
     if cover_row is None:
         return 0
     K = cover_row.shape[0] // num_dcs
@@ -3039,6 +3043,8 @@ def cover_argmax_action(cover_row, mask_row, num_dcs):
     c = np.where(legal, cover_row, -np.inf)
     best = float(c.max())
     cands = np.where(c >= best - 1e-12)[0]
+    if tie == "index":
+        return int(cands.min())
     return int(min(cands, key=lambda a: (a % K, a // K)))
 
 

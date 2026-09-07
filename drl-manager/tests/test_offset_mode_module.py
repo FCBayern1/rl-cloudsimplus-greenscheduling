@@ -109,3 +109,27 @@ def test_candidate_key_enters_the_offset_logits_through_one_gain():
         mod.cover_gain.fill_(2.5)
         l2 = _logits(mod, b1)
     assert torch.allclose(l2 - l0, 2.5 * cover.unsqueeze(1), atol=1e-4)
+
+
+def test_fixed_cover_prior_makes_the_untrained_decode_equal_cover_argmax():
+    # RL_V2: cover_prior_fixed -> logits == cover on legal candidates at init; the cover gain is a
+    # buffer (not trained); argmax with torch's first-index ties == cover_argmax(tie="index")
+    from src.baselines.global_schedulers import cover_argmax_action
+    inner = dict(_space()["observation"].spaces)
+    inner["cand_green_cover"] = spaces.Box(0.0, 1.0, (NB, N * K), np.float32)
+    space = spaces.Dict({"observation": spaces.Dict(inner), "action_mask": spaces.Box(0.0, 1.0, (NB,), np.float32)})
+    spec = RLModuleSpec(module_class=GTrXLScoreBasedGlobalRLModule, observation_space=space,
+                        action_space=spaces.MultiDiscrete([N * K] * NB), model_config={**TINY, "cover_prior_fixed": True})
+    mod = spec.build()
+    assert "cover_gain" not in dict(mod.named_parameters()) and float(mod.cover_gain) == 1.0
+    rng = np.random.default_rng(5)
+    mask = (rng.random((NB, N * K)) > 0.3).astype(np.float32)
+    b = _batch(mask); cover = torch.rand(2, NB, N * K)
+    b[Columns.OBS]["observation"]["cand_green_cover"] = cover
+    with torch.no_grad():
+        lg = _logits(mod, b)[:, 0]                                   # (B, NB, N*K)
+    legal = torch.as_tensor(mask).bool()
+    for bi in range(2):
+        for j in range(NB):
+            assert torch.allclose(lg[bi, j][legal[j]], cover[bi, j][legal[j]], atol=1e-6)
+            assert int(lg[bi, j].argmax()) == cover_argmax_action(cover[bi, j].numpy().astype(np.float64), mask[j].astype(np.float64), N, tie="index")

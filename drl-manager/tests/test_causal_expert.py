@@ -82,3 +82,12 @@ def test_candidate_cost_rows_put_the_experts_action_in_the_minimum_set():
         c = labels[jid]["costs"]; assert not labels[jid]["excluded"] and np.isfinite(c[a])
         assert c[a] <= c[np.isfinite(c)].min() + 0.5                                 # the expert's action is a minimum-cost candidate
     assert labels[7]["n_resolves"] > 0                                               # joint state: fix-and-resolve was used
+
+
+def test_cover_argmax_index_tie_rule_matches_torch_argmax_order():
+    from src.baselines.global_schedulers import cover_argmax_action
+    n, K = 2, 4
+    cover = np.array([0.1, 0.9, 0.9, 0.0,   0.9, 0.2, 0.0, 0.0])
+    assert cover_argmax_action(cover, None, n, tie="kappa") == 1 * K + 0     # smallest kappa
+    assert cover_argmax_action(cover, None, n, tie="index") == 0 * K + 1     # smallest index a
+    assert cover_argmax_action(cover, None, n, tie="index") == int(np.argmax(cover))

@@ -1060,7 +1060,17 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 # F2/F3 candidate key: logit(d, κ) += cover_gain * cand_green_cover[j, d, κ].
                 # One scalar, initialised at 1.0 so an untrained module already ranks candidates
                 # by their forecast cover; absent key -> parameter absent, checkpoints unchanged.
-                self.cover_gain = nn.Parameter(torch.ones(1))
+                self.cover_prior_fixed = bool(model_config.get("cover_prior_fixed", False))
+                if self.cover_prior_fixed:
+                    # RL_V2 (2026-09-07): the cover term is a FIXED prior (a buffer, never trained)
+                    # and every learned contribution to the offset logits starts at exactly zero
+                    # (site keys and the offset head zero-initialised), so the untrained module's
+                    # deterministic decode equals cover_argmax (index tie rule) action for action.
+                    self.register_buffer("cover_gain", torch.ones(1))
+                    for lin in (self.dc_encoder, self.ctx_to_dc, self.offset_head):
+                        nn.init.zeros_(lin.weight); nn.init.zeros_(lin.bias)
+                else:
+                    self.cover_gain = nn.Parameter(torch.ones(1))
 
         # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
         # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
