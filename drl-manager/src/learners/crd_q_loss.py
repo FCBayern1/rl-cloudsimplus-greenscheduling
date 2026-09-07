@@ -503,6 +503,23 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         rf = batch.get(COL_CRD_FORECAST)
         if isinstance(rf, torch.Tensor) and rf.numel() > 0:
             diag["crd/r_forecast_abs_mean"] = rf.detach().float().abs().mean().item()
+            # Effective sample size behind that mean. The key above averages over the whole
+            # padded (B, T) grid, so padding and steps with nothing to decide dilute it; the
+            # counts say how much of the grid actually carries a decision (user ruling
+            # 2026-09-07). Reported, never gated.
+            rfa = rf.detach().float().abs()
+            valid = rfa
+            if isinstance(lm, torch.Tensor) and lm.shape == rfa.shape and bool(lm.any()):
+                valid = rfa[lm.bool()]
+                diag["crd/n_valid_transitions"] = float(lm.sum().item())
+                diag["crd/frac_valid_transitions"] = float(lm.float().mean().item())
+            if valid.numel() > 0:
+                diag["crd/r_forecast_abs_mean_valid"] = valid.mean().item()
+                nz = (valid > 0)
+                diag["crd/n_forecast_nonzero"] = float(nz.sum().item())
+                diag["crd/frac_forecast_nonzero"] = float(nz.float().mean().item())
+                if bool(nz.any()):
+                    diag["crd/r_forecast_abs_mean_nonzero"] = valid[nz].mean().item()
         # τ is a 0-d tensor written by M3.
         tau = batch.get(COL_CRD_TAU)
         if isinstance(tau, torch.Tensor) and tau.numel() == 1:

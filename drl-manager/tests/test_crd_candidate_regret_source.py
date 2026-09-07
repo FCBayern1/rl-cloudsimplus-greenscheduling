@@ -311,3 +311,35 @@ def test_reweight_diagnostics_separate_positive_and_negative_advantages():
     assert abs(seen["crd/reweight_w_mean_neg_adv"] - 0.6) < 1e-6
     assert abs(seen["crd/reweight_w_mean_pos_adv"] - 1.4) < 1e-6
     assert abs(seen["crd/reweight_frac_pos_adv"] - 0.5) < 1e-6
+
+
+def test_forecast_diagnostics_report_the_effective_sample_size():
+    """The padded-grid mean is diluted; the counts must say how much of it carries a signal."""
+    from ray.rllib.core.columns import Columns
+    from src.learners.crd_q_loss import COL_CRD_FORECAST
+
+    class _Sink:
+        def __init__(self):
+            self.seen = {}
+
+        def log_dict(self, d, key=None, window=None):
+            self.seen.update(d)
+
+    learner = _loss_helper()
+    learner.metrics = _Sink()
+    learner._crd_diag_warned = False
+    # 8 cells, 6 valid, of which 2 carry a non-zero regret (0.4 and 0.8)
+    rf = torch.tensor([[0.0, 0.4, 0.0, 0.8], [0.0, 0.0, 5.0, 7.0]])
+    lm = torch.tensor([[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 0.0, 0.0]])
+    learner._log_crd_diagnostics(module_id="global_agent",
+                                 batch={COL_CRD_FORECAST: rf, Columns.LOSS_MASK: lm})
+
+    s = learner.metrics.seen
+    assert s["crd/n_valid_transitions"] == 6.0
+    assert abs(s["crd/frac_valid_transitions"] - 0.75) < 1e-6
+    assert s["crd/n_forecast_nonzero"] == 2.0
+    assert abs(s["crd/frac_forecast_nonzero"] - 2 / 6) < 1e-6
+    assert abs(s["crd/r_forecast_abs_mean_valid"] - 0.2) < 1e-6      # 1.2 / 6
+    assert abs(s["crd/r_forecast_abs_mean_nonzero"] - 0.6) < 1e-6    # 1.2 / 2
+    # the padded mean, which the frozen G5a threshold reads, is the diluted one
+    assert abs(s["crd/r_forecast_abs_mean"] - 13.2 / 8) < 1e-6

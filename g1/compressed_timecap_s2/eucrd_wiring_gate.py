@@ -57,7 +57,10 @@ def judge():
                                         ("iteration", "steps", "crd/r_forecast_abs_mean", "crd/rho_forecast_mean",
                                          "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std",
                                          "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv",
-                                         "crd/reweight_frac_pos_adv")} for it in s],
+                                         "crd/reweight_frac_pos_adv", "crd/n_valid_transitions",
+                                         "crd/frac_valid_transitions", "crd/n_forecast_nonzero",
+                                         "crd/frac_forecast_nonzero", "crd/r_forecast_abs_mean_valid",
+                                         "crd/r_forecast_abs_mean_nonzero")} for it in s],
                             "last": (s[-1] if s else None)}
     e = (res["runs"]["err"]["last"] or {})
     c = (res["runs"]["clean"]["last"] or {})
@@ -74,8 +77,8 @@ def judge():
     os.makedirs(OUT, exist_ok=True)
     json.dump(res, open(os.path.join(OUT, "wiring_gate.json"), "w"), indent=1)
     print(json.dumps({"gates": g, "verdict": res["verdict"],
-                      "err_last": {k: e.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv")},
-                      "clean_last": {k: c.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv")}}, indent=1))
+                      "err_last": {k: e.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv", "crd/n_valid_transitions", "crd/n_forecast_nonzero", "crd/r_forecast_abs_mean_valid")},
+                      "clean_last": {k: c.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv", "crd/n_valid_transitions", "crd/n_forecast_nonzero", "crd/r_forecast_abs_mean_valid")}}, indent=1))
     return res
 
 
