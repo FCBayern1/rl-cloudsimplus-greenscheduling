@@ -42,3 +42,10 @@ Verdict WIRING_GATE_PASS iff G5a–G5d hold. Any failure is STOP_EUCRD_WIRING: t
 ## 3. What passing does and does not license
 
 Passing G1–G5 licenses exactly one thing: starting the matched pair V_err (vanilla) and E_err (EU-CRD), trained on the same frozen imperfect forecast with the same data and budget, and comparing their degradation along the error ladder under deterministic deployment. It does not license any claim about EU-CRD's effect, and it does not reinterpret the RL_V2 result. The 2020 confirmation windows stay sealed.
+
+## Addendum A — G5 amendments (2026-09-07, user ruling; append-only, §1–§3 unchanged)
+
+1. **Responsibility source.** G5 runs on `candidate_carbon_regret` (reports/EUCRD_REGRET_SIGNAL_PREREG.md), after H1–H5 pass. `candidate_cover_mae` is retained only as an auxiliary forecast-quality scale and is not the trained magnitude.
+2. **G5d is narrowed.** Under a correct forecast the requirements are `crd/r_forecast_abs_mean` = 0 and `crd/rho_forecast_mean` = 0. The clause requiring near-uniform reweighting (`crd/reweight_w_std` ≤ 1e-4) is **withdrawn**: with the forecast channel silent the weights still carry the routing and scheduling credit terms, which may legitimately differ across transitions, so uniform weights were never implied by a correct forecast. The value is reported instead of gated.
+3. **Budget honesty.** The two G5 runs are 40 000 steps each. That is a wiring budget, not a training budget, and no G5 statistic may be read as evidence about learning or carbon.
+4. **G5a–G5c and G5e are unchanged**, read against the regret source.

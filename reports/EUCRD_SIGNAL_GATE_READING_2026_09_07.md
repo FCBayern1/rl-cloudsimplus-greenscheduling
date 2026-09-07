@@ -42,3 +42,12 @@ So the quantity is not "how wrong is the forecast" but "how wrong is the forecas
 4. Keep the signal as is and drop the monotonicity requirement, on the argument that credit assignment only needs a positive signal when the forecast is wrong. This is the weakest option: it accepts that the worst forecasts receive the least forecast credit.
 
 Whichever is chosen must be frozen before it is measured again, and G1, G2, G4 re-run on the new definition; G5 stays queued behind it.
+
+## Addendum A — two corrections to §2 and §3 (2026-09-07, user ruling)
+
+The measurements stand; two statements about them were too strong and are withdrawn.
+
+1. **"The live runs share the same decision states."** What is shared across tiers is the set of decision times and the jobs present at them. The reservation grid differs, so the full scheduling state differs, and a non-monotone comparison across tiers is therefore not evidence that the instrument is wrong. The supported statement is narrower: the old signal is changed by earlier decisions, so it cannot serve on its own as a scale of forecast quality.
+2. **"The worst forecast earns the smallest credit."** shrink 0 scores below shrink 0.25 but above shrink 0.75, so the flat forecast is not at the bottom of the ordering. What the inversion shows is the trajectory dependence in point 1, not a reversal of the whole scale.
+
+Ruling: option 3 becomes the responsibility signal, option 2 stays as an auxiliary quality scale, and no training runs until the new definition passes its own gates. The new signal is a **local decision regret** at the current state, not the causal carbon loss of a whole trajectory: opportunity already destroyed by earlier decisions cannot be recovered by a score at the current step. It is frozen in reports/EUCRD_REGRET_SIGNAL_PREREG.md.
