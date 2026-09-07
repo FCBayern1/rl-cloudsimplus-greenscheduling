@@ -22,20 +22,26 @@ log "references (flat on validation windows, cover_argmax on every tier)"
 ( cd $G1 && $PY rl_v2_refs.py all 2>&1 | grep -v "WARNING\|Missing columns\|SWF" | grep -E "^cover|^flat|Traceback|Error" ) &
 REFPID=$!
 abort(){ log "ABORT: $1"; echo "$1" > $OUT/INVALID_RUN.txt; kill $REFPID 2>/dev/null; exit 1; }
-train(){ L=$1; $PY entrypoint_rlmodule_gtrxl.py --config $CFG --experiment rl2_${L}_s2_r48_w72_c3_n35 \
+train(){ L=$1
+  # resume: a line whose last checkpoint already exists is not retrained (its training is done)
+  if [ -n "$(lastck $L)" ] && [ -n "$(initck $L)" ]; then log "skip training $L (checkpoints present)"; return 0; fi
+  $PY entrypoint_rlmodule_gtrxl.py --config $CFG --experiment rl2_${L}_s2_r48_w72_c3_n35 \
   --total-timesteps $STEPS --num-workers 0 --seed $S --no-wandb --output-dir logs/rl_v2/${L}_s$S \
   > logs/rl_v2/${L}_s$S.log 2>&1; rc=$?; log "train $L exit=$rc"
   # Addendum A1: fail-fast. A non-zero code, or a missing last checkpoint, aborts the whole smoke.
   [ $rc -eq 0 ] || abort "INVALID_SMOKE_RUN2_TRAIN_${L}_EXIT_${rc}$(grep -qi 'OutOfMemoryError' logs/rl_v2/${L}_s$S.log && echo _OOM)"
   [ -n "$(lastck $L)" ] || abort "INVALID_SMOKE_RUN2_NO_CHECKPOINT_${L}"; }
-lastck(){ ls -d logs/rl_v2/$1_s$S/*/checkpoint_* 2>/dev/null | grep -v checkpoint_init | sort -V | tail -1; }
-initck(){ ls -d logs/rl_v2/$1_s$S/*/checkpoint_init 2>/dev/null | head -1; }
+# RLlib writes the per-iteration checkpoints one level deeper than the init one:
+#   logs/rl_v2/<L>_s<S>/multidc_gtrxl_training/PPO_.../checkpoint_00000N   (last)
+#   logs/rl_v2/<L>_s<S>/checkpoint_init                                   (init)
+lastck(){ ls -d logs/rl_v2/$1_s$S/*/*/checkpoint_0* 2>/dev/null | sort -V | tail -1; }
+initck(){ ls -d logs/rl_v2/$1_s$S/checkpoint_init 2>/dev/null | head -1; }
 # One line at a time: the candidate key makes a training batch tensor of 8000 x 128 x 365 x 4 B
 # = 1.49 GiB, and two learners do not fit in the 16 GB GPU together (run 1: CUDA OOM on the first
 # learner update, Addendum A). The first line is also the memory preflight.
 for L in NV V NE E; do log "training $L"; train $L; done
 wait $REFPID; log "references done"
-for L in NV V NE E; do log "$L init=$(initck $L) last=$(lastck $L) n=$(ls -d logs/rl_v2/${L}_s$S/*/checkpoint_* 2>/dev/null | wc -l)"; done
+for L in NV V NE E; do log "$L init=$(initck $L) last=$(lastck $L) n=$(ls -d logs/rl_v2/${L}_s$S/*/*/checkpoint_0* 2>/dev/null | wc -l)"; done
 export EVAL_CONFIG_PATH=$PWD/$EVALCFG
 chan(){ case $1 in NV|NE) echo none;; *) echo full;; esac; }
 evalone(){ L=$1; CK=$2; TIER=$3; I=$4; KK=$((12+I)); MODE=$5; OUTD=$6
