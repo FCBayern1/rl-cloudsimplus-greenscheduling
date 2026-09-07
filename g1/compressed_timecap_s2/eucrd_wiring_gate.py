@@ -14,7 +14,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRL = os.path.join(os.path.dirname(os.path.dirname(HERE)), "drl-manager")
 OUT = os.path.join(HERE, "stage_a_out", "eucrd_wiring")
 RUNS = ("err", "clean")
-RHO_FORECAST_MIN, RHO_ROUTING_MAX, W_STD_MIN, W_STD_CLEAN_MAX = 0.01, 0.99, 1e-3, 1e-4
+RHO_FORECAST_MIN, RHO_ROUTING_MAX, W_STD_MIN = 0.01, 0.99, 1e-3
+# G5d no longer requires near-uniform weights under a correct forecast (PREREG Addendum A2):
+# with the forecast channel silent the weights still carry routing and scheduling credit, which
+# may legitimately differ. reweight_w_std is reported, not gated.
 
 
 def crd_series(run):
@@ -46,13 +49,15 @@ def crd_series(run):
 
 def judge():
     res = {"runs": {}, "thresholds": {"rho_forecast_min": RHO_FORECAST_MIN, "rho_routing_max": RHO_ROUTING_MAX,
-                                      "w_std_min": W_STD_MIN, "w_std_clean_max": W_STD_CLEAN_MAX}}
+                                      "w_std_min": W_STD_MIN}}
     for run in RUNS:
         s = crd_series(run)
         res["runs"][run] = {"iterations": len(s),
                             "series": [{k: v for k, v in it.items() if k in
                                         ("iteration", "steps", "crd/r_forecast_abs_mean", "crd/rho_forecast_mean",
-                                         "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std")} for it in s],
+                                         "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std",
+                                         "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv",
+                                         "crd/reweight_frac_pos_adv")} for it in s],
                             "last": (s[-1] if s else None)}
     e = (res["runs"]["err"]["last"] or {})
     c = (res["runs"]["clean"]["last"] or {})
@@ -63,15 +68,14 @@ def judge():
     g["G5c_reweight_applied_and_spread"] = bool(e.get("crd/reweight_applied", 0) == 1.0
                                                 and e.get("crd/reweight_w_std", 0) >= W_STD_MIN)
     g["G5d_clean_control_silent"] = bool(c.get("crd/r_forecast_abs_mean", 1) == 0
-                                         and c.get("crd/rho_forecast_mean", 1) == 0
-                                         and c.get("crd/reweight_w_std", 1) <= W_STD_CLEAN_MAX)
+                                         and c.get("crd/rho_forecast_mean", 1) == 0)
     res["gates"] = g
     res["verdict"] = "WIRING_GATE_PASS" if all(g.values()) else "STOP_EUCRD_WIRING:" + ",".join(k for k, v in g.items() if not v)
     os.makedirs(OUT, exist_ok=True)
     json.dump(res, open(os.path.join(OUT, "wiring_gate.json"), "w"), indent=1)
     print(json.dumps({"gates": g, "verdict": res["verdict"],
-                      "err_last": {k: e.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std")},
-                      "clean_last": {k: c.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std")}}, indent=1))
+                      "err_last": {k: e.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv")},
+                      "clean_last": {k: c.get(k) for k in ("crd/r_forecast_abs_mean", "crd/rho_forecast_mean", "crd/rho_routing_mean", "crd/reweight_applied", "crd/reweight_w_std", "crd/reweight_w_mean_pos_adv", "crd/reweight_w_mean_neg_adv")}}, indent=1))
     return res
 
 

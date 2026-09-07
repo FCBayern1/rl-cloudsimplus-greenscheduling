@@ -114,7 +114,7 @@ g5_clean:
       gamma: 0.3
       magnitude: true
       scale_fix: true
-      source: candidate_cover_mae
+      source: candidate_carbon_regret
     local_cf_enabled: false
     mask_padding: true
     responsibility:
@@ -430,7 +430,7 @@ g5_err:
       gamma: 0.3
       magnitude: true
       scale_fix: true
-      source: candidate_cover_mae
+      source: candidate_carbon_regret
     local_cf_enabled: false
     mask_padding: true
     responsibility:

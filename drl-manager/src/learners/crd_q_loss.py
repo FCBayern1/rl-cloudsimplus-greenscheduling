@@ -522,6 +522,30 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             # Dispersion stats are a diagnostic; never let them stop training.
             pass
 
+        # The applied weight split by the SIGN of the advantage it multiplies. A weight that
+        # damps negative advantages suppresses learning to AVOID a bad action, which a single
+        # dispersion number cannot distinguish from healthy redistribution (implementation
+        # review 2026-09-07 §4). The multiply preserves sign (w > 0), so the post-reweight
+        # advantage carries the pre-reweight sign.
+        try:
+            w_g = batch.get("crd_w_guarded")
+            adv_signed = batch.get(Postprocessing.ADVANTAGES)
+            if (isinstance(w_g, torch.Tensor) and isinstance(adv_signed, torch.Tensor)
+                    and w_g.shape == adv_signed.shape and w_g.numel() > 1):
+                wf = w_g.detach().float()
+                af = adv_signed.detach().float()
+                if isinstance(lm, torch.Tensor) and lm.shape == wf.shape and bool(lm.any()):
+                    keep = lm.bool()
+                    wf, af = wf[keep], af[keep]
+                pos, neg = af > 0, af < 0
+                if bool(pos.any()):
+                    diag["crd/reweight_w_mean_pos_adv"] = wf[pos].mean().item()
+                if bool(neg.any()):
+                    diag["crd/reweight_w_mean_neg_adv"] = wf[neg].mean().item()
+                diag["crd/reweight_frac_pos_adv"] = pos.float().mean().item()
+        except Exception:
+            pass
+
         diag = {k: v for k, v in diag.items() if v is not None}
         if not diag:
             return

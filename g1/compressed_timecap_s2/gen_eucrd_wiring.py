@@ -27,6 +27,9 @@ MANIFEST = os.path.join(HERE, "stage_a_out", "eucrd_wiring", "manifest.json")
 STEPS = 40000                                              # 5 PPO iterations: passes the 450-call warmup
 RUNS = {"err": "shrink75", "clean": "godeye"}
 BASE = "rl2_E_s2_r48_w72_c3_n35"                          # the EU-CRD line's block
+# the responsibility magnitude G5 wires: local decision regret (EUCRD_SIGNAL_GATE_PREREG
+# Addendum A1), not the cover error the first draft used
+FORECAST_SOURCE = "candidate_carbon_regret"
 
 
 def build():
@@ -38,7 +41,7 @@ def build():
         b["experiment_name"] = f"g5_{name}"; b["simulation_name"] = f"G5_{name}"
         b["perturb_tier"] = tier
         crd = copy.deepcopy(b.get("crd", {})); fc = dict(crd.get("forecast", {}))
-        fc["source"] = "candidate_cover_mae"; crd["forecast"] = fc; crd["enabled"] = True
+        fc["source"] = FORECAST_SOURCE; crd["forecast"] = fc; crd["enabled"] = True
         b["crd"] = crd
         b["training"] = dict(b.get("training", {}), total_timesteps=STEPS,
                              checkpoint_freq_timesteps=STEPS, checkpoint_num_to_keep=0,
@@ -57,7 +60,7 @@ def build():
     os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
     json.dump({"config": os.path.basename(OUT), "sha256": hashlib.sha256(text.encode()).hexdigest()[:16],
                "source": os.path.basename(SRC), "base_block": BASE, "steps": STEPS, "runs": RUNS,
-               "forecast_source": "candidate_cover_mae",
+               "forecast_source": FORECAST_SOURCE,
                "between_run_diff": between}, open(MANIFEST, "w"), indent=1)
     print(json.dumps({"config": OUT, "between_run_diff": between, "steps": STEPS}, indent=1))
     return out

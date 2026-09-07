@@ -283,3 +283,31 @@ def test_u8_shares_are_invariant_to_a_constant_rescaling():
         return out[-1]
 
     torch.testing.assert_close(shares(1.0), shares(1000.0), rtol=1e-4, atol=1e-6)
+
+
+# ── the applied weight, split by the sign of the advantage it multiplies ─────
+def test_reweight_diagnostics_separate_positive_and_negative_advantages():
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+
+    class _Sink:
+        def __init__(self):
+            self.seen = {}
+
+        def log_dict(self, d, key=None, window=None):
+            self.seen.update(d)
+
+    learner = _loss_helper()
+    learner.metrics = _Sink()
+    learner._crd_diag_warned = False
+    w = torch.tensor([[0.2, 1.8], [1.0, 1.0]])
+    adv = torch.tensor([[-1.0, 2.0], [3.0, -4.0]])          # sign survives the multiply
+    batch = {"crd_w_guarded": w, Postprocessing.ADVANTAGES: adv,
+             "crd_reweight_applied": torch.ones(1), Columns.LOSS_MASK: torch.ones(2, 2)}
+    learner._log_crd_diagnostics(module_id="global_agent", batch=batch)
+
+    seen = learner.metrics.seen
+    # negative advantages are damped here (0.2, 1.0) while positive ones are amplified
+    assert abs(seen["crd/reweight_w_mean_neg_adv"] - 0.6) < 1e-6
+    assert abs(seen["crd/reweight_w_mean_pos_adv"] - 1.4) < 1e-6
+    assert abs(seen["crd/reweight_frac_pos_adv"] - 0.5) < 1e-6
