@@ -1,0 +1,86 @@
+{
+ "windows": {
+  "14": {
+   "valid": true,
+   "headroom": 0.003393676930555518,
+   "C_truth": 0.004335863898148159,
+   "C_flat": 0.007729540828703677,
+   "C_causal": 0.004926468384259277,
+   "F2": {
+    "capture_argmax": 1.0047415497354535,
+    "capture_residual": 0.9620428310173297,
+    "contract_residual": []
+   },
+   "F3": {
+    "capture_argmax": -0.0867532166027052,
+    "capture_residual": -0.3026049781935188,
+    "contract_residual": []
+   }
+  },
+  "15": {
+   "valid": true,
+   "headroom": 0.003249576337962977,
+   "C_truth": 0.00036771389814814953,
+   "C_flat": 0.0036172902361111267,
+   "C_causal": 0.0004009856944444455,
+   "F2": {
+    "capture_argmax": 1.006513571509859,
+    "capture_residual": 0.9800064135314623,
+    "contract_residual": []
+   },
+   "F3": {
+    "capture_argmax": 0.6349801619362219,
+    "capture_residual": -0.5478096605121304,
+    "contract_residual": []
+   }
+  },
+  "16": {
+   "valid": true,
+   "headroom": 0.0010290457407407378,
+   "C_truth": 0.0003061813333333344,
+   "C_flat": 0.0013352270740740722,
+   "C_causal": 0.0003061973333333344,
+   "F2": {
+    "capture_argmax": 0.9998963424841438,
+    "capture_residual": 0.9099093543817593,
+    "contract_residual": []
+   },
+   "F3": {
+    "capture_argmax": 0.24597699062291567,
+    "capture_residual": 0.2664003826258019,
+    "contract_residual": []
+   }
+  },
+  "17": {
+   "valid": true,
+   "headroom": 0.0023398858888889,
+   "C_truth": 0.0014262681620370362,
+   "C_flat": 0.003766154050925936,
+   "C_causal": 0.0017162384814814807,
+   "F2": {
+    "capture_argmax": 1.0156010738861434,
+    "capture_residual": 0.9883902987214941,
+    "contract_residual": []
+   },
+   "F3": {
+    "capture_argmax": 0.033955131526045186,
+    "capture_residual": -0.8255254180375935,
+    "contract_residual": []
+   }
+  }
+ },
+ "F2": {
+  "pooled_capture": 0.9684329693799224,
+  "per_window_within_tol": false,
+  "contract_ok": true,
+  "pass": false
+ },
+ "F3": {
+  "pooled_capture": -0.44274864470129416,
+  "per_window_within_tol": false,
+  "contract_ok": true,
+  "pass": false
+ },
+ "n_valid": 4,
+ "verdict": "STOP_F2_LEARNER"
+}

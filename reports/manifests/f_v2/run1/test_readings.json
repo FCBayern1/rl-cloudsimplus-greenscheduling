@@ -1,0 +1,154 @@
+{
+ "14": {
+  "offset": 24859,
+  "curve_rows_match": true,
+  "truth": {
+   "status": "OPTIMAL",
+   "C_model": 0.004335864125,
+   "C_sim": 0.004335863898148159,
+   "closure_rel": 5.2319868563999143e-08,
+   "contract": []
+  },
+  "shrink_0": {
+   "status": "OPTIMAL",
+   "C_model": 0.007729541463888889,
+   "C_sim": 0.007729540828703677,
+   "closure_rel": 8.217631209914183e-08,
+   "contract": []
+  },
+  "causal": {
+   "C_sim": 0.004926468384259277,
+   "contract": []
+  },
+  "F2_cover_argmax": {
+   "C_sim": 0.004913177476851865,
+   "contract": []
+  },
+  "F2_cover_residual": {
+   "C_sim": 0.00503286507870372,
+   "contract": []
+  },
+  "F3_cover_argmax": {
+   "C_sim": 0.007972716379629636,
+   "contract": []
+  },
+  "F3_cover_residual": {
+   "C_sim": 0.008577764504629628,
+   "contract": []
+  }
+ },
+ "15": {
+  "offset": 28745,
+  "curve_rows_match": true,
+  "truth": {
+   "status": "OPTIMAL",
+   "C_model": 0.0003677138527777778,
+   "C_sim": 0.00036771389814814953,
+   "closure_rel": 1.2338499459933526e-07,
+   "contract": []
+  },
+  "shrink_0": {
+   "status": "OPTIMAL",
+   "C_model": 0.0036172909166666666,
+   "C_sim": 0.0036172902361111267,
+   "closure_rel": 1.88139565092288e-07,
+   "contract": []
+  },
+  "causal": {
+   "C_sim": 0.0004009856944444455,
+   "contract": []
+  },
+  "F2_cover_argmax": {
+   "C_sim": 0.0003800360648148151,
+   "contract": []
+  },
+  "F2_cover_residual": {
+   "C_sim": 0.0004652911574074088,
+   "contract": []
+  },
+  "F3_cover_argmax": {
+   "C_sim": 0.0015750006574074113,
+   "contract": []
+  },
+  "F3_cover_residual": {
+   "C_sim": 0.0053792129351851745,
+   "contract": []
+  }
+ },
+ "16": {
+  "offset": 41897,
+  "curve_rows_match": true,
+  "truth": {
+   "status": "OPTIMAL",
+   "C_model": 0.0003061813333333333,
+   "C_sim": 0.0003061813333333344,
+   "closure_rel": 3.5410459569236895e-15,
+   "contract": []
+  },
+  "shrink_0": {
+   "status": "OPTIMAL",
+   "C_model": 0.0013352269833333333,
+   "C_sim": 0.0013352270740740722,
+   "closure_rel": 6.795903622168756e-08,
+   "contract": []
+  },
+  "causal": {
+   "C_sim": 0.0003061973333333344,
+   "contract": []
+  },
+  "F2_cover_argmax": {
+   "C_sim": 0.00030630400000000187,
+   "contract": []
+  },
+  "F2_cover_residual": {
+   "C_sim": 0.00039890328703703844,
+   "contract": []
+  },
+  "F3_cover_argmax": {
+   "C_sim": 0.0010821094351851864,
+   "contract": []
+  },
+  "F3_cover_residual": {
+   "C_sim": 0.00106109315740741,
+   "contract": []
+  }
+ },
+ "17": {
+  "offset": 7934,
+  "curve_rows_match": true,
+  "truth": {
+   "status": "OPTIMAL",
+   "C_model": 0.0014262682527777777,
+   "C_sim": 0.0014262681620370362,
+   "closure_rel": 6.362109045748201e-08,
+   "contract": []
+  },
+  "shrink_0": {
+   "status": "OPTIMAL",
+   "C_model": 0.003766154686111111,
+   "C_sim": 0.003766154050925936,
+   "closure_rel": 1.6865615668930534e-07,
+   "contract": []
+  },
+  "causal": {
+   "C_sim": 0.0017162384814814807,
+   "contract": []
+  },
+  "F2_cover_argmax": {
+   "C_sim": 0.0016842575972222222,
+   "contract": []
+  },
+  "F2_cover_residual": {
+   "C_sim": 0.0017400373888888892,
+   "contract": []
+  },
+  "F3_cover_argmax": {
+   "C_sim": 0.0036965488981481618,
+   "contract": []
+  },
+  "F3_cover_residual": {
+   "C_sim": 0.005458411458333342,
+   "contract": []
+  }
+ }
+}
