@@ -30,6 +30,9 @@ LINES = {"NV": {"hollow": True, "crd": False}, "V": {"hollow": False, "crd": Fal
          "NE": {"hollow": True, "crd": True}, "E": {"hollow": False, "crd": True}}
 TIERS = ("godeye", "shrink75", "shrink50", "shrink25", "shrink0", "shuffle", "anti")
 SEED = 20260907
+# RL_V2 Addendum A2: the smallest gain of the frozen grid whose mean sampled-cover ratio on the
+# twelve TRAINING windows reaches 0.95 (measured 0.478 / 0.769 / 0.887 / 0.952 for 1 / 5 / 10 / 20)
+COVER_GAIN = 20.0
 # keys a line block may differ in from the certification interface twin
 WHITELIST = {"experiment_name", "simulation_name", "forecast_mode", "crd", "training", "wandb",
              "green_episode_offset_allowlist", "gtrxl", "perturb_tier"}
@@ -55,7 +58,7 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
         b["perturb_tier"] = "godeye"                     # training is always clean
         b["forecast_mode"] = "none" if spec["hollow"] else "full"
         b["crd"] = dict(copy.deepcopy(b.get("crd", {})), enabled=bool(spec["crd"]))
-        b["gtrxl"] = dict(copy.deepcopy(b.get("gtrxl", {})), cover_prior_fixed=True)
+        b["gtrxl"] = dict(copy.deepcopy(b.get("gtrxl", {})), cover_prior_fixed=True, cover_prior_gain=COVER_GAIN)
         b["training"] = dict(b.get("training", {}), total_timesteps=int(total_timesteps),
                              checkpoint_freq_timesteps=int(checkpoint_freq), checkpoint_num_to_keep=0,
                              save_init_checkpoint=True)
@@ -84,7 +87,7 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
             name = f"rl2e_{chan}_{tier}"
             e["experiment_name"] = name; e["simulation_name"] = f"RLV2E_{name}"
             e["forecast_mode"] = chan; e["perturb_tier"] = tier
-            e["gtrxl"] = dict(copy.deepcopy(e.get("gtrxl", {})), cover_prior_fixed=True)
+            e["gtrxl"] = dict(copy.deepcopy(e.get("gtrxl", {})), cover_prior_fixed=True, cover_prior_gain=COVER_GAIN)
             e["wandb"] = dict(e.get("wandb", {}), enabled=False)
             eblocks[name] = e
     etext = yaml.safe_dump({"common": rcfg["common"], **eblocks}, sort_keys=True, default_flow_style=False)
@@ -97,7 +100,7 @@ def build(total_timesteps=56000, checkpoint_freq=8000):
            "source": {"file": os.path.basename(src_path), "cell": cell},
            "crd_subtree_sha256": hashlib.sha256(json.dumps(base.get("crd", {}), sort_keys=True).encode()).hexdigest()[:16],
            "jar_sha256": hashlib.sha256(open(jar, "rb").read()).hexdigest()[:16] if os.path.exists(jar) else None,
-           "windows": win, "seed": SEED, "total_timesteps": int(total_timesteps), "checkpoint_freq": int(checkpoint_freq),
+           "windows": win, "seed": SEED, "cover_prior_gain": COVER_GAIN, "total_timesteps": int(total_timesteps), "checkpoint_freq": int(checkpoint_freq),
            "tiers": list(TIERS), "commit_at_build": commit,
            "lines": {n: {"crd_enabled": b["crd"]["enabled"], "forecast_mode": b["forecast_mode"]} for n, b in blocks.items()}}
     os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)

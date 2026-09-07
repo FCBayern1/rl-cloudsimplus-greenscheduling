@@ -372,6 +372,8 @@ def _merged_gtrxl_model_settings(
         m["use_score_based"] = bool(g["use_score_based"])
     if "cover_prior_fixed" in g:                     # RL_V2: fixed cover prior + zero-initialised residual
         m["cover_prior_fixed"] = bool(g["cover_prior_fixed"])
+    if "cover_prior_gain" in g:
+        m["cover_prior_gain"] = float(g["cover_prior_gain"])
     if "score_encoder_init_gain" in g:
         m["score_encoder_init_gain"] = float(g["score_encoder_init_gain"])
     if "score_temperature" in g:
@@ -447,6 +449,7 @@ def create_rlmodule_config(
         "use_score_based": bool(gm.get("use_score_based", False)),
         "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
         "cover_prior_fixed": bool(gm.get("cover_prior_fixed", False)),
+        "cover_prior_gain": float(gm.get("cover_prior_gain", 1.0)),
         "score_temperature": float(gm.get("score_temperature", 2.0)),
         # BC warm-start: empty string = disabled; absolute path = load before
         # PPO starts.  Only the global module reads this key; locals ignore it.

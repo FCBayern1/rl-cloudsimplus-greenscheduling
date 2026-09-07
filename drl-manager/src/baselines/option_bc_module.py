@@ -22,6 +22,7 @@ def model_config_from_block(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "mem_len": int(gm.get("mem_len", 16)), "use_score_based": bool(gm.get("use_score_based", False)),
         "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
         "cover_prior_fixed": bool(gm.get("cover_prior_fixed", False)),
+        "cover_prior_gain": float(gm.get("cover_prior_gain", 1.0)),
         "score_temperature": float(gm.get("score_temperature", 2.0)),
         "critic_separate_trunk": bool(gm.get("critic_separate_trunk", False)),
         "factorized_temporal_gate": bool(gm.get("factorized_temporal_gate", False)),

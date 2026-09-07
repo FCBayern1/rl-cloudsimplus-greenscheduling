@@ -1,11 +1,12 @@
 {
  "checkpoint_freq": 8000,
- "commit_at_build": "88e559768ebef925c07a8602075d91144443c61e",
+ "commit_at_build": "1f13d5846f811c0abeeca24f72eb3d4f97e7cb9d",
  "config": "config_rl_v2.yml",
- "config_sha256": "ccb76479b47a789c",
+ "config_sha256": "2bb292f96fdf8075",
+ "cover_prior_gain": 20.0,
  "crd_subtree_sha256": "81782f256cd657b7",
  "eval_config": "config_rl_v2_eval.yml",
- "eval_config_sha256": "d09b85dda0f256f8",
+ "eval_config_sha256": "3783bfc1ced07ee9",
  "jar_sha256": "fd215aa03f8913e3",
  "lines": {
   "rl2_E_s2_r48_w72_c3_n35": {

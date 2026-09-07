@@ -284,6 +284,7 @@ rl2e_full_anti:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -598,6 +599,7 @@ rl2e_full_godeye:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -912,6 +914,7 @@ rl2e_full_shrink0:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -1226,6 +1229,7 @@ rl2e_full_shrink25:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -1540,6 +1544,7 @@ rl2e_full_shrink50:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -1854,6 +1859,7 @@ rl2e_full_shrink75:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -2168,6 +2174,7 @@ rl2e_full_shuffle:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -2482,6 +2489,7 @@ rl2e_none_godeye:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96

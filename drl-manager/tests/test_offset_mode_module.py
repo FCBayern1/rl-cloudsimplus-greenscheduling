@@ -133,3 +133,29 @@ def test_fixed_cover_prior_makes_the_untrained_decode_equal_cover_argmax():
         for j in range(NB):
             assert torch.allclose(lg[bi, j][legal[j]], cover[bi, j][legal[j]], atol=1e-6)
             assert int(lg[bi, j].argmax()) == cover_argmax_action(cover[bi, j].numpy().astype(np.float64), mask[j].astype(np.float64), N, tie="index")
+
+
+def test_cover_prior_gain_scales_the_prior_without_moving_the_argmax():
+    # RL_V2 Addendum A2: gain 20 makes the SAMPLED policy carry the prior; the argmax is unchanged
+    from src.baselines.global_schedulers import cover_argmax_action
+    inner = dict(_space()["observation"].spaces)
+    inner["cand_green_cover"] = spaces.Box(0.0, 1.0, (NB, N * K), np.float32)
+    space = spaces.Dict({"observation": spaces.Dict(inner), "action_mask": spaces.Box(0.0, 1.0, (NB,), np.float32)})
+    spec = RLModuleSpec(module_class=GTrXLScoreBasedGlobalRLModule, observation_space=space,
+                        action_space=spaces.MultiDiscrete([N * K] * NB),
+                        model_config={**TINY, "cover_prior_fixed": True, "cover_prior_gain": 20.0})
+    mod = spec.build()
+    assert float(mod.cover_gain) == 20.0 and "cover_gain" not in dict(mod.named_parameters())
+    mask = np.ones((NB, N * K), dtype=np.float32)
+    b = _batch(mask); cover = torch.rand(2, NB, N * K)
+    b[Columns.OBS]["observation"]["cand_green_cover"] = cover
+    with torch.no_grad():
+        lg = _logits(mod, b)[:, 0]
+    assert torch.allclose(lg, 20.0 * cover, atol=1e-4)                                  # logits are the scaled prior
+    for bi in range(2):
+        for j in range(NB):
+            assert int(lg[bi, j].argmax()) == cover_argmax_action(cover[bi, j].numpy().astype(np.float64), mask[j].astype(np.float64), N, tie="index")
+    # and the sampled action now sits near the best cover (the point of the gain)
+    p = torch.softmax(lg[0, 0], -1); ratio = float((p * cover[0, 0]).sum() / cover[0, 0].max())
+    p1 = torch.softmax(cover[0, 0], -1); ratio1 = float((p1 * cover[0, 0]).sum() / cover[0, 0].max())
+    assert ratio > ratio1

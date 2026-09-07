@@ -1066,7 +1066,10 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                     # and every learned contribution to the offset logits starts at exactly zero
                     # (site keys and the offset head zero-initialised), so the untrained module's
                     # deterministic decode equals cover_argmax (index tie rule) action for action.
-                    self.register_buffer("cover_gain", torch.ones(1))
+                    # The gain scales the prior's logits: with gain 1 the softmax over ~355 legal
+                    # candidates of cover in [0, 1] is nearly uniform, so the SAMPLED policy would
+                    # not carry the prior (Addendum A2; frozen gain 20 from the training windows).
+                    self.register_buffer("cover_gain", torch.full((1,), float(model_config.get("cover_prior_gain", 1.0))))
                     for lin in (self.dc_encoder, self.ctx_to_dc, self.offset_head):
                         nn.init.zeros_(lin.weight); nn.init.zeros_(lin.bias)
                 else:

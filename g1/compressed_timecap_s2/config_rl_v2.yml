@@ -284,6 +284,7 @@ rl2_E_s2_r48_w72_c3_n35:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -598,6 +599,7 @@ rl2_NE_s2_r48_w72_c3_n35:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -912,6 +914,7 @@ rl2_NV_s2_r48_w72_c3_n35:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96
@@ -1226,6 +1229,7 @@ rl2_V_s2_r48_w72_c3_n35:
   green_oracle_mode: perturbed_godeye
   gtrxl:
     cover_prior_fixed: true
+    cover_prior_gain: 20.0
     critic_separate_trunk: true
     d_ff: 192
     d_model: 96

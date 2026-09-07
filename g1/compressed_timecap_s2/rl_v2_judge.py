@@ -63,6 +63,47 @@ def references():
     return ref
 
 
+def sampled_prior_check():
+    """Addendum A2 hard gate: with the registered stochastic decode the init checkpoint must sample
+    actions whose cover is >= 0.95 of the best legal cover (mean over decisions) and reach a pooled
+    carbon at most 1.05x cover_argmax's on the same windows and channel."""
+    out = {"lines": {}, "pass": True}
+    for L in LINES:
+        chan = CHAN[L]; rows = []; c_pol = 0.0; c_ref = 0.0; n = 0
+        for k in READ_K:
+            p = os.path.join(OUT, "init_stoch", f"{L}_k{k}.csv")
+            r = _row(p); rr = _row(os.path.join(OUT, "ref", f"cover_{chan}_godeye_k{k}.csv"))
+            if r is None or rr is None:
+                continue
+            c_pol += float(r["total_carbon_kg"]); c_ref += float(rr["total_carbon_kg"]); n += 1
+            zp = p.replace(".csv", "_decisions_obs.npz")
+            if not os.path.exists(zp):
+                continue
+            z = np.load(zp); cov_all = z["cand_green_cover"]; mask_all = z["batch_cloudlet_offset_allowed"]
+            seen = set()
+            for x in csv.DictReader(open(p.replace(".csv", "_decisions.csv"))):
+                cid = int(x["cloudlet_id"])
+                if cid < 0 or cid in seen:
+                    continue
+                seen.add(cid); t, sl, a = int(x["step"]), int(x["slot"]), int(x["action"])
+                cov = np.asarray(cov_all[t, sl], dtype=np.float64); m = np.asarray(mask_all[t, sl]) >= 0.5
+                if not m.any():
+                    continue
+                best = float(cov[m].max())
+                rows.append(float(cov[a]) / best if best > 0 else 1.0)
+        rec = {"decisions": len(rows), "mean_sampled_cover_ratio": (float(np.mean(rows)) if rows else None),
+               "carbon_policy": c_pol if n == len(READ_K) else None, "carbon_cover_argmax": c_ref if n == len(READ_K) else None,
+               "windows": n}
+        rec["carbon_ratio"] = (rec["carbon_policy"] / rec["carbon_cover_argmax"]) if (rec["carbon_policy"] and rec["carbon_cover_argmax"]) else None
+        rec["pass"] = bool(rec["mean_sampled_cover_ratio"] is not None and rec["mean_sampled_cover_ratio"] >= 0.95
+                           and rec["carbon_ratio"] is not None and rec["carbon_ratio"] <= 1.05)
+        out["lines"][L] = rec; out["pass"] = out["pass"] and rec["pass"]
+    out["verdict"] = "INIT_PRIOR_CARRIED" if out["pass"] else "STOP_INIT_PRIOR_NOT_CARRIED"
+    json.dump(out, open(os.path.join(OUT, "init_prior_check.json"), "w"), indent=1)
+    print(json.dumps({L: {k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()} for L, r in out["lines"].items()}, indent=1)); print(out["verdict"])
+    return out
+
+
 def init_check():
     out = {"lines": {}, "pass": True}
     for L in LINES:
@@ -90,7 +131,7 @@ def init_check():
 
 def judge():
     ref = references()
-    out = {"init": init_check(), "readings": {}, "gates": {}}
+    out = {"init": init_check(), "init_prior": sampled_prior_check(), "readings": {}, "gates": {}}
     C = {}; cap = {}; contracts_ok = True
     for L in LINES:
         chan = CHAN[L]
@@ -120,7 +161,8 @@ def judge():
                     num += ref[k]["C_flat"] - c; den += ref[k]["C_flat"] - ref[k]["C_causal"]
             R[(chan, tier)] = tot if n == len(READ_K) else None; Rcap[(chan, tier)] = (num / den) if (den and n == len(READ_K)) else None
     g = {}
-    g["1_init"] = out["init"]["pass"]
+    g["1_init"] = bool(out["init"]["pass"])
+    g["1b_init_prior_carried"] = bool(out["init_prior"]["pass"])
     g["2_trained_and_contracts"] = bool(all(C.get((L, "godeye")) is not None for L in LINES) and contracts_ok)
     cv, cr = cap.get(("V", "godeye")), Rcap.get(("full", "godeye"))
     g["3_prior_preserved"] = bool(cv is not None and cr and cv >= 0.80 * cr)
@@ -146,7 +188,7 @@ def judge():
     out["readings"] = {"policy_carbon": {f"{L}_{t}": v for (L, t), v in C.items()}, "policy_capture": {f"{L}_{t}": v for (L, t), v in cap.items()},
                        "reference_carbon": {f"cover_{c}_{t}": v for (c, t), v in R.items()}, "reference_capture": {f"cover_{c}_{t}": v for (c, t), v in Rcap.items()},
                        "loss_shrink75": {"V": lv, "E": le, "cover": lr_}, "references": ref}
-    hard = ("1_init", "2_trained_and_contracts", "3_prior_preserved", "4_shrink_hurts", "5_eucrd_keeps_more", "6_not_ignoring")
+    hard = ("1_init", "1b_init_prior_carried", "2_trained_and_contracts", "3_prior_preserved", "4_shrink_hurts", "5_eucrd_keeps_more", "6_not_ignoring")
     out["verdict"] = "PASS_SMOKE" if all(g[h] for h in hard) else "FAIL_SMOKE:" + ",".join(h for h in hard if not g[h])
     json.dump(out, open(os.path.join(OUT, "smoke_verdict.json"), "w"), indent=1)
     print(json.dumps({"gates": g, "verdict": out["verdict"], "readings": out["readings"]}, indent=1)[:6000])
@@ -154,4 +196,5 @@ def judge():
 
 
 if __name__ == "__main__":
-    (init_check if (len(sys.argv) > 1 and sys.argv[1] == "init") else judge)()
+    what = sys.argv[1] if len(sys.argv) > 1 else "all"
+    {"init": init_check, "prior": sampled_prior_check}.get(what, judge)()
