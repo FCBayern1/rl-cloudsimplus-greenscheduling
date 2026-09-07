@@ -36,7 +36,7 @@ Same architecture, prior, action, budget, hyper-parameters and seed; the two nam
 
 Per line, per reading window, per tier, the pooled simulator carbon and contracts; the tiers are godeye (clean), shrink75 (the ladder's λ = 0.75, provider tier tested equal to `rung_curve`), shrink50, shrink25, shrink0, shuffle, anti; NV / NE only on their own channel. Reference on every (window, tier) in the same pass: `cover_argmax` on that tier's key (index ties), the causal expert (truth) and the offline flat planner from the F_FITS_V2 test pass for the four test windows (recomputed for the two validation windows). Capture is against the causal expert's headroom as in F_FITS_V2.
 
-## 6. Health gates (pass / fail only; every failure is a pipeline finding, fixed as an addendum before any rerun)
+## 6. Health gates (pass / fail only; Addendum A3 rules which failures may be fixed and rerun)
 
 1. STOP_INIT_MISMATCH if §2's init check fails on any window.
 2. All four lines train to 56k with loadable init and last checkpoints; contracts green on every reading episode (completion ≥ 0.995, on-time ≥ 0.995, forced 0, stale 0).
@@ -46,7 +46,7 @@ Per line, per reading window, per tier, the pooled simulator carbon and contract
 6. Not by ignoring the forecast (question 4): E's clean carbon is below NE's by ≥ 5 %, and E's action distribution differs between godeye and shrink75 (KL of the action marginals > 0, the Stage D probe).
 7. EU-CRD internals active (Δr non-zero with non-zero variance, responsibility gate not saturated) from logged statistics.
 
-Smoke verdict: PASS_SMOKE iff gates 1–7 hold; otherwise the failing gate names the finding. The five-seed long run has its own preregistration and is not started by this document.
+Smoke verdict: PASS_SMOKE iff gates 1–7 hold; otherwise the failing gate names the outcome (Addendum A3: gates 3–7 are substantive, only execution faults are fixed and rerun). The five-seed long run has its own preregistration and is not started by this document.
 
 ## 7. Implementation checklist (each with a test)
 
@@ -54,3 +54,15 @@ Smoke verdict: PASS_SMOKE iff gates 1–7 hold; otherwise the failing gate names
 - Provider tiers shrink75 / 50 / 25 / 0 equal to the ladder's rungs: tests/test_forecast_row_alignment.py.
 - `gen_rl_v2.py`: the four blocks by whitelisted diff from the certification interface twin, eval blocks per tier, manifest of hashes (config, jar, windows, crd subtree, model flag); test asserts the diff.
 - `rl_v2_smoke.sh`: init check → four trainings (two at a time on the local GPU) → readings → judge; artefacts under `reports/manifests/rl_v2/smoke`.
+
+## Addendum A (2026-09-07, 02:40: run 1 invalid, three amendments before any rerun)
+
+**Run 1 is INVALID_SMOKE_RUN1_OOM, not a scientific reading.** NV and V were trained two at a time on the 16 GB GPU and both died with CUDA out of memory at their first PPO learner update (allocation 1.52 GiB = the candidate key of one training batch, 8000 × 128 × 365 × 4 B; one process already held 12.93 GiB). The runner had no fail-fast and started NE and E, which were stopped by hand. No checkpoint, reading or gate of run 1 is used; its logs are archived under `reports/manifests/rl_v2/invalid_run1_oom/`.
+
+**A1. Fail-fast runner.** Every training's return code is checked; a non-zero code aborts the whole smoke immediately (no further training, no readings, no judge) and writes `INVALID_SMOKE_RUN<N>_<reason>`. The four lines are trained one at a time on one GPU; the first line doubles as the memory preflight. If a single line still does not fit in 16 GB, the run moves to a larger-memory GPU; the training batch size, the architecture and the budget are not changed to make it fit.
+
+**A2. The cover prior must be carried by the SAMPLED policy, not only by the argmax (hard gate).** At gain 1 the initial softmax over ~355 legal candidates whose cover lies in [0, 1] is nearly uniform: on the twelve training windows' 420 decisions the sampled action's cover is 0.478 of the best on average, so PPO would start from noise, not from the cover rule. The logits are therefore `cover_prior_gain × cover + residual`. The gain is frozen now, from the training windows' observations only, with no carbon involved: the smallest value of the fixed grid {1, 5, 10, 20, 40, 80, 160, 320} whose mean sampled-cover ratio E[cover(sampled)] / max legal cover reaches 0.95. Measured: 0.478, 0.769, 0.887, **0.952**, 0.982, 0.994, 0.998, 0.999 → **cover_prior_gain = 20** (probability of sampling exactly in the top-cover set 0.368; the deterministic argmax is unchanged by a positive scale, so the init-decode identity with `cover_argmax` still holds exactly).
+
+New hard init gate, in addition to the deterministic identity of §2: with the registered stochastic decode on the six reading windows, the init checkpoint must reach a mean sampled-cover ratio ≥ 0.95 (measured from the decision and observation dumps) AND a pooled carbon at most 1.05 × the pooled carbon of `cover_argmax` on the same windows and channel. Failure is STOP_INIT_PRIOR_NOT_CARRIED. Both numbers are frozen here, before any run of the amended smoke.
+
+**A3. Which failures may be fixed and rerun.** Only execution faults may be fixed append-only and rerun: out-of-memory, missing or unwritable files, crashed processes, harness wiring (a wrong path, an absent flag). Gates 3 to 7 of §6 are substantive: if the prior is not preserved, the shrink does not hurt, EU-CRD does not keep more, EU-CRD wins by ignoring the forecast, or the EU-CRD internals are inactive, the smoke reports that outcome and the line stops for a ruling; no hyper-parameter, prior, window, tier or gate is adjusted to obtain a pass.
