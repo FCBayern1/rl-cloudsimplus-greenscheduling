@@ -37,7 +37,7 @@ import numpy as np
 from pettingzoo import ParallelEnv
 from gymnasium import spaces
 
-from .hierarchical_multidc_env import HierarchicalMultiDCEnv
+from .hierarchical_multidc_env import CRD_CANDIDATE_SOURCES, HierarchicalMultiDCEnv
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,12 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # non-CRD runs keep an unchanged observation space.
         crd_cfg = config.get("crd", {}) if isinstance(config, dict) else {}
         self.crd_enabled = bool(crd_cfg.get("enabled", False)) if isinstance(crd_cfg, dict) else False
+        forecast_cfg = crd_cfg.get("forecast", {}) if isinstance(crd_cfg, dict) else {}
+        self.crd_forecast_source = str(
+            forecast_cfg.get("source", "instantaneous_carbon_cf")
+            if isinstance(forecast_cfg, dict)
+            else "instantaneous_carbon_cf"
+        ).strip().lower()
 
         # Wrap the base hierarchical environment (no modifications to original)
         logger.info("Creating base HierarchicalMultiDCEnv...")
@@ -616,22 +622,26 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         """
         EU-CRD auxiliary observation channel (a sibling of "observation").
 
-        Carries the raw per-DC wind/power/carbon snapshot the learner needs to
-        compute R_forecast on the padded (B, T) grid — the same quantities
-        `HierarchicalMultiDCEnv._collect_crd_info` puts in info["crd"], but
-        delivered through obs (which PPO minibatching keeps aligned) instead of
-        infos (which it does not). Never read by the policy networks.
+        Carries learner-only forecast-attribution inputs on the padded (B, T)
+        grid.  The legacy source uses raw per-DC wind/power/carbon snapshots;
+        ``candidate_cover_mae`` adds one action-horizon error scalar.  Values
+        come from ``HierarchicalMultiDCEnv._collect_crd_info`` and travel via
+        obs because PPO minibatching keeps it aligned, unlike infos.  Policy
+        networks never read this sibling.
         """
         n = self.num_datacenters
         box = lambda shape: spaces.Box(low=-np.inf, high=np.inf, shape=shape, dtype=np.float32)
-        return spaces.Dict({
+        fields = {
             "crd_actual_green_w": box((n,)),
             "crd_predicted_green_w": box((n,)),
             "crd_total_power_w": box((n,)),
             "crd_green_factor": box((n,)),
             "crd_brown_factor": box((n,)),
             "crd_timestep_hours": box((1,)),
-        })
+        }
+        if self.crd_forecast_source in CRD_CANDIDATE_SOURCES:
+            fields["crd_" + self.crd_forecast_source] = box((1,))
+        return spaces.Dict(fields)
 
     def _build_crd_aux(self, crd_info: Optional[Dict[str, Any]]) -> Dict[str, np.ndarray]:
         """
@@ -657,7 +667,7 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
         # predicted defaults to actual → carbon(actual)==carbon(pred) → R_f=0.
         predicted = _vec("predicted_wind_w", default=actual)
         dt = float(crd.get("timestep_hours", 0.0) or 0.0)
-        return {
+        out = {
             "crd_actual_green_w": actual,
             "crd_predicted_green_w": predicted,
             "crd_total_power_w": _vec("p_total_w"),
@@ -665,6 +675,18 @@ class HierarchicalMultiDCParallelEnv(ParallelEnv):
             "crd_brown_factor": _vec("brown_carbon_factor"),
             "crd_timestep_hours": np.asarray([dt], dtype=np.float32),
         }
+        if self.crd_forecast_source in CRD_CANDIDATE_SOURCES:
+            # only the SELECTED source travels, so the learner cannot silently read the other
+            # candidate scalar; a missing value here is a wiring fault, not a default
+            key = self.crd_forecast_source
+            if crd and crd.get(key) is None:
+                raise RuntimeError(
+                    f"crd.forecast.source={key} selected but info['crd'] carries no {key!r}"
+                )
+            out["crd_" + key] = np.asarray(
+                [float(crd.get(key, 0.0) or 0.0)], dtype=np.float32
+            )
+        return out
 
     def _hierarchical_to_flat_observations(
         self,

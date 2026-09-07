@@ -36,6 +36,13 @@ if sys.platform != "win32":
 
 logger = logging.getLogger(__name__)
 
+# EU-CRD forecast responsibility sources. The candidate sources are learner-only and need the
+# candidate-cover key; `candidate_carbon_regret` is the local decision regret of following the
+# forecast instead of the truth (EUCRD_REGRET_SIGNAL_PREREG §1) and `candidate_cover_mae` the
+# auxiliary forecast-quality scale it replaced.
+CRD_CANDIDATE_SOURCES = ("candidate_cover_mae", "candidate_carbon_regret")
+CRD_FORECAST_SOURCES = ("instantaneous_carbon_cf",) + CRD_CANDIDATE_SOURCES
+
 
 # region agent log
 def _write_debug_log(hypothesis_id: str, location: str, message: str, data: Dict[str, Any]):
@@ -477,6 +484,34 @@ class HierarchicalMultiDCEnv(gym.Env):
         if self.cand_green_cover and self.global_action_mode != "offset_v1":
             raise ValueError("cand_green_cover requires global_action_mode=offset_v1")
         self._cand_horizon_steps = int(config.get("cand_green_cover_horizon_steps", 121))
+        _crd_cfg = config.get("crd", {}) if isinstance(config.get("crd", {}), dict) else {}
+        _crd_forecast_cfg = (
+            _crd_cfg.get("forecast", {})
+            if isinstance(_crd_cfg.get("forecast", {}), dict)
+            else {}
+        )
+        self._crd_forecast_source = str(
+            _crd_forecast_cfg.get("source", "instantaneous_carbon_cf")
+        ).strip().lower()
+        if self._crd_forecast_source not in CRD_FORECAST_SOURCES:
+            raise ValueError(
+                "crd.forecast.source must be one of "
+                f"{sorted(CRD_FORECAST_SOURCES)}, got {self._crd_forecast_source!r}"
+            )
+        if self._crd_forecast_source in CRD_CANDIDATE_SOURCES and not self.cand_green_cover:
+            raise ValueError(
+                f"crd.forecast.source={self._crd_forecast_source} requires cand_green_cover=true"
+            )
+        # Learner-only state for the observation currently being built.  It
+        # travels through info -> crd_aux and never enters the actor's policy
+        # observation.
+        self._crd_candidate_cover_mae = 0.0
+        self._crd_candidate_carbon_regret = 0.0
+        # auxiliary forecast-quality scale (EUCRD_REGRET_SIGNAL_PREREG §3, reported not gated):
+        # the candidate-cover error on an EMPTY reservation grid, i.e. free of the compression
+        # the arm's own commitments introduce. Off by default: it costs a third cover pass.
+        self._crd_empty_grid_diag = os.environ.get("CRD_EMPTY_GRID_DIAG", "") == "1"
+        self._crd_candidate_cover_mae_empty = 0.0
         self._option_eps_steps = int(config.get("option_eps_steps", 2))
         self._opt_release_nan = 0
         self._opt_hold_refused = 0
@@ -2150,11 +2185,53 @@ class HierarchicalMultiDCEnv(gym.Env):
                 out[:, 1:] = np.maximum(0.0, arr)
         return out
 
+    def _truth_future_green_series(self, obs, horizon_steps: int) -> np.ndarray:
+        """Return the simulator's hidden future for learner-only attribution.
+
+        This mirrors the time grid of :meth:`_future_green_series`: index zero
+        is the measured present and positive leads use the gateway's own
+        weather mapping.  The curve must never be inserted into the policy
+        observation; only an aggregate error derived from it may enter
+        ``crd_aux``.
+        """
+        n, H = self.num_datacenters, int(horizon_steps)
+        current = np.asarray(
+            obs.get("dc_current_green_power_w", np.zeros(n)), dtype=np.float64
+        ).reshape(n)
+        out = np.repeat(current[:, None], H, axis=1)
+        if H <= 1:
+            return out
+        if self.java_env is None or not hasattr(
+            self.java_env, "getFuturePerDcGreenPowerW"
+        ):
+            raise RuntimeError(
+                "candidate-cover CRD needs gateway method getFuturePerDcGreenPowerW"
+            )
+        seconds = [
+            max(1, int(round(h * float(self._v32_sim_timestep_sec))))
+            for h in range(1, H)
+        ]
+        rows = self.java_env.getFuturePerDcGreenPowerW(seconds)
+        arr = np.asarray(
+            [[float(value) for value in row] for row in rows], dtype=np.float64
+        )
+        expected = (n, H - 1)
+        if arr.shape != expected:
+            raise RuntimeError(
+                f"gateway truth forecast shape {arr.shape}, expected {expected}"
+            )
+        out[:, 1:] = np.maximum(0.0, arr)
+        return out
+
     def _append_option_features(self, obs, ttd, present, mi, pes) -> None:
         """HOLD legality per (slot, site) (option mode) or (slot, site, κ) (offset mode) and
         the per-site held ledger, from the shared executor (OPTION_ACTION_DESIGN Addendum A3,
         C2). Zeros before the first reset."""
         nb, n = self.global_routing_batch_size, self.num_datacenters
+        if self._crd_forecast_source in CRD_CANDIDATE_SOURCES:
+            self._crd_candidate_cover_mae = 0.0
+            self._crd_candidate_carbon_regret = 0.0
+            self._crd_candidate_cover_mae_empty = 0.0
         offset = self.global_action_mode == "offset_v1"
         mask_key = "batch_cloudlet_offset_allowed" if offset else "batch_cloudlet_hold_allowed"
         width = n * len(self._offset_grid) if offset else n
@@ -2189,10 +2266,51 @@ class HierarchicalMultiDCEnv(gym.Env):
                     obs["_sentinel_committed_static_w"] = np.asarray(ex.static, dtype=np.float64).copy()
                     obs["_sentinel_committed_lag"] = np.asarray(int(ex.lag))
                 u = float(self.config.get("cloudlet_cpu_utilization", 1.0) or 1.0)
-                obs["cand_green_cover"] = _cover(
+                predicted_cover = _cover(
                     series, ex.occ, pes, mi, ch["batch_cloudlet_ids"], t, self._offset_grid,
                     float(self._v32_vm_mips), u, static_w=ex.static, lag=ex.lag,
                     timestep_sec=float(self._v32_sim_timestep_sec)) * obs[mask_key]
+                obs["cand_green_cover"] = predicted_cover
+                if self._crd_forecast_source in CRD_CANDIDATE_SOURCES:
+                    from .option_executor import (
+                        candidate_carbon_regret, candidate_cover_mae,
+                        candidate_job_energy_kwh,
+                    )
+                    truth_series = self._truth_future_green_series(
+                        obs, self._cand_horizon_steps
+                    )
+                    truth_cover = _cover(
+                        truth_series, ex.occ, pes, mi, ch["batch_cloudlet_ids"],
+                        t, self._offset_grid, float(self._v32_vm_mips), u,
+                        static_w=ex.static, lag=ex.lag,
+                        timestep_sec=float(self._v32_sim_timestep_sec),
+                    ) * obs[mask_key]
+                    self._crd_candidate_cover_mae = candidate_cover_mae(
+                        predicted_cover, truth_cover, obs[mask_key]
+                    )
+                    if self._crd_forecast_source == "candidate_carbon_regret":
+                        # the responsibility magnitude: what following the forecast costs in
+                        # carbon at THIS state, both candidates settled on the truth (prereg §1)
+                        self._crd_candidate_carbon_regret = candidate_carbon_regret(
+                            predicted_cover, truth_cover, obs[mask_key],
+                            candidate_job_energy_kwh(
+                                pes, mi, float(self._v32_vm_mips), u,
+                                float(self._v32_sim_timestep_sec)),
+                            self._crd_brown_factor_vector(n), n,
+                        )
+                    if getattr(self, "_crd_empty_grid_diag", False):
+                        # auxiliary quality scale, reported only: the same error with nothing
+                        # committed, so the arm's own commitments cannot compress it
+                        empty = np.zeros_like(np.asarray(ex.occ, dtype=np.float64))
+                        args = (pes, mi, ch["batch_cloudlet_ids"], t, self._offset_grid,
+                                float(self._v32_vm_mips), u)
+                        kw = dict(static_w=ex.static, lag=ex.lag,
+                                  timestep_sec=float(self._v32_sim_timestep_sec))
+                        self._crd_candidate_cover_mae_empty = candidate_cover_mae(
+                            _cover(series, empty, *args, **kw) * obs[mask_key],
+                            _cover(truth_series, empty, *args, **kw) * obs[mask_key],
+                            obs[mask_key],
+                        )
         else:
             obs[mask_key] = ex.hold_allowed(
                 t, ch["batch_cloudlet_ids"], pes, mi, ttd, present, obs["batch_cloudlet_defer_allowed"])
@@ -3169,6 +3287,8 @@ class HierarchicalMultiDCEnv(gym.Env):
         - running_max_carbon: simulator's current normalization denominator
         - timestep_hours:    duration matching the carbon formula
         - green_carbon_factor / brown_carbon_factor: per-DC kgCO2/kWh
+        - candidate_cover_mae: optional learner-only action-horizon forecast
+          responsibility signal
 
         Predicted wind (Ŵ_t) is added by WindPredictionWrapper if present;
         the base env does not know about predictions.
@@ -3237,10 +3357,35 @@ class HierarchicalMultiDCEnv(gym.Env):
                         crd["predicted_wind_w"] = pred_w_full
                 except Exception as e:
                     logger.debug(f"timecap predicted_wind_w accessor failed: {e}")
+            if self._crd_forecast_source in CRD_CANDIDATE_SOURCES:
+                crd["candidate_cover_mae"] = float(self._crd_candidate_cover_mae)
+                if self._crd_forecast_source == "candidate_carbon_regret":
+                    crd["candidate_carbon_regret"] = float(self._crd_candidate_carbon_regret)
+                if getattr(self, "_crd_empty_grid_diag", False):
+                    crd["candidate_cover_mae_empty_grid"] = float(
+                        self._crd_candidate_cover_mae_empty
+                    )
             return crd
         except Exception as e:
             logger.warning(f"_collect_crd_info failed: {e}")
             return {}
+
+    def _crd_brown_factor_vector(self, n: int) -> List[float]:
+        """Per-site brown carbon factor (kg/kWh) for the regret cost model. The gateway is the
+        authority; before it has answered (or with no gateway, as in unit tests) the scene
+        configuration carries the same constants."""
+        try:
+            self._ensure_crd_static_cache()
+        except AttributeError:
+            pass
+        bf = [float(x) for x in (getattr(self, "_crd_brown_factors", None) or [])]
+        if len(bf) >= n:
+            return bf[:n]
+        dcs = list(getattr(self, "dc_configs", None) or [])
+        return [
+            float((dcs[i] if i < len(dcs) else {}).get("brown_carbon_factor", 0.55))
+            for i in range(n)
+        ]
 
     def _ensure_crd_static_cache(self) -> None:
         """Lazily fetch carbon factors and timestep duration once per simulation."""

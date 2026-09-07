@@ -4,10 +4,16 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
-from gym_cloudsimplus.envs.option_executor import OptionExecutor, REASON_OFFSET, offset_grid  # noqa: E402
+from gym_cloudsimplus.envs.option_executor import (  # noqa: E402
+    OptionExecutor,
+    REASON_OFFSET,
+    candidate_cover_mae,
+    offset_grid,
+)
 
 MIPS, U, DT = 40000.0, 1.0, 1.0
 DYN = (214.0 - 51.4) / 64.0
@@ -111,3 +117,18 @@ def test_cand_green_cover_is_energy_weighted_residual_after_committed_load():
     assert np.all(pad == 0)
     far = cand_green_cover(fut, np.zeros((1, 50)), pes=[32], mi=[2 * MIPS], ids=[7], t_now=0, grid=[9], vm_pe_mips=MIPS, cpu_util=U)
     assert abs(far[0, 0] - 0.0) < 1e-12                                   # start 10..11 is past a 10-step horizon
+
+
+def test_candidate_cover_mae_only_counts_legal_candidates():
+    pred = np.array([[1.0, 0.8, 0.2], [0.4, 0.0, 0.9]])
+    truth = np.array([[1.0, 0.4, 0.9], [0.0, 0.0, 0.3]])
+    allowed = np.array([[1, 1, 0], [0, 0, 1]])
+    # Legal absolute errors are 0.0, 0.4 and 0.6. Illegal candidates must not
+    # create forecast responsibility merely because their values differ.
+    assert candidate_cover_mae(pred, truth, allowed) == pytest.approx(1.0 / 3.0)
+    assert candidate_cover_mae(pred, truth, np.zeros_like(allowed)) == 0.0
+
+
+def test_candidate_cover_mae_rejects_shape_mismatch():
+    with pytest.raises(ValueError, match="identical shapes"):
+        candidate_cover_mae(np.zeros((1, 2)), np.zeros((2, 1)), np.ones((1, 2)))

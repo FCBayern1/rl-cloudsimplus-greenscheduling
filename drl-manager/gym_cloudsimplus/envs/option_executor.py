@@ -103,6 +103,97 @@ def cand_green_cover(future_w, committed_pes, pes, mi, ids, t_now, grid, vm_pe_m
     return np.clip(out, 0.0, 1.0)
 
 
+def candidate_cover_mae(predicted_cover, truth_cover, allowed) -> float:
+    """Mean absolute forecast error over the legal candidate set.
+
+    ``cand_green_cover`` is the forecast quantity consumed by the offset
+    policy. Comparing it with the same calculation on the simulator's hidden
+    future aligns forecast responsibility with the action horizon, including
+    cases where lead 0 is exact but later forecast rows are degraded.
+
+    The scalar is learner-only: callers must put it in ``crd_aux``, never in
+    the policy's ``observation`` dict. Empty legal sets return zero.
+    """
+    pred = np.asarray(predicted_cover, dtype=np.float64)
+    truth = np.asarray(truth_cover, dtype=np.float64)
+    mask = np.asarray(allowed, dtype=np.float64)
+    if pred.shape != truth.shape or pred.shape != mask.shape:
+        raise ValueError(
+            "candidate-cover arrays must have identical shapes; "
+            f"got predicted={pred.shape}, truth={truth.shape}, allowed={mask.shape}"
+        )
+    legal = mask > 0.5
+    if not bool(np.any(legal)):
+        return 0.0
+    return float(np.mean(np.abs(pred[legal] - truth[legal])))
+
+
+def candidate_job_energy_kwh(pes, mi, vm_pe_mips, cpu_util, timestep_sec) -> np.ndarray:
+    """(NB,) dynamic energy of each job over its runtime, in kWh, on the planner's model
+    (draw = PEs x DYN_MW_PER_PE_MODEL, runtime = the mask's runtime unit)."""
+    pes = np.asarray(pes, dtype=np.float64).reshape(-1)
+    mi = np.asarray(mi, dtype=np.float64).reshape(-1)
+    rate = max(1.0, float(vm_pe_mips)) * min(1.0, max(1e-6, float(cpu_util)))
+    steps = np.maximum(1.0, np.ceil(np.maximum(0.0, mi) / rate / max(1e-9, float(timestep_sec))))
+    return np.maximum(0.0, pes) * DYN_MW_PER_PE_MODEL * steps * float(timestep_sec) / 3.6e6
+
+
+def candidate_carbon_regret(predicted_cover, truth_cover, allowed, energy_kwh,
+                            brown_factor, num_dc) -> float:
+    """Local decision regret of following the forecast instead of the truth, in kg CO2
+    (EUCRD_REGRET_SIGNAL_PREREG §1).
+
+    With the reservation grid, the job batch and the legal candidate set held fixed, each job's
+    candidate is settled twice under the same cost model
+    ``cost_x(j,c) = (1 - cover_x[j,c]) * energy_kwh[j] * brown_factor[site(c)]``: once choosing
+    on the forecast, once choosing on the simulator's hidden future. The regret is the true
+    cost of the first choice minus the true cost of the second, summed over jobs, so a forecast
+    that is numerically wrong without changing the choice carries no responsibility.
+
+    Non-negative by construction: the reference is the argmin of the same cost over the same
+    legal set. Ties break to the smallest candidate index in both argmins (the order
+    ``torch.argmax`` uses on equal logits). Empty legal sets contribute zero.
+
+    The scalar is learner-only: callers must put it in ``crd_aux``, never in the policy's
+    ``observation`` dict. Pure.
+    """
+    pred = np.asarray(predicted_cover, dtype=np.float64)
+    truth = np.asarray(truth_cover, dtype=np.float64)
+    mask = np.asarray(allowed, dtype=np.float64)
+    if pred.shape != truth.shape or pred.shape != mask.shape:
+        raise ValueError(
+            "candidate-cover arrays must have identical shapes; "
+            f"got predicted={pred.shape}, truth={truth.shape}, allowed={mask.shape}"
+        )
+    if pred.ndim != 2:
+        raise ValueError(f"candidate-cover arrays must be 2-D (NB, n*K); got {pred.shape}")
+    e = np.asarray(energy_kwh, dtype=np.float64).reshape(-1)
+    if e.shape[0] != pred.shape[0]:
+        raise ValueError(f"energy_kwh has {e.shape[0]} entries for {pred.shape[0]} jobs")
+    bf = np.asarray(brown_factor, dtype=np.float64).reshape(-1)
+    n = int(num_dc)
+    if n <= 0 or pred.shape[1] % n:
+        raise ValueError(f"candidate width {pred.shape[1]} is not a multiple of num_dc={n}")
+    if bf.shape[0] < n:
+        raise ValueError(f"brown_factor has {bf.shape[0]} entries for {n} sites")
+    K = pred.shape[1] // n
+    site_bf = np.repeat(bf[:n], K)                       # candidate a = site * K + kappa index
+    legal = mask > 0.5
+    total = 0.0
+    for j in range(pred.shape[0]):
+        lj = legal[j]
+        if not bool(np.any(lj)) or e[j] <= 0.0:
+            continue
+        unit = e[j] * site_bf
+        cost_pred = (1.0 - pred[j]) * unit
+        cost_true = (1.0 - truth[j]) * unit
+        idx = np.flatnonzero(lj)
+        a_pred = idx[int(np.argmin(cost_pred[idx]))]     # argmin: first occurrence = smallest index
+        a_true = idx[int(np.argmin(cost_true[idx]))]
+        total += float(cost_true[a_pred] - cost_true[a_true])
+    return max(0.0, total)
+
+
 def residual_green(green_now_w: float, static_w: float, occupied_pes: float,
                    dyn_per_pe_w: float, cpu_util: float) -> float:
     """Green left on the meter at a site after its static draw and the dynamic draw of the

@@ -1943,6 +1943,60 @@ def test_forecast_from_obs_zero_when_pred_matches():
     assert torch.allclose(out, torch.zeros(B, T), atol=1e-5)
 
 
+def test_candidate_cover_forecast_uses_action_horizon_error():
+    """The aligned source stays live when lead-0 wind is exact.
+
+    The instantaneous arrays deliberately match, which would make the legacy
+    source zero.  The candidate-cover channel represents an error later in
+    the dispatch horizon and must therefore remain non-zero.
+    """
+    B, T = 1, 2
+    learner = _StubLearner(beta=1.0, gamma=1.0)
+    aux = _make_crd_aux(
+        B, T,
+        actual=[1000.0, 500.0], predicted=[1000.0, 500.0],
+        total=[2000.0, 2000.0], gf=[0.0, 0.0], bf=[0.5, 0.5], dt=1.0,
+    )
+    aux["crd_candidate_cover_mae"] = torch.tensor([[[0.0], [0.25]]])
+    batch = {Columns.OBS: {"crd_aux": aux}, Columns.REWARDS: torch.zeros(B, T)}
+
+    legacy = learner._compute_forecast_cf_from_obs(
+        batch, beta=1.0, gamma=1.0,
+    )
+    aligned = learner._compute_forecast_cf_from_obs(
+        batch, beta=1.0, gamma=1.0, source="candidate_cover_mae",
+        candidate_cover_error_scale=2.0,
+    )
+
+    assert torch.allclose(legacy, torch.zeros(B, T), atol=1e-6)
+    assert aligned is not None
+    assert torch.allclose(aligned, torch.tensor([[0.0, 0.5]]), atol=1e-6)
+
+
+def test_candidate_cover_forecast_feeds_nonzero_responsibility():
+    class _CandidateStub(_DRStubLearner):
+        def _read_module_responsibility_config(self, module_id):
+            return {"rho_min": 0.0}
+
+        def _read_module_forecast_config(self, module_id):
+            return {"source": "candidate_cover_mae"}
+
+    learner = _CandidateStub(num_dc=3, batch_size=4)
+    aux = {"crd_candidate_cover_mae": torch.tensor([[[0.5]]])}
+    batch = {
+        Columns.OBS: {"crd_aux": aux},
+        Columns.REWARDS: torch.zeros(1, 1),
+    }
+    learner._compute_forecast_cf(module_id="g", batch=batch)
+    batch[COL_CRD_R_ROUTING] = torch.tensor([[0.5]])
+    batch[Postprocessing.ADVANTAGES] = torch.tensor([[4.0]])
+    learner._compute_responsibilities(module_id="g", batch=batch)
+
+    assert batch[COL_CRD_RHO_FORECAST].item() == pytest.approx(0.5, abs=1e-3)
+    assert batch[COL_CRD_RHO_ROUTING].item() == pytest.approx(0.5, abs=1e-3)
+    assert batch[Postprocessing.ADVANTAGES].item() == pytest.approx(2.0, abs=1e-3)
+
+
 def test_forecast_from_obs_returns_none_without_crd_aux():
     learner = _StubLearner()
     batch = {Columns.OBS: {"observation": {"x": torch.zeros(1, 1, 3)}}}

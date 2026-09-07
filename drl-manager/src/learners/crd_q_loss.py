@@ -120,6 +120,10 @@ COL_CRD_R_SCHEDULING = "crd_r_scheduling"
 COL_CRD_RHO_FORECAST = "crd_rho_forecast"
 COL_CRD_RHO_ROUTING = "crd_rho_routing"
 COL_CRD_RHO_SCHEDULING = "crd_rho_scheduling"
+# Forecast-responsibility sources computed in the env on the action horizon and carried on the
+# learner-only crd_aux channel. Selecting one of these is a commitment: the learner raises
+# rather than falling back to the current-step path (EUCRD_REGRET_SIGNAL_PREREG §2 U6).
+_CRD_CANDIDATE_SOURCES = ("candidate_cover_mae", "candidate_carbon_regret")
 
 
 class _PolicySelfBaselineMarker:
@@ -576,6 +580,15 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # opposite-signed beta/gamma cannot cancel a real forecast error.
         carbon_norm = bool(forecast_cfg.get("carbon_norm", False))
         magnitude = bool(forecast_cfg.get("magnitude", False))
+        source = str(
+            forecast_cfg.get("source", "instantaneous_carbon_cf")
+        ).strip().lower()
+        candidate_cover_error_scale = float(
+            forecast_cfg.get(
+                "candidate_error_scale",
+                forecast_cfg.get("candidate_cover_error_scale", 1.0),
+            )
+        )
 
         # ── Preferred path: obs-based forecast (M-fix) ──────────────────────
         # The env attaches a per-step `crd_aux` snapshot to the obs (a sibling
@@ -587,6 +600,8 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         obs_based = self._compute_forecast_cf_from_obs(
             batch, beta=beta, gamma=gamma,
             carbon_norm=carbon_norm, magnitude=magnitude,
+            source=source,
+            candidate_cover_error_scale=candidate_cover_error_scale,
         )
         if obs_based is not None:
             batch[COL_CRD_FORECAST] = obs_based
@@ -657,10 +672,23 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
     def _compute_forecast_cf_from_obs(
         self, batch: Dict[str, Any], *, beta: float, gamma: float,
         carbon_norm: bool = False, magnitude: bool = False,
+        source: str = "instantaneous_carbon_cf",
+        candidate_cover_error_scale: float = 1.0,
     ) -> Optional[torch.Tensor]:
         """
         Compute R_forecast per (b, t) from the env's `crd_aux` obs channel,
         producing a (B, T) tensor aligned with ADVANTAGES/ΔQ.
+
+        ``source=instantaneous_carbon_cf`` preserves the historical current-
+        step carbon/waste counterfactual. ``source=candidate_carbon_regret``
+        uses the learner-only local decision regret of following the forecast
+        instead of the truth at the same state, and ``candidate_cover_mae``
+        the mean error in the candidate-cover values the offset actor consumes
+        (kept as an auxiliary quality scale). Both fix the semantic blind spot
+        where lead 0 is exact while the action-relevant future is corrupted,
+        and both are strict: a missing or misshaped auxiliary field raises
+        instead of degrading into the current-step path, which would read zero
+        under a correct forecast and so hide the fault.
 
         `crd_aux` is a sibling of obs["observation"] (see the PettingZoo
         wrapper) carrying the raw per-DC wind/power/carbon snapshot:
@@ -670,12 +698,28 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         Each cell is fed to `forecast_cf_per_step`, the same helper the infos
         path uses, so values match what the infos path would have produced.
 
-        Returns None if crd_aux is absent/malformed (caller falls back to the
-        infos path). Missing predicted wind defaults to actual → R_forecast=0.
+        Returns None if crd_aux is absent/malformed under the legacy source
+        (caller falls back to the infos path) and raises under a candidate
+        source. Missing predicted wind defaults to actual → R_forecast=0.
         """
+        source = str(source).strip().lower()
+        # An explicitly selected candidate source must never degrade into the legacy
+        # current-step path: that path reads zero under a correct forecast, so a missing or
+        # misshaped auxiliary field would silently look like "no forecast error" instead of a
+        # wiring fault (EUCRD_REGRET_SIGNAL_PREREG §2 U6). Fail loudly instead.
+        strict = source in _CRD_CANDIDATE_SOURCES
+
+        def _fail(why: str):
+            if strict:
+                raise RuntimeError(
+                    f"crd.forecast.source={source} selected but its learner input is "
+                    f"unusable ({why}); refusing to fall back to the current-step path"
+                )
+            return None
+
         obs = batch.get(Columns.OBS)
         if not isinstance(obs, dict):
-            return None
+            return _fail("batch carries no obs dict")
         aux = obs.get("crd_aux")
         # crd_aux may itself be nested if a connector wrapped the obs; unwrap
         # one "observation" level defensively, though the wrapper places it at
@@ -683,7 +727,32 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         if not isinstance(aux, dict) and isinstance(obs.get("observation"), dict):
             aux = obs["observation"].get("crd_aux")
         if not isinstance(aux, dict):
-            return None
+            return _fail("obs carries no crd_aux dict")
+        if strict:
+            key = "crd_" + source
+            error = aux.get(key)
+            if not isinstance(error, torch.Tensor):
+                return _fail(f"crd_aux[{key!r}] is {type(error).__name__}, not a tensor")
+            if error.dim() == 3 and error.shape[-1] == 1:
+                error = error[..., 0]
+            elif error.dim() != 2:
+                return _fail(f"crd_aux[{key!r}] has shape {tuple(error.shape)}")
+            ref = batch.get(
+                Columns.REWARDS, batch.get(Postprocessing.ADVANTAGES)
+            )
+            if isinstance(ref, torch.Tensor):
+                if error.numel() != ref.numel():
+                    return _fail(
+                        f"crd_aux[{key!r}] has {error.numel()} values for a "
+                        f"{tuple(ref.shape)} batch"
+                    )
+                error = error.reshape(ref.shape).to(ref.device, dtype=ref.dtype)
+            # A magnitude by construction: zero for an exact action-horizon
+            # forecast and positive when the candidate cover values used by
+            # the actor differ from the simulator's hidden future.
+            return error.clamp(min=0.0) * float(candidate_cover_error_scale)
+        if source != "instantaneous_carbon_cf":
+            raise ValueError(f"unknown CRD forecast source {source!r}")
         req = (
             "crd_actual_green_w", "crd_predicted_green_w", "crd_total_power_w",
             "crd_green_factor", "crd_brown_factor", "crd_timestep_hours",
