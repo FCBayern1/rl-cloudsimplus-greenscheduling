@@ -56,6 +56,24 @@ Any H failure is STOP_REGRET_SIGNAL and the source is not trained on. Nothing is
 
 The truth curve enters only the learner-side auxiliary channel, as supervision the simulator can provide and a deployment could not. H5 shows that the actor's observation in the gated runs is unaffected. That is a statement about these runs, not a statement that the training procedure as a whole uses no future information, and the paper must disclose the channel rather than rely on H5 to deny it.
 
+## 4a. Addendum A — cost model and reading limits (2026-09-07, before any measurement; §1–§3 stand except where stated)
+
+Raised by an independent implementation review (reports/EUCRD_REGRET_IMPLEMENTATION_REVIEW_2026_09_07.md) after the freeze and before the first run. The gate was launched, stopped after two minutes with no result read, and relaunched under this amendment.
+
+1. **The cost is total dynamic carbon, not brown-only.** §1's `cost_x(j,c) = (1 − cov) · E · bf` prices only the uncovered share and silently values covered energy at zero. The covered share is served by on-site green, whose carbon factor `gf[d]` is small but not zero, so the cost model becomes
+
+       cost_x(j,c) = E_j · ( bf[site(c)] · (1 − cov_x[j,c]) + gf[site(c)] · cov_x[j,c] )
+
+   With homogeneous factors this rescales the regret by `(bf − gf)/bf` and leaves every choice unchanged, so the reference policy is still the coverage-maximising rule the `cover_argmax` arm decodes. With heterogeneous factors it can change which candidate is cheapest, which is the point of pricing carbon rather than coverage. All of §1 otherwise stands, non-negativity included.
+
+2. **U4's literal is replaced by its exact expression.** The rounded `1.0774e-4` is not the value the formula produces and cannot be asserted at 1e-12. The requirement is the exact expression `(cov_true(a_true) − cov_true(a_pred)) · E · (bf − gf)`, which under the micro example's numbers is `0.6 · 64 · 2.02 · 10 / 3.6e6 · 0.49 = 1.0557867e-4` kg. Any rounded figure quoted in a report is an aside, never the assertion.
+
+3. **Stated approximations**, recorded here so no reading over-claims. Per-job regret summed over a batch ignores competition between jobs of the same batch for the same residual green, exactly as the candidate-cover key does. The empty-grid auxiliary diagnostic still uses the trajectory's legality mask, so it is less trajectory-dependent than the online signal, not free of it. Both the number of decision states and the number with a non-zero signal are reported alongside every mean.
+
+4. **H4's strict positivity is an empirical requirement, not a theorem.** A degraded forecast can leave the chosen candidate optimal at every state, in which case zero regret is correct behaviour, not a broken instrument. A failure is therefore read as "no forecast-induced decision loss is measurable on this trajectory", and the consequence is the same either way: the source is not trained on, and the finding goes back for a ruling.
+
+5. **Privileged supervision.** §4's disclosure is sharpened: the hidden future used to compute this scalar is privileged training supervision regardless of H5, which shows only that the actor's observation is unchanged in these runs.
+
 ## 5. Order
 
 U1–U8, then H1–H5, then G5 (the real-learner wiring gate, reports/EUCRD_SIGNAL_GATE_PREREG.md §2 as amended by its Addendum A), then and only then the matched V_err / E_err training on an identical imperfect forecast.

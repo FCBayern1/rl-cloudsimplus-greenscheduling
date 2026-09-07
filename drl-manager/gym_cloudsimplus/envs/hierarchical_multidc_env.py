@@ -2291,12 +2291,13 @@ class HierarchicalMultiDCEnv(gym.Env):
                     if self._crd_forecast_source == "candidate_carbon_regret":
                         # the responsibility magnitude: what following the forecast costs in
                         # carbon at THIS state, both candidates settled on the truth (prereg §1)
+                        bf, gf = self._crd_carbon_factor_vectors(n)
                         self._crd_candidate_carbon_regret = candidate_carbon_regret(
                             predicted_cover, truth_cover, obs[mask_key],
                             candidate_job_energy_kwh(
                                 pes, mi, float(self._v32_vm_mips), u,
                                 float(self._v32_sim_timestep_sec)),
-                            self._crd_brown_factor_vector(n), n,
+                            bf, n, green_factor=gf,
                         )
                     if getattr(self, "_crd_empty_grid_diag", False):
                         # auxiliary quality scale, reported only: the same error with nothing
@@ -3370,22 +3371,23 @@ class HierarchicalMultiDCEnv(gym.Env):
             logger.warning(f"_collect_crd_info failed: {e}")
             return {}
 
-    def _crd_brown_factor_vector(self, n: int) -> List[float]:
-        """Per-site brown carbon factor (kg/kWh) for the regret cost model. The gateway is the
-        authority; before it has answered (or with no gateway, as in unit tests) the scene
-        configuration carries the same constants."""
+    def _crd_carbon_factor_vectors(self, n: int) -> Tuple[List[float], List[float]]:
+        """Per-site (brown, green) carbon factors in kg/kWh for the regret cost model. The
+        gateway is the authority; before it has answered (or with no gateway, as in unit
+        tests) the scene configuration carries the same constants."""
         try:
             self._ensure_crd_static_cache()
         except AttributeError:
             pass
-        bf = [float(x) for x in (getattr(self, "_crd_brown_factors", None) or [])]
-        if len(bf) >= n:
-            return bf[:n]
         dcs = list(getattr(self, "dc_configs", None) or [])
-        return [
-            float((dcs[i] if i < len(dcs) else {}).get("brown_carbon_factor", 0.55))
-            for i in range(n)
-        ]
+        out = []
+        for attr, key, default in (("_crd_brown_factors", "brown_carbon_factor", 0.55),
+                                   ("_crd_green_factors", "green_carbon_factor", 0.01)):
+            v = [float(x) for x in (getattr(self, attr, None) or [])]
+            if len(v) < n:
+                v = [float((dcs[i] if i < len(dcs) else {}).get(key, default)) for i in range(n)]
+            out.append(v[:n])
+        return out[0], out[1]
 
     def _ensure_crd_static_cache(self) -> None:
         """Lazily fetch carbon factors and timestep duration once per simulation."""

@@ -21,14 +21,18 @@ from gym_cloudsimplus.envs.option_executor import (
 )
 
 
-def _regret(pred, truth, mask=None, energy=None, bf=(0.5, 0.5), n=2):
+GF = 0.01                                   # the scene's green carbon factor, kg/kWh
+BF = 0.5                                    # and its brown one
+
+
+def _regret(pred, truth, mask=None, energy=None, bf=(BF, BF), n=2, gf=(GF, GF)):
     pred = np.asarray(pred, dtype=np.float64)
     if mask is None:
         mask = np.ones_like(pred)
     if energy is None:
         energy = np.ones(pred.shape[0])
     return candidate_carbon_regret(pred, np.asarray(truth, dtype=np.float64), mask,
-                                   energy, bf, n)
+                                   energy, bf, n, green_factor=gf)
 
 
 # ── U1 truth in, zero out ────────────────────────────────────────────────────
@@ -47,7 +51,11 @@ def test_u2_regret_is_never_negative():
         mask = (rng.random((4, 6)) > 0.3).astype(float)
         energy = rng.random(4) * 1e-3
         bf = rng.random(3) * 0.8
-        assert candidate_carbon_regret(pred, truth, mask, energy, bf, 3) >= 0.0
+        gf = bf * rng.random(3)                       # green cleaner than brown, per site
+        assert candidate_carbon_regret(pred, truth, mask, energy, bf, 3, green_factor=gf) >= 0.0
+        # and with green DIRTIER than brown, where covering is the wrong thing to want
+        assert candidate_carbon_regret(pred, truth, mask, energy, bf, 3,
+                                       green_factor=bf + 0.1) >= 0.0
 
 
 # ── U3 a different but equally good choice costs nothing ─────────────────────
@@ -56,10 +64,10 @@ def test_u3_tie_optimal_choice_has_zero_regret():
     # takes the lower index 0. Same true cost, so no responsibility.
     truth = np.array([[0.9, 0.1, 0.2, 0.9]])
     pred = np.array([[0.0, 0.1, 0.2, 1.0]])
-    assert candidate_carbon_regret(pred, truth, np.ones((1, 4)), [1e-3], [0.5, 0.5], 2) == 0.0
+    assert _regret(pred, truth, energy=[1e-3]) == 0.0
     # and a forecast that shifts the choice to a genuinely worse candidate does cost
     worse = np.array([[0.0, 1.0, 0.2, 0.0]])
-    assert candidate_carbon_regret(worse, truth, np.ones((1, 4)), [1e-3], [0.5, 0.5], 2) > 0.0
+    assert _regret(worse, truth, energy=[1e-3]) > 0.0
 
 
 # ── U4 hand-computed micro example ───────────────────────────────────────────
@@ -67,17 +75,20 @@ def test_u4_hand_computed_micro_example():
     # one job, two candidates at one site. 64 PEs, 10 runtime steps of 1 s at 2.02 W per PE:
     #   E = 64 * 2.02 * 10 / 3.6e6 kWh = 3.591111...e-4
     # the forecast prefers candidate 0 (0.9 vs 0.1) but the truth prefers candidate 1
-    # (0.8 vs 0.2), so the regret is (0.8 - 0.2) * E * 0.5.
+    # (0.8 vs 0.2). Both are settled on the truth under the total-carbon model of Addendum
+    # A1, so the regret is (0.8 - 0.2) * E * (0.5 - 0.01): the coverage that changes hands
+    # is priced at the brown/green difference, not at the brown factor alone.
     energy = candidate_job_energy_kwh([64.0], [10 * 40_000.0], 40_000.0, 1.0, 1.0)
     expected_energy = 64.0 * DYN_MW_PER_PE_MODEL * 10.0 * 1.0 / 3.6e6
     np.testing.assert_allclose(energy, [expected_energy], rtol=0, atol=1e-15)
 
     got = candidate_carbon_regret(
         np.array([[0.9, 0.1]]), np.array([[0.2, 0.8]]), np.ones((1, 2)),
-        energy, [0.5], 1,
+        energy, [BF], 1, green_factor=[GF],
     )
-    assert abs(got - 0.6 * expected_energy * 0.5) < 1e-12
-    assert abs(got - 1.0773333e-4) < 1e-9
+    assert abs(got - 0.6 * expected_energy * (BF - GF)) < 1e-12
+    # the brown-only reading of the same example, which this model deliberately is not
+    assert abs(got - 0.6 * expected_energy * BF) > 1e-6
 
 
 def test_u4b_illegal_candidates_are_never_chosen():
@@ -86,8 +97,8 @@ def test_u4b_illegal_candidates_are_never_chosen():
     pred = np.array([[0.9, 0.0, 0.0]])
     mask = np.array([[1.0, 0.0, 1.0]])
     e = 1e-3
-    got = candidate_carbon_regret(pred, truth, mask, [e], [0.5], 1)
-    assert abs(got - (0.5 - 0.2) * e * 0.5) < 1e-15
+    got = candidate_carbon_regret(pred, truth, mask, [e], [BF], 1, green_factor=[GF])
+    assert abs(got - (0.5 - 0.2) * e * (BF - GF)) < 1e-15
 
 
 def test_u4c_site_factors_can_outrank_coverage():
@@ -96,8 +107,22 @@ def test_u4c_site_factors_can_outrank_coverage():
     truth = np.array([[0.5, 0.5]])
     pred = np.array([[0.9, 0.1]])
     e = 1e-3
-    got = candidate_carbon_regret(pred, truth, np.ones((1, 2)), [e], [0.8, 0.2], 2)
+    got = candidate_carbon_regret(pred, truth, np.ones((1, 2)), [e], [0.8, 0.2], 2,
+                                  green_factor=[0.0, 0.0])
     assert abs(got - (1 - 0.5) * e * (0.8 - 0.2)) < 1e-15
+
+
+def test_u4d_carbon_not_coverage_decides_across_sites():
+    # site 0 is dirty (brown 0.9), site 1 clean (brown 0.35). The forecast promises full
+    # coverage at the dirty site (0.05 * e) and none at the clean one, so a coverage-maximising
+    # read sends the job to site 0. The truth has no green anywhere: running dirty costs
+    # 0.9 * e where the clean site would have cost 0.35 * e.
+    truth = np.array([[0.0, 0.0]])
+    pred = np.array([[1.0, 0.0]])
+    e = 1e-3
+    got = candidate_carbon_regret(pred, truth, np.ones((1, 2)), [e], [0.9, 0.35], 2,
+                                  green_factor=[0.05, 0.3])
+    assert abs(got - e * (0.9 - 0.35)) < 1e-15
 
 
 # ── U5 shape and field mismatches raise ──────────────────────────────────────
@@ -113,6 +138,8 @@ def test_u5_mismatched_inputs_raise():
         candidate_carbon_regret(ok, ok, ok, [1, 1], [0.5], 2)          # one factor, two sites
     with pytest.raises(ValueError):
         candidate_carbon_regret(np.ones(4), np.ones(4), np.ones(4), [1], [0.5], 2)  # 1-D
+    with pytest.raises(ValueError):                                     # one green factor
+        candidate_carbon_regret(ok, ok, ok, [1, 1], [0.5, 0.5], 2, green_factor=[0.01])
 
 
 # ── U6 no silent fallback in the learner ─────────────────────────────────────

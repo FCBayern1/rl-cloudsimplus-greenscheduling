@@ -139,16 +139,24 @@ def candidate_job_energy_kwh(pes, mi, vm_pe_mips, cpu_util, timestep_sec) -> np.
 
 
 def candidate_carbon_regret(predicted_cover, truth_cover, allowed, energy_kwh,
-                            brown_factor, num_dc) -> float:
+                            brown_factor, num_dc, green_factor=None) -> float:
     """Local decision regret of following the forecast instead of the truth, in kg CO2
     (EUCRD_REGRET_SIGNAL_PREREG §1).
 
     With the reservation grid, the job batch and the legal candidate set held fixed, each job's
-    candidate is settled twice under the same cost model
-    ``cost_x(j,c) = (1 - cover_x[j,c]) * energy_kwh[j] * brown_factor[site(c)]``: once choosing
-    on the forecast, once choosing on the simulator's hidden future. The regret is the true
-    cost of the first choice minus the true cost of the second, summed over jobs, so a forecast
-    that is numerically wrong without changing the choice carries no responsibility.
+    candidate is settled twice under the same cost model (Addendum A1: total dynamic carbon,
+    the covered share priced at the site's green factor rather than free)
+
+        cost_x(j,c) = energy_kwh[j] * (brown[d] * (1 - cover_x[j,c]) + green[d] * cover_x[j,c])
+
+    once choosing on the forecast, once on the simulator's hidden future. The regret is the
+    true cost of the first choice minus the true cost of the second, summed over jobs, so a
+    forecast that is numerically wrong without changing the choice carries no responsibility.
+    With homogeneous factors the ranking is the coverage ranking and the regret scales with
+    (brown - green); with heterogeneous factors the cheaper site can outrank the greener slot.
+
+    Summing per-job regrets ignores competition between jobs of the same batch for the same
+    residual green, the approximation the candidate-cover key already makes.
 
     Non-negative by construction: the reference is the argmin of the same cost over the same
     legal set. Ties break to the smallest candidate index in both argmins (the order
@@ -176,17 +184,20 @@ def candidate_carbon_regret(predicted_cover, truth_cover, allowed, energy_kwh,
         raise ValueError(f"candidate width {pred.shape[1]} is not a multiple of num_dc={n}")
     if bf.shape[0] < n:
         raise ValueError(f"brown_factor has {bf.shape[0]} entries for {n} sites")
+    gf = np.zeros(n) if green_factor is None else np.asarray(green_factor, dtype=np.float64).reshape(-1)
+    if gf.shape[0] < n:
+        raise ValueError(f"green_factor has {gf.shape[0]} entries for {n} sites")
     K = pred.shape[1] // n
     site_bf = np.repeat(bf[:n], K)                       # candidate a = site * K + kappa index
+    site_gf = np.repeat(gf[:n], K)
     legal = mask > 0.5
     total = 0.0
     for j in range(pred.shape[0]):
         lj = legal[j]
         if not bool(np.any(lj)) or e[j] <= 0.0:
             continue
-        unit = e[j] * site_bf
-        cost_pred = (1.0 - pred[j]) * unit
-        cost_true = (1.0 - truth[j]) * unit
+        cost_pred = e[j] * (site_bf * (1.0 - pred[j]) + site_gf * pred[j])
+        cost_true = e[j] * (site_bf * (1.0 - truth[j]) + site_gf * truth[j])
         idx = np.flatnonzero(lj)
         a_pred = idx[int(np.argmin(cost_pred[idx]))]     # argmin: first occurrence = smallest index
         a_true = idx[int(np.argmin(cost_true[idx]))]
