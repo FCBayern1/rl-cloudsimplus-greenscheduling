@@ -1,0 +1,262 @@
+{
+ "lines": {
+  "NV": {
+   "windows": {
+    "12": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.003114545490740746,
+     "carbon_ref": 0.003114545490740746,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "13": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0028186664068944457,
+     "carbon_ref": 0.0028186664068944457,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "14": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.008414625268518534,
+     "carbon_ref": 0.008414625268518534,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "15": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0021520573240740777,
+     "carbon_ref": 0.0021520573240740777,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "16": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0009417180833333335,
+     "carbon_ref": 0.0009417180833333335,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "17": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.003853193731481484,
+     "carbon_ref": 0.003853193731481484,
+     "carbon_equal": true,
+     "pass": true
+    }
+   }
+  },
+  "V": {
+   "windows": {
+    "12": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0006057686296296311,
+     "carbon_ref": 0.0006057686296296311,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "13": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0016958007508138923,
+     "carbon_ref": 0.0016958007508138923,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "14": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.004913177476851865,
+     "carbon_ref": 0.004913177476851865,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "15": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0004202441523425928,
+     "carbon_ref": 0.0004202441523425928,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "16": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0003099387407407421,
+     "carbon_ref": 0.0003099387407407421,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "17": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.001688662847222221,
+     "carbon_ref": 0.001688662847222221,
+     "carbon_equal": true,
+     "pass": true
+    }
+   }
+  },
+  "NE": {
+   "windows": {
+    "12": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.003114545490740746,
+     "carbon_ref": 0.003114545490740746,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "13": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0028186664068944457,
+     "carbon_ref": 0.0028186664068944457,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "14": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.008414625268518534,
+     "carbon_ref": 0.008414625268518534,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "15": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0021520573240740777,
+     "carbon_ref": 0.0021520573240740777,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "16": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0009417180833333335,
+     "carbon_ref": 0.0009417180833333335,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "17": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.003853193731481484,
+     "carbon_ref": 0.003853193731481484,
+     "carbon_equal": true,
+     "pass": true
+    }
+   }
+  },
+  "E": {
+   "windows": {
+    "12": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0006057686296296311,
+     "carbon_ref": 0.0006057686296296311,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "13": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0016958007508138923,
+     "carbon_ref": 0.0016958007508138923,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "14": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.004913177476851865,
+     "carbon_ref": 0.004913177476851865,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "15": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0004202441523425928,
+     "carbon_ref": 0.0004202441523425928,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "16": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.0003099387407407421,
+     "carbon_ref": 0.0003099387407407421,
+     "carbon_equal": true,
+     "pass": true
+    },
+    "17": {
+     "init_ok": true,
+     "ref_ok": true,
+     "decisions": 35,
+     "mismatches": 0,
+     "carbon_init": 0.001688662847222221,
+     "carbon_ref": 0.001688662847222221,
+     "carbon_equal": true,
+     "pass": true
+    }
+   }
+  }
+ },
+ "pass": true,
+ "verdict": "INIT_OK"
+}

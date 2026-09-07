@@ -1,0 +1,42 @@
+{
+ "lines": {
+  "NV": {
+   "decisions": 210,
+   "mean_sampled_cover_ratio": 0.9842654006484952,
+   "carbon_policy": 0.028162608083374095,
+   "carbon_cover_argmax": 0.021294806305042623,
+   "windows": 6,
+   "carbon_ratio": 1.3225106478993975,
+   "pass": false
+  },
+  "V": {
+   "decisions": 210,
+   "mean_sampled_cover_ratio": 0.9709563928363377,
+   "carbon_policy": 0.010717159604767625,
+   "carbon_cover_argmax": 0.009633592597600944,
+   "windows": 6,
+   "carbon_ratio": 1.1124779770567133,
+   "pass": false
+  },
+  "NE": {
+   "decisions": 210,
+   "mean_sampled_cover_ratio": 0.9784912284314569,
+   "carbon_policy": 0.024722559315262994,
+   "carbon_cover_argmax": 0.021294806305042623,
+   "windows": 6,
+   "carbon_ratio": 1.160966620739287,
+   "pass": false
+  },
+  "E": {
+   "decisions": 210,
+   "mean_sampled_cover_ratio": 0.9608985143841421,
+   "carbon_policy": 0.010842601753997243,
+   "carbon_cover_argmax": 0.009633592597600944,
+   "windows": 6,
+   "carbon_ratio": 1.1254993030011855,
+   "pass": false
+  }
+ },
+ "pass": false,
+ "verdict": "STOP_INIT_PRIOR_NOT_CARRIED"
+}
