@@ -563,6 +563,12 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         except Exception:
             pass
 
+        # Share separations written by _compute_responsibilities for this module's batch
+        # (why mean(ρ_forecast) is what it is). Reported only.
+        share_diag = getattr(self, "_crd_share_diag", None)
+        if isinstance(share_diag, dict):
+            diag.update(share_diag)
+
         diag = {k: v for k, v in diag.items() if v is not None}
         if not diag:
             return
@@ -2298,6 +2304,7 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # transitions. Running it before scale-normalisation keeps the gate
         # sensitive to SUSTAINED corruption (the scale EMA would otherwise
         # absorb a persistent shift and blind the gate).
+        abs_f_raw = abs_f                     # before the anomaly gate, for the share diagnostics
         if bool(cfg.get("anomaly_gate", False)):
             abs_f = self._forecast_anomaly_excess(
                 module_id, abs_f,
@@ -2319,6 +2326,31 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         rho_f = abs_f / total
         rho_r = (abs_r / total).clamp(min=rho_min)
         rho_s = (abs_s / total).clamp(min=rho_min)
+
+        # Why the batch-mean share is what it is (reported only, never gated). A sparse
+        # signal makes mean(ρ_forecast) small BY CONSTRUCTION — it is zero wherever the
+        # forecast changed nothing — so the mean cannot distinguish "the channel is inert"
+        # from "the channel acts exactly where it should". Three separations are logged:
+        # the share conditional on the signal firing, the post-normalisation magnitudes of
+        # the channels (a unit mismatch survives here, a converged scale EMA does not), and
+        # how much of the raw signal the anomaly gate let through.
+        try:
+            self._crd_share_diag = {}
+            fire = abs_f_raw > 0
+            if v5_mask is not None and v5_mask.shape == fire.shape:
+                fire = fire & v5_mask.bool()
+            d = self._crd_share_diag
+            d["crd/frac_forecast_firing"] = float(fire.float().mean().item())
+            if bool(fire.any()):
+                d["crd/rho_forecast_mean_firing"] = float(rho_f[fire].mean().item())
+                d["crd/rho_routing_mean_firing"] = float(rho_r[fire].mean().item())
+                d["crd/anomaly_gate_pass_frac"] = float(
+                    (abs_f[fire] > 0).float().mean().item())
+            d["crd/abs_f_scaled_mean"] = float(abs_f.mean().item())
+            d["crd/abs_r_scaled_mean"] = float(abs_r.mean().item())
+            d["crd/abs_s_scaled_mean"] = float(abs_s.mean().item())
+        except Exception:
+            self._crd_share_diag = {}
 
         # Detach: ρ is a non-grad multiplier. The gradient signal for the
         # policy comes from PPO's surrogate via the (reweighted) ADVANTAGES

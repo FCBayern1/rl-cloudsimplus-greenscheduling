@@ -343,3 +343,55 @@ def test_forecast_diagnostics_report_the_effective_sample_size():
     assert abs(s["crd/r_forecast_abs_mean_nonzero"] - 0.6) < 1e-6    # 1.2 / 2
     # the padded mean, which the frozen G5a threshold reads, is the diluted one
     assert abs(s["crd/r_forecast_abs_mean"] - 13.2 / 8) < 1e-6
+
+
+def test_share_diagnostics_separate_sparsity_from_an_inert_channel():
+    """mean(rho_forecast) is small when the signal is sparse even if the channel dominates
+    exactly where it fires; the conditional share has to say which case it is."""
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import (
+        COL_CRD_FORECAST, COL_CRD_R_ROUTING, COL_CRD_RHO_FORECAST,
+    )
+
+    learner = _loss_helper()
+    learner._crd_share_scale_ema = {}
+    cfg = {"normalize_shares": False, "rho_min": 0.05, "anomaly_gate": False,
+           "reweight_advantages": False}
+    learner._read_module_responsibility_config = lambda mid: cfg
+    learner._read_crd_mask_padding = lambda mid: False
+    # the forecast fires on 1 of 8 cells, and where it fires it is 9x the routing signal
+    rf = torch.tensor([[0.0, 0.0, 0.0, 9.0], [0.0, 0.0, 0.0, 0.0]])
+    rr = torch.ones(2, 4)
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: rr,
+             Columns.REWARDS: torch.zeros(2, 4), Postprocessing.ADVANTAGES: torch.ones(2, 4)}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+
+    d = learner._crd_share_diag
+    assert abs(d["crd/frac_forecast_firing"] - 1 / 8) < 1e-6
+    assert d["crd/rho_forecast_mean_firing"] > 0.85              # dominant where it fires
+    assert batch[COL_CRD_RHO_FORECAST].mean().item() < 0.15      # yet a small batch mean
+    assert abs(d["crd/anomaly_gate_pass_frac"] - 1.0) < 1e-6     # gate off: nothing removed
+
+
+def test_anomaly_gate_pass_fraction_is_reported():
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import COL_CRD_FORECAST, COL_CRD_R_ROUTING
+
+    learner = _loss_helper()
+    learner._crd_share_scale_ema = {}
+    learner._crd_forecast_anom_ema = {}
+    cfg = {"normalize_shares": False, "rho_min": 0.05, "anomaly_gate": True,
+           "anomaly_z": 1.0, "anomaly_decay": 0.99, "reweight_advantages": False}
+    learner._read_module_responsibility_config = lambda mid: cfg
+    learner._read_crd_mask_padding = lambda mid: False
+    rf = torch.tensor([[0.0, 0.1, 0.1, 9.0], [0.1, 0.1, 0.1, 0.1]])
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: torch.ones(2, 4),
+             Columns.REWARDS: torch.zeros(2, 4), Postprocessing.ADVANTAGES: torch.ones(2, 4)}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+
+    d = learner._crd_share_diag
+    # 7 cells carry a raw signal; the gate keeps only the anomalous ones
+    assert 0.0 <= d["crd/anomaly_gate_pass_frac"] <= 1.0
+    assert d["crd/anomaly_gate_pass_frac"] < 1.0
