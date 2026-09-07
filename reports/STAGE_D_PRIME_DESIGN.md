@@ -579,3 +579,17 @@ Ruling on §62: option 3 (carbon regret) becomes the responsibility signal, opti
 
 45 zero-training runs give **REGRET_SIGNAL_PASS** on all five gates: H1 exactly zero under godeye (1921 steps), H2 alive on every window, H3 never negative, H4 every degraded tier above zero on the *replayed godeye trajectory* (the replay reproduces the online run's episode carbon exactly, relative difference 0 in all three windows), H5 zero observation-leak violations. Reported, not gated: both the own-trajectory and the fixed-trajectory means are now monotone in the forecast error (2.8e-5, 6.7e-5, 1.06e-4, 1.72e-4 kg per decision step), so the inversion that stopped §62 does not survive the change of quantity, while the auxiliary cover error saturates at shrink 0.25 (0.1686 = shrink 0) where the regret still rises — below a quarter amplitude the curve stops getting more wrong but keeps misranking more candidates (82 to 89 of 105 decisions). Reading `reports/EUCRD_REGRET_SIGNAL_READING_2026_09_07.md`. G5 started automatically on the new source at 21:19 with G5d narrowed to the forecast channel (uniform weights were never implied by a correct forecast) and the applied weight now reported split by the sign of the advantage it multiplies.
 
+## 64. G5 execution record: three starts, and what changed between them (2026-09-07)
+
+Registered by change class and time, correcting an over-broad summary ("only logging was added since the freeze") given in session: `3c365ee1` and `77f476cc` are **method** changes (the new responsibility source with its strict no-fallback contract; the total dynamic carbon cost model of Addendum A), `1d44b1cf` is a **protocol** change (G5 reads the regret source, G5d narrowed to the forecast channel) that also carried one logged statistic, and only `ebbe802f` and `da8f2ec3` are pure logging. Adding a logged statistic does not change the training mathematics, but re-running is a new execution record, so all three starts are listed.
+
+| run | started | stopped | completed iterations | code | why it was stopped |
+|---|---|---|---|---|---|
+| A | 21:19:42 | 21:39 | 0 (inside iteration 1) | 2ed29458 | the reading requires the effective sample size behind the forecast mean; `r_forecast_abs_mean` averages over the whole padded grid, so padding and no-decision steps dilute it (`ebbe802f`) |
+| B | 21:39:55 | 22:28 | 1 (8 000 steps) | ebbe802f | iteration 1 read ρ_forecast 0.0131 with the signal non-zero on 57 of 1 948 valid transitions; a batch mean cannot separate "sparse but decisive" from "inert", so the conditional share, the anomaly-gate pass fraction and the post-normalisation channel magnitudes were added (`da8f2ec3`) |
+| C | 22:28:19 | — | — | da8f2ec3 + f54449de | the run of record; no further restart |
+
+Run B's iteration 1, kept as the observation that motivated C and not as a reading: `r_forecast_abs_mean` 1e-6 over the padded grid but 3.9e-5 kg over the non-zero cells, the same order as the instrument's 2.8e-5 kg per decision step at shrink75, so the learner receives the quantity the instrument measured; `reweight_applied` 0 at iteration 1, as the 450-call warmup requires.
+
+Caveat on one new statistic, recorded rather than fixed (no further restart is worth it): `crd/frac_forecast_firing` masks the numerator but divides by the whole padded grid, so it is itself diluted by padding. The padding-free firing rate is `crd/frac_forecast_nonzero` = `n_forecast_nonzero` / `n_valid_transitions`, and the conditional mean `crd/rho_forecast_mean_firing` does not depend on that denominator at all.
+
