@@ -85,6 +85,30 @@ def judge():
         "w_ratio_pos_mean": _pool(rs, "w_ratio_pos_mean")[0],
         "n_neg_adv_mean": _pool(rs, "n_neg_adv")[0], "n_pos_adv_mean": _pool(rs, "n_pos_adv")[0],
     }
+    # Paired against its OWN null, call by call (ruling 2026-09-08): the A/B difference is
+    # only meaningful where it exceeds the difference the same advantages produce when scored
+    # twice. A pooled mean cosine cannot establish that, and a low cosine means a LARGER
+    # difference, so the comparison is made on the deviation from 1 per call.
+    paired = [(1.0 - r["grad_cosine"], 1.0 - r["grad_cosine_null"], r.get("grad_rel_l2"),
+               r.get("grad_rel_l2_null"))
+              for r in rs if r.get("grad_cosine") is not None and r.get("grad_cosine_null") is not None]
+    if paired:
+        ab = np.array([p[0] for p in paired]); nu = np.array([p[1] for p in paired])
+        rel = np.array([p[2] for p in paired if p[2] is not None])
+        rel_n = np.array([p[3] for p in paired if p[3] is not None])
+        res["paired_null"] = {
+            "calls": len(paired),
+            "frac_calls_ab_exceeds_own_null": float(np.mean(ab > nu)),
+            "frac_calls_ab_exceeds_2x_own_null": float(np.mean(ab > 2 * nu)),
+            "one_minus_cos_ab_median": float(np.median(ab)),
+            "one_minus_cos_null_median": float(np.median(nu)),
+            "one_minus_cos_ratio_median": (float(np.median(ab / np.maximum(nu, 1e-12)))
+                                           if len(nu) else None),
+            "rel_l2_ab_median": (float(np.median(rel)) if rel.size else None),
+            "rel_l2_null_median": (float(np.median(rel_n)) if rel_n.size else None),
+            "worst_call_ab": float(np.max(ab)), "worst_call_null": float(np.max(nu)),
+        }
+
     top = [t for r in rs for t in (r.get("top_changed") or [])]
     if top:
         res["top_changed"] = {
@@ -104,7 +128,7 @@ def judge():
 def _write(res):
     os.makedirs(OUT, exist_ok=True)
     json.dump(res, open(os.path.join(OUT, "switch_ab.json"), "w"), indent=1)
-    print(json.dumps({k: res[k] for k in ("calls", "gates", "verdict", "pooled",
+    print(json.dumps({k: res[k] for k in ("calls", "gates", "verdict", "pooled", "paired_null",
                                           "advantage_sign", "top_changed") if k in res}, indent=1))
 
 

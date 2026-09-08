@@ -43,6 +43,12 @@ Established: with the regret source selected, forecast credit reaches the learne
 
 Not established: that the mechanism is inert. That question is not answerable from a batch mean, and it is what the switch comparison (reports/EUCRD_SWITCH_AB_PREREG.md, frozen 140d79c5 before this verdict was read) asks directly — whether the weights and the policy gradient change at all, and whether they change more where the forecast changed a decision. It started automatically at 02:53.
 
+## 4a. Addendum A — corrections and the ruling on §5 (2026-09-08)
+
+1. **The two figures in §3 do not compound.** `rho_forecast_mean_firing` is computed on the shares formed *after* the anomaly gate, over the cells where the raw signal was non-zero, so the 26 % already includes the cells the gate zeroed. The 28.6 % pass rate explains part of why that conditional share sits at 26 % rather than higher; it must not be applied a second time on top of it.
+2. **Ruling on §5**: G5b is not changed and EU-CRD is not closed on it. The old experiment asked whether a registered global share was reached and the answer is no; that STOP stands as recorded. Whether the forecast responsibility actually changes the policy update is a different and more direct question, and the switch comparison answers it. There will be no re-run aimed at the 1 % batch mean.
+3. **Scope of the switch comparison**: it bypasses the reweight warmup inside the diagnostic, so its conclusion is about the effect of the reweighting *once enabled*. It is not a statement about the whole of training, most of which for a 40 000-step run sits inside the warmup.
+
 ## 5. Open question for a ruling
 
 G5b was written as a batch mean before the signal's sparsity was measured. Three ways forward, none taken here: accept the STOP and close the line; re-register the share criterion on the conditional share (`rho_forecast_mean_firing`) with a number frozen before any re-run; or keep the batch-mean criterion and accept that under it a sparse-but-decisive channel reads as decorative. The anomaly gate's 28.6 % pass rate is a separate mechanism parameter and is not touched without its own ruling.
