@@ -1,0 +1,78 @@
+{
+ "calls": 103,
+ "dump": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/../g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab_decomp/switch_ab.jsonl",
+ "thresholds": {
+  "w_delta_mean_min": 0.001,
+  "w_delta_max_min": 0.01,
+  "target_ratio_min": 2.0,
+  "grad_cos_max": 0.9999
+ },
+ "pooled": {
+  "w_delta_mean": 0.015278375002293332,
+  "w_delta_max": 0.4747692346572876,
+  "w_delta_mean_firing": 0.25298570863251546,
+  "w_delta_mean_nonfiring": 0.00777294973218904,
+  "targeting_ratio": 32.54693743674435,
+  "calls_with_firing": 103,
+  "grad_cosine_mean": 1.0,
+  "grad_cosine_max": 1.0,
+  "grad_cosine_min": 1.0,
+  "calls_with_undefined_cosine": 0,
+  "grad_norm_ratio_mean": 1.000002770886865,
+  "grad_rel_l2_mean": 0.0012038211664297952,
+  "grad_cosine_null_mean": 1.0000343044984688,
+  "grad_rel_l2_null_mean": 0.0,
+  "adv_cosine_mean": 0.9980034752956872,
+  "n_valid_mean": 1942.990291262136,
+  "n_firing_mean": 59.48543689320388
+ },
+ "advantage_sign": {
+  "frac_neg_damped_mean": 0.020592484388102607,
+  "frac_pos_damped_mean": 0.01258489319566384,
+  "w_ratio_neg_mean": 0.9980717417105888,
+  "w_ratio_pos_mean": 1.0018260536841976,
+  "n_neg_adv_mean": 931.8834951456311,
+  "n_pos_adv_mean": 1011.1067961165048
+ },
+ "paired_null": {
+  "calls": 103,
+  "measure": "relative L2 difference of the two gradients, per call (a magnitude diagnostic; W3 stays on the cosine)",
+  "frac_calls_ab_exceeds_own_null": 1.0,
+  "frac_calls_ab_exceeds_2x_own_null": 1.0,
+  "rel_l2_ab_median": 0.0010395785793662071,
+  "rel_l2_null_median": 0.0,
+  "rel_l2_ratio_median": 1039578579.3662071,
+  "rel_l2_ab_max": 0.0038937972858548164,
+  "rel_l2_null_max": 0.0,
+  "cos_ab_min": 1.0,
+  "cos_null_min": 1.0,
+  "resolvable": true
+ },
+ "decomposition": {
+  "calls": 102,
+  "pi_cosine_min": 0.9392973184585571,
+  "pi_cosine_mean": 0.9676686671434664,
+  "pi_rel_l2_median": 0.31707148253917694,
+  "pi_rel_l2_max": 0.4628264605998993,
+  "pi_rel_l2_null_max": 0.0,
+  "pi_resolvable": true,
+  "total_rel_l2_median": 0.0010385293862782419,
+  "dilution_ratio_median": 305.30814700916653,
+  "pi_norm_median": 0.06453030556440353,
+  "vf_norm_median": 18.46904468536377,
+  "entkl_norm_median": 0.0032339664176106453,
+  "pi_share_of_total_norm_median": 0.0033491558860987425
+ },
+ "top_changed": {
+  "n": 515,
+  "frac_firing": 1.0,
+  "frac_negative_advantage": 0.5553398058252427,
+  "delta_mean": 0.47461135873516785
+ },
+ "gates": {
+  "W1_weights_differ": true,
+  "W2_change_is_targeted": true,
+  "W3_gradient_differs": false
+ },
+ "verdict": "STOP_SWITCH_AB:W3_gradient_differs"
+}
