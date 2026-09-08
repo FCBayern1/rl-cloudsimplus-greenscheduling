@@ -21,12 +21,25 @@ STEPS = 8000
 
 
 def checkpoint():
+    """The G5-err final global module as a plain tensor state dict. RLlib 2.40 writes the
+    module state as a pickle of numpy arrays, which the strict warm-start loader (torch.load
+    with weights_only=True) refuses; it is converted once, key for key, with nothing dropped."""
+    import pickle
+    import torch
     ps = sorted(glob.glob(os.path.join(
         DRL, "logs", "eucrd_wiring", "err", "*", "PPO_*", "checkpoint_*",
         "learner_group", "learner", "rl_module", "global_policy", "module_state.pt")))
     if not ps:
         raise SystemExit("no G5-err global module state found")
-    return ps[-1]
+    out = os.path.join(HERE, "stage_a_out", "eucrd_switch_ab_decomp", "g5_err_global_state.pt")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(ps[-1], "rb") as f:
+        raw = pickle.load(f)
+    state = {k: torch.as_tensor(v) for k, v in raw.items()}
+    torch.save(state, out)
+    back = torch.load(out, map_location="cpu", weights_only=True)
+    assert list(back) == list(raw) and all(torch.is_tensor(v) for v in back.values()), "conversion changed the keys"
+    return out
 
 
 def build():
@@ -47,7 +60,8 @@ def build():
     with open(OUT, "w") as f:
         yaml.safe_dump(out, f, sort_keys=True)
     ck = checkpoint()
-    print(json.dumps({"config": OUT, "checkpoint": ck, "steps": STEPS, "diff_vs_g5_err": diff}, indent=1))
+    print(json.dumps({"config": OUT, "checkpoint": ck, "steps": STEPS, "diff_vs_g5_err": diff,
+                      "n_state_entries": len(__import__("torch").load(ck, weights_only=True))}, indent=1))
     return ck
 
 
