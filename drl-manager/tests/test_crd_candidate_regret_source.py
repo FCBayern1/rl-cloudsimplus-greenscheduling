@@ -395,3 +395,100 @@ def test_anomaly_gate_pass_fraction_is_reported():
     # 7 cells carry a raw signal; the gate keeps only the anomalous ones
     assert 0.0 <= d["crd/anomaly_gate_pass_frac"] <= 1.0
     assert d["crd/anomaly_gate_pass_frac"] < 1.0
+
+
+# ── switch comparison: does the forecast responsibility reach weights and gradient ──
+def _switch_ab_learner(tmp_path, monkeypatch):
+    import torch.nn as nn
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import (
+        COL_CRD_FORECAST, COL_CRD_R_ROUTING, CRDPPOTorchLearner,
+    )
+
+    learner = _loss_helper()
+    learner._crd_share_scale_ema = {}
+    learner._crd_forecast_anom_ema = {}
+    learner._crd_reweight_calls = {}
+    cfg = {"normalize_shares": False, "rho_min": 0.05, "anomaly_gate": False,
+           "normalize_rho": True, "reweight_advantages": True,
+           "responsibility_shrink_strength": 1.0}
+    learner._read_module_responsibility_config = lambda mid: cfg
+    learner._read_crd_mask_padding = lambda mid: False
+
+    # two features per cell, so the gradient DIRECTION depends on how the cells are
+    # weighted (with one constant feature every reweighting gives a parallel gradient)
+    lin = nn.Linear(2, 1)
+    lin.weight.data.copy_(torch.tensor([[1.0, -1.0]])); lin.bias.data.fill_(0.0)
+
+    class _Mod:
+        def parameters(self):
+            return lin.parameters()
+
+    learner._module_stub = {"global_agent": _Mod()}
+    # patch the property on the class through monkeypatch so it is restored afterwards:
+    # assigning to type(learner).module directly would leak into every later test
+    monkeypatch.setattr(type(learner), "module",
+                        property(lambda self: self._module_stub), raising=False)
+    # a stand-in PPO loss with the same shape of dependence on the advantages
+    def _fake_loss(*, module_id, config, batch, fwd_out):
+        return (batch[Postprocessing.ADVANTAGES] * lin(fwd_out["x"]).squeeze(-1)).mean()
+    monkeypatch.setattr(CRDPPOTorchLearner.__bases__[0], "compute_loss_for_module",
+                        staticmethod(_fake_loss), raising=False)
+    return learner, lin
+
+
+def test_switch_ab_records_a_targeted_change_and_leaves_the_run_on_variant_a(tmp_path, monkeypatch):
+    import json
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import COL_CRD_FORECAST, COL_CRD_R_ROUTING
+
+    learner, _ = _switch_ab_learner(tmp_path, monkeypatch)
+    rf = torch.tensor([[0.0, 0.0, 3.0, 0.0], [0.0, 6.0, 0.0, 0.0]])
+    adv_pre = torch.tensor([[1.0, -2.0, 3.0, -4.0], [5.0, -6.0, 7.0, 8.0]])
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: torch.ones(2, 4),
+             Columns.REWARDS: torch.zeros(2, 4), Columns.LOSS_MASK: torch.ones(2, 4),
+             Postprocessing.ADVANTAGES: adv_pre.clone()}
+    # variant A as the run would compute it
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+    adv_after_A = batch[Postprocessing.ADVANTAGES].clone()
+    ema_before = {k: dict(v) for k, v in learner._crd_share_scale_ema.items()}
+
+    p = tmp_path / "ab.jsonl"
+    learner._crd_switch_ab(module_id="global_agent", config=None, batch=batch,
+                           fwd_out={"x": torch.tensor([[[1.,0.],[0.,1.],[1.,1.],[0.5,0.2]],
+                                       [[0.,1.],[1.,0.],[0.2,0.9],[0.7,0.3]]])}, adv_pre=adv_pre, path=str(p))
+
+    row = json.loads(open(p).read().strip())
+    assert row["n_firing"] == 2 and row["n_valid"] == 8
+    assert row["w_delta_mean"] > 1e-3 and row["w_delta_max"] > 1e-2        # W1
+    assert row["w_delta_mean_firing"] > 2 * row["w_delta_mean_nonfiring"]  # W2
+    assert row["grad_cosine"] is not None and row["grad_cosine"] < 0.9999  # W3
+    assert "frac_neg_damped" in row and "w_ratio_pos_mean" in row          # W4
+    assert row["top_changed"][0]["firing"] is True
+    # the diagnostic must leave the run exactly where variant A left it
+    torch.testing.assert_close(batch[Postprocessing.ADVANTAGES], adv_after_A)
+    assert {k: dict(v) for k, v in learner._crd_share_scale_ema.items()} == ema_before
+
+
+def test_switch_ab_reports_no_change_when_the_forecast_channel_is_silent(tmp_path, monkeypatch):
+    import json
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import COL_CRD_FORECAST, COL_CRD_R_ROUTING
+
+    learner, _ = _switch_ab_learner(tmp_path, monkeypatch)
+    adv_pre = torch.tensor([[1.0, -2.0, 3.0, -4.0]])
+    batch = {COL_CRD_FORECAST: torch.zeros(1, 4), COL_CRD_R_ROUTING: torch.ones(1, 4),
+             Columns.REWARDS: torch.zeros(1, 4), Columns.LOSS_MASK: torch.ones(1, 4),
+             Postprocessing.ADVANTAGES: adv_pre.clone()}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+    p = tmp_path / "ab.jsonl"
+    learner._crd_switch_ab(module_id="global_agent", config=None, batch=batch,
+                           fwd_out={"x": torch.tensor([[[1.,0.],[0.,1.],[1.,1.],[0.5,0.2]]])}, adv_pre=adv_pre, path=str(p))
+
+    row = json.loads(open(p).read().strip())
+    assert row["n_firing"] == 0
+    assert row["w_delta_max"] < 1e-9                    # nothing to remove, nothing changes
+    assert row["grad_cosine"] > 0.999999

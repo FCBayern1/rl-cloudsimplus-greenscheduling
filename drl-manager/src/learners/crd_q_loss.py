@@ -24,6 +24,7 @@ non-ensemble RLModules) are treated as no-ops here — their loss is whatever
 the base learner returned.
 """
 
+import os
 import logging
 from typing import Any, Dict, Optional
 
@@ -240,7 +241,22 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # counterfactual computation. First version is a no-op that just logs
         # once per module to verify the hook is reachable under the New API
         # stack. M2.2-M2.5 will fill in the actual computation here.
+        # Switch comparison (EUCRD_SWITCH_AB_PREREG): keep a copy of the advantages the
+        # pipeline is about to reweight, so the same batch can be re-scored with the
+        # forecast responsibility zeroed. Off unless CRD_SWITCH_AB_DUMP names a file.
+        ab_path = os.environ.get("CRD_SWITCH_AB_DUMP", "").strip()
+        adv_pre = None
+        if ab_path:
+            _adv = batch.get(Postprocessing.ADVANTAGES)
+            adv_pre = _adv.detach().clone() if isinstance(_adv, torch.Tensor) else None
+
         self._compute_crd_terms(module_id=module_id, batch=batch, fwd_out=fwd_out)
+
+        if ab_path and adv_pre is not None:
+            self._crd_switch_ab(
+                module_id=module_id, config=config, batch=batch, fwd_out=fwd_out,
+                adv_pre=adv_pre, path=ab_path,
+            )
 
         # Risk-averse baseline objectives (CVaR / risk-sensitive / mean-variance).
         # Config-gated cross-comparison methods: transform the advantage BEFORE the
@@ -2201,6 +2217,126 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             return {}
 
     # ------------------------------------------------------------------ M5
+
+    def _crd_switch_ab(self, *, module_id, config, batch, fwd_out, adv_pre, path) -> None:
+        """Same batch, same weights, no update between the two: keep the forecast
+        responsibility (A) or zero it (B), and record what changes in the applied weights
+        and in the policy gradient (EUCRD_SWITCH_AB_PREREG §1).
+
+        Diagnostic only. The running estimator state the shares depend on is snapshotted
+        and restored, and the batch is left exactly as variant A left it, so the observed
+        run proceeds as if this had not been called. The extra loss evaluations do pollute
+        the run's own logged metrics, which is why the run itself is discarded.
+        """
+        import copy as _copy
+        import json as _json
+
+        rf = batch.get(COL_CRD_FORECAST)
+        if not isinstance(rf, torch.Tensor):
+            return
+        adv_A = batch.get(Postprocessing.ADVANTAGES)
+        if not isinstance(adv_A, torch.Tensor):
+            return
+        adv_A = adv_A.detach().clone()
+        keep = {k: (batch[k].detach().clone() if isinstance(batch.get(k), torch.Tensor) else None)
+                for k in ("crd_w_raw", "crd_w_guarded", COL_CRD_RHO_FORECAST,
+                          COL_CRD_RHO_ROUTING, COL_CRD_RHO_SCHEDULING)}
+        state = {n: _copy.deepcopy(getattr(self, n)) for n in
+                 ("_crd_share_scale_ema", "_crd_forecast_anom_ema", "_crd_reweight_calls")
+                 if hasattr(self, n)}
+        applied_A = isinstance(batch.get("crd_reweight_applied"), torch.Tensor)
+
+        # ── variant B: the same responsibilities with the forecast channel silent ──
+        batch[Postprocessing.ADVANTAGES] = adv_pre.clone()
+        batch[COL_CRD_FORECAST] = torch.zeros_like(rf)
+        batch.pop("crd_reweight_applied", None)
+        self._compute_responsibilities(module_id=module_id, batch=batch)
+        adv_B = batch[Postprocessing.ADVANTAGES].detach().clone()
+        w_B = batch.get("crd_w_guarded")
+        w_B = w_B.detach().clone() if isinstance(w_B, torch.Tensor) else torch.ones_like(adv_pre)
+        for n, v in state.items():                      # the diagnostic must not advance state
+            setattr(self, n, v)
+        batch[COL_CRD_FORECAST] = rf
+        for k, v in keep.items():
+            if v is None:
+                batch.pop(k, None)
+            else:
+                batch[k] = v
+        if applied_A:
+            batch["crd_reweight_applied"] = torch.ones(1, device=adv_A.device)
+
+        w_A = keep.get("crd_w_guarded")
+        if not isinstance(w_A, torch.Tensor):
+            w_A = torch.ones_like(adv_pre)
+        # If this call is still inside the warmup, variant A left the advantages untouched.
+        # The question is what the weights would do to learning, so both variants are scored
+        # with their weights applied (prereg §1).
+        adv_A_eff = adv_pre * w_A
+        adv_B_eff = adv_pre * w_B
+
+        def _grad(adv):
+            batch[Postprocessing.ADVANTAGES] = adv
+            loss = super(CRDPPOTorchLearner, self).compute_loss_for_module(
+                module_id=module_id, config=config, batch=batch, fwd_out=fwd_out)
+            ps = [p for p in self.module[module_id].parameters() if p.requires_grad]
+            gs = torch.autograd.grad(loss, ps, retain_graph=True, allow_unused=True)
+            return torch.cat([g.detach().flatten() for g in gs if g is not None])
+
+        try:
+            gA, gB = _grad(adv_A_eff), _grad(adv_B_eff)
+            cos = float(torch.nn.functional.cosine_similarity(gA, gB, dim=0).item())
+            gnorm = (float(gA.norm().item()), float(gB.norm().item()))
+            grel = float(((gA - gB).norm() / gA.norm().clamp(min=1e-12)).item())
+        except Exception as e:                          # a diagnostic must never stop a run
+            logger.warning(f"[CRD] switch-AB gradient comparison failed: {e}")
+            cos, gnorm, grel = None, (None, None), None
+        batch[Postprocessing.ADVANTAGES] = adv_A        # leave the run on variant A
+
+        lm = batch.get(Columns.LOSS_MASK)
+        m = (lm.bool() if isinstance(lm, torch.Tensor) and lm.shape == adv_pre.shape
+             else torch.ones_like(adv_pre, dtype=torch.bool))
+        fire = (rf.detach().abs() > 0) & m
+        d = (w_A - w_B).abs()[m]
+        row = {
+            "call": int(getattr(self, "_crd_switch_ab_calls", 0)) + 1,
+            "module": str(module_id),
+            "n_valid": int(m.sum().item()),
+            "n_firing": int(fire.sum().item()),
+            "reweight_applied_in_run": bool(applied_A),
+            "w_delta_mean": float(d.mean().item()) if d.numel() else None,
+            "w_delta_max": float(d.max().item()) if d.numel() else None,
+            "w_delta_mean_firing": (float((w_A - w_B).abs()[fire].mean().item())
+                                    if bool(fire.any()) else None),
+            "w_delta_mean_nonfiring": (float((w_A - w_B).abs()[m & ~fire].mean().item())
+                                       if bool((m & ~fire).any()) else None),
+            "adv_cosine": float(torch.nn.functional.cosine_similarity(
+                adv_A_eff[m].flatten(), adv_B_eff[m].flatten(), dim=0).item()),
+            "grad_cosine": cos, "grad_norm_a": gnorm[0], "grad_norm_b": gnorm[1],
+            "grad_rel_l2": grel,
+        }
+        for name, sel in (("neg", (adv_pre < 0) & m), ("pos", (adv_pre > 0) & m)):
+            if bool(sel.any()):
+                row[f"n_{name}_adv"] = int(sel.sum().item())
+                row[f"frac_{name}_damped"] = float((w_A[sel] < w_B[sel]).float().mean().item())
+                row[f"w_ratio_{name}_mean"] = float(
+                    (w_A[sel] / w_B[sel].clamp(min=1e-12)).mean().item())
+        if bool(m.any()):
+            k = min(5, int(m.sum().item()))
+            flat_d = (w_A - w_B).abs().flatten()
+            flat_d = torch.where(m.flatten(), flat_d, torch.zeros_like(flat_d))
+            top = torch.topk(flat_d, k)
+            row["top_changed"] = [
+                {"delta": float(v.item()),
+                 "adv_sign": int(torch.sign(adv_pre.flatten()[i]).item()),
+                 "firing": bool(rf.detach().abs().flatten()[i] > 0)}
+                for v, i in zip(top.values, top.indices)]
+        self._crd_switch_ab_calls = row["call"]
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            with open(path, "a") as f:
+                f.write(_json.dumps(row) + "\n")
+        except Exception as e:
+            logger.warning(f"[CRD] switch-AB dump failed: {e}")
 
     def _compute_responsibilities(
         self, *, module_id: ModuleID, batch: Dict[str, Any]
