@@ -42,6 +42,20 @@ One bounded decomposition is added, **as a diagnostic**. It does not re-judge ru
 
 What the decomposition can say: if the surrogate gradient also barely changes, the mechanism's small effect is real and the anomaly gate, guardrail and reweighting deserve study; if the surrogate gradient changes clearly and was swamped by the value gradient in the total, the wiring check was measuring the wrong object and must be re-registered on the right one — before any further run, not fitted to this one.
 
+## 3b. Addendum B — the wiring check is re-registered on the policy surrogate gradient (2026-09-08, ruling after the decomposition)
+
+**Disclosure.** This revision was made after the decomposition of Addendum A was read. It is a development revision, not a pre-specified one: the measured object changes, and nothing else does. W3's cosine threshold (0.9999, clamped to [−1, 1]) and its aggregation rule (the maximum over the recorded calls must be below the threshold) are carried over unchanged so that no number is chosen from the reading. Run 4's verdict stands as recorded on the object it measured; the decomposition is recorded independently.
+
+**W3′ the surrogate gradient differs.** The gradient compared is that of the policy surrogate term as training computes it — the same loss code, the same loss mask, the same PPO clipping, the same parameter path (every parameter the surrogate reaches, shared layers included) — obtained from the training loss with the value, entropy and KL coefficients set to zero inside the diagnostic only. Its null is the same object scored twice on the same advantages and must be exactly zero on every call; a call with an undefined cosine (a zero gradient in either variant) is counted and excluded. Verdict SWITCH_AB_PASS iff W1, W2 and W3′ hold; the total-gradient cosine is still reported, as a diagnostic.
+
+**Re-check protocol, light.** No training round: the frozen G5-err global module (185 tensors, strict), fixed sampled batches, learning rate zero, one sampling iteration, a seed different from the decomposition run's. The existing decomposition data serve as an engineering check of the same judge (surrogate path identical to training's, restore complete, null zero) and are reported as such; they are not a second independent confirmation.
+
+**Wording rules for any reading under this document.** "The forecast responsibility changes the gradient of the policy surrogate loss" may be written. "The policy update changed by X %" may not: gradient clipping and the optimiser state sit between the gradient and the update. No carbon claim of any kind.
+
+**Implementation fact, recorded.** The global module clips gradients by global norm over all of its parameters (`max_grad_norm` 20 → `grad_clip`, RLlib default `grad_clip_by="global_norm"`), critic included even though the critic has a separate trunk. With the value term's gradient norm near 18.5 and the total near 19.3, the critic decides whether clipping engages and so can scale the actor's update indirectly. Both lines of the matched pair must carry identical clipping settings, asserted by their generator.
+
+**If W3′ passes**, the matched effect experiment is prepared: shrink 0.75 training, 120 000 steps, 3 paired seeds, V_err against E_err, the primary comparison, clean tolerance and contract rules completed before launch, the last checkpoint fixed as the checkpoint of record, the 2020 confirmation windows sealed.
+
 ## 4. What a pass licenses
 
 Only this: the forecast responsibility changes the weights and the policy gradient, and it changes them more where the forecast actually changed a decision. It says nothing about whether that change helps, which is step 3's question and needs the matched pair.

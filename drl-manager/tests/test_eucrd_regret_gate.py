@@ -113,7 +113,7 @@ def test_switch_judge_passes_a_targeted_change(tmp_path, monkeypatch):
     monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
     _write_calls(j.DUMP, [_call(), _call()])
     res = j.judge()
-    assert res["verdict"] == "SWITCH_AB_PASS"
+    assert res["verdict"] == "STOP_SWITCH_AB:W3s_surrogate_gradient_differs"   # no pi_* fields
     assert res["pooled"]["targeting_ratio"] == 20.0
     assert res["advantage_sign"]["frac_neg_damped_mean"] == 0.6
 
@@ -125,7 +125,7 @@ def test_switch_judge_names_each_failing_criterion(tmp_path, monkeypatch):
     # inert weights, an untargeted change and an unchanged gradient
     _write_calls(j.DUMP, [_call(dw=1e-6, dmax=1e-6, firing=0.01, nonfiring=0.01, cos=1.0)])
     res = j.judge()
-    for k in ("W1_weights_differ", "W2_change_is_targeted", "W3_gradient_differs"):
+    for k in ("W1_weights_differ", "W2_change_is_targeted", "W3s_surrogate_gradient_differs"):
         assert k in res["verdict"]
 
 
@@ -177,5 +177,23 @@ def test_switch_judge_reports_the_decomposition_without_gating_on_it(tmp_path, m
     assert d["pi_resolvable"] is True
     assert d["dilution_ratio_median"] == 0.3 / 0.0006  # ... while the surrogate moves a lot
     assert d["vf_norm_median"] == 50.0
-    # the decomposition never changes the frozen verdict
+    # run 4's object is still reported, and W3' now decides: the surrogate turned (0.95)
     assert res["gates"]["W3_gradient_differs"] is False
+    assert res["gates"]["W3s_surrogate_gradient_differs"] is True
+    assert res["verdict"] == "SWITCH_AB_PASS"
+
+
+def test_w3s_requires_an_exact_surrogate_null(tmp_path, monkeypatch):
+    j = _switch_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
+    rows_ = []
+    for i in range(3):
+        r = _call(); r.update({"pi_cosine": 0.9, "pi_rel_l2": 0.3, "pi_cosine_null": 1.0,
+                               "pi_rel_l2_null": 0.001 if i == 2 else 0.0,   # one dirty null
+                               "pi_norm_a": 1.0, "pi_norm_b": 1.0, "vf_norm_a": 1.0,
+                               "entkl_norm_a": 1.0, "pi_share_of_total_norm": 0.5,
+                               "pi_delta_norm": 0.3, "total_delta_norm": 0.3})
+        rows_.append(r)
+    _write_calls(j.DUMP, rows_)
+    assert j.judge()["gates"]["W3s_surrogate_gradient_differs"] is False

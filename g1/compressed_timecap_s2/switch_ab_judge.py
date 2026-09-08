@@ -3,7 +3,10 @@ dump written by the learner's A/B diagnostic and applies the frozen criteria. No
 
   W1 the weights differ      : mean |w_A - w_B| > 1e-3 and max > 1e-2
   W2 the change is targeted  : mean |dw| on firing cells >= 2x the mean on non-firing cells
-  W3 the gradient differs    : cosine(grad_A, grad_B) < 0.9999, clamped to [-1, 1]
+  W3 (superseded, reported)  : cosine of the WHOLE PPO loss gradient < 0.9999 — run 4's object
+  W3' the surrogate gradient : cosine of the policy SURROGATE gradient < 0.9999, clamped, max
+                               over calls (prereg Addendum B: same threshold and aggregation,
+                               only the measured object changed, after the decomposition)
   W4 reported, not gated     : the change split by the sign of the advantage
 
 The relative L2 difference is a SEPARATE diagnostic and never substitutes for W3: a gradient
@@ -51,7 +54,7 @@ def judge():
                           "target_ratio_min": TARGET_RATIO_MIN, "grad_cos_max": GRAD_COS_MAX}}
     if not rs:
         res["gates"] = {k: False for k in ("W1_weights_differ", "W2_change_is_targeted",
-                                           "W3_gradient_differs")}
+                                           "W3_gradient_differs", "W3s_surrogate_gradient_differs")}
         res["verdict"] = "STOP_SWITCH_AB:no_calls_recorded"
         _write(res)
         return res
@@ -72,7 +75,11 @@ def judge():
     g["W1_weights_differ"] = bool(dm is not None and dm > W_DELTA_MEAN_MIN
                                   and dmx is not None and dmx > W_DELTA_MAX_MIN)
     g["W2_change_is_targeted"] = bool(ratio is not None and ratio >= TARGET_RATIO_MIN)
-    g["W3_gradient_differs"] = bool(gcos and float(np.max(gcos)) < GRAD_COS_MAX)
+    g["W3_gradient_differs"] = bool(gcos and float(np.max(gcos)) < GRAD_COS_MAX)   # reported
+    # W3' on the surrogate gradient, first call excluded (estimator warm-up), null must be zero
+    pi = [min(1.0, max(-1.0, float(r["pi_cosine"]))) for r in rs[1:] if r.get("pi_cosine") is not None]
+    pi_null_ok = all(float(r.get("pi_rel_l2_null", 1.0)) == 0.0 for r in rs[1:] if r.get("pi_cosine") is not None)
+    g["W3s_surrogate_gradient_differs"] = bool(pi and float(np.max(pi)) < GRAD_COS_MAX and pi_null_ok)
 
     res["pooled"] = {
         "w_delta_mean": dm, "w_delta_max": dmx,
@@ -168,9 +175,10 @@ def judge():
             "delta_mean": float(np.mean([t["delta"] for t in top])),
         }
     res["gates"] = g
-    keys = ("W1_weights_differ", "W2_change_is_targeted", "W3_gradient_differs")
+    keys = ("W1_weights_differ", "W2_change_is_targeted", "W3s_surrogate_gradient_differs")
     res["verdict"] = ("SWITCH_AB_PASS" if all(g[k] for k in keys)
                       else "STOP_SWITCH_AB:" + ",".join(k for k in keys if not g[k]))
+    res["verdict_run4_object"] = ("PASS" if g["W3_gradient_differs"] else "FAIL") + " (whole-loss cosine, superseded, reported only)"
     _write(res)
     return res
 

@@ -27,6 +27,12 @@ Not established: anything about benefit. A 32 % change in the policy gradient is
 
 Scope, as registered: the reweighting once enabled (the warmup bypassed inside the diagnostic); the learner's running estimators started fresh; the local policy was not restored.
 
+## 3a. Addendum A — wording, per the ruling (2026-09-08)
+
+Two sentences above are too strong and are read as follows. "Changes the policy gradient by 32 %" means *changes the gradient of the policy surrogate loss* by 32 % in relative L2; it does not mean the policy update changed by 32 %, because gradient clipping (global norm 20 over actor and critic together, see below) and the optimiser state sit between the gradient and the update. "The actor's update does change, substantially" in §3 is withdrawn in favour of: the actor's surrogate-loss gradient changes substantially. Nothing here says anything about carbon.
+
+Implementation fact: the global module clips by global norm over all of its parameters, the separate-trunk critic included. With the value term's gradient norm about 18.5 and the total about 19.3 against a clip of 20, the critic decides whether clipping engages and can scale the actor's update indirectly; the matched pair must keep this identical in both lines.
+
 ## 4. For a ruling
 
 Run 4's verdict stands as recorded on the object it measured. The ruling anticipated this branch: if the policy gradient changes clearly and was swamped by the value gradient, the wiring check should be re-registered on the right object. That re-registration — the surrogate gradient, its own null, and a margin fixed before any further run — is the ruling's to make, not this reading's. Nothing in the mechanism was touched.
