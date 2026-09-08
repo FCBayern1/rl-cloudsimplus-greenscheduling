@@ -79,3 +79,58 @@ def test_control_block_differs_only_in_the_source(tmp_path, monkeypatch):
         assert b["crd"]["forecast"]["source"] == "instantaneous_carbon_cf"
         assert sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k)) == [
             "crd", "experiment_name", "simulation_name"]
+
+
+def _switch_judge():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "switch_ab_judge", os.path.join(G1, "switch_ab_judge.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _write_calls(path, rows_):
+    import json
+    with open(path, "w") as f:
+        for r in rows_:
+            f.write(json.dumps(r) + "\n")
+
+
+def _call(dw=0.05, dmax=0.2, firing=0.2, nonfiring=0.01, cos=0.99):
+    return {"call": 1, "n_valid": 100, "n_firing": 5, "w_delta_mean": dw, "w_delta_max": dmax,
+            "w_delta_mean_firing": firing, "w_delta_mean_nonfiring": nonfiring,
+            "grad_cosine": cos, "grad_rel_l2": 0.1, "adv_cosine": 0.99,
+            "frac_neg_damped": 0.6, "frac_pos_damped": 0.4,
+            "w_ratio_neg_mean": 0.97, "w_ratio_pos_mean": 1.02,
+            "n_neg_adv": 40, "n_pos_adv": 60,
+            "top_changed": [{"delta": dmax, "adv_sign": -1, "firing": True}]}
+
+
+def test_switch_judge_passes_a_targeted_change(tmp_path, monkeypatch):
+    j = _switch_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
+    _write_calls(j.DUMP, [_call(), _call()])
+    res = j.judge()
+    assert res["verdict"] == "SWITCH_AB_PASS"
+    assert res["pooled"]["targeting_ratio"] == 20.0
+    assert res["advantage_sign"]["frac_neg_damped_mean"] == 0.6
+
+
+def test_switch_judge_names_each_failing_criterion(tmp_path, monkeypatch):
+    j = _switch_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
+    # inert weights, an untargeted change and an unchanged gradient
+    _write_calls(j.DUMP, [_call(dw=1e-6, dmax=1e-6, firing=0.01, nonfiring=0.01, cos=1.0)])
+    res = j.judge()
+    for k in ("W1_weights_differ", "W2_change_is_targeted", "W3_gradient_differs"):
+        assert k in res["verdict"]
+
+
+def test_switch_judge_stops_when_nothing_was_recorded(tmp_path, monkeypatch):
+    j = _switch_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    monkeypatch.setattr(j, "DUMP", str(tmp_path / "missing.jsonl"))
+    assert j.judge()["verdict"] == "STOP_SWITCH_AB:no_calls_recorded"
