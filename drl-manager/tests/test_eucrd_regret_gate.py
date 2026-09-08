@@ -197,3 +197,25 @@ def test_w3s_requires_an_exact_surrogate_null(tmp_path, monkeypatch):
         rows_.append(r)
     _write_calls(j.DUMP, rows_)
     assert j.judge()["gates"]["W3s_surrogate_gradient_differs"] is False
+
+
+def test_matched_pair_lines_differ_only_in_crd_enabled(tmp_path, monkeypatch):
+    import importlib.util, yaml
+    spec = importlib.util.spec_from_file_location("gen_matched_pair", os.path.join(G1, "gen_matched_pair.py"))
+    g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+    if not os.path.exists(g.SRC):
+        pytest.skip("RL_V2 CPU twin config not present")
+    monkeypatch.setattr(g, "OUT", str(tmp_path / "cfg.yml"))
+    monkeypatch.setattr(g, "MANIFEST", str(tmp_path / "manifest.json"))
+    out = g.build()
+    v, e = out["mp_V_err"], out["mp_E_err"]
+    assert v["perturb_tier"] == e["perturb_tier"] == "shrink75"
+    assert v["training"]["total_timesteps"] == e["training"]["total_timesteps"] == 120000
+    assert v["crd"]["enabled"] is False and e["crd"]["enabled"] is True
+    assert e["crd"]["forecast"]["source"] == "candidate_carbon_regret"
+    assert sorted(k for k in set(v) | set(e) if v.get(k) != e.get(k)) == [
+        "crd", "experiment_name", "simulation_name"]
+    assert sorted(k for k in set(v["crd"]) | set(e["crd"]) if v["crd"].get(k) != e["crd"].get(k)) == ["enabled"]
+    assert v["global_model"]["max_grad_norm"] == e["global_model"]["max_grad_norm"] == 20.0
+    man = yaml.safe_load(open(tmp_path / "manifest.json"))
+    assert man["seeds"] == [20260911, 20260912, 20260913]
