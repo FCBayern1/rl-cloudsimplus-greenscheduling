@@ -34,6 +34,15 @@ Pooled over the six windows, per tier. Comparisons are `ss_on` against `ss_off` 
 
 The trial screens direction only. No verdict on the matched pair is taken from it by the numbers alone; the reading goes to a ruling.
 
+## 3a. Addendum A — comparison conditions (2026-09-08, ruling received while `ss_on` was training; no deployment result had been produced)
+
+1. **Primary pair is `ss_on` against `ss_norw`**, which differ in exactly one key (`crd.responsibility.reweight_advantages`, asserted by the generator): that isolates the effect of applying the responsibility weights. `ss_on` against `ss_off` differs in the forecast source only — the Q-ensemble is trained in both — and is kept as the broader control for the forecast channel. The §3 margins and the completion guard apply unchanged to the primary pair.
+2. **Attribution to one update needs matched samples and optimiser state.** Optimiser state: fresh Adam moments in every arm, identical by construction, disclosed. Samples: the first iteration's batch is sampled by the same restored policy with the same seed before any update, so it should be identical across arms; this is **checked, not assumed** — the judge compares the iteration-1 sampling statistics (episode count, env steps, episode-return mean) across the three trained arms and reports a mismatch as a caveat on the whole reading. Restoring the module (Q heads included) is necessary but not sufficient for that identity.
+3. **The pre-update checkpoint is the reference.** `ss_base` is deployed identically, so each trained arm is read against it: whether one iteration moved carbon at all, not only who beat whom.
+4. **Reading order**: contracts first (completion, on-time share, forced deadlines), then same-window absolute carbon per window and pooled, then the clean tier for regression. No single best window and no mean-only reading.
+
+The trial's reading serves the machine-time decision only; it carries no conclusion on whether EU-CRD is finally effective or ineffective.
+
 ## 4. What it cannot say
 
 Nothing about the trained-from-scratch matched pair, nothing about seeds (one seed), nothing about the mechanism's long-run effect, and nothing about the 2020 windows. A "little change" reading leaves the pair's case exactly where the switch comparison left it.

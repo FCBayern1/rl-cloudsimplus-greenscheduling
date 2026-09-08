@@ -274,8 +274,11 @@ def test_small_step_screen_reads_direction_with_the_completion_guard(tmp_path, m
     _write_eval(tmp_path, "ss_on", "shrink75", [0.9] * 6)            # 10 % lower, same completion
     _write_eval(tmp_path, "ss_on", "godeye", [1.02] * 6)             # 2 % worse clean: little change
     res = j.judge()
-    assert res["screen"]["shrink75"]["verdict"] == "CLEARLY_BETTER"
+    assert res["screen"]["shrink75"]["primary_verdict"] == "CLEARLY_BETTER"   # on vs norw
+    assert res["screen"]["shrink75"]["control_verdict"] == "CLEARLY_BETTER"   # on vs off
     assert res["screen"]["godeye"]["verdict"] == "LITTLE_CHANGE"
+    assert len(res["per_window_carbon"]["shrink75"]["ss_on"]) == 6
+    assert "identical" in res["batch_identity"]
     # the same carbon gain with LOWER completion is not "better"
     _write_eval(tmp_path, "ss_on", "shrink75", [0.9] * 6, comp=0.5)
     assert j.judge()["screen"]["shrink75"]["verdict"] == "LITTLE_CHANGE"
