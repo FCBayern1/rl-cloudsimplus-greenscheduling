@@ -155,3 +155,27 @@ def test_switch_judge_pairs_each_call_against_its_own_null(tmp_path, monkeypatch
     assert p["resolvable"] is True
     # a cosine that rounds above 1 is clamped, and W3 is still decided on it
     assert res["pooled"]["grad_cosine_max"] <= 1.0
+
+
+def test_switch_judge_reports_the_decomposition_without_gating_on_it(tmp_path, monkeypatch):
+    j = _switch_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
+    rows_ = []
+    for i in range(3):
+        r = _call(cos=0.99999)                      # total gradient barely moves ...
+        r.update({"grad_rel_l2": 0.0006, "grad_rel_l2_null": 0.0, "grad_cosine_null": 1.0,
+                  "pi_cosine": 0.95, "pi_rel_l2": 0.3, "pi_cosine_null": 1.0,
+                  "pi_rel_l2_null": 0.0, "pi_norm_a": 1.0, "pi_norm_b": 1.1,
+                  "vf_norm_a": 50.0, "entkl_norm_a": 2.0, "pi_share_of_total_norm": 0.02,
+                  "pi_delta_norm": 0.3, "total_delta_norm": 0.3})
+        rows_.append(r)
+    _write_calls(j.DUMP, rows_)
+    res = j.judge()
+    d = res["decomposition"]
+    assert d["calls"] == 2                            # the first call is excluded
+    assert d["pi_resolvable"] is True
+    assert d["dilution_ratio_median"] == 0.3 / 0.0006  # ... while the surrogate moves a lot
+    assert d["vf_norm_median"] == 50.0
+    # the decomposition never changes the frozen verdict
+    assert res["gates"]["W3_gradient_differs"] is False

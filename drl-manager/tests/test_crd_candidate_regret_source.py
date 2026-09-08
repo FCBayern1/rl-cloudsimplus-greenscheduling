@@ -587,3 +587,88 @@ def test_switch_ab_null_is_exactly_zero_when_the_loss_path_is_stochastic(tmp_pat
     assert row["grad_rel_l2_null"] == 0.0            # the null is exact, not merely small
     assert row["grad_rel_l2"] > 1e-6                 # so the A/B difference is resolvable
     assert torch.equal(torch.random.get_rng_state(), rng_before)   # run's RNG untouched
+
+
+def test_switch_ab_decomposes_the_gradient_by_term(tmp_path, monkeypatch):
+    """Surrogate + value + entropy/KL must add up to the total, the surrogate null must be
+    exact, and the surrogate-only A/B difference must be read through parameters the
+    surrogate reaches (the shared weight here), not only a final layer."""
+    import json
+    import torch.nn as nn
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import (
+        COL_CRD_FORECAST, COL_CRD_R_ROUTING, CRDPPOTorchLearner,
+    )
+
+    learner = _loss_helper()
+    learner._crd_share_scale_ema = {}
+    learner._crd_forecast_anom_ema = {}
+    learner._crd_reweight_calls = {}
+    learner._read_module_responsibility_config = lambda mid: {
+        "normalize_shares": False, "rho_min": 0.05, "anomaly_gate": False,
+        "normalize_rho": True, "reweight_advantages": True,
+        "responsibility_shrink_strength": 1.0}
+    learner._read_crd_mask_padding = lambda mid: False
+    shared = nn.Linear(2, 1)                          # reached by surrogate AND value
+    shared.weight.data.copy_(torch.tensor([[1.0, -1.0]])); shared.bias.data.fill_(0.1)
+    vhead = nn.Linear(1, 1)                           # reached by the value term only
+    vhead.weight.data.fill_(0.5); vhead.bias.data.fill_(0.0)
+
+    class _Mod:
+        def parameters(self):
+            return list(shared.parameters()) + list(vhead.parameters())
+
+    learner._module_stub = {"global_agent": _Mod()}
+    monkeypatch.setattr(type(learner), "module",
+                        property(lambda self: self._module_stub), raising=False)
+
+    class _Sched:
+        def get_current_value(self):
+            return 0.3
+
+    learner.entropy_coeff_schedulers_per_module = {"global_agent": _Sched()}
+
+    class _Cfg:
+        vf_loss_coeff = 2.0
+        use_kl_loss = True
+        kl_coeff = 1.0
+
+    # a stand-in with the real loss's term structure and coefficient plumbing
+    def _loss(*, module_id, config, batch, fwd_out):
+        h = shared(fwd_out["x"]).squeeze(-1)
+        surrogate = (batch[Postprocessing.ADVANTAGES] * h).mean()
+        vf = ((vhead(h.unsqueeze(-1)).squeeze(-1) - 1.0) ** 2).mean()
+        ent = (h ** 2).mean()
+        kl = (h.abs()).mean()
+        ent_c = learner.entropy_coeff_schedulers_per_module[module_id].get_current_value()
+        total = -surrogate + config.vf_loss_coeff * vf - ent_c * ent
+        if config.use_kl_loss:
+            total = total + config.kl_coeff * kl
+        return total
+    monkeypatch.setattr(CRDPPOTorchLearner.__bases__[0], "compute_loss_for_module",
+                        staticmethod(_loss), raising=False)
+
+    rf = torch.tensor([[0.0, 0.0, 3.0, 0.0], [0.0, 6.0, 0.0, 0.0]])
+    adv_pre = torch.tensor([[1.0, -2.0, 3.0, -4.0], [5.0, -6.0, 7.0, 8.0]])
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: torch.ones(2, 4),
+             Columns.REWARDS: torch.zeros(2, 4), Columns.LOSS_MASK: torch.ones(2, 4),
+             Postprocessing.ADVANTAGES: adv_pre.clone()}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+    p = tmp_path / "ab.jsonl"
+    learner._crd_switch_ab(module_id="global_agent", config=_Cfg(), batch=batch,
+                           fwd_out={"x": torch.tensor([[[1., 0.], [0., 1.], [1., 1.], [0.5, 0.2]],
+                                                       [[0., 1.], [1., 0.], [0.2, 0.9], [0.7, 0.3]]])},
+                           adv_pre=adv_pre, path=str(p))
+
+    row = json.loads(open(p).read().strip())
+    assert row["pi_rel_l2_null"] == 0.0                     # surrogate null exact
+    assert row["pi_rel_l2"] > 0.0 and row["pi_delta_norm"] > 0.0
+    # the value term only reaches the value head and the shared layer: it must be non-zero,
+    # and the three parts must reconstruct the total change (A/B differ only in advantages,
+    # so the value and entropy/KL contributions cancel in the difference)
+    assert row["vf_norm_a"] > 0.0 and row["entkl_norm_a"] > 0.0
+    assert abs(row["pi_delta_norm"] - row["total_delta_norm"]) < 1e-5
+    assert 0.0 < row["pi_share_of_total_norm"] < 10.0
+    # the run's entropy scheduler and its coefficients are back in place
+    assert learner.entropy_coeff_schedulers_per_module["global_agent"].get_current_value() == 0.3

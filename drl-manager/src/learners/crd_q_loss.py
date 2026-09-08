@@ -2297,26 +2297,76 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             if var_ema0 is not None:
                 self._vf_target_var_ema = _copy.deepcopy(var_ema0)
 
-        def _grad(adv):
+        # Term decomposition (prereg Addendum A, diagnostic only). The parent loss is linear
+        # in its terms, -surrogate + c_vf * vf - c_ent * entropy + c_kl * kl, so the surrogate
+        # gradient alone is the gradient with the other coefficients set to zero INSIDE this
+        # diagnostic; the critic is not disabled and the run's coefficients are restored.
+        # The surrogate gradient is taken with respect to every parameter it reaches.
+        class _CfgOverride:
+            def __init__(self, base, **over):
+                object.__setattr__(self, "_b", base); object.__setattr__(self, "_o", over)
+
+            def __getattr__(self, k):
+                o = object.__getattribute__(self, "_o")
+                return o[k] if k in o else getattr(object.__getattribute__(self, "_b"), k)
+
+        class _ZeroCoeff:
+            def get_current_value(self):
+                return 0.0
+
+        cfg_pi = _CfgOverride(config, vf_loss_coeff=0.0, use_kl_loss=False)
+        cfg_pi_vf = _CfgOverride(config, use_kl_loss=False)
+        ent_sched = getattr(self, "entropy_coeff_schedulers_per_module", None)
+
+        def _grad(adv, mode="total"):
             torch.random.set_rng_state(rng0)
             _restore_loss_state()
             batch[Postprocessing.ADVANTAGES] = adv
-            loss = super(CRDPPOTorchLearner, self).compute_loss_for_module(
-                module_id=module_id, config=config, batch=batch, fwd_out=fwd_out)
+            cfg = {"total": config, "pi": cfg_pi, "pi_vf": cfg_pi_vf}[mode]
+            saved_sched = None
+            if mode != "total" and isinstance(ent_sched, dict) and module_id in ent_sched:
+                saved_sched = ent_sched[module_id]
+                ent_sched[module_id] = _ZeroCoeff()
+            try:
+                loss = super(CRDPPOTorchLearner, self).compute_loss_for_module(
+                    module_id=module_id, config=cfg, batch=batch, fwd_out=fwd_out)
+            finally:
+                if saved_sched is not None:
+                    ent_sched[module_id] = saved_sched
             ps = [p for p in self.module[module_id].parameters() if p.requires_grad]
             gs = torch.autograd.grad(loss, ps, retain_graph=True, allow_unused=True)
             return torch.cat([g.detach().flatten() for g in gs if g is not None])
 
+        def _cmp(x, y):
+            return (float(torch.nn.functional.cosine_similarity(x, y, dim=0).item()),
+                    float(((x - y).norm() / x.norm().clamp(min=1e-12)).item()))
+
+        terms = {}
         try:
             gA, gB = _grad(adv_A_eff), _grad(adv_B_eff)
             # null baseline: the SAME advantages scored twice. Any difference here is the
             # harness's own non-determinism, and the A-vs-B numbers mean nothing below it.
             gN = _grad(adv_A_eff)
-            cos = float(torch.nn.functional.cosine_similarity(gA, gB, dim=0).item())
-            cos_null = float(torch.nn.functional.cosine_similarity(gA, gN, dim=0).item())
+            cos, grel = _cmp(gA, gB)
+            cos_null, grel_null = _cmp(gA, gN)
             gnorm = (float(gA.norm().item()), float(gB.norm().item()))
-            grel = float(((gA - gB).norm() / gA.norm().clamp(min=1e-12)).item())
-            grel_null = float(((gA - gN).norm() / gA.norm().clamp(min=1e-12)).item())
+            # the surrogate term on its own, A vs B, with its own null
+            pA, pB, pN = _grad(adv_A_eff, "pi"), _grad(adv_B_eff, "pi"), _grad(adv_A_eff, "pi")
+            pvA = _grad(adv_A_eff, "pi_vf")
+            pi_cos, pi_rel = _cmp(pA, pB)
+            pi_cos_null, pi_rel_null = _cmp(pA, pN)
+            vfA = pvA - pA                               # the value term's contribution (A)
+            entklA = gA - pvA                            # entropy + KL remainder (A)
+            terms = {
+                "pi_cosine": pi_cos, "pi_rel_l2": pi_rel,
+                "pi_cosine_null": pi_cos_null, "pi_rel_l2_null": pi_rel_null,
+                "pi_norm_a": float(pA.norm().item()), "pi_norm_b": float(pB.norm().item()),
+                "vf_norm_a": float(vfA.norm().item()),
+                "entkl_norm_a": float(entklA.norm().item()),
+                "pi_share_of_total_norm": float((pA.norm() / gA.norm().clamp(min=1e-12)).item()),
+                "pi_delta_norm": float((pA - pB).norm().item()),
+                "total_delta_norm": float((gA - gB).norm().item()),
+            }
         except Exception as e:                          # a diagnostic must never stop a run
             logger.warning(f"[CRD] switch-AB gradient comparison failed: {e}")
             cos, gnorm, grel = None, (None, None), None
@@ -2347,6 +2397,7 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             "grad_cosine": cos, "grad_norm_a": gnorm[0], "grad_norm_b": gnorm[1],
             "grad_rel_l2": grel,
             "grad_cosine_null": cos_null, "grad_rel_l2_null": grel_null,
+            **terms,
         }
         for name, sel in (("neg", (adv_pre < 0) & m), ("pos", (adv_pre > 0) & m)):
             if bool(sel.any()):

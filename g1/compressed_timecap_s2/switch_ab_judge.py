@@ -23,7 +23,7 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "stage_a_out", "eucrd_switch_ab")
+OUT = os.environ.get("SWITCH_AB_OUT", "").strip() or os.path.join(HERE, "stage_a_out", "eucrd_switch_ab")
 DUMP = os.path.join(OUT, "switch_ab.jsonl")
 W_DELTA_MEAN_MIN, W_DELTA_MAX_MIN, TARGET_RATIO_MIN, GRAD_COS_MAX = 1e-3, 1e-2, 2.0, 0.9999
 
@@ -135,6 +135,30 @@ def judge():
             "resolvable": bool(ab.size == nu.size and float(np.median(ab)) > float(np.median(nu))),
         }
 
+    # Term decomposition (prereg Addendum A): the surrogate gradient on its own, A vs B, with
+    # its own null and the norms of the terms it shares the total with. Diagnostic only; it
+    # does not re-judge W3 and the first call (the estimators' own warm-up) is excluded.
+    dec = [r for r in rs[1:] if r.get("pi_cosine") is not None]
+    if dec:
+        pi_cos = np.clip(np.array([r["pi_cosine"] for r in dec]), -1.0, 1.0)
+        pi_rel = np.array([r["pi_rel_l2"] for r in dec])
+        pi_nul = np.array([r["pi_rel_l2_null"] for r in dec])
+        tot_rel = np.array([r["grad_rel_l2"] for r in dec if r.get("grad_rel_l2") is not None])
+        res["decomposition"] = {
+            "calls": len(dec),
+            "pi_cosine_min": float(pi_cos.min()), "pi_cosine_mean": float(pi_cos.mean()),
+            "pi_rel_l2_median": float(np.median(pi_rel)), "pi_rel_l2_max": float(pi_rel.max()),
+            "pi_rel_l2_null_max": float(pi_nul.max()),
+            "pi_resolvable": bool(np.median(pi_rel) > np.median(pi_nul)),
+            "total_rel_l2_median": (float(np.median(tot_rel)) if tot_rel.size else None),
+            "dilution_ratio_median": (float(np.median(pi_rel) / max(1e-12, np.median(tot_rel)))
+                                      if tot_rel.size else None),
+            "pi_norm_median": float(np.median([r["pi_norm_a"] for r in dec])),
+            "vf_norm_median": float(np.median([r["vf_norm_a"] for r in dec])),
+            "entkl_norm_median": float(np.median([r["entkl_norm_a"] for r in dec])),
+            "pi_share_of_total_norm_median": float(np.median([r["pi_share_of_total_norm"] for r in dec])),
+        }
+
     top = [t for r in rs for t in (r.get("top_changed") or [])]
     if top:
         res["top_changed"] = {
@@ -155,7 +179,8 @@ def _write(res):
     os.makedirs(OUT, exist_ok=True)
     json.dump(res, open(os.path.join(OUT, "switch_ab.json"), "w"), indent=1)
     print(json.dumps({k: res[k] for k in ("calls", "gates", "verdict", "pooled", "paired_null",
-                                          "advantage_sign", "top_changed") if k in res}, indent=1))
+                                          "decomposition", "advantage_sign", "top_changed")
+                      if k in res}, indent=1))
 
 
 if __name__ == "__main__":
