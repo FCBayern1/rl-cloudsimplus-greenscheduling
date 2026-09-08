@@ -70,6 +70,10 @@ def judge():
         "grad_cosine_mean": (float(np.mean(gcos)) if gcos else None),
         "grad_cosine_max": (float(np.max(gcos)) if gcos else None),
         "grad_rel_l2_mean": _pool(rs, "grad_rel_l2")[0],
+        # null baseline: the same advantages scored twice. The A-vs-B numbers are only
+        # meaningful above it (added after the first run measured a non-zero harness noise).
+        "grad_cosine_null_mean": _pool(rs, "grad_cosine_null")[0],
+        "grad_rel_l2_null_mean": _pool(rs, "grad_rel_l2_null")[0],
         "adv_cosine_mean": _pool(rs, "adv_cosine")[0],
         "n_valid_mean": _pool(rs, "n_valid")[0], "n_firing_mean": _pool(rs, "n_firing")[0],
     }

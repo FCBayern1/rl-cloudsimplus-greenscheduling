@@ -2246,16 +2246,29 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                  if hasattr(self, n)}
         applied_A = isinstance(batch.get("crd_reweight_applied"), torch.Tensor)
 
-        # ── variant B: the same responsibilities with the forecast channel silent ──
-        batch[Postprocessing.ADVANTAGES] = adv_pre.clone()
-        batch[COL_CRD_FORECAST] = torch.zeros_like(rf)
-        batch.pop("crd_reweight_applied", None)
-        self._compute_responsibilities(module_id=module_id, batch=batch)
-        adv_B = batch[Postprocessing.ADVANTAGES].detach().clone()
-        w_B = batch.get("crd_w_guarded")
-        w_B = w_B.detach().clone() if isinstance(w_B, torch.Tensor) else torch.ones_like(adv_pre)
-        for n, v in state.items():                      # the diagnostic must not advance state
-            setattr(self, n, v)
+        def _weights(forecast_col):
+            """Responsibility weights this batch would produce with the given forecast
+            column, warmup bypassed, leaving no trace on the run's estimator state."""
+            batch[Postprocessing.ADVANTAGES] = adv_pre.clone()
+            batch[COL_CRD_FORECAST] = forecast_col
+            batch.pop("crd_reweight_applied", None)
+            self._crd_ab_force_reweight = True
+            try:
+                self._compute_responsibilities(module_id=module_id, batch=batch)
+            finally:
+                self._crd_ab_force_reweight = False
+            w = batch.get("crd_w_guarded")
+            w = w.detach().clone() if isinstance(w, torch.Tensor) else torch.ones_like(adv_pre)
+            for n, v in _copy.deepcopy(state).items():  # never advance the observed run
+                setattr(self, n, v)
+            return w
+
+        # Both variants are scored with their weights applied, even inside the warmup: the
+        # question is what the weights would do to learning (prereg §1).
+        w_A = _weights(rf)
+        w_B = _weights(torch.zeros_like(rf))
+
+        # put the batch back exactly as the pipeline left it
         batch[COL_CRD_FORECAST] = rf
         for k, v in keep.items():
             if v is None:
@@ -2265,12 +2278,6 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         if applied_A:
             batch["crd_reweight_applied"] = torch.ones(1, device=adv_A.device)
 
-        w_A = keep.get("crd_w_guarded")
-        if not isinstance(w_A, torch.Tensor):
-            w_A = torch.ones_like(adv_pre)
-        # If this call is still inside the warmup, variant A left the advantages untouched.
-        # The question is what the weights would do to learning, so both variants are scored
-        # with their weights applied (prereg §1).
         adv_A_eff = adv_pre * w_A
         adv_B_eff = adv_pre * w_B
 
@@ -2284,12 +2291,18 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
 
         try:
             gA, gB = _grad(adv_A_eff), _grad(adv_B_eff)
+            # null baseline: the SAME advantages scored twice. Any difference here is the
+            # harness's own non-determinism, and the A-vs-B numbers mean nothing below it.
+            gN = _grad(adv_A_eff)
             cos = float(torch.nn.functional.cosine_similarity(gA, gB, dim=0).item())
+            cos_null = float(torch.nn.functional.cosine_similarity(gA, gN, dim=0).item())
             gnorm = (float(gA.norm().item()), float(gB.norm().item()))
             grel = float(((gA - gB).norm() / gA.norm().clamp(min=1e-12)).item())
+            grel_null = float(((gA - gN).norm() / gA.norm().clamp(min=1e-12)).item())
         except Exception as e:                          # a diagnostic must never stop a run
             logger.warning(f"[CRD] switch-AB gradient comparison failed: {e}")
             cos, gnorm, grel = None, (None, None), None
+            cos_null, grel_null = None, None
         batch[Postprocessing.ADVANTAGES] = adv_A        # leave the run on variant A
 
         lm = batch.get(Columns.LOSS_MASK)
@@ -2313,6 +2326,7 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
                 adv_A_eff[m].flatten(), adv_B_eff[m].flatten(), dim=0).item()),
             "grad_cosine": cos, "grad_norm_a": gnorm[0], "grad_norm_b": gnorm[1],
             "grad_rel_l2": grel,
+            "grad_cosine_null": cos_null, "grad_rel_l2_null": grel_null,
         }
         for name, sel in (("neg", (adv_pre < 0) & m), ("pos", (adv_pre > 0) & m)):
             if bool(sel.any()):
@@ -2530,6 +2544,12 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             # ensemble earn competence under vanilla PPO first; ρ is still
             # computed and logged above, so diagnostics are unaffected.
             warmup = int(cfg.get("reweight_warmup_calls", 0))
+            # The switch comparison scores both variants with their weights applied even
+            # inside the warmup: its question is what the weights would do to learning, not
+            # whether this call was past the counter (EUCRD_SWITCH_AB_PREREG §1). Only that
+            # diagnostic sets this, and it restores the counter afterwards.
+            if getattr(self, "_crd_ab_force_reweight", False):
+                warmup = 0
             if warmup > 0:
                 if not hasattr(self, "_crd_reweight_calls"):
                     self._crd_reweight_calls = {}

@@ -492,3 +492,42 @@ def test_switch_ab_reports_no_change_when_the_forecast_channel_is_silent(tmp_pat
     assert row["n_firing"] == 0
     assert row["w_delta_max"] < 1e-9                    # nothing to remove, nothing changes
     assert row["grad_cosine"] > 0.999999
+
+
+def test_switch_ab_scores_both_variants_inside_the_warmup(tmp_path, monkeypatch):
+    """The run leaves the advantages untouched during the warmup; the comparison must still
+    score what the weights WOULD do, and must not advance the warmup counter."""
+    import json
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import COL_CRD_FORECAST, COL_CRD_R_ROUTING
+
+    learner, _ = _switch_ab_learner(tmp_path, monkeypatch)
+    learner._read_module_responsibility_config = lambda mid: {
+        "normalize_shares": False, "rho_min": 0.05, "anomaly_gate": False,
+        "normalize_rho": True, "reweight_advantages": True,
+        "responsibility_shrink_strength": 1.0, "reweight_warmup_calls": 450,
+    }
+    rf = torch.tensor([[0.0, 0.0, 3.0, 0.0], [0.0, 6.0, 0.0, 0.0]])
+    adv_pre = torch.tensor([[1.0, -2.0, 3.0, -4.0], [5.0, -6.0, 7.0, 8.0]])
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: torch.ones(2, 4),
+             Columns.REWARDS: torch.zeros(2, 4), Columns.LOSS_MASK: torch.ones(2, 4),
+             Postprocessing.ADVANTAGES: adv_pre.clone()}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+    # inside the warmup the run itself does not reweight
+    torch.testing.assert_close(batch[Postprocessing.ADVANTAGES], adv_pre)
+    calls_before = dict(learner._crd_reweight_calls)
+
+    p = tmp_path / "ab.jsonl"
+    learner._crd_switch_ab(module_id="global_agent", config=None, batch=batch,
+                           fwd_out={"x": torch.tensor([[[1., 0.], [0., 1.], [1., 1.], [0.5, 0.2]],
+                                                       [[0., 1.], [1., 0.], [0.2, 0.9], [0.7, 0.3]]])},
+                           adv_pre=adv_pre, path=str(p))
+
+    row = json.loads(open(p).read().strip())
+    assert row["reweight_applied_in_run"] is False          # the run is still in warmup
+    assert row["w_delta_mean"] > 1e-3                        # yet the comparison has weights
+    assert row["w_delta_mean_firing"] > row["w_delta_mean_nonfiring"]
+    assert row["grad_cosine_null"] is not None
+    assert learner._crd_reweight_calls == calls_before       # counter not advanced
+    torch.testing.assert_close(batch[Postprocessing.ADVANTAGES], adv_pre)

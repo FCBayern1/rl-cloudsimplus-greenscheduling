@@ -1,0 +1,44 @@
+{
+ "calls": 198,
+ "dump": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab/switch_ab.jsonl",
+ "thresholds": {
+  "w_delta_mean_min": 0.001,
+  "w_delta_max_min": 0.01,
+  "target_ratio_min": 2.0,
+  "grad_cos_max": 0.9999
+ },
+ "pooled": {
+  "w_delta_mean": 0.0,
+  "w_delta_max": 0.0,
+  "w_delta_mean_firing": 0.0,
+  "w_delta_mean_nonfiring": 0.0,
+  "targeting_ratio": null,
+  "calls_with_firing": 198,
+  "grad_cosine_mean": 0.9999904174997349,
+  "grad_cosine_max": 1.0000308752059937,
+  "grad_rel_l2_mean": 0.00297502476970487,
+  "adv_cosine_mean": 0.9999999771214495,
+  "n_valid_mean": 2028.621212121212,
+  "n_firing_mean": 63.90909090909091
+ },
+ "advantage_sign": {
+  "frac_neg_damped_mean": 0.0,
+  "frac_pos_damped_mean": 0.0,
+  "w_ratio_neg_mean": 1.0,
+  "w_ratio_pos_mean": 1.0,
+  "n_neg_adv_mean": 850.6262626262626,
+  "n_pos_adv_mean": 1177.9949494949494
+ },
+ "top_changed": {
+  "n": 990,
+  "frac_firing": 0.006060606060606061,
+  "frac_negative_advantage": 0.3565656565656566,
+  "delta_mean": 0.0
+ },
+ "gates": {
+  "W1_weights_differ": false,
+  "W2_change_is_targeted": false,
+  "W3_gradient_differs": false
+ },
+ "verdict": "STOP_SWITCH_AB:W1_weights_differ,W2_change_is_targeted,W3_gradient_differs"
+}
