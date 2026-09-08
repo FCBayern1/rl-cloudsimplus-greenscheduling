@@ -2287,9 +2287,19 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         # larger than the A-vs-B difference it was supposed to resolve. The state is restored
         # afterwards, so the observed run continues from exactly where it was.
         rng0 = torch.random.get_rng_state()
+        # ... and from the same estimator state inside the loss itself. The critic's
+        # value-target variance EMA is advanced by every call to the parent loss, so three
+        # evaluations would otherwise see three different critic normalisations — a state
+        # difference between A, B and the null that has nothing to do with the advantages.
+        var_ema0 = _copy.deepcopy(getattr(self, "_vf_target_var_ema", None))
+
+        def _restore_loss_state():
+            if var_ema0 is not None:
+                self._vf_target_var_ema = _copy.deepcopy(var_ema0)
 
         def _grad(adv):
             torch.random.set_rng_state(rng0)
+            _restore_loss_state()
             batch[Postprocessing.ADVANTAGES] = adv
             loss = super(CRDPPOTorchLearner, self).compute_loss_for_module(
                 module_id=module_id, config=config, batch=batch, fwd_out=fwd_out)
@@ -2312,6 +2322,7 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             cos, gnorm, grel = None, (None, None), None
             cos_null, grel_null = None, None
         torch.random.set_rng_state(rng0)                # leave the run's randomness untouched
+        _restore_loss_state()                           # and its critic normalisation state
         batch[Postprocessing.ADVANTAGES] = adv_A        # leave the run on variant A
 
         lm = batch.get(Columns.LOSS_MASK)

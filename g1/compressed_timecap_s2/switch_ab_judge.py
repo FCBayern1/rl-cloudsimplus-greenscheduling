@@ -3,8 +3,14 @@ dump written by the learner's A/B diagnostic and applies the frozen criteria. No
 
   W1 the weights differ      : mean |w_A - w_B| > 1e-3 and max > 1e-2
   W2 the change is targeted  : mean |dw| on firing cells >= 2x the mean on non-firing cells
-  W3 the gradient differs    : cosine(grad_A, grad_B) < 0.9999
+  W3 the gradient differs    : cosine(grad_A, grad_B) < 0.9999, clamped to [-1, 1]
   W4 reported, not gated     : the change split by the sign of the advantage
+
+The relative L2 difference is a SEPARATE diagnostic and never substitutes for W3: a gradient
+that is merely rescaled has a non-zero L2 difference and a cosine of exactly 1, so L2 answers
+"did the magnitude change" while only the cosine answers "did the direction change" (ruling
+2026-09-08). A zero gradient in either variant leaves the cosine undefined; such calls are
+counted and excluded rather than scored as 0 or 1.
 
 Usage: python switch_ab_judge.py
 """
@@ -54,7 +60,12 @@ def judge():
     _, dmx, _ = _pool(rs, "w_delta_max")
     f_mean, _, n_f = _pool(rs, "w_delta_mean_firing")
     nf_mean, _, _ = _pool(rs, "w_delta_mean_nonfiring")
-    gcos = [r["grad_cosine"] for r in rs if r.get("grad_cosine") is not None]
+    # cosine clamped into [-1, 1]: nearly parallel gradients round outside the range
+    gcos = [min(1.0, max(-1.0, float(r["grad_cosine"])))
+            for r in rs if r.get("grad_cosine") is not None]
+    n_undefined = sum(1 for r in rs if r.get("grad_cosine") is None
+                      or not np.isfinite(r.get("grad_cosine", np.nan))
+                      or (r.get("grad_norm_a") in (0, 0.0) or r.get("grad_norm_b") in (0, 0.0)))
     ratio = (f_mean / nf_mean) if (f_mean and nf_mean and nf_mean > 0) else None
 
     g = {}
@@ -69,6 +80,12 @@ def judge():
         "targeting_ratio": ratio, "calls_with_firing": n_f,
         "grad_cosine_mean": (float(np.mean(gcos)) if gcos else None),
         "grad_cosine_max": (float(np.max(gcos)) if gcos else None),
+        "grad_cosine_min": (float(np.min(gcos)) if gcos else None),
+        "calls_with_undefined_cosine": int(n_undefined),
+        "grad_norm_ratio_mean": (float(np.mean([r["grad_norm_b"] / r["grad_norm_a"]
+                                                for r in rs
+                                                if r.get("grad_norm_a")]))
+                                 if any(r.get("grad_norm_a") for r in rs) else None),
         "grad_rel_l2_mean": _pool(rs, "grad_rel_l2")[0],
         # null baseline: the same advantages scored twice. The A-vs-B numbers are only
         # meaningful above it (added after the first run measured a non-zero harness noise).
@@ -99,10 +116,12 @@ def judge():
         # well-conditioned. The cosine numbers are still reported (W3 is registered on them).
         ab = np.array([p[2] for p in paired if p[2] is not None])
         nu = np.array([p[3] for p in paired if p[3] is not None])
-        cos_ab = np.array([p[0] for p in paired]); cos_nu = np.array([p[1] for p in paired])
+        cos_ab = np.clip(np.array([1.0 - p[0] for p in paired]), -1.0, 1.0)
+        cos_nu = np.clip(np.array([1.0 - p[1] for p in paired]), -1.0, 1.0)
         res["paired_null"] = {
             "calls": int(min(ab.size, nu.size)),
-            "measure": "relative L2 difference of the two gradients, per call",
+            "measure": "relative L2 difference of the two gradients, per call "
+                       "(a magnitude diagnostic; W3 stays on the cosine)",
             "frac_calls_ab_exceeds_own_null": float(np.mean(ab > nu)) if ab.size == nu.size else None,
             "frac_calls_ab_exceeds_2x_own_null": (float(np.mean(ab > 2 * nu))
                                                   if ab.size == nu.size else None),

@@ -140,12 +140,18 @@ def test_switch_judge_pairs_each_call_against_its_own_null(tmp_path, monkeypatch
     j = _switch_judge()
     monkeypatch.setattr(j, "OUT", str(tmp_path))
     monkeypatch.setattr(j, "DUMP", str(tmp_path / "d.jsonl"))
-    a = _call(cos=0.99); a["grad_cosine_null"] = 0.9999; a["grad_rel_l2_null"] = 0.003
-    b = _call(cos=0.9999); b["grad_cosine_null"] = 0.999949; b["grad_rel_l2_null"] = 0.003
+    # the pairing is read on the relative L2 (a magnitude diagnostic), never on the cosine
+    a = _call(cos=0.99); a["grad_cosine_null"] = 1.0000001; a["grad_rel_l2"] = 0.1
+    a["grad_rel_l2_null"] = 0.003
+    b = _call(cos=0.9999); b["grad_cosine_null"] = 1.0; b["grad_rel_l2"] = 0.004
+    b["grad_rel_l2_null"] = 0.003
     _write_calls(j.DUMP, [a, b])
     res = j.judge()
     p = res["paired_null"]
     assert p["calls"] == 2
     assert p["frac_calls_ab_exceeds_own_null"] == 1.0     # both A/B differences beat their null
     assert p["frac_calls_ab_exceeds_2x_own_null"] == 0.5  # only the first beats it by 2x
-    assert p["one_minus_cos_ab_median"] > p["one_minus_cos_null_median"]
+    assert p["rel_l2_ab_median"] > p["rel_l2_null_median"]
+    assert p["resolvable"] is True
+    # a cosine that rounds above 1 is clamped, and W3 is still decided on it
+    assert res["pooled"]["grad_cosine_max"] <= 1.0
