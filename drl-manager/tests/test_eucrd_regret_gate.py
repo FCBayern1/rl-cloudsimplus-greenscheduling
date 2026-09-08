@@ -219,3 +219,63 @@ def test_matched_pair_lines_differ_only_in_crd_enabled(tmp_path, monkeypatch):
     assert v["global_model"]["max_grad_norm"] == e["global_model"]["max_grad_norm"] == 20.0
     man = yaml.safe_load(open(tmp_path / "manifest.json"))
     assert man["seeds"] == [20260911, 20260912, 20260913]
+
+
+def test_small_step_arms_differ_only_as_registered(tmp_path, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gen_small_step", os.path.join(G1, "gen_small_step.py"))
+    g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+    if not os.path.exists(g.SRC):
+        pytest.skip("wiring config not present")
+    monkeypatch.setattr(g, "OUT", str(tmp_path / "cfg.yml"))
+    monkeypatch.setattr(g, "MANIFEST", str(tmp_path / "manifest.json"))
+    sys.path.insert(0, G1)
+    try:
+        out = g.build()
+    except SystemExit:
+        pytest.skip("no G5-err checkpoint on this machine")
+    on, off, norw = out["ss_on"], out["ss_off"], out["ss_norw"]
+    for b in (on, off, norw):
+        assert b["training"]["total_timesteps"] == 8000
+        assert b["crd"]["responsibility"]["reweight_warmup_calls"] == 0
+        assert b["perturb_tier"] == "shrink75"
+    assert off["crd"]["forecast"]["source"] == "instantaneous_carbon_cf"
+    assert on["crd"]["forecast"]["source"] == norw["crd"]["forecast"]["source"] == "candidate_carbon_regret"
+    assert on["crd"]["responsibility"]["reweight_advantages"] is True
+    assert norw["crd"]["responsibility"]["reweight_advantages"] is False
+
+
+def _ss_judge():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("small_step_judge", os.path.join(G1, "small_step_judge.py"))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def _write_eval(d, arm, tier, carbons, comp=0.9):
+    import csv
+    os.makedirs(d / "eval", exist_ok=True)
+    for i, c in enumerate(carbons):
+        with open(d / "eval" / f"{arm}_{tier}_k{i}.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["total_carbon_kg", "completion_rate", "completion_rate_mi",
+                                              "ontime_mi_share", "deadline_forced_count"])
+            w.writeheader(); w.writerow({"total_carbon_kg": c, "completion_rate": comp,
+                                          "completion_rate_mi": comp, "ontime_mi_share": 0.8,
+                                          "deadline_forced_count": 0})
+
+
+def test_small_step_screen_reads_direction_with_the_completion_guard(tmp_path, monkeypatch):
+    j = _ss_judge()
+    monkeypatch.setattr(j, "OUT", str(tmp_path))
+    for tier in ("godeye", "shrink75"):
+        _write_eval(tmp_path, "ss_base", tier, [1.0] * 6)
+        _write_eval(tmp_path, "ss_off", tier, [1.0] * 6)
+        _write_eval(tmp_path, "ss_norw", tier, [1.0] * 6)
+    _write_eval(tmp_path, "ss_on", "shrink75", [0.9] * 6)            # 10 % lower, same completion
+    _write_eval(tmp_path, "ss_on", "godeye", [1.02] * 6)             # 2 % worse clean: little change
+    res = j.judge()
+    assert res["screen"]["shrink75"]["verdict"] == "CLEARLY_BETTER"
+    assert res["screen"]["godeye"]["verdict"] == "LITTLE_CHANGE"
+    # the same carbon gain with LOWER completion is not "better"
+    _write_eval(tmp_path, "ss_on", "shrink75", [0.9] * 6, comp=0.5)
+    assert j.judge()["screen"]["shrink75"]["verdict"] == "LITTLE_CHANGE"
