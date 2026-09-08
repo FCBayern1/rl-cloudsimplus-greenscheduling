@@ -1,0 +1,63 @@
+{
+ "calls": 198,
+ "dump": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab/switch_ab.jsonl",
+ "thresholds": {
+  "w_delta_mean_min": 0.001,
+  "w_delta_max_min": 0.01,
+  "target_ratio_min": 2.0,
+  "grad_cos_max": 0.9999
+ },
+ "pooled": {
+  "w_delta_mean": 0.01238727320992209,
+  "w_delta_max": 0.47486555576324463,
+  "w_delta_mean_firing": 0.21024817687393438,
+  "w_delta_mean_nonfiring": 0.006286579846272791,
+  "targeting_ratio": 33.44396826496796,
+  "calls_with_firing": 198,
+  "grad_cosine_mean": 0.9999938869115078,
+  "grad_cosine_max": 1.0,
+  "grad_cosine_min": 0.9995913505554199,
+  "calls_with_undefined_cosine": 0,
+  "grad_norm_ratio_mean": 1.00062122383199,
+  "grad_rel_l2_mean": 0.0032620788615072296,
+  "grad_cosine_null_mean": 0.9999859609989205,
+  "grad_rel_l2_null_mean": 0.004827607456525474,
+  "adv_cosine_mean": 0.9982928263418602,
+  "n_valid_mean": 2028.621212121212,
+  "n_firing_mean": 60.91414141414141
+ },
+ "advantage_sign": {
+  "frac_neg_damped_mean": 0.02056061011983665,
+  "frac_pos_damped_mean": 0.009484243618601914,
+  "w_ratio_neg_mean": 0.9971943657205562,
+  "w_ratio_pos_mean": 1.0019815476855847,
+  "n_neg_adv_mean": 842.3434343434343,
+  "n_pos_adv_mean": 1186.2777777777778
+ },
+ "paired_null": {
+  "calls": 198,
+  "measure": "relative L2 difference of the two gradients, per call (a magnitude diagnostic; W3 stays on the cosine)",
+  "frac_calls_ab_exceeds_own_null": 0.26262626262626265,
+  "frac_calls_ab_exceeds_2x_own_null": 0.12121212121212122,
+  "rel_l2_ab_median": 0.002008544746786356,
+  "rel_l2_null_median": 0.003128733253106475,
+  "rel_l2_ratio_median": 0.5987780701901552,
+  "rel_l2_ab_max": 0.035109587013721466,
+  "rel_l2_null_max": 0.07118842750787735,
+  "cos_ab_min": 0.9995913505554199,
+  "cos_null_min": 0.9975690841674805,
+  "resolvable": false
+ },
+ "top_changed": {
+  "n": 990,
+  "frac_firing": 1.0,
+  "frac_negative_advantage": 0.5545454545454546,
+  "delta_mean": 0.4746852417184849
+ },
+ "gates": {
+  "W1_weights_differ": true,
+  "W2_change_is_targeted": true,
+  "W3_gradient_differs": false
+ },
+ "verdict": "STOP_SWITCH_AB:W3_gradient_differs"
+}
