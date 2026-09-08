@@ -1,0 +1,63 @@
+{
+ "calls": 198,
+ "dump": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab/switch_ab.jsonl",
+ "thresholds": {
+  "w_delta_mean_min": 0.001,
+  "w_delta_max_min": 0.01,
+  "target_ratio_min": 2.0,
+  "grad_cos_max": 0.9999
+ },
+ "pooled": {
+  "w_delta_mean": 0.012922319703537858,
+  "w_delta_max": 0.4748690128326416,
+  "w_delta_mean_firing": 0.21240298585458237,
+  "w_delta_mean_nonfiring": 0.0065617706694856585,
+  "targeting_ratio": 32.369766722010645,
+  "calls_with_firing": 198,
+  "grad_cosine_mean": 0.9999993867946394,
+  "grad_cosine_max": 1.0,
+  "grad_cosine_min": 0.999969482421875,
+  "calls_with_undefined_cosine": 0,
+  "grad_norm_ratio_mean": 1.0000048403697541,
+  "grad_rel_l2_mean": 0.0010429052057625452,
+  "grad_cosine_null_mean": 1.0000065595212608,
+  "grad_rel_l2_null_mean": 0.0,
+  "adv_cosine_mean": 0.9983230094717006,
+  "n_valid_mean": 2028.621212121212,
+  "n_firing_mean": 63.15151515151515
+ },
+ "advantage_sign": {
+  "frac_neg_damped_mean": 0.02161502959959284,
+  "frac_pos_damped_mean": 0.009769018059196609,
+  "w_ratio_neg_mean": 0.9969793738740863,
+  "w_ratio_pos_mean": 1.002154637165744,
+  "n_neg_adv_mean": 849.8838383838383,
+  "n_pos_adv_mean": 1178.7373737373737
+ },
+ "paired_null": {
+  "calls": 198,
+  "measure": "relative L2 difference of the two gradients, per call (a magnitude diagnostic; W3 stays on the cosine)",
+  "frac_calls_ab_exceeds_own_null": 1.0,
+  "frac_calls_ab_exceeds_2x_own_null": 1.0,
+  "rel_l2_ab_median": 0.0006370240007527173,
+  "rel_l2_null_median": 0.0,
+  "rel_l2_ratio_median": 637024000.7527173,
+  "rel_l2_ab_max": 0.008223955519497395,
+  "rel_l2_null_max": 0.0,
+  "cos_ab_min": 0.999969482421875,
+  "cos_null_min": 1.0,
+  "resolvable": true
+ },
+ "top_changed": {
+  "n": 990,
+  "frac_firing": 1.0,
+  "frac_negative_advantage": 0.5828282828282828,
+  "delta_mean": 0.4746391662443527
+ },
+ "gates": {
+  "W1_weights_differ": true,
+  "W2_change_is_targeted": true,
+  "W3_gradient_differs": false
+ },
+ "verdict": "STOP_SWITCH_AB:W3_gradient_differs"
+}
