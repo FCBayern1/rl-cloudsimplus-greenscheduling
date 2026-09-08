@@ -30,6 +30,18 @@ Verdict SWITCH_AB_PASS iff W1, W2 and W3 hold. A failure is STOP_SWITCH_AB: the 
 
 The G5-err configuration (`g5_err`, `perturb_tier: shrink75`, EU-CRD on `candidate_carbon_regret`), 16 000 steps, recording the comparison at every loss call. The state at which the comparison is read is therefore a lightly trained one, and the reading says so: if the ruling wants the comparison at the fully trained state, the G5-err checkpoint is on disk and the same diagnostic can be re-run against it. The run's own training result is discarded — the extra loss evaluations pollute its logged metrics, and nothing but the dumped comparison is read from it.
 
+## 3a. Addendum A — gradient decomposition, diagnostic only (2026-09-08, after run 4 was read)
+
+Run 4's W3 compared the gradient of the **whole** PPO loss: policy surrogate, value term, entropy and KL. EU-CRD's reweighting acts on the surrogate alone, so a small change in the total gradient can be the surrogate's change diluted by terms it does not touch. That was missed in the registration and in every review of it until after run 4. The explanation offered in the run-4 reading ("3 % of transitions fire, so the update barely moves") is therefore demoted to a hypothesis: transitions do not contribute equally to a gradient, and a sample fraction does not settle it.
+
+One bounded decomposition is added, **as a diagnostic**. It does not re-judge run 4's W3, and no new threshold is chosen from it.
+
+- On a fixed batch and a fixed model state, the gradient is split by the linearity of the loss: the surrogate term alone (value coefficient, entropy coefficient and KL coefficient set to zero *inside the diagnostic only*, the critic itself untouched and the run's coefficients restored afterwards), the value term, and the entropy-plus-KL remainder. The surrogate gradient is taken with respect to every parameter it reaches, shared trunk included; nothing is truncated to a final layer.
+- Reported for A vs B on the surrogate gradient: cosine (clamped), relative L2, and the same null as before; plus the norms of each term so the dilution, if any, is visible.
+- State: the G5-err final checkpoint's global module is loaded through the existing strict warm-start path, the learning rate is set to zero so no optimisation update happens, and one sampling iteration of diagnostic batches is recorded. The local policy and the learner's running estimators are not part of that checkpoint and start fresh, which is stated rather than hidden: the first call of the diagnostic sits in the estimators' own warm-up and is excluded.
+
+What the decomposition can say: if the surrogate gradient also barely changes, the mechanism's small effect is real and the anomaly gate, guardrail and reweighting deserve study; if the surrogate gradient changes clearly and was swamped by the value gradient in the total, the wiring check was measuring the wrong object and must be re-registered on the right one — before any further run, not fitted to this one.
+
 ## 4. What a pass licenses
 
 Only this: the forecast responsibility changes the weights and the policy gradient, and it changes them more where the forecast actually changed a decision. It says nothing about whether that change helps, which is step 3's question and needs the matched pair.
