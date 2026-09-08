@@ -22,6 +22,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.core.rl_module.torch import TorchRLModule
 
 from src.models.rlmodule_gtrxl_models import (
+    bc_consume_pending,
     GTrXLMaskedActionRLModule,
     GTrXLGlobalRLModule,
     GTrXLScoreBasedGlobalRLModule,
@@ -230,6 +231,7 @@ class GTrXLEnsembleMaskedActionRLModule(_GTrXLFeatureCapture, GTrXLMaskedActionR
       - `_forward_train` emits `crd_q_ensemble` of shape (B, T, K, A)
       - `compute_q_ensemble(batch, action)` for the M2 counterfactual callback
     """
+    BC_DEFERRED_PREFIXES = ("q_heads.",)
 
     @override(TorchRLModule)
     def setup(self):
@@ -243,6 +245,7 @@ class GTrXLEnsembleMaskedActionRLModule(_GTrXLFeatureCapture, GTrXLMaskedActionR
             hidden_dim=cfg["hidden_dim"],
         )
         self._install_feature_capture()
+        bc_consume_pending(self, "q_heads", "q_heads.")
         logger.info(
             f"[{self.__class__.__name__}] Q-ensemble: K={cfg['K']}, "
             f"hidden_dim={cfg['hidden_dim']}, prior_lambda={cfg['prior_lambda']}, "
@@ -326,6 +329,7 @@ class GTrXLEnsembleGlobalRLModule(_GTrXLFeatureCapture, GTrXLGlobalRLModule):
     at the chosen actions; this keeps ensemble variance comparable across
     different batch sizes.
     """
+    BC_DEFERRED_PREFIXES = ("q_heads.",)
 
     @override(TorchRLModule)
     def setup(self):
@@ -356,6 +360,7 @@ class GTrXLEnsembleGlobalRLModule(_GTrXLFeatureCapture, GTrXLGlobalRLModule):
             hidden_dim=cfg["hidden_dim"],
         )
         self._install_feature_capture()
+        bc_consume_pending(self, "q_heads", "q_heads.")
         logger.info(
             f"[{self.__class__.__name__}] Q-ensemble: K={cfg['K']}, "
             f"hidden_dim={cfg['hidden_dim']}, prior_lambda={cfg['prior_lambda']}, "
@@ -479,6 +484,7 @@ class GTrXLScoreBasedEnsembleGlobalRLModule(
     :class:`GTrXLEnsembleGlobalRLModule`, so the M1.2 loss term and M2.4
     callback path consume this module without any additional branching.
     """
+    BC_DEFERRED_PREFIXES = ("q_heads.",)
 
     @override(TorchRLModule)
     def setup(self):
@@ -508,6 +514,7 @@ class GTrXLScoreBasedEnsembleGlobalRLModule(
             hidden_dim=cfg["hidden_dim"],
         )
         self._install_feature_capture()
+        bc_consume_pending(self, "q_heads", "q_heads.")
         logger.info(
             f"[{self.__class__.__name__}] Q-ensemble: K={cfg['K']}, "
             f"hidden_dim={cfg['hidden_dim']}, prior_lambda={cfg['prior_lambda']}, "

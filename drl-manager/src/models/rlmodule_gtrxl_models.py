@@ -53,6 +53,51 @@ from src.networks.gtrxl import GTrXL
 
 logger = logging.getLogger(__name__)
 
+
+# BC warm-start / checkpoint restore through a plain tensor state dict. A module may build
+# part of itself after the base setup (the Q-ensemble heads of the CRD modules), so keys under
+# the prefixes it declares in BC_DEFERRED_PREFIXES are held back and loaded by the subclass
+# once those parts exist; everything else is loaded strictly, and nothing is dropped silently.
+def bc_warm_start_load(module: nn.Module, path: str) -> int:
+    """Strictly load every key the module has now; hold back the deferred prefixes for
+    `bc_consume_pending`. Returns the number of tensors loaded now."""
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    prefixes = tuple(getattr(module, "BC_DEFERRED_PREFIXES", ()) or ())
+    now = {k: v for k, v in state.items() if not (prefixes and k.startswith(prefixes))}
+    later = {k: v for k, v in state.items() if prefixes and k.startswith(prefixes)}
+    module.load_state_dict(now, strict=True)
+    module._bc_pending_state = later
+    module._bc_ckpt_path = path
+    logger.info(
+        f"[{module.__class__.__name__}] BC warm-start: loaded weights from {path} "
+        f"({len(now)} tensors now, {len(later)} deferred to {list(prefixes)})"
+    )
+    return len(now)
+
+
+def bc_consume_pending(module: nn.Module, attr: str, prefix: str) -> int:
+    """Load the deferred keys under `prefix` into `getattr(module, attr)` strictly. A
+    checkpoint that never carried them (a plain BC file) leaves the part at init, loudly;
+    deferred keys under any other prefix are an error. Returns the number loaded."""
+    pending = dict(getattr(module, "_bc_pending_state", {}) or {})
+    if not getattr(module, "_bc_ckpt_path", None):
+        return 0
+    sub = {k[len(prefix):]: v for k, v in pending.items() if k.startswith(prefix)}
+    rest = [k for k in pending if not k.startswith(prefix)]
+    if rest:
+        raise RuntimeError(f"BC warm-start: deferred keys nobody consumes: {rest[:5]}")
+    if not sub:
+        logger.warning(
+            f"[{module.__class__.__name__}] BC warm-start: checkpoint carries no "
+            f"{prefix}* keys; {attr} stays at its initialisation"
+        )
+        module._bc_pending_state = {}
+        return 0
+    getattr(module, attr).load_state_dict(sub, strict=True)
+    module._bc_pending_state = {}
+    logger.info(f"[{module.__class__.__name__}] BC warm-start: loaded {attr} ({len(sub)} tensors)")
+    return len(sub)
+
 # NaN/Inf health checks call torch.isfinite(...).all() and .item(), each of which
 # forces a CUDA sync and serialises the GPU pipeline.  Per minibatch they cost
 # ~1-2s on GH200 due to in-flight transformer kernels, dominating PPO update
@@ -1191,12 +1236,7 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
         bc_ckpt = model_config.get("bc_checkpoint_path") or None
         if bc_ckpt:
             try:
-                state = torch.load(bc_ckpt, map_location="cpu", weights_only=True)
-                self.load_state_dict(state, strict=True)
-                logger.info(
-                    f"[{self.__class__.__name__}] BC warm-start: loaded "
-                    f"weights from {bc_ckpt} ({len(state)} tensors)"
-                )
+                bc_warm_start_load(self, bc_ckpt)
             except Exception as e:
                 # Loud failure: a misconfigured BC checkpoint would let PPO
                 # quietly start from random init, exactly the failure mode
