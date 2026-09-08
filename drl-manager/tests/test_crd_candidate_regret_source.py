@@ -531,3 +531,59 @@ def test_switch_ab_scores_both_variants_inside_the_warmup(tmp_path, monkeypatch)
     assert row["grad_cosine_null"] is not None
     assert learner._crd_reweight_calls == calls_before       # counter not advanced
     torch.testing.assert_close(batch[Postprocessing.ADVANTAGES], adv_pre)
+
+
+def test_switch_ab_null_is_exactly_zero_when_the_loss_path_is_stochastic(tmp_path, monkeypatch):
+    """Scoring the same advantages twice must give the same gradient: without resetting the
+    random state the loss path's own noise swamped the A/B difference it had to resolve."""
+    import json
+    import torch.nn as nn
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from src.learners.crd_q_loss import (
+        COL_CRD_FORECAST, COL_CRD_R_ROUTING, CRDPPOTorchLearner,
+    )
+
+    learner = _loss_helper()
+    learner._crd_share_scale_ema = {}
+    learner._crd_forecast_anom_ema = {}
+    learner._crd_reweight_calls = {}
+    learner._read_module_responsibility_config = lambda mid: {
+        "normalize_shares": False, "rho_min": 0.05, "anomaly_gate": False,
+        "normalize_rho": True, "reweight_advantages": True,
+        "responsibility_shrink_strength": 1.0}
+    learner._read_crd_mask_padding = lambda mid: False
+    lin = nn.Linear(2, 1)
+    lin.weight.data.copy_(torch.tensor([[1.0, -1.0]])); lin.bias.data.fill_(0.0)
+
+    class _Mod:
+        def parameters(self):
+            return lin.parameters()
+
+    learner._module_stub = {"global_agent": _Mod()}
+    monkeypatch.setattr(type(learner), "module",
+                        property(lambda self: self._module_stub), raising=False)
+
+    # a loss whose value depends on the random state, the way the real path's does
+    def _noisy_loss(*, module_id, config, batch, fwd_out):
+        noise = 1.0 + 0.05 * torch.rand(())
+        return (batch[Postprocessing.ADVANTAGES] * lin(fwd_out["x"]).squeeze(-1) * noise).mean()
+    monkeypatch.setattr(CRDPPOTorchLearner.__bases__[0], "compute_loss_for_module",
+                        staticmethod(_noisy_loss), raising=False)
+
+    rf = torch.tensor([[0.0, 0.0, 3.0, 0.0]])
+    adv_pre = torch.tensor([[1.0, -2.0, 3.0, -4.0]])
+    batch = {COL_CRD_FORECAST: rf, COL_CRD_R_ROUTING: torch.ones(1, 4),
+             Columns.REWARDS: torch.zeros(1, 4), Columns.LOSS_MASK: torch.ones(1, 4),
+             Postprocessing.ADVANTAGES: adv_pre.clone()}
+    learner._compute_responsibilities(module_id="global_agent", batch=batch)
+    rng_before = torch.random.get_rng_state()
+    p = tmp_path / "ab.jsonl"
+    learner._crd_switch_ab(module_id="global_agent", config=None, batch=batch,
+                           fwd_out={"x": torch.tensor([[[1., 0.], [0., 1.], [1., 1.], [0.5, 0.2]]])},
+                           adv_pre=adv_pre, path=str(p))
+
+    row = json.loads(open(p).read().strip())
+    assert row["grad_rel_l2_null"] == 0.0            # the null is exact, not merely small
+    assert row["grad_rel_l2"] > 1e-6                 # so the A/B difference is resolvable
+    assert torch.equal(torch.random.get_rng_state(), rng_before)   # run's RNG untouched

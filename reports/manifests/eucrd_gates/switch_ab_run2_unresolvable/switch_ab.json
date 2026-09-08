@@ -1,0 +1,60 @@
+{
+ "calls": 198,
+ "dump": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab/switch_ab.jsonl",
+ "thresholds": {
+  "w_delta_mean_min": 0.001,
+  "w_delta_max_min": 0.01,
+  "target_ratio_min": 2.0,
+  "grad_cos_max": 0.9999
+ },
+ "pooled": {
+  "w_delta_mean": 0.012307106209166273,
+  "w_delta_max": 0.4748573303222656,
+  "w_delta_mean_firing": 0.20941572587447937,
+  "w_delta_mean_nonfiring": 0.006245809827103383,
+  "targeting_ratio": 33.5289949056294,
+  "calls_with_firing": 198,
+  "grad_cosine_mean": 0.9999972774524881,
+  "grad_cosine_max": 1.0000238418579102,
+  "grad_rel_l2_mean": 0.0031149136917483335,
+  "grad_cosine_null_mean": 0.9999855798904342,
+  "grad_rel_l2_null_mean": 0.005178901797555888,
+  "adv_cosine_mean": 0.9983176911118055,
+  "n_valid_mean": 2028.621212121212,
+  "n_firing_mean": 60.78787878787879
+ },
+ "advantage_sign": {
+  "frac_neg_damped_mean": 0.021007048340062753,
+  "frac_pos_damped_mean": 0.009163198224151263,
+  "w_ratio_neg_mean": 0.9970599096832853,
+  "w_ratio_pos_mean": 1.0020902328418964,
+  "n_neg_adv_mean": 845.6161616161617,
+  "n_pos_adv_mean": 1183.0050505050506
+ },
+ "paired_null": {
+  "calls": 198,
+  "measure": "relative L2 difference of the two gradients, per call",
+  "frac_calls_ab_exceeds_own_null": 0.23737373737373738,
+  "frac_calls_ab_exceeds_2x_own_null": 0.10101010101010101,
+  "rel_l2_ab_median": 0.0020331674022600055,
+  "rel_l2_null_median": 0.0032492803875356913,
+  "rel_l2_ratio_median": 0.579751290606846,
+  "rel_l2_ab_max": 0.04143109917640686,
+  "rel_l2_null_max": 0.05687647685408592,
+  "cos_ab_min": -2.384185791015625e-05,
+  "cos_null_min": -2.4557113647460938e-05,
+  "resolvable": false
+ },
+ "top_changed": {
+  "n": 990,
+  "frac_firing": 1.0,
+  "frac_negative_advantage": 0.5606060606060606,
+  "delta_mean": 0.4746864388085375
+ },
+ "gates": {
+  "W1_weights_differ": true,
+  "W2_change_is_targeted": true,
+  "W3_gradient_differs": false
+ },
+ "verdict": "STOP_SWITCH_AB:W3_gradient_differs"
+}

@@ -2281,7 +2281,15 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
         adv_A_eff = adv_pre * w_A
         adv_B_eff = adv_pre * w_B
 
+        # Every evaluation starts from the same random state, so the three gradients differ
+        # only through the advantages. Without this the loss path's own randomness dominates:
+        # the first run measured a null (same advantages scored twice) of 3.2e-3 relative,
+        # larger than the A-vs-B difference it was supposed to resolve. The state is restored
+        # afterwards, so the observed run continues from exactly where it was.
+        rng0 = torch.random.get_rng_state()
+
         def _grad(adv):
+            torch.random.set_rng_state(rng0)
             batch[Postprocessing.ADVANTAGES] = adv
             loss = super(CRDPPOTorchLearner, self).compute_loss_for_module(
                 module_id=module_id, config=config, batch=batch, fwd_out=fwd_out)
@@ -2303,6 +2311,7 @@ class CRDPPOTorchLearner(PerSlotCreditPPOTorchLearner):
             logger.warning(f"[CRD] switch-AB gradient comparison failed: {e}")
             cos, gnorm, grel = None, (None, None), None
             cos_null, grel_null = None, None
+        torch.random.set_rng_state(rng0)                # leave the run's randomness untouched
         batch[Postprocessing.ADVANTAGES] = adv_A        # leave the run on variant A
 
         lm = batch.get(Columns.LOSS_MASK)

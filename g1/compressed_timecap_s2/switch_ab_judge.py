@@ -93,20 +93,27 @@ def judge():
                r.get("grad_rel_l2_null"))
               for r in rs if r.get("grad_cosine") is not None and r.get("grad_cosine_null") is not None]
     if paired:
-        ab = np.array([p[0] for p in paired]); nu = np.array([p[1] for p in paired])
-        rel = np.array([p[2] for p in paired if p[2] is not None])
-        rel_n = np.array([p[3] for p in paired if p[3] is not None])
+        # The pairing is read on the RELATIVE L2 difference, not on 1 - cosine: with nearly
+        # parallel gradients the cosine rounds above 1, so 1 - cos goes negative and every
+        # ratio or inequality built on it is meaningless. rel_l2 stays non-negative and
+        # well-conditioned. The cosine numbers are still reported (W3 is registered on them).
+        ab = np.array([p[2] for p in paired if p[2] is not None])
+        nu = np.array([p[3] for p in paired if p[3] is not None])
+        cos_ab = np.array([p[0] for p in paired]); cos_nu = np.array([p[1] for p in paired])
         res["paired_null"] = {
-            "calls": len(paired),
-            "frac_calls_ab_exceeds_own_null": float(np.mean(ab > nu)),
-            "frac_calls_ab_exceeds_2x_own_null": float(np.mean(ab > 2 * nu)),
-            "one_minus_cos_ab_median": float(np.median(ab)),
-            "one_minus_cos_null_median": float(np.median(nu)),
-            "one_minus_cos_ratio_median": (float(np.median(ab / np.maximum(nu, 1e-12)))
-                                           if len(nu) else None),
-            "rel_l2_ab_median": (float(np.median(rel)) if rel.size else None),
-            "rel_l2_null_median": (float(np.median(rel_n)) if rel_n.size else None),
-            "worst_call_ab": float(np.max(ab)), "worst_call_null": float(np.max(nu)),
+            "calls": int(min(ab.size, nu.size)),
+            "measure": "relative L2 difference of the two gradients, per call",
+            "frac_calls_ab_exceeds_own_null": float(np.mean(ab > nu)) if ab.size == nu.size else None,
+            "frac_calls_ab_exceeds_2x_own_null": (float(np.mean(ab > 2 * nu))
+                                                  if ab.size == nu.size else None),
+            "rel_l2_ab_median": float(np.median(ab)) if ab.size else None,
+            "rel_l2_null_median": float(np.median(nu)) if nu.size else None,
+            "rel_l2_ratio_median": (float(np.median(ab / np.maximum(nu, 1e-12)))
+                                    if ab.size == nu.size and nu.size else None),
+            "rel_l2_ab_max": float(np.max(ab)) if ab.size else None,
+            "rel_l2_null_max": float(np.max(nu)) if nu.size else None,
+            "cos_ab_min": float(np.min(cos_ab)), "cos_null_min": float(np.min(cos_nu)),
+            "resolvable": bool(ab.size == nu.size and float(np.median(ab)) > float(np.median(nu))),
         }
 
     top = [t for r in rs for t in (r.get("top_changed") or [])]
