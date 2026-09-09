@@ -4,7 +4,7 @@
 在两者齐备之前，本文件不授权任何训练，不授权更换任何档位，也不得被引用为已冻结判据。
 
 起草：2026-09-02，GPU 侧（3060）。仓库起点 `d32f6f4`。
-上游依据：`reports/WORKORDER_GPU_COMPRESSED_TIMECAP_SCHEME2.md`、
+上游依据：`reports/correspondence/WORKORDER_GPU_COMPRESSED_TIMECAP_SCHEME2.md`、
 `reports/LADDER_V2_PREREG.md`、`g1/compressed_timecap_s2/k0_semantics_audit.md`、
 `g1/compressed_timecap_s2/timecap_data_audit.json`。
 

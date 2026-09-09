@@ -64,7 +64,7 @@ TB12 是 3060 正在验证的**第十二个场景,尚未验完**。前一版清�
 
 给 3060 只发了两条,都只关于他们手上的活:复活测试 27/28 那一行余量,
 以及 fc/nofc 报告时另列 `RL_fc vs RL_nofc` 的直接百分比
-(`reports/MSG_TO_3060_2026-08-23.md`)。
+(`reports/correspondence/MSG_TO_3060_2026-08-23.md`)。
 
 ## 五、修不掉,只能声明(进 Limitations)
 

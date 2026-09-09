@@ -350,7 +350,7 @@ reports/NUMBERS_MANIFEST.md              论文 25 项数字的污染源与处�
 reports/DEFECT_FIX_PLAN_2026-08-23.md    缺陷修复清单
 reports/OVERNIGHT_2026-08-28_...md       ⚠️ 21% 那份,标为【待对齐诊断】不可引用
 reports/TB13_SCREEN_SPEC_FROZEN.md       TB13 筛选规格(Codex 修订版)
-reports/WORKORDER_3060_DEMAND_AUDIT.md   需求—绿电—碳 审计工单(3060 down,5080 接手)
+reports/correspondence/WORKORDER_3060_DEMAND_AUDIT.md   需求—绿电—碳 审计工单(3060 down,5080 接手)
 reports/tb12/*.md                        TB12 全线(认证/RL 四轮/表示审计/窗长探针)
 reports/GWO1_VERDICT_AND_DIAGNOSIS.md    ⭐ 6.01× 分解 + p* 恒等式,解释前十考场
 reports/PHASE_SCAN_STAGE1.md             相变扫描,首次有格过全部离线门
