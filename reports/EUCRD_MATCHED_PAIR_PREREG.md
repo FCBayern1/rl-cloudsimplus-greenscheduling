@@ -56,3 +56,11 @@ The pair is launched twice, and the rule for which one counts is fixed **here, i
 - The platform of the run of record is stated in the reading, together with the per-iteration cost on it.
 
 Nothing else changes: the config, the seeds, the budget, the tier, the last-checkpoint rule, the primary comparison, the clean guard and the sealed 2020 windows all stand as registered.
+
+## Addendum C — ablation conditions and the mechanical platform record (frozen 2026-09-09, ruling of the same day; no result of the pair has been read)
+
+**C1. The responsibility-source ablation (§6) runs under identical data-generation conditions.** Both arms compute and carry the *same* regret signal through the environment and the auxiliary channel; the ablated arm has it zeroed **only at the learner's entry**. Network structure, Q-ensemble head training, budget and seeds are unchanged. What must be identical is the data-generation rule, the initial state and the data path — **not** the trajectories: once the policies update they act differently and their trajectories diverge, which is expected and is not a defect. Reading limit fixed in advance: a successful ablation supports "the forecast responsibility channel contributes", and nothing stronger; showing that this particular regret design beats other candidate signals needs its own targeted comparison.
+
+**C2. Platform selection is mechanical and metric-blind.** The rule of Addendum B is executed on facts recorded before any metric is read: the announced maintenance deadline (2026-09-10 05:00 UTC), the exit status of each of the six jobs, and the integrity of each last checkpoint (15/15 iterations, checkpoint present and loadable). No carbon, completion or any other result figure may enter the choice of platform, and the two platforms' lines may never be combined into one seed set — a seed set is complete only if all six of its lines come from the same platform.
+
+**C3. Results must not exist only as untracked files on one machine.** When the run of record completes, its last checkpoints, the evaluation outputs and the run manifests are copied off the machine that produced them, curated into `reports/manifests/matched_pair/` with checksums, and committed. Untracking raw artefacts (a9d89425) is a repository-hygiene measure, not an archival one.
