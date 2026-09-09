@@ -64,3 +64,26 @@ Nothing else changes: the config, the seeds, the budget, the tier, the last-chec
 **C2. Platform selection is mechanical and metric-blind.** The rule of Addendum B is executed on facts recorded before any metric is read: the announced maintenance deadline (2026-09-10 05:00 UTC), the exit status of each of the six jobs, and the integrity of each last checkpoint (15/15 iterations, checkpoint present and loadable). No carbon, completion or any other result figure may enter the choice of platform, and the two platforms' lines may never be combined into one seed set — a seed set is complete only if all six of its lines come from the same platform.
 
 **C3. Results must not exist only as untracked files on one machine.** When the run of record completes, its last checkpoints, the evaluation outputs and the run manifests are copied off the machine that produced them, curated into `reports/manifests/matched_pair/` with checksums, and committed. Untracking raw artefacts (a9d89425) is a repository-hygiene measure, not an archival one.
+
+## Addendum D — how each possible outcome is read (frozen 2026-09-09, ruling of the same day; no result of the pair has been read)
+
+The verdict rules of §4 stand. This addendum fixes, in advance, what each shape of result means and what follows it, so that no reading is designed after the numbers are seen.
+
+| result | what it means | what follows |
+|---|---|---|
+| all three seeds lower carbon, pooled ≥ 3 %, clean and contracts held | the registered primary criterion is met, with preliminary repeatability | run the registered responsibility-channel ablation to test whether the gain comes from that channel; only then plan a sealed-set confirmation |
+| all three seeds slightly better, below 3 % | direction consistent, gain below the practical bar fixed in advance | report *suggestive, not established*; weigh against the ≈2× training overhead; **the threshold is not moved** |
+| mean is better but seeds disagree in sign | the method may be unstable; a mean does not stand for a reliable gain | examine whether the paired differences concentrate in a few windows or in training behaviour; **no seed selection, no top-up to significance** |
+| better under the degraded forecast, clean worse by more than 3 % | a trade-off, not the target | test whether the policy has become uniformly conservative and stopped using the forecast; a mixed clean/contaminated training regime may be registered separately |
+| EU-CRD clearly worse, contracts intact | the configuration harms learning | locate it with the same-structure ablation (forecast responsibility vs reweighting as such vs the extra network training) before touching the anomaly gate or the guardrail; no blind parameter sweeps |
+| lower completion, more lateness, or contract violations | low carbon may have been bought with service quality | keep every cell, read by the contract rules, and separate execution failures from policy behaviour; **no cell is dropped** |
+| the two lines are nearly identical | the gradients differ but the final actions or terminal costs may not | look at action divergence and at the change relative to the initial cover rule; do **not** conclude that training is unwired, and do **not** raise the responsibility gain in response |
+
+Two readings that are especially easy to get wrong, and are ruled out here:
+
+- **EU-CRD better than vanilla while both are worse than `cover_argmax`.** That may be written as "EU-CRD reduces the loss training introduces". It may **not** be written as "learning beats the scheduling rule". The paper must answer directly what the added training complexity bought.
+- **A pooled gain carried by one or two windows.** That is a conditional gain. It is described by the wind and load conditions under which it appears, never generalised to the scene. Window-to-window variation may generate hypotheses for a later round; it may never be used to drop windows and re-judge.
+
+If the result is poor, the order of investigation is fixed here: (1) verify the evaluation, the contracts and the checkpoints; (2) see how the policy actually changed — different sites, different start offsets, or no change in action at all; (3) run the same-structure ablation to separate the forecast responsibility from reweighting as such and from the extra network training; (4) only with evidence in hand, change one mechanism at a time, verify it in a development experiment, and confirm it independently.
+
+This round runs to its frozen rules and is not adjusted on intermediate trends. Its value is that it takes the question from "is EU-CRD wired in" to "what did it help and what did it cost", and it must yield a definite next step even if the primary bar is not met — not a fresh change of testbed.
