@@ -251,3 +251,16 @@ data/v2026_gpu/
 # Experiment outputs: raw run artefacts stay on disk and in history, but are not tracked
 # going forward. Curated evidence for every frozen reading lives in reports/manifests/.
 g1/*/stage_a_out/
+
+# Generated experiment configs: the GENERATORS are tracked and each frozen run records its
+# config sha256 in its manifest, so the derived yml files do not need to be versioned.
+g1/compressed_timecap_s2/config_ladder_cert_*.yml
+g1/compressed_timecap_s2/config_scene_dev_*.yml
+g1/compressed_timecap_s2/config_eucrd_signal.yml
+g1/compressed_timecap_s2/config_small_step.yml
+g1/compressed_timecap_s2/config_switch_ab_decomp.yml
+drl-manager/stage_a_out/
+# Slides, figures and meeting material: not part of the reproducible artefact
+PICS/
+reports/slides/
+*.odp
