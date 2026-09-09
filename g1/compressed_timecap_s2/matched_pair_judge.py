@@ -71,6 +71,63 @@ def pooled(cells):
     return out
 
 
+def decisions(arm, tier, window, out_dir):
+    """Chosen (site, kappa) per real job at this deployment, keyed by (episode, step, slot,
+    cloudlet id). Padding slots (cloudlet id < 0) are excluded: action 0 is a legal choice
+    ("dispatch now to site 0"), so a zero action cannot stand in for "no job"."""
+    p = os.path.join(out_dir, "eval", f"{arm}_{tier}_k{window}_decisions.csv")
+    if not os.path.exists(p):
+        return {}
+    out = {}
+    for r in csv.DictReader(open(p)):
+        try:
+            cid = int(r["cloudlet_id"])
+        except (KeyError, ValueError):
+            continue
+        if cid < 0:
+            continue
+        out[(r.get("episode"), r.get("step"), r.get("slot"), cid)] = (int(r["site"]), int(r["kappa"]))
+    return out
+
+
+def action_divergence(arms, out_dir):
+    """Reported, not gated (Addendum E): how much the actions on real jobs differ between arms
+    and against the rule, plus each arm's own site and kappa distribution."""
+    out = {}
+    for tier in TIERS:
+        per_arm = {a: {} for a in arms}
+        for a in arms:
+            for w in range(N_WINDOWS):
+                per_arm[a].update({(w,) + k: v for k, v in decisions(a, tier, w, out_dir).items()})
+        dist = {}
+        for a, d in per_arm.items():
+            if not d:
+                continue
+            sites, kaps = {}, {}
+            for site, kap in d.values():
+                sites[site] = sites.get(site, 0) + 1
+                kaps[kap] = kaps.get(kap, 0) + 1
+            dist[a] = {"n_decisions": len(d), "sites": dict(sorted(sites.items())),
+                       "kappa_mean": float(np.mean([k for _, k in d.values()])),
+                       "kappa_top": sorted(kaps.items(), key=lambda x: -x[1])[:5]}
+        pairs = {}
+        names = [a for a in arms if per_arm.get(a)]
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                shared = set(per_arm[a]) & set(per_arm[b])
+                if not shared:
+                    continue
+                same = sum(1 for k in shared if per_arm[a][k] == per_arm[b][k])
+                same_site = sum(1 for k in shared if per_arm[a][k][0] == per_arm[b][k][0])
+                dk = [abs(per_arm[a][k][1] - per_arm[b][k][1]) for k in shared]
+                pairs[f"{a}|{b}"] = {"n_shared": len(shared),
+                                     "identical_frac": same / len(shared),
+                                     "same_site_frac": same_site / len(shared),
+                                     "mean_abs_dkappa": float(np.mean(dk))}
+        out[tier] = {"per_arm": dist, "pairs": pairs}
+    return out
+
+
 def judge(out_dir=OUT):
     res = {"out_dir": out_dir, "windows": N_WINDOWS, "seeds": list(SEEDS),
            "thresholds": {"benefit_min": BENEFIT_MIN, "clean_tolerance": CLEAN_TOLERANCE,
@@ -167,6 +224,9 @@ def judge(out_dir=OUT):
                 flags.append(f"{tier} s{s}: missing cells V={v.get('n_missing')} E={e.get('n_missing')}")
     res["flags"] = flags
 
+    # ── question 3 (Addendum E): what changed in the actions on REAL jobs ──────
+    res["action_divergence"] = action_divergence(arms, out_dir)
+
     # cost, reported with any benefit
     res["cost"] = {arm: {"decision_us_mean": (res["arms"][arm].get(PRIMARY_TIER) or {}).get("global_decision_us_mean"),
                          "decision_us_p95": (res["arms"][arm].get(PRIMARY_TIER) or {}).get("global_decision_us_p95")}
@@ -174,7 +234,11 @@ def judge(out_dir=OUT):
 
     os.makedirs(out_dir, exist_ok=True)
     json.dump(res, open(os.path.join(out_dir, "matched_pair.json"), "w"), indent=1)
-    print(json.dumps({"primary": res["primary"], "paired_shrink75": {k: v for k, v in res["paired"][PRIMARY_TIER].items() if k != "per_seed"},
+    ad = res["action_divergence"].get(PRIMARY_TIER, {})
+    print(json.dumps({"primary": res["primary"],
+                      "paired_shrink75": {k: v for k, v in res["paired"][PRIMARY_TIER].items() if k != "per_seed"},
+                      "vs_rule_shrink75": res["reference"][PRIMARY_TIER],
+                      "action_divergence_shrink75": {"per_arm": ad.get("per_arm"), "pairs": ad.get("pairs")},
                       "flags": res["flags"][:6]}, indent=1))
     return res
 

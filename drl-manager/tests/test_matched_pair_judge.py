@@ -118,3 +118,50 @@ def test_per_window_differences_are_reported_so_one_window_cannot_hide(tmp_path)
     assert sum(1 for x in pw if x and abs(x) > 1e-9) == 1     # visible in the record
     assert r["primary"]["all_three_negative"] is True         # pooled looks like a win ...
     assert abs(pw[2] + 0.6) < 1e-9                            # ... but the record shows why
+
+
+def _write_decisions(d, arm, tier, rows, window=0):
+    """rows: list of (slot, cloudlet_id, site, kappa)"""
+    os.makedirs(os.path.join(d, "eval"), exist_ok=True)
+    p = os.path.join(d, "eval", f"{arm}_{tier}_k{window}_decisions.csv")
+    with open(p, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["episode", "step", "slot", "cloudlet_id", "site", "kappa"])
+        w.writeheader()
+        for slot, cid, site, kap in rows:
+            w.writerow({"episode": 0, "step": 10 + slot, "slot": slot, "cloudlet_id": cid,
+                        "site": site, "kappa": kap})
+
+
+def test_action_divergence_ignores_padding_and_counts_real_changes(tmp_path):
+    j = _judge()
+    d = str(tmp_path)
+    _full(d, j, 1.0, 0.95)
+    s = j.SEEDS[0]
+    # a padding slot (cloudlet_id -1) carrying action 0 must not be counted as a decision
+    _write_decisions(d, f"V_s{s}", "shrink75", [(0, 11, 0, 5), (1, 12, 1, 70), (2, -1, 0, 0)])
+    _write_decisions(d, f"E_s{s}", "shrink75", [(0, 11, 0, 5), (1, 12, 2, 60), (2, -1, 0, 0)])
+    _write_decisions(d, "cover_argmax", "shrink75", [(0, 11, 0, 70), (1, 12, 1, 70), (2, -1, 0, 0)])
+    r = j.judge(d)
+    ad = r["action_divergence"]["shrink75"]
+    assert ad["per_arm"][f"V_s{s}"]["n_decisions"] == 2          # the padding slot is excluded
+    assert ad["per_arm"][f"V_s{s}"]["sites"] == {0: 1, 1: 1}
+    pair = ad["pairs"][f"V_s{s}|E_s{s}"]
+    assert pair["n_shared"] == 2
+    assert abs(pair["identical_frac"] - 0.5) < 1e-9             # one of two choices differs
+    assert abs(pair["same_site_frac"] - 0.5) < 1e-9
+    assert abs(pair["mean_abs_dkappa"] - 5.0) < 1e-9            # (0 + 10) / 2
+    # and the comparison against the initial rule is available for question 2
+    assert f"V_s{s}|cover_argmax" in pair or any("cover_argmax" in k for k in ad["pairs"])
+
+
+def test_action_divergence_reports_a_policy_that_never_moves(tmp_path):
+    j = _judge()
+    d = str(tmp_path)
+    _full(d, j, 1.0, 1.0)
+    s = j.SEEDS[0]
+    same = [(0, 11, 0, 5), (1, 12, 0, 5)]
+    _write_decisions(d, f"V_s{s}", "shrink75", same)
+    _write_decisions(d, f"E_s{s}", "shrink75", same)
+    ad = j.judge(d)["action_divergence"]["shrink75"]
+    assert ad["pairs"][f"V_s{s}|E_s{s}"]["identical_frac"] == 1.0
+    assert ad["per_arm"][f"E_s{s}"]["sites"] == {0: 2}          # collapsed onto one site, visible
