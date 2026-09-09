@@ -87,3 +87,21 @@ Two readings that are especially easy to get wrong, and are ruled out here:
 If the result is poor, the order of investigation is fixed here: (1) verify the evaluation, the contracts and the checkpoints; (2) see how the policy actually changed — different sites, different start offsets, or no change in action at all; (3) run the same-structure ablation to separate the forecast responsibility from reweighting as such and from the extra network training; (4) only with evidence in hand, change one mechanism at a time, verify it in a development experiment, and confirm it independently.
 
 This round runs to its frozen rules and is not adjusted on intermediate trends. Its value is that it takes the question from "is EU-CRD wired in" to "what did it help and what did it cost", and it must yield a definite next step even if the primary bar is not met — not a fresh change of testbed.
+
+## Addendum E — a mid-run observation, a narrowed health claim, and the three questions the reading must answer (frozen 2026-09-09 20:1x UTC, before any deployment result exists)
+
+**The observation, recorded rather than interpreted.** At iterations 8–14 of 15, the training-time episode return is flat: four of the six lines end slightly below their first iteration and two slightly above, and no line's change clearly exceeds its own fluctuation (per-line spread 1–2, while the three vanilla lines *start* 3.6 apart). Training-time return is not the verdict — it is measured under stochastic decode on the training tier, while the verdict is measured under deterministic decode on the six development windows — but a flat return is a fact of this run and is not to be explained away.
+
+Three readings of it are open and none is excluded: the starting point is already strong (a fixed cover prior leaves little headroom, unlike training from a random policy); the return mixes several terms, so a carbon improvement may move only a small part of it; or learning genuinely adds nothing and the parameters are drifting around the initial rule.
+
+**Health claim, narrowed.** No NaN and no crash in six lines means the runs are executing correctly. Entropy of 0.17–0.22 does **not** show absence of collapse and does **not** show effective learning: it depends on the legal action count, the valid-slot count and how it is aggregated. The supported statement is "no sign of a broken run", not "training is healthy and therefore fine".
+
+**The reading must answer three questions, not one.**
+
+1. Is E_err better than V_err? (the registered primary criterion, §4)
+2. Is either final policy better than the initial rule, `cover_argmax`, on the same windows and tiers?
+3. How much did the actions on **real jobs** actually change — between the two lines, and relative to the rule?
+
+For question 3 the judge is extended, before any result exists, to read the decision dumps the evaluator already writes and report, over slots with a real cloudlet id only: the share of identical (site, κ) choices between each pair of arms, the site distribution, the κ distribution and the mean |Δκ|. This is a reported quantity, not a gate.
+
+**Wording limit.** If both lines end close to the initial rule and carbon does not improve, the honest conclusion is that this round's training gain is limited. "EU-CRD is less bad than vanilla" may not be written up as "learning found better scheduling".
