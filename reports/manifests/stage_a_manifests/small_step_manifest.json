@@ -1,0 +1,23 @@
+{
+ "config": "config_small_step.yml",
+ "sha256": "554c4338eff9b30b",
+ "steps": 8000,
+ "arms": {
+  "ss_on": {
+   "source": "candidate_carbon_regret",
+   "reweight": true
+  },
+  "ss_off": {
+   "source": "instantaneous_carbon_cf",
+   "reweight": true
+  },
+  "ss_norw": {
+   "source": "candidate_carbon_regret",
+   "reweight": false
+  }
+ },
+ "checkpoint": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_switch_ab_decomp/g5_err_global_state.pt",
+ "seed": 20260910,
+ "warmup_override": 0,
+ "base_block": "g5_err"
+}

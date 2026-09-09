@@ -1,0 +1,101 @@
+{
+  "verdict": "PASS_P0_PRIME",
+  "gates": {
+    "order_pooled": true,
+    "order_per_window_majority": true,
+    "clean_better_both_pooled": true,
+    "shrink_worse_both_pooled": true,
+    "clip_rate_le_5pc": true,
+    "no_cap_hits": true,
+    "defer_no_arbitrage": true,
+    "contract_green": true,
+    "disc_order_pooled": true,
+    "disc_order_per_window_majority": true,
+    "clean_beats_nodefer_carbon_pooled": true,
+    "always_defer_routed_legally_by_mask": true
+  },
+  "pooled": {
+    "blind": {
+      "carbon": 0.022791008421296312,
+      "reward": -244.0201684259262
+    },
+    "clean": {
+      "carbon": 0.012479050337962962,
+      "reward": -37.781006759259135
+    },
+    "shrink": {
+      "carbon": 0.01338046950000002,
+      "reward": -55.80939000000006
+    },
+    "always_defer": {
+      "carbon": 0.0430612547638889,
+      "reward": -649.4250952777799
+    }
+  },
+  "clip_rate": {
+    "blind": 0.0,
+    "clean": 0.0,
+    "shrink": 0.0,
+    "always_defer": 0.0
+  },
+  "cap_hits": {
+    "blind": 0.0,
+    "clean": 0.0,
+    "shrink": 0.0,
+    "always_defer": 0.0
+  },
+  "per_window_wins": {
+    "clean_vs_blind": 6,
+    "shrink_vs_clean": 6,
+    "always_defer_vs_blind": 6,
+    "clean_better_both": 6,
+    "shrink_worse_both": 2,
+    "defer_reward_below_blind": 6
+  },
+  "windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "contract_bad": [],
+  "probe_always_defer_contract_bad_windows": [],
+  "pooled_dprime": {
+    "blind": {
+      "reward_disc": -172.88745047686203,
+      "carbon": 0.022791008421296312
+    },
+    "clean": {
+      "reward_disc": -21.60164384669427,
+      "carbon": 0.012479050337962962
+    },
+    "shrink": {
+      "reward_disc": -31.054405224167112,
+      "carbon": 0.01338046950000002
+    },
+    "always_defer": {
+      "reward_disc": -455.83338583864554,
+      "carbon": 0.0430612547638889
+    },
+    "nodefer": {
+      "reward_disc": -174.46962826894355,
+      "carbon": 0.02284083119444445
+    }
+  },
+  "per_window_wins_dprime": {
+    "clean_gt_nodefer_disc": 6,
+    "nodefer_gt_defer_disc": 6,
+    "clean_lt_nodefer_carbon": 6
+  },
+  "always_defer_legal_windows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "reward_variant": "scene_v1"
+}

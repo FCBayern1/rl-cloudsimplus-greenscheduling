@@ -247,3 +247,7 @@ config.yml.bak_*
 /*.pdf
 /image.png
 data/v2026_gpu/
+
+# Experiment outputs: raw run artefacts stay on disk and in history, but are not tracked
+# going forward. Curated evidence for every frozen reading lives in reports/manifests/.
+g1/*/stage_a_out/

@@ -1,0 +1,29 @@
+{
+ "config": "config_matched_pair.yml",
+ "sha256": "8668f98342e6ff21",
+ "source": "config_rl_v2_cpu.yml",
+ "bases": {
+  "V": "rl2_V_s2_r48_w72_c3_n35",
+  "E": "rl2_E_s2_r48_w72_c3_n35"
+ },
+ "steps": 120000,
+ "tier": "shrink75",
+ "seeds": [
+  20260911,
+  20260912,
+  20260913
+ ],
+ "forecast_source": "candidate_carbon_regret",
+ "grad_clip": {
+  "global": 20.0,
+  "local": 0.5
+ },
+ "between_line_diff": [
+  "crd",
+  "experiment_name",
+  "simulation_name"
+ ],
+ "crd_diff": [
+  "enabled"
+ ]
+}
