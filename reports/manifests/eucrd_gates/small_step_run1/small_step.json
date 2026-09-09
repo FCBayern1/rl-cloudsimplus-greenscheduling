@@ -1,0 +1,241 @@
+{
+ "arms": {
+  "ss_base": {
+   "godeye": {
+    "total_carbon_kg": 0.0015924784688571014,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   },
+   "shrink75": {
+    "total_carbon_kg": 0.002073619589975159,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   }
+  },
+  "ss_on": {
+   "godeye": {
+    "total_carbon_kg": 0.0016166981047248494,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   },
+   "shrink75": {
+    "total_carbon_kg": 0.00210810457346667,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   }
+  },
+  "ss_off": {
+   "godeye": {
+    "total_carbon_kg": 0.0016217578737013928,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   },
+   "shrink75": {
+    "total_carbon_kg": 0.0021080567833432133,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   }
+  },
+  "ss_norw": {
+   "godeye": {
+    "total_carbon_kg": 0.0016012366592060212,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   },
+   "shrink75": {
+    "total_carbon_kg": 0.0021781383564097247,
+    "completion_rate": 1.0,
+    "completion_rate_mi": 0.9999999999999999,
+    "ontime_mi_share": 1.0,
+    "deadline_forced_count": 0.0,
+    "n_windows": 6
+   }
+  }
+ },
+ "screen": {
+  "godeye": {
+   "primary_on_vs_norw_carbon_rel": 0.009655940257135292,
+   "primary_verdict": "LITTLE_CHANGE",
+   "control_on_vs_off_carbon_rel": -0.0031199287258555745,
+   "control_verdict": "LITTLE_CHANGE",
+   "on_completion_mi": 0.9999999999999999,
+   "norw_completion_mi": 0.9999999999999999,
+   "off_completion_mi": 0.9999999999999999,
+   "base_completion_mi": 0.9999999999999999,
+   "on_vs_base_carbon_rel": 0.015208768182046502,
+   "off_vs_base_carbon_rel": 0.018386060104978907,
+   "norw_vs_base_carbon_rel": 0.005499722928879156,
+   "verdict": "LITTLE_CHANGE",
+   "contracts": {
+    "ss_base": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_on": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_off": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_norw": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    }
+   }
+  },
+  "shrink75": {
+   "primary_on_vs_norw_carbon_rel": -0.032153046080366086,
+   "primary_verdict": "LITTLE_CHANGE",
+   "control_on_vs_off_carbon_rel": 2.2670225884935178e-05,
+   "control_verdict": "LITTLE_CHANGE",
+   "on_completion_mi": 0.9999999999999999,
+   "norw_completion_mi": 0.9999999999999999,
+   "off_completion_mi": 0.9999999999999999,
+   "base_completion_mi": 0.9999999999999999,
+   "on_vs_base_carbon_rel": 0.01663033261174196,
+   "off_vs_base_carbon_rel": 0.01660728589493445,
+   "norw_vs_base_carbon_rel": 0.0504040215186324,
+   "verdict": "LITTLE_CHANGE",
+   "contracts": {
+    "ss_base": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_on": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_off": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    },
+    "ss_norw": {
+     "completion_rate_mi": 0.9999999999999999,
+     "ontime_mi_share": 1.0,
+     "deadline_forced_count": 0.0
+    }
+   }
+  }
+ },
+ "per_window_carbon": {
+  "godeye": {
+   "ss_base": [
+    0.0005719120092592608,
+    0.001672023174688889,
+    0.004925794638888901,
+    0.0003868563190092599,
+    0.0003063200000000022,
+    0.0016919646712962961
+   ],
+   "ss_on": [
+    0.0005740298981481497,
+    0.0017917391376083408,
+    0.004934647648148157,
+    0.0003857091666666689,
+    0.00030746877777777977,
+    0.0017065940000000003
+   ],
+   "ss_off": [
+    0.0005740298981481497,
+    0.0018077080848009333,
+    0.004949037314814825,
+    0.0003857091666666689,
+    0.00030746877777777955,
+    0.0017065940000000003
+   ],
+   "ss_norw": [
+    0.0005740298981481497,
+    0.0016720753954861114,
+    0.00495025187962964,
+    0.0003970000041944457,
+    0.0003074687777777797,
+    0.0017065940000000003
+   ]
+  },
+  "shrink75": {
+   "ss_base": [
+    0.0010233073888888894,
+    0.0019045324565175846,
+    0.006052082444444477,
+    0.0009391505648148155,
+    0.0003692137685185194,
+    0.0021534309166666675
+   ],
+   "ss_on": [
+    0.0011642187962962963,
+    0.0019770621306148092,
+    0.005995298930555574,
+    0.0007550799074074081,
+    0.0003692137685185194,
+    0.0023877539074074103
+   ],
+   "ss_off": [
+    0.001169747629629629,
+    0.0019770621306148092,
+    0.005989483356481503,
+    0.0007550799074074081,
+    0.0003692137685185194,
+    0.0023877539074074103
+   ],
+   "ss_norw": [
+    0.0012066721944444432,
+    0.002012364837532402,
+    0.006244989773148166,
+    0.000982568870370371,
+    0.0003692137685185194,
+    0.002253020694444446
+   ]
+  }
+ },
+ "batch_identity": {
+  "per_arm": {
+   "ss_on": {
+    "episode_return_mean": -32.70668588969067,
+    "num_episodes": 12,
+    "num_env_steps_sampled": 8000
+   },
+   "ss_off": {
+    "episode_return_mean": -32.69537524971745,
+    "num_episodes": 12,
+    "num_env_steps_sampled": 8000
+   },
+   "ss_norw": {
+    "episode_return_mean": -32.70668588969067,
+    "num_episodes": 12,
+    "num_env_steps_sampled": 8000
+   }
+  },
+  "identical": false
+ },
+ "verdict": "SMALL_STEP:LITTLE_CHANGE;clean:LITTLE_CHANGE"
+}
