@@ -32,14 +32,17 @@ def _rows(arm, tier):
 
 
 def _pool(rows):
+    """MEAN per window, not a sum: every pooled carbon figure is a mean over the windows."""
     if not rows:
         return None
     return {k: float(np.mean([r[k] for r in rows if k in r])) for k in KEYS if any(k in r for r in rows)} | {"n_windows": len(rows)}
 
 
 def batch_identity():
-    """Addendum A2: the first iteration's sampling statistics must agree across the trained
-    arms (same restored policy, same seed, sampled before any update). Reported as a caveat."""
+    """Addendum A2: the first iteration's sampling SUMMARY statistics across the trained arms
+    (same restored policy, same seed, sampled before any update). Agreement here does not
+    establish that the observation/action/reward sequences are bit-identical — no batch hash is
+    recorded — so the key is named accordingly and read as a caveat, not as proof."""
     DRL = os.path.join(os.path.dirname(os.path.dirname(HERE)), "drl-manager")
     out = {}
     for arm in ("ss_on", "ss_off", "ss_norw"):
@@ -57,7 +60,8 @@ def batch_identity():
                     "num_episodes": er.get("num_episodes"),
                     "num_env_steps_sampled": first.get("num_env_steps_sampled_lifetime")}
     vals = [json.dumps(v, sort_keys=True) for v in out.values() if v is not None]
-    return {"per_arm": out, "identical": bool(vals and len(set(vals)) == 1)}
+    return {"per_arm": out, "summary_statistics_identical": bool(vals and len(set(vals)) == 1),
+            "note": "summary statistics only; no batch hash recorded"}
 
 
 def judge():
@@ -103,6 +107,7 @@ def judge():
             a: {k: (res["arms"][a][tier] or {}).get(k) for k in ("completion_rate_mi", "ontime_mi_share", "deadline_forced_count")}
             for a in ARMS}
     # per-window absolute carbon, so no single window can carry the reading
+    res["pooling"] = "mean per window"
     res["per_window_carbon"] = {t: {a: [r["total_carbon_kg"] for r in _rows(a, t)] for a in ARMS} for t in TIERS}
     res["batch_identity"] = batch_identity()
     res["verdict"] = "SMALL_STEP:" + res["screen"]["shrink75"]["verdict"] + \
