@@ -47,6 +47,7 @@ all CRD diagnostics run on top of the normalized critic automatically.
 """
 
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.ppo.ppo import (
@@ -85,6 +86,18 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
         # Per-module running variance of the value targets. Plain python
         # floats: detached by construction, never part of the autograd graph.
         self._vf_target_var_ema: Dict[ModuleID, float] = {}
+        # Diagnostic (RL_POLICY_DEGRADATION_INVESTIGATION §5): FREEZE_ACTOR_ITERS=N disables
+        # gradients on every non-critic parameter for the first N loss calls, so one iteration
+        # can train the critic alone and the question "does the prior survive when only the
+        # critic moves?" can be answered without changing PPO, the reward or the prior. Off
+        # unless the environment variable is set; it never fires in a normal run.
+        self._freeze_actor_iters = int(os.environ.get("FREEZE_ACTOR_ITERS", "0") or 0)
+        self._freeze_actor_calls = 0
+        if self._freeze_actor_iters > 0:
+            logger.warning("[FREEZE_ACTOR] diagnostic active for the first %d loss calls: "
+                           "only critic_* and value_head parameters will receive gradients",
+                           self._freeze_actor_iters)
+
         # RLlib's stock GAE connector applies one gamma/lambda to every module, so
         # `algorithm_config_overrides_per_module` never reached the advantage computation
         # (a global policy configured 0.999/0.98 ran with the algorithm-level 0.99/0.95).
@@ -98,6 +111,51 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
         except Exception as e:
             logger.warning("[GAE] module-aware GAE not installed (%s); "
                            "per-module gamma/lambda are NOT in effect", e)
+
+
+    # ------------------------------------------------------------------
+    # Diagnostic: train the critic alone for the first N loss calls
+    # ------------------------------------------------------------------
+
+    _CRITIC_PREFIXES = ("critic_", "value_head")
+
+    def compute_gradients(self, loss_per_module, **kwargs):
+        grads = super().compute_gradients(loss_per_module, **kwargs)
+        if self._freeze_actor_iters <= 0:
+            return grads
+        self._freeze_actor_calls += 1
+        if self._freeze_actor_calls > self._freeze_actor_iters:
+            if self._freeze_actor_calls == self._freeze_actor_iters + 1:
+                logger.warning("[FREEZE_ACTOR] releasing the actor after %d calls",
+                               self._freeze_actor_iters)
+            return grads
+        # Zero every gradient that does not belong to the critic. The optimiser still steps,
+        # so momentum and schedules advance exactly as they would; only the actor's parameters
+        # receive no update. Nothing in the loss, the reward or the prior is touched.
+        zeroed = kept = 0
+        for pid, grad in grads.items():
+            if grad is None:
+                continue
+            name = self._pid_to_name(pid)
+            if name is not None and any(k in name for k in self._CRITIC_PREFIXES):
+                kept += 1
+            else:
+                grad.zero_(); zeroed += 1
+        if self._freeze_actor_calls == 1:
+            logger.warning("[FREEZE_ACTOR] call 1: zeroed %d gradients, kept %d critic ones",
+                           zeroed, kept)
+        return grads
+
+    def _pid_to_name(self, pid):
+        """Parameter id -> qualified name, so the critic can be told from the actor."""
+        cache = getattr(self, "_pid_name_cache", None)
+        if cache is None:
+            cache = {}
+            for mid, module in self.module._rl_modules.items() if hasattr(self.module, "_rl_modules") else []:
+                for n, p in module.named_parameters():
+                    cache[self.get_param_ref(p)] = f"{mid}.{n}"
+            self._pid_name_cache = cache
+        return cache.get(pid)
 
     # ------------------------------------------------------------------
     # Running-variance bookkeeping
