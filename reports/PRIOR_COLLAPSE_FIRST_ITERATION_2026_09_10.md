@@ -82,3 +82,23 @@ The frozen prior-gate run uses the certified dense `0..72` grid, `5 x 73 =
 It supplies no evidence about one-epoch collapse. A replacement launch must
 set `OFFSET_GRID_DENSE=1` and record the resolved action-space cardinality
 before training.
+
+## Corrected one-epoch probe
+
+The replacement run used the dense grid and resolved to 365 actions per batch
+slot and `(128, 365)` candidate observations. It completed 8,000 environment
+steps with `num_sgd_iter=1` (four minibatch updates, rather than the frozen
+five-epoch iteration's roughly twenty). On a held decision corpus, deterministic
+decoding changed from exact prior agreement to 2/35 (5.7%) agreement; the mean
+absolute offset error was 16.34 steps and the site histogram moved from
+`[25, 8, 2, 0, 0]` to `[7, 23, 5, 0, 0]`. The recurrent and non-recurrent
+diagnostic paths agreed on this result.
+
+The training-side metrics were `vf_explained_var=0.02296`, `vf_loss=0.8106`,
+`mean_kl=0.000949`, and `grad_norm=10.09` for the global module. Thus the
+prior is already destroyed within one PPO epoch, while the reported adjacent
+policy KL remains small. This rules out the claim that roughly twenty SGD
+updates are necessary. It does not yet distinguish one unusually harmful update
+from four smaller harmful updates, nor does it prove that low critic quality is
+the causal direction; an actor-frozen first-iteration diagnostic is the next
+minimal discriminator.

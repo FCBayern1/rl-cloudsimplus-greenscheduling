@@ -1,0 +1,49 @@
+{
+  "corpus": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_signal/sig_shrink75_k0_decisions_obs.npz",
+  "records": [
+    {
+      "checkpoint": "checkpoint_000000",
+      "step": 8000,
+      "mode": "legacy",
+      "decisions": 35,
+      "agreement": 0.05714285714285714,
+      "mean_offset": 42.714285714285715,
+      "mean_absolute_offset_difference": 16.34285714285714,
+      "site_histogram": [
+        7,
+        23,
+        5,
+        0,
+        0
+      ],
+      "entropy": 4.869840147626687,
+      "kl_prior": 0.02024684226237407,
+      "prior_action_prob": 0.013423448224458354,
+      "residual_min": -0.4987833499908447,
+      "residual_max": 0.26537442207336426,
+      "value_mean": 0.16910809023039683
+    },
+    {
+      "checkpoint": "checkpoint_000000",
+      "step": 8000,
+      "mode": "recurrent",
+      "decisions": 35,
+      "agreement": 0.05714285714285714,
+      "mean_offset": 42.714285714285715,
+      "mean_absolute_offset_difference": 16.34285714285714,
+      "site_histogram": [
+        7,
+        23,
+        5,
+        0,
+        0
+      ],
+      "entropy": 4.868182206617215,
+      "kl_prior": 0.022008984188311115,
+      "prior_action_prob": 0.013437445581672924,
+      "residual_min": -0.5203239917755127,
+      "residual_max": 0.27504658699035645,
+      "value_mean": 0.14319057251725878
+    }
+  ]
+}
