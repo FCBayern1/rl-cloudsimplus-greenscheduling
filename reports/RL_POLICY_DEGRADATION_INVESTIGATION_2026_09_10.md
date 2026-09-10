@@ -68,6 +68,8 @@ No new training has been started, no existing verdict has been rewritten, and no
 
 `src/networks/gtrxl.py` added the positional vector as `pos_encoder[:, :T, :]`, i.e. **the index of the token inside its chunk**. Rollout always runs with T = 1 and therefore always saw position 0; training ran with T up to `max_seq_len` (128 here) and saw positions 0…T−1. The same observation was encoded differently in the two paths, so PPO's ratio `exp(new_logp − old_logp)` compared two different functions.
 
+**Time-position semantics, stated explicitly (ruling of 2026-09-10)**: every step carries the *same* positional vector, in all three paths — single-step rollout, a training sequence, and a sequence continued from carried memory. Ordering is represented by the sliding XL memory, not by an index into an arbitrary training chunk. This is a *choice* between two valid repairs; the alternative (thread the absolute step index through the connectors so rollout carries the true position) preserves positional capability but needs a step counter in the module state and was not taken. The cost of the chosen semantics is that positional information is now absent everywhere — defensible only because rollout never had it, so it was never available at deployment.
+
 Fix: one shared positional vector on every step (`pos_encoder[:, :1, :]`). This is also the semantically correct choice for this architecture — each block attends over `concat(memory, current token)` one step at a time, so ordering is carried by the sliding memory, not by an index into an arbitrary training chunk. The parameter keeps its shape, so existing checkpoints still load; rows past the first are unused from here on. **Checkpoints trained before this fix are not comparable to ones trained after it.**
 
 Regression test `tests/test_gtrxl_sequence_step_consistency.py` (4 cases): a length-T sequence must equal the same inputs fed one step at a time carrying state; splitting a trajectory at a chunk boundary must not change the answer; poisoning every positional row but the first must not change the output; and dropping the state *must* change it, so a silent state loss cannot pass. Verified to fail on the pre-fix code (3 of 4) and pass after.
@@ -81,4 +83,23 @@ Fix: `src/learners/per_module_gae.py::ModuleAwareGAE` resolves the two values pe
 Regression run: 441 passed on the gtrxl / gae / crd / scheduler / inference / offset / option selection; the single failure, `test_g1_eval_blocks`, predates this work and is unrelated to it.
 
 **Still open from §5**: the no-update identity test (3), the short single-seed vanilla run against the prior-preservation gate (4), and the restoration of three seeds and the EU-CRD comparison (5).
+
+### 6.3 The identity is verified where PPO actually compares (ruling of 2026-09-10)
+
+Equality of the trunk output is not enough: PPO compares log-probabilities. `tests/test_train_rollout_identity.py` builds the **full** `GTrXLScoreBasedGlobalRLModule` and checks, on the same states:
+
+- sequence vs single-step rollout: identical **logits**, identical **action probabilities**, identical **greedy actions**;
+- the **log-probability of the same actions** under both paths, and that `exp(lp_seq − lp_rollout)` is 1 to 1e-5 — the ratio PPO's surrogate is built from;
+- **memory continuation**: one long sequence equals two chunks with carried state, in logits and in greedy actions;
+- a guard that poisoning the positional rows past the first changes nothing under the chosen semantics.
+
+All four fail on the pre-fix code and pass after it. Together with `tests/test_gtrxl_sequence_step_consistency.py` (4), `tests/test_no_update_identity.py` (4) and `tests/test_per_module_gae.py` (4 + 1 skipped end-to-end stub), that is 16 passing regression tests over this class of fault.
+
+**Still missing from the test set** (ruling of 2026-09-10, to be added): a numeric end-to-end check that each module's GAE receives its own gamma and lambda inside a real learner (the stub version skips), and explicit padding / truncation / bootstrap tests. The recurrent-state and episode-reset behaviour is covered by `tests/test_rllib_scheduler_inference_state.py` from the evaluation fix.
+
+### 6.4 What may and may not be claimed
+
+**May**: the policy accumulates drift away from the prior with nothing constraining it (KL 0.025 → 0.925, residual growing without saturation, no anchor in the configuration); two train/rollout inconsistencies and two evaluation faults were real and are fixed; with the evaluation faults fixed the three vanilla seeds still sit 22.4 % above the rule, so the problem is not merely a measurement artefact.
+
+**May not**: that the policy is "random-walking on flat ground" — that remains a **high-probability explanation**, not an established root cause, until the training-correctness repairs are validated. Nor may it be claimed that fixing these faults will restore `cover_argmax`-level behaviour; the corrected-evaluation gap of 22.4 % says the training side is genuinely damaged, but not by how much these particular faults contributed.
 
