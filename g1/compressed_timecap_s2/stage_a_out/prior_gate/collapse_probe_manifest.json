@@ -1,0 +1,9 @@
+{
+  "source": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/config_prior_gate.yml",
+  "source_sha256": "7347d52a2c03ed61e686f808c789a5460b3a97160e102ced03b8360db5f1564c",
+  "output_sha256": "788f1705c6c8ea6d32df6c98d1464cd2d88835e2fc2f301af9dce8c998a22366",
+  "seed": 20260914,
+  "total_timesteps": 8000,
+  "num_sgd_iter": 1,
+  "purpose": "distinguish one PPO epoch from five-epoch accumulation"
+}
