@@ -121,29 +121,46 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
 
     def compute_gradients(self, loss_per_module, **kwargs):
         grads = super().compute_gradients(loss_per_module, **kwargs)
-        if self._freeze_actor_iters <= 0:
-            return grads
-        self._freeze_actor_calls += 1
-        if self._freeze_actor_calls > self._freeze_actor_iters:
-            if self._freeze_actor_calls == self._freeze_actor_iters + 1:
-                logger.warning("[FREEZE_ACTOR] releasing the actor after %d calls",
-                               self._freeze_actor_iters)
-            return grads
-        # Zero every gradient that does not belong to the critic. The optimiser still steps,
-        # so momentum and schedules advance exactly as they would; only the actor's parameters
-        # receive no update. Nothing in the loss, the reward or the prior is touched.
-        zeroed = kept = 0
+        if self._freeze_actor_iters > 0:
+            self._freeze_actor_calls += 1
+            if self._freeze_actor_calls > self._freeze_actor_iters:
+                if self._freeze_actor_calls == self._freeze_actor_iters + 1:
+                    logger.warning("[FREEZE_ACTOR] releasing the actor after %d calls",
+                                   self._freeze_actor_iters)
+            else:
+                # Zero every gradient that does not belong to the critic. The optimiser still
+                # steps, so momentum and schedules advance exactly as they would; only the
+                # actor's parameters receive no update.
+                zeroed = kept = 0
+                for pid, grad in grads.items():
+                    if grad is None:
+                        continue
+                    name = self._pid_to_name(pid)
+                    if name is not None and any(k in name for k in self._CRITIC_PREFIXES):
+                        kept += 1
+                    else:
+                        grad.zero_(); zeroed += 1
+                if self._freeze_actor_calls == 1:
+                    logger.warning("[FREEZE_ACTOR] call 1: zeroed %d gradients, kept %d critic ones",
+                                   zeroed, kept)
+
+        # GATED_RESIDUAL_PREREG G-b: report the gradient that will actually be
+        # applied to the learned residual's output layer (therefore exactly zero
+        # during the critic-only warm-up). Read-only instrumentation.
+        residual_sq = None
         for pid, grad in grads.items():
             if grad is None:
                 continue
             name = self._pid_to_name(pid)
-            if name is not None and any(k in name for k in self._CRITIC_PREFIXES):
-                kept += 1
-            else:
-                grad.zero_(); zeroed += 1
-        if self._freeze_actor_calls == 1:
-            logger.warning("[FREEZE_ACTOR] call 1: zeroed %d gradients, kept %d critic ones",
-                           zeroed, kept)
+            if name is not None and "global_policy.offset_head." in name:
+                term = grad.detach().float().square().sum()
+                residual_sq = term if residual_sq is None else residual_sq + term
+        if residual_sq is not None:
+            self.metrics.log_dict(
+                {"anchored_gate/residual_output_grad_norm": float(residual_sq.sqrt().item())},
+                key="global_policy",
+                window=1,
+            )
         return grads
 
     def _pid_to_name(self, pid):

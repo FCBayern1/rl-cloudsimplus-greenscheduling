@@ -1120,6 +1120,35 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 else:
                     self.cover_gain = nn.Parameter(torch.ones(1))
 
+            # Anchored gated residual (GATED_RESIDUAL_PREREG, frozen 2026-09-10).
+            # This is deliberately built only when enabled: default-off modules keep
+            # exactly the same parameters, buffers, state_dict and forward arithmetic.
+            gate_cfg = model_config.get("anchored_gated_residual", {})
+            if not isinstance(gate_cfg, dict):
+                raise ValueError("anchored_gated_residual must be a mapping")
+            self.anchored_gated_residual_enabled = bool(gate_cfg.get("enabled", False))
+            if self.anchored_gated_residual_enabled:
+                if not getattr(self, "has_cover", False) or not getattr(self, "cover_prior_fixed", False):
+                    raise ValueError(
+                        "anchored_gated_residual requires cand_green_cover and cover_prior_fixed=true")
+                anchor = float(gate_cfg.get("anchor_margin", 0.1))
+                gate_init = float(gate_cfg.get("gate_init", 0.01))
+                gate_max = float(gate_cfg.get("gate_max", 0.5))
+                regularizer_lambda = float(gate_cfg.get("regularizer_lambda", 100.0))
+                if not (anchor > 0.0 and 0.0 < gate_init < gate_max and regularizer_lambda >= 0.0):
+                    raise ValueError(
+                        "anchored_gated_residual requires anchor_margin>0, "
+                        "0<gate_init<gate_max and regularizer_lambda>=0")
+                self.register_buffer("residual_anchor_margin", torch.tensor(anchor, dtype=torch.float32))
+                self.register_buffer("residual_gate_max", torch.tensor(gate_max, dtype=torch.float32))
+                self.register_buffer(
+                    "residual_regularizer_lambda", torch.tensor(regularizer_lambda, dtype=torch.float32))
+                gate_fraction = gate_init / gate_max
+                gate_theta = math.log(gate_fraction / (1.0 - gate_fraction))
+                self.residual_gate_theta = nn.Parameter(torch.tensor(gate_theta, dtype=torch.float32))
+        else:
+            self.anchored_gated_residual_enabled = False
+
         # === V3.2 factorized temporal gate (2026-08-14, docs/V32_FORECAST_REVIVAL_PLAN.md) ===
         # Default OFF: no parameters are built, so pre-V3.2 checkpoints load and
         # forward byte-identically. When ON, the per-slot hold/route decision is
@@ -1345,6 +1374,12 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                 self.context_keys.append(key)
                 self.context_dim += int(np.prod(shape))
 
+    def residual_gate_value(self) -> torch.Tensor:
+        """Return the bounded learned residual gate (only available when enabled)."""
+        if not getattr(self, "anchored_gated_residual_enabled", False):
+            raise RuntimeError("anchored_gated_residual is not enabled")
+        return self.residual_gate_max * torch.sigmoid(self.residual_gate_theta)
+
     @override(TorchRLModule)
     def get_initial_state(self):
         actor_mem = np.zeros(
@@ -1557,14 +1592,33 @@ class GTrXLScoreBasedGlobalRLModule(TorchRLModule, InferenceOnlyAPI, ValueFuncti
                     cv = cv.unsqueeze(1)
                 if cv.shape[1] != full.shape[1] and cv.shape[1] == 1:
                     cv = cv.expand(cv.shape[0], full.shape[1], cv.shape[2], cv.shape[3])
-                full = full + self.cover_gain * cv
             allowed = obs.get("batch_cloudlet_offset_allowed") if isinstance(obs, dict) else None
-            if allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
+            al = None
+            if allowed is not None:
                 al = allowed.float() if allowed.dtype != torch.float32 else allowed
                 if al.dim() == 3:
                     al = al.unsqueeze(1)
                 if al.shape[1] != full.shape[1] and al.shape[1] == 1:
                     al = al.expand(al.shape[0], full.shape[1], al.shape[2], al.shape[3])
+
+            if getattr(self, "anchored_gated_residual_enabled", False):
+                if cover is None:
+                    raise ValueError("anchored_gated_residual requires cand_green_cover at runtime")
+                # a0 is cover_argmax under the legal mask and torch's stable
+                # first-index tie rule. The learned site+offset path is bounded
+                # before the scalar gate is applied.
+                prior = self.cover_gain * cv
+                legal = (al >= 0.5) if al is not None else torch.ones_like(prior, dtype=torch.bool)
+                masked_prior = torch.where(legal, prior, torch.full_like(prior, -1e9))
+                a0 = masked_prior.argmax(dim=-1, keepdim=True)
+                anchor = F.one_hot(a0.squeeze(-1), num_classes=prior.shape[-1]).to(prior.dtype)
+                anchor = anchor * self.residual_anchor_margin
+                gate = self.residual_gate_value()
+                full = prior + anchor + gate * torch.tanh(full)
+            elif cover is not None:
+                full = full + self.cover_gain * cv
+
+            if allowed is not None and not getattr(self, "_audit_skip_defer_mask", False):
                 full = torch.where(al >= 0.5, full, torch.full_like(full, -1e9))
             scores = full
         T = scores.shape[1]

@@ -1,0 +1,30 @@
+{
+  "anchored_gated_residual": {
+    "anchor_margin": 0.1,
+    "enabled": true,
+    "gate_init": 0.01,
+    "gate_max": 0.5,
+    "regularizer_lambda": 100.0
+  },
+  "changed_top_level_keys_vs_prior_gate": [
+    "experiment_name",
+    "gtrxl",
+    "simulation_name",
+    "training"
+  ],
+  "critic_warmup_steps": 24000,
+  "freeze_actor_loss_calls": 60,
+  "gate_steps": 24000,
+  "output": "g1/compressed_timecap_s2/config_gated_residual_gate.yml",
+  "output_sha256": "887db74b24dcffd5517707c68634719d5a58c6214f92ffdd6a3d448e4957f462",
+  "prereg_commit": "e82701e8",
+  "required_environment": {
+    "FREEZE_ACTOR_ITERS": "60",
+    "OFFSET_GRID_DENSE": "1",
+    "PYTHONHASHSEED": "0"
+  },
+  "seed": 20260915,
+  "source": "g1/compressed_timecap_s2/config_prior_gate.yml",
+  "source_sha256": "7347d52a2c03ed61e686f808c789a5460b3a97160e102ced03b8360db5f1564c",
+  "total_steps": 48000
+}

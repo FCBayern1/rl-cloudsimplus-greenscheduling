@@ -374,6 +374,11 @@ def _merged_gtrxl_model_settings(
         m["cover_prior_fixed"] = bool(g["cover_prior_fixed"])
     if "cover_prior_gain" in g:
         m["cover_prior_gain"] = float(g["cover_prior_gain"])
+    if "anchored_gated_residual" in g:
+        agr = g["anchored_gated_residual"]
+        if not isinstance(agr, dict):
+            raise ValueError("gtrxl.anchored_gated_residual must be a mapping")
+        m["anchored_gated_residual"] = dict(agr)
     if "score_encoder_init_gain" in g:
         m["score_encoder_init_gain"] = float(g["score_encoder_init_gain"])
     if "score_temperature" in g:
@@ -450,6 +455,7 @@ def create_rlmodule_config(
         "score_encoder_init_gain": float(gm.get("score_encoder_init_gain", 0.3)),
         "cover_prior_fixed": bool(gm.get("cover_prior_fixed", False)),
         "cover_prior_gain": float(gm.get("cover_prior_gain", 1.0)),
+        "anchored_gated_residual": dict(gm.get("anchored_gated_residual", {}) or {}),
         "score_temperature": float(gm.get("score_temperature", 2.0)),
         # BC warm-start: empty string = disabled; absolute path = load before
         # PPO starts.  Only the global module reads this key; locals ignore it.
@@ -636,6 +642,13 @@ def create_rlmodule_config(
     ps_credit_enabled = (
         bool(ps_credit_cfg.get("enabled", False)) if isinstance(ps_credit_cfg, dict) else False
     )
+    anchored_residual_enabled = bool(
+        (gtrxl_config.get("anchored_gated_residual") or {}).get("enabled", False)
+    )
+    if anchored_residual_enabled and not ps_credit_enabled:
+        raise ValueError(
+            "anchored_gated_residual requires per_slot_credit.enabled=true so L_gate "
+            "is applied over real decision slots")
     if ps_credit_enabled:
         ps_knobs = {"enabled": True, "mask_padding": bool(ps_credit_cfg.get("mask_padding", True))}
         gtrxl_config = dict(gtrxl_config)

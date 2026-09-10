@@ -50,6 +50,87 @@ def _read_per_slot_config(module) -> Dict[str, Any]:
     return cfg if isinstance(cfg, dict) else {}
 
 
+def anchored_gate_regularizer(module, batch, logits):
+    """Compute the frozen anchored-residual regulariser over real decision slots.
+
+    The effective perturbation is recovered from the emitted legal logits, so
+    this measures the exact quantity that reached the policy distribution rather
+    than a parallel reconstruction of the actor path.
+    """
+    mc = getattr(module, "model_config", None) or {}
+    cfg = mc.get("anchored_gated_residual", {}) if isinstance(mc, dict) else {}
+    enabled = isinstance(cfg, dict) and bool(cfg.get("enabled", False))
+    if not enabled:
+        return logits.sum() * 0.0, {}
+
+    n_slots = int(getattr(module, "num_batch_slots", 0) or 0)
+    n_choices = int(getattr(module, "num_action_choices", 0) or 0)
+    if n_slots <= 0 or n_choices <= 1:
+        raise RuntimeError("anchored gate regulariser requires a MultiDiscrete offset module")
+
+    obs = batch.get(Columns.OBS)
+    inner = obs.get("observation", obs) if isinstance(obs, dict) else None
+    if not isinstance(inner, dict):
+        raise RuntimeError("anchored gate regulariser could not find the observation mapping")
+    missing = [k for k in ("cand_green_cover", "batch_cloudlet_offset_allowed", "batch_cloudlet_mi")
+               if k not in inner]
+    if missing:
+        raise RuntimeError(f"anchored gate regulariser missing observation keys: {missing}")
+
+    lg = logits.reshape(-1, n_slots, n_choices)
+    cover = torch.as_tensor(inner["cand_green_cover"], device=lg.device, dtype=lg.dtype).reshape(
+        -1, n_slots, n_choices)
+    legal = torch.as_tensor(inner["batch_cloudlet_offset_allowed"], device=lg.device).reshape(
+        -1, n_slots, n_choices) >= 0.5
+    real = torch.as_tensor(inner["batch_cloudlet_mi"], device=lg.device).reshape(-1, n_slots) > 0
+    if cover.shape[0] != lg.shape[0] or legal.shape[0] != lg.shape[0] or real.shape[0] != lg.shape[0]:
+        raise RuntimeError(
+            "anchored gate regulariser observation/logit leading dimensions do not match: "
+            f"logits={tuple(lg.shape)}, cover={tuple(cover.shape)}, legal={tuple(legal.shape)}, "
+            f"real={tuple(real.shape)}")
+
+    prior = module.cover_gain.to(device=lg.device, dtype=lg.dtype) * cover
+    masked_prior = torch.where(legal, prior, torch.full_like(prior, -1e9))
+    a0 = masked_prior.argmax(dim=-1, keepdim=True)
+    rule = torch.nn.functional.one_hot(a0.squeeze(-1), num_classes=n_choices).bool()
+    anchor = rule.to(lg.dtype) * module.residual_anchor_margin.to(device=lg.device, dtype=lg.dtype)
+    effective = lg - prior - anchor
+    e0 = effective.gather(-1, a0)
+    competitors = legal & ~rule
+    positive_delta = torch.clamp(effective - e0, min=0.0)
+    candidate = torch.where(competitors, positive_delta, torch.full_like(positive_delta, -torch.inf))
+    d = candidate.max(dim=-1).values
+    d = torch.where(torch.isfinite(d), d, torch.zeros_like(d))
+
+    if Columns.LOSS_MASK in batch:
+        row_mask = torch.as_tensor(batch[Columns.LOSS_MASK], device=lg.device).reshape(-1).bool()
+        if row_mask.numel() != real.shape[0]:
+            raise RuntimeError(
+                f"anchored gate LOSS_MASK has {row_mask.numel()} rows, expected {real.shape[0]}")
+        real = real & row_mask.unsqueeze(-1)
+    selected = d[real]
+    if selected.numel() == 0:
+        loss = logits.sum() * 0.0
+        d_mean = d_max = nonzero = 0.0
+    else:
+        lam = module.residual_regularizer_lambda.to(device=lg.device, dtype=lg.dtype)
+        loss = lam * selected.square().mean()
+        detached = selected.detach()
+        d_mean = float(detached.mean().item())
+        d_max = float(detached.max().item())
+        nonzero = float((detached > 0).float().mean().item())
+
+    gate = float(module.residual_gate_value().detach().item())
+    return loss, {
+        "anchored_gate/gate": gate,
+        "anchored_gate/d_mean": d_mean,
+        "anchored_gate/d_max": d_max,
+        "anchored_gate/d_nonzero_frac": nonzero,
+        "anchored_gate/regularizer_loss": float(loss.detach().item()),
+        "anchored_gate/real_decisions": int(real.sum().item()),
+    }
+
+
 class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
     """PPO learner that masks PADDING slots out of the global router's joint log-prob/entropy."""
 
@@ -60,9 +141,21 @@ class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
     ) -> TensorType:
         module = self.module[module_id].unwrapped()
         ps_cfg = _read_per_slot_config(module)
+        gate_cfg = (getattr(module, "model_config", {}) or {}).get(
+            "anchored_gated_residual", {})
+        anchored_enabled = isinstance(gate_cfg, dict) and bool(gate_cfg.get("enabled", False))
         n_choices = int(ps_cfg.get("n_choices", 0)) or int(getattr(module, "num_action_choices", 0) or 0)
         n_slots = int(getattr(module, "num_batch_slots", 0) or 0)
         valid = self._valid_slot_mask(batch, n_slots) if (n_choices > 0 and n_slots > 0) else None
+
+        if anchored_enabled and (
+            not ps_cfg.get("enabled", False)
+            or not ps_cfg.get("mask_padding", True)
+            or valid is None
+        ):
+            raise RuntimeError(
+                "anchored_gated_residual requires active per-slot padding masking and "
+                "a valid batch_cloudlet_mi mask")
 
         if not (ps_cfg.get("enabled", False) and ps_cfg.get("mask_padding", True)) or valid is None:
             return super().compute_loss_for_module(
@@ -132,6 +225,10 @@ class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
+        gate_loss, gate_metrics = anchored_gate_regularizer(
+            module, batch, fwd_out[Columns.ACTION_DIST_INPUTS])
+        total_loss += gate_loss
+
         extra_vf_metrics = {}
         if var_ema is not None:
             extra_vf_metrics[LEARNER_RESULTS_VF_TARGET_VAR_EMA_KEY] = var_ema
@@ -163,6 +260,7 @@ class PerSlotCreditPPOTorchLearner(NormalizedCriticPPOTorchLearner):
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
                 **extra_vf_metrics,
                 **v32_diag,
+                **gate_metrics,
             },
             key=module_id,
             window=1,
