@@ -189,3 +189,36 @@ overwhelms a 0.02-logit margin. The two repairs are complementary, which is why
 `reports/GATED_RESIDUAL_PREREG_DRAFT.md` §7 orders them warm-up first, bounded gated residual
 second, and does not treat either as sufficient alone. The archived `NO_BENEFIT` verdict of the
 matched pair is unchanged by any of this.
+
+---
+
+## Correction to §A (2026-09-10, after the gate preflight found the contradiction)
+
+**Section A above misclassified the flips and its tie-flip conclusion is withdrawn.**
+
+The classification used "was the top-1/top-2 cover gap zero **at this state**", which is not the
+same question as "was the flip **between two candidates of equal cover**". A state can have a
+tied top pair while the policy picks something far down the ranking. Reclassified correctly, on
+the same 105 decisions and the same cost model:
+
+| flip type | n | pooled local carbon regret |
+|---|---|---|
+| policy's and rule's candidate have **equal cover** | 48 | **+0.000000000 kg** |
+| policy's candidate has different (lower) cover | 57 | +0.001971207 kg |
+| decisions with negative regret (an improvement) | **0** | — |
+
+So **equal coverage does mean equal carbon here**, exactly as the cost model implies: the five
+sites share the same factors (brown 0.5, green 0.01) and the flip concerns the same job, so
+equal cover gives strictly equal local cost. The sentence in §A claiming otherwise ("the
+candidates differ in energy and in site factor") is wrong and is withdrawn; all of the
++0.00197 kg comes from choices with genuinely lower coverage.
+
+What survives unchanged: **102 changed actions, zero improvements, +0.00197 kg of local regret**,
+and the one-directional character of the loss. What changes is the attribution — none of it
+belongs to tie flips, which are exactly free.
+
+This correction is the same fact that makes the frozen G-c unsatisfiable: under a homogeneous-factor
+cost model `cover_argmax` **is** the argmin, so no action can ever have negative local regret, and
+a gate demanding "pooled regret < 0 with ≥ 10 improvements" cannot be met by any algorithm. That is
+a defect in the gate's definition, not a property of any policy
+(`reports/GATED_RESIDUAL_GATE_PREFLIGHT_STOP_2026_09_10.md`).
