@@ -137,3 +137,29 @@ lower coverage. The design consequence is unaffected: exact ties are still the s
 arbitrarily small perturbation flips the action at an arbitrarily small penalty, which is what the
 0.1 anchor exists to prevent — the anchor's justification was the margin geometry, not the
 mis-attributed carbon.
+
+---
+
+## Addendum B — how each outcome is read (frozen 2026-09-10 20:0x UTC, before any run-2 metric has been read)
+
+Fixed in advance so that no reading is designed after the numbers are seen. No evaluation cell of
+run 2 existed when this was written.
+
+- **G-a fails** (the prior is not preserved within 3 %): the mechanism did not do the one thing it
+  was built for. Report and stop; do not adjust λ, the anchor or the gate bounds without a fresh
+  registration.
+- **G-a passes, G-b fails** (prior preserved, but the residual receives no gradient, `d(s)` stays
+  zero, or fewer than ten actions change): report as **"prior preserved, nothing learned"**. The
+  mechanism protects the prior but nothing was learned on top of it.
+- **G-a and G-b pass, G-c′ fails** (prior preserved, the gate opened and the residual genuinely
+  participates in decisions, but executed carbon is not lower): report as **"the mechanism
+  preserved the prior and the residual participated, but this round did not show that departing
+  from the rule pays"**. The available headroom may be small, or the learner may not have found
+  it; **this experiment cannot distinguish the two**. In particular it may **not** be written that
+  the scene has no headroom: the causal expert is a per-step optimum over the jobs currently
+  visible, not a global online optimum, and `cover_argmax` matching it on four sealed windows is
+  not a proof of zero headroom on the six development windows.
+- **All three pass**: the prior-preservation problem is repaired for this configuration and seed,
+  which licenses the next registered step (one vanilla line at 120 000 steps) and nothing more.
+
+One seed and 24 000 steps decide none of these beyond the configuration they were run on.
