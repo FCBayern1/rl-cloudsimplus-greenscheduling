@@ -103,3 +103,44 @@ All four fail on the pre-fix code and pass after it. Together with `tests/test_g
 
 **May not**: that the policy is "random-walking on flat ground" — that remains a **high-probability explanation**, not an established root cause, until the training-correctness repairs are validated. Nor may it be claimed that fixing these faults will restore `cover_argmax`-level behaviour; the corrected-evaluation gap of 22.4 % says the training side is genuinely damaged, but not by how much these particular faults contributed.
 
+## 7. Prior-gate ck0 axis audit (2026-09-10)
+
+The short prior-gate reading reported a carbon gap at `ck0` (no parameter update). Before
+attributing that gap to an unanchored site head, the actual `checkpoint_init` was loaded and
+its action axes were audited on the saved shrink-75 decision corpus.
+
+The checkpoint is the one written by `InitCheckpointCallback` before the first training
+iteration (`INIT_MARKER`), and its global-policy state hash is
+`2770e21c8726c4433c1931e0b2ab5b0364934136708f5373b792005040102446`. In the loaded module,
+`cover_prior_fixed=true`, `cover_gain=20`, and the three learned score paths
+`dc_encoder`, `ctx_to_dc`, and `offset_head` are exactly zero-initialised. Deterministic,
+stateful decoding on 35 real decisions gives:
+
+| measurement | result |
+|---|---:|
+| complete action agreement with `cover_argmax` | 35/35 (1.000) |
+| site-axis agreement | 35/35 (1.000) |
+| offset-axis agreement | 35/35 (1.000) |
+| learned residual logit range | ±9.54e-7 (floating-point residue) |
+| KL from fixed prior | 7.5e-14 |
+
+The unit test `test_fixed_cover_prior_makes_the_untrained_decode_equal_cover_argmax` and
+`test_cover_prior_gain_scales_the_prior_without_moving_the_argmax` assert the same algebra:
+at initialization, after the zero site/offset terms are added, the legal logits are exactly
+`20 * cand_green_cover`; the site axis is therefore covered by the prior too. The hypothesis
+that `ck0` is poor because the site axis starts random is **not supported**.
+
+The saved `ck0_shrink75_k0_decisions.csv` has a different, dispersed action/site pattern
+from that deterministic prior (sites 0/1/2 = 14/15/6). This is consistent with the prior-gate
+evaluation using categorical sampling rather than the deterministic deployment decoder: gain
+20 makes the sampled policy prefer high-cover candidates but does not make every sample equal
+to the argmax. A sampled initial policy can therefore be ~20% above the deterministic rule
+without any learned parameter or site-axis defect. The evaluation command/provenance must be
+made explicit in the gate manifest before interpreting its ck0 carbon numbers.
+
+**Current conclusion.** The new result does not overturn the fixed-prior algebra; it exposes a
+semantic mismatch in the prior-gate reading (likely stochastic-vs-deterministic decoding, to
+be confirmed from the run command). Do not change initialization or add a site-specific anchor
+yet. First re-run/read ck0 with deterministic decoding, and separately report stochastic
+exploration cost. Only if deterministic ck0 still differs from `cover_argmax` should we inspect
+site ordering/mask/observation provenance further.
