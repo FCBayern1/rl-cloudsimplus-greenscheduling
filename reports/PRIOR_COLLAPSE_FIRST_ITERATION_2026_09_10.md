@@ -72,3 +72,13 @@ carbon, relative gap to `cover_argmax`, exact action agreement, site-axis agreem
 and offset-axis agreement, both per window and pooled.  No checkpoint is selected
 by carbon and no hyperparameter is changed after reading the probe.
 
+## Probe run invalidation
+
+The first launch was caught before reading any outcome: its resolved action
+space was `5 x 9 = 45`, because the default dyadic offset grid was active.
+The frozen prior-gate run uses the certified dense `0..72` grid, `5 x 73 =
+365`. The run is archived as invalid at
+`reports/manifests/policy_degradation/prior_collapse_probe_sgd1/INVALIDATED.md`.
+It supplies no evidence about one-epoch collapse. A replacement launch must
+set `OFFSET_GRID_DENSE=1` and record the resolved action-space cardinality
+before training.
