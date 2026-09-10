@@ -102,3 +102,21 @@ updates are necessary. It does not yet distinguish one unusually harmful update
 from four smaller harmful updates, nor does it prove that low critic quality is
 the causal direction; an actor-frozen first-iteration diagnostic is the next
 minimal discriminator.
+
+## Why small KL can flip the argmax
+
+The existing 105-state shrink75 dump was also audited without rerunning the
+environment. The cover gap between the best and second-best legal candidate has
+quantiles `p50=0`, `p75=0.00017345`, `p90=0.00140023`, `p99=0.02063159`, and
+maximum `0.02083337`. After the prior gain of 20, these correspond to logit
+gaps of `0`, `0.00347`, `0.0280`, `0.4126`, and `0.4167`. There are 78 exact
+ties (74.3%) and 88/105 gaps below `0.001` (83.8%).
+
+This makes the apparently paradoxical pair `mean KL=0.000949` and roughly 94%
+argmax disagreement mechanically compatible: a small residual can cross a
+tie-breaking boundary without materially changing the probability distribution.
+The dump alone gives a conservative bound, not an exact attribution of every
+changed action: at most 78 changes can be tie-only, so at least 21 of 105
+changes must cross a nonzero gap if the 94% count is paired to this same corpus.
+The carbon consequence of tie flips is not inferred here and requires paired
+action/cost analysis.
