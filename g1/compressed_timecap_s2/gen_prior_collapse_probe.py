@@ -45,6 +45,9 @@ def build() -> dict:
         "seed": 20260914,
         "total_timesteps": 8000,
         "num_sgd_iter": 1,
+        "offset_grid_dense": True,
+        "offset_grid": list(range(73)),
+        "global_action_choices": 5 * 73,
         "purpose": "distinguish one PPO epoch from five-epoch accumulation",
     }, indent=2) + "\n")
     return out
