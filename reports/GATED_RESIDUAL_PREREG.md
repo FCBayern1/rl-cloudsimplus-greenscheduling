@@ -81,3 +81,49 @@ All three defects were found in review before anything was run.
 4. **Gate floor**: at g₀ = 0.01 no residual, however large, can change the greedy action (max achievable difference 0.02 < 0.1).
 5. **Regulariser**: `d(s)` is zero when the residual is zero; positive only when a non-rule candidate is pushed above the rule's; computed over legal candidates and over real jobs only; `λ·mean(d²)` matches a hand-computed value on a small example.
 6. **Train/rollout identity**: the anchored logits, their probabilities, the greedy actions and the log-probs are identical between the sequence path and the single-step rollout path, as already required for the unanchored model.
+
+---
+
+## Addendum A — G-c replaced; the frozen version was unsatisfiable (2026-09-10, before any training result was read)
+
+**The defect.** G-c required the pooled *local* carbon regret against `cover_argmax` to be
+negative with at least ten improvements. Under this scene's cost model that cannot happen for any
+policy: the five sites share carbon factors (brown 0.5, green 0.01) and the flip concerns one
+job, so the local cost `E · (brown·(1−cover) + green·cover)` is strictly decreasing in cover, and
+`cover_argmax` **is** its argmin over the legal set. Every other action is therefore equal or
+worse by construction. Measured confirmation on the 105 archived decisions: negative local regret
+occurs **0 times**, and flips between equal-cover candidates cost **exactly 0.000000000 kg**. The
+gate was unsatisfiable by definition, not by any failure of the algorithm
+(`reports/GATED_RESIDUAL_GATE_PREFLIGHT_STOP_2026_09_10.md`, `STOP_GATE_DEFINITION_UNSATISFIABLE`).
+
+**Why the local measure was the wrong object.** It is myopic: dispatching now consumes residual
+green on the reservation grid and lowers the coverage available to later jobs. A policy can be
+locally suboptimal at individual decisions and still finish an episode with less carbon. Judging
+a policy against the local formula's own optimum can only ever measure how far it departs from
+that formula — never whether the departure was worthwhile.
+
+**G-c′ (replacing G-c).** Judged on **executed** episode carbon, the same quantity the matched
+pair and every other reading in this line use:
+
+- the gated line's pooled carbon over the six development windows must be **strictly lower** than
+  `cover_argmax`'s on the same windows, at **shrink 0.75** (the trained-on tier);
+- the improvement must hold in **at least four of the six windows** — fixed here, before any
+  result, so a pooled gain carried by one window is reported as conditional and not as a pass;
+- contracts intact in every window (completion, on-time share, forced deadlines), as in G-a;
+- the clean tier (godeye) is reported alongside and must not regress by more than the 3 % of G-a.
+
+The local-regret measure of the withdrawn G-c is **retained as a reported diagnostic**, not as a
+gate: it says how far the policy departs from the myopic optimum, which remains informative when
+read next to the executed carbon.
+
+**Unchanged**: G-a (prior preserved within 3 %), G-b (non-trivial learning: non-zero gradient to
+the residual's output layer, non-zero `d(s)`, at least ten changed actions), the mechanism of §2,
+the regulariser and λ of §3, the 3-iteration critic warm-up of §4, and the order of work of §6.
+The implementation already committed (`b8538934`, seed wiring `f7f7e507`, 47 tests passing, 1
+skipped) needs no change; only this gate definition does.
+
+**Audit note.** The earlier claim that equal-cover flips carried 55 % of the measured carbon loss
+was an artefact of a misclassification and has been withdrawn and corrected in
+`reports/PRIOR_COLLAPSE_FIRST_ITERATION_2026_09_10.md`. The surviving facts are unchanged: 102
+changed actions, zero improvements, +0.00197 kg of local regret, all of it from choices with
+genuinely lower coverage.
