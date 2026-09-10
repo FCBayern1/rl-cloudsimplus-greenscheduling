@@ -127,3 +127,13 @@ was an artefact of a misclassification and has been withdrawn and corrected in
 `reports/PRIOR_COLLAPSE_FIRST_ITERATION_2026_09_10.md`. The surviving facts are unchanged: 102
 changed actions, zero improvements, +0.00197 kg of local regret, all of it from choices with
 genuinely lower coverage.
+
+**Two places in this document carry the withdrawn claim** and are corrected by the audit note
+above rather than edited, because frozen text is amended only by addenda: §1's bullet "102 changed
+actions, zero improvements, +0.00197 kg … **55 % of it from exact-tie flips**" and §7's v2
+paragraph "those decisions carry 55 % of the measured carbon loss". The correct attribution is
+that equal-cover flips cost **exactly zero** and all of the +0.00197 kg comes from choices with
+lower coverage. The design consequence is unaffected: exact ties are still the states where an
+arbitrarily small perturbation flips the action at an arbitrarily small penalty, which is what the
+0.1 anchor exists to prevent — the anchor's justification was the margin geometry, not the
+mis-attributed carbon.
