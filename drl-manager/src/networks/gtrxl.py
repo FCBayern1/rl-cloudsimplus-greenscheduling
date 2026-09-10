@@ -176,10 +176,22 @@ class GTrXL(nn.Module):
 
         x = self.embedding(x)
 
-        if T > self.pos_encoder.shape[1]:
-            pe = self.pos_encoder.repeat(1, (T // self.pos_encoder.shape[1]) + 1, 1)[:, :T, :]
-        else:
-            pe = self.pos_encoder[:, :T, :]
+        # Positional encoding: the SAME vector on every step, so that the sequence path and
+        # the single-step rollout path are the same function of the same state.
+        #
+        # Until 2026-09-10 this was `pos_encoder[:, :T, :]`, i.e. the index of the token inside
+        # its chunk. Rollout always runs with T = 1 and therefore always saw position 0, while
+        # training ran with T up to max_seq_len and saw positions 0..T-1. The same observation
+        # was thus encoded differently in the two paths, so PPO's ratio exp(new_logp - old_logp)
+        # compared two different functions and the gradient was corrupted (investigation
+        # reports/RL_POLICY_DEGRADATION_INVESTIGATION_2026_09_10.md).
+        #
+        # A single shared vector is also the semantically right choice for this architecture:
+        # the block attends over concat(memory, current token) one step at a time, so ordering
+        # is carried by the sliding memory, not by an index inside an arbitrary training chunk.
+        # The parameter keeps its shape so existing checkpoints still load; rows beyond the
+        # first are simply unused from here on.
+        pe = self.pos_encoder[:, :1, :]
         x = x + pe
 
         if not state or len(state) != self.num_layers:

@@ -85,6 +85,19 @@ class NormalizedCriticPPOTorchLearner(PPOTorchLearner):
         # Per-module running variance of the value targets. Plain python
         # floats: detached by construction, never part of the autograd graph.
         self._vf_target_var_ema: Dict[ModuleID, float] = {}
+        # RLlib's stock GAE connector applies one gamma/lambda to every module, so
+        # `algorithm_config_overrides_per_module` never reached the advantage computation
+        # (a global policy configured 0.999/0.98 ran with the algorithm-level 0.99/0.95).
+        # Swap in the module-aware connector; a failure here is logged, never silent.
+        try:
+            from src.learners.per_module_gae import install_module_aware_gae
+            ok = install_module_aware_gae(self._learner_connector, self.config)
+            if not ok:
+                logger.warning("[GAE] no GeneralAdvantageEstimation connector found to replace; "
+                               "per-module gamma/lambda are NOT in effect")
+        except Exception as e:
+            logger.warning("[GAE] module-aware GAE not installed (%s); "
+                           "per-module gamma/lambda are NOT in effect", e)
 
     # ------------------------------------------------------------------
     # Running-variance bookkeeping
