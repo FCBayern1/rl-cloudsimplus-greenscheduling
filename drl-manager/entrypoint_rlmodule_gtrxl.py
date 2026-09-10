@@ -45,8 +45,12 @@ def set_seed(seed: int):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    logger.info(f"Random seed set to: {seed}")
+    # PYTHONHASHSEED is consumed when a Python process starts. Preserve an
+    # explicitly frozen launcher value (Stage D and gated-residual protocols
+    # use 0) so Ray children inherit the declared value. With no launcher
+    # override, retain the historical behaviour of passing the run seed on.
+    hash_seed = os.environ.setdefault('PYTHONHASHSEED', str(seed))
+    logger.info(f"Random seed set to: {seed} (PYTHONHASHSEED for children: {hash_seed})")
 
 
 def main():
