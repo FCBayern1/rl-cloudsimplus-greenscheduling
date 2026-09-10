@@ -1,0 +1,89 @@
+{
+  "scope": "Fresh deterministic prior trajectory using final learner critic; off-policy diagnostic, not historical PPO advantages",
+  "records": [
+    {
+      "tier": "godeye",
+      "gamma": 0.99,
+      "lambda_": 0.95,
+      "values_mean": -3.8032422516861413,
+      "values_std": 4.237131762673893,
+      "advantages_mean": 1.1819919350030066,
+      "advantages_std": 1.7095709387693285,
+      "decision_advantages_mean": 2.0085239489904767,
+      "fraction_decision_advantage_negative": 0.11428571428571428,
+      "targets_mean": -2.6212503166831347,
+      "targets_std": 3.5365824784568938,
+      "episode_discounted_return": 4.944325297099746
+    },
+    {
+      "tier": "godeye",
+      "gamma": 0.999,
+      "lambda_": 0.98,
+      "values_mean": -3.8032422516861413,
+      "values_std": 4.237131762673893,
+      "advantages_mean": 1.6460995913340277,
+      "advantages_std": 2.6077784572537355,
+      "decision_advantages_mean": 2.460632795006392,
+      "fraction_decision_advantage_negative": 0.2,
+      "targets_mean": -2.1571426603521133,
+      "targets_std": 3.7047057603689466,
+      "episode_discounted_return": 17.694190368656294
+    },
+    {
+      "tier": "shrink0",
+      "gamma": 0.99,
+      "lambda_": 0.95,
+      "values_mean": -5.413832770322416,
+      "values_std": 0.9145080976304983,
+      "advantages_mean": -0.6849181149686224,
+      "advantages_std": 3.017467208148496,
+      "decision_advantages_mean": -0.0808346020597119,
+      "fraction_decision_advantage_negative": 0.4,
+      "targets_mean": -6.098750885291039,
+      "targets_std": 2.9391164846930904,
+      "episode_discounted_return": 2.4537517992521267
+    },
+    {
+      "tier": "shrink0",
+      "gamma": 0.999,
+      "lambda_": 0.98,
+      "values_mean": -5.413832770322416,
+      "values_std": 0.9145080976304983,
+      "advantages_mean": -4.239106954390293,
+      "advantages_std": 6.311281315451942,
+      "decision_advantages_mean": -4.052479224817232,
+      "fraction_decision_advantage_negative": 0.6,
+      "targets_mean": -9.65293972471271,
+      "targets_std": 6.247175314307257,
+      "episode_discounted_return": -38.04406352270502
+    },
+    {
+      "tier": "shrink75",
+      "gamma": 0.99,
+      "lambda_": 0.95,
+      "values_mean": -4.702730480143252,
+      "values_std": 3.7437100194102353,
+      "advantages_mean": 1.1695127034112913,
+      "advantages_std": 1.3349838786807129,
+      "decision_advantages_mean": 2.040241292066392,
+      "fraction_decision_advantage_negative": 0.02857142857142857,
+      "targets_mean": -3.5332177767319615,
+      "targets_std": 3.3358140311136935,
+      "episode_discounted_return": 4.844482649851396
+    },
+    {
+      "tier": "shrink75",
+      "gamma": 0.999,
+      "lambda_": 0.98,
+      "values_mean": -4.702730480143252,
+      "values_std": 3.7437100194102353,
+      "advantages_mean": 1.2472569639756805,
+      "advantages_std": 1.99739791056038,
+      "decision_advantages_mean": 2.052322513772169,
+      "fraction_decision_advantage_negative": 0.17142857142857143,
+      "targets_mean": -3.4554735161675723,
+      "targets_std": 3.842736071110195,
+      "episode_discounted_return": 12.97699183796696
+    }
+  ]
+}

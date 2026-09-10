@@ -1,0 +1,32 @@
+{
+  "args": {
+    "root": "logs/matched_pair/V_s20260911/multidc_gtrxl_training/PPO_multidc_env_db752_00000_0_2026-09-09_13-06-15",
+    "out": "../reports/manifests/policy_degradation/prior_k0",
+    "indices": "14",
+    "windows": "0",
+    "modes": "recurrent",
+    "tiers": "godeye,shrink75,shrink0",
+    "prior": true
+  },
+  "jobs": [
+    [
+      14,
+      0,
+      "recurrent",
+      "godeye"
+    ],
+    [
+      14,
+      0,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      0,
+      "recurrent",
+      "shrink0"
+    ]
+  ],
+  "workers": 2
+}

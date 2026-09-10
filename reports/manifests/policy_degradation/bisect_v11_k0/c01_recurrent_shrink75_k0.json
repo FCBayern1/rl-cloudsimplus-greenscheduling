@@ -1,0 +1,870 @@
+{
+  "checkpoint": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/matched_pair/V_s20260911/multidc_gtrxl_training/PPO_multidc_env_db752_00000_0_2026-09-09_13-06-15/checkpoint_000001",
+  "mode": "recurrent",
+  "tier": "shrink75",
+  "window": 0,
+  "offset": 21850,
+  "metrics": [
+    {
+      "green_waste_wh": 107.17591338888883,
+      "green_used_wh": 28.8530583333334,
+      "brown_used_wh": 1.7773416666666666,
+      "total_energy_wh": 30.630400000000066,
+      "green_ratio": 0.9419745851615826,
+      "total_carbon_kg": 0.0011772014166666663,
+      "carbon_intensity": 0.038432453270824535,
+      "total_cloudlets": 35,
+      "remaining_cloudlets": 0,
+      "routed_cloudlets": 0,
+      "deadline_forced_count": 0,
+      "ontime_mi_share": 1.0,
+      "total_finished_cloudlets": 35,
+      "total_created_cloudlets": 35,
+      "waste_ratio": 0.7878903444756405,
+      "routed_cloudlets_count": 35,
+      "routed_rate": 1.0,
+      "completion_rate": 1.0,
+      "completion_rate_mi": 0.9999999999999998,
+      "carbon_per_completion_mi": 0.0011772014166666666,
+      "completion_time_dc_0": 310.4,
+      "finished_dc_0": 20,
+      "received_dc_0": 20,
+      "green_ratio_dc_0": 0.961051019026339,
+      "completion_time_dc_1": 469.5833333333333,
+      "finished_dc_1": 12,
+      "received_dc_1": 12,
+      "green_ratio_dc_1": 0.9008024797153951,
+      "completion_time_dc_2": 471.3333333333333,
+      "finished_dc_2": 3,
+      "received_dc_2": 3,
+      "green_ratio_dc_2": 0.9795096544715447,
+      "completion_time_dc_3": 0.0,
+      "finished_dc_3": 0,
+      "received_dc_3": 0,
+      "green_ratio_dc_3": 0.0,
+      "completion_time_dc_4": 0.0,
+      "finished_dc_4": 0,
+      "received_dc_4": 0,
+      "green_ratio_dc_4": 0.0,
+      "mean_completion_time": 378.77142857142854,
+      "total_received_cloudlets": 35,
+      "sum_finished_dc": 35,
+      "finished_rate": 1.0,
+      "carbon_per_finished_cloudlet": 3.3634326190476184e-05,
+      "ep_global_carbon_cap_count": 0,
+      "defer_urgency_cost_sum": 0.0,
+      "ep_global_carbon_max_ratio": 0.3683133333333333,
+      "ep_spatial_sample_count": 0,
+      "ep_carbon_raw_kg_sum": 0.9984000000000002,
+      "ep_route_to_start_n": 35,
+      "ep_opt_release_failed": 0,
+      "ep_spatial_term_sum": 0.0,
+      "ep_opt_created": 35,
+      "ep_opt_release_unknown": 0,
+      "ep_opt_released": 35,
+      "ep_carbon_norm_sample_count": 35,
+      "ep_carbon_norm_sum": 19.968000000000004,
+      "ep_carbon_norm_clip_count": 0,
+      "ep_completion_term_sum": 35.0,
+      "ep_carbon_level_term_sum": 0.0,
+      "ep_route_to_start_p95_sec": 0.0,
+      "ep_opt_held_open": 0,
+      "ep_route_to_start_max_sec": 0.0,
+      "ep_mask_route_count": 0,
+      "ep_mask_routed_ids": "",
+      "ep_mask_routed_ids_sha": "e3b0c44298fc1c14",
+      "ep_mask_routed_ids_unknown": 0,
+      "ep_opt_refused": 0,
+      "ep_opt_term_green": 0,
+      "ep_opt_term_margin": 35,
+      "ep_opt_routes_seen": 0,
+      "ep_opt_release_nan": 0,
+      "ep_opt_hold_refused": 0,
+      "ep_opt_hold_masked": 0,
+      "ep_opt_route_to_start_max_steps": 0.0,
+      "ep_opt_start_unknown": 0,
+      "ep_opt_stale": 0,
+      "ep_opt_ledger_sha": "579889dfd183c605",
+      "option_ledger_path": "/home/joshua/rl-cloudsimplus-greenscheduling/reports/manifests/policy_degradation/bisect_v11_k0/c01_recurrent_shrink75_k0_option_ledger.csv",
+      "episode": 1,
+      "episode_length": 615,
+      "global_reward_sum": 11.75597166666677,
+      "global_reward_discounted_sum": 9.198311681208299,
+      "discount_gamma": 0.999,
+      "local_reward_sum": 7.278045395879426,
+      "global_defer_actions": 34,
+      "global_route_actions": 1,
+      "global_defer_action_rate": 0.9714285714285714,
+      "green_episode_offset_rows": 21850,
+      "global_decision_us_mean": 1527.241193495935,
+      "global_decision_us_p50": 1629.128,
+      "global_decision_us_p95": 1919.9474999999998,
+      "global_decision_us_p99": 2344.187240000001,
+      "global_decision_count": 615,
+      "local_decision_us_mean": 3.7979743089430897,
+      "local_decision_us_p50": 1.893,
+      "local_decision_us_p95": 11.173999999999996,
+      "local_decision_us_p99": 12.396739999999989,
+      "local_decision_count": 3075,
+      "episode_wall_s": 21.246126353,
+      "peak_cpu_rss_mb": 952.18359375,
+      "peak_gpu_mem_mb": 0.0
+    }
+  ],
+  "summary": {
+    "decisions": 35,
+    "agreement": 0.02857142857142857,
+    "mean_offset": 52.34285714285714,
+    "mean_absolute_offset_difference": 23.65714285714286,
+    "site_histogram": [
+      20,
+      12,
+      3,
+      0,
+      0
+    ],
+    "entropy": 4.673621772994307,
+    "kl_prior": 0.07790420447125279,
+    "prior_action_prob": 0.014664683453188781,
+    "residual_min": -2.3326187133789062,
+    "residual_max": 1.4419896602630615,
+    "value_mean": -1.2330286006842341
+  },
+  "decisions": [
+    {
+      "step": 9,
+      "value": -0.024785064160823822,
+      "actions": [
+        62
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        5.26241157890085
+      ],
+      "kl_prior": [
+        0.09884712144762903
+      ],
+      "prior_action_prob": [
+        0.00044790304039148403
+      ],
+      "residual_min": -2.3009185791015625,
+      "residual_max": 1.0007209777832031
+    },
+    {
+      "step": 29,
+      "value": -0.16874003410339355,
+      "actions": [
+        62
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        5.256133311976864
+      ],
+      "kl_prior": [
+        0.10522562888838759
+      ],
+      "prior_action_prob": [
+        0.000459352382312266
+      ],
+      "residual_min": -2.3275318145751953,
+      "residual_max": 1.0723209381103516
+    },
+    {
+      "step": 41,
+      "value": 0.6049173474311829,
+      "actions": [
+        62
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        5.2603310669543415
+      ],
+      "kl_prior": [
+        0.10015506413847286
+      ],
+      "prior_action_prob": [
+        0.0005264100010784155
+      ],
+      "residual_min": -2.2170534133911133,
+      "residual_max": 1.1446247100830078
+    },
+    {
+      "step": 48,
+      "value": -0.07963896542787552,
+      "actions": [
+        62
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        5.256671771711872
+      ],
+      "kl_prior": [
+        0.10424255858271342
+      ],
+      "prior_action_prob": [
+        0.0005172913075261081
+      ],
+      "residual_min": -2.309255599975586,
+      "residual_max": 1.1513659954071045
+    },
+    {
+      "step": 62,
+      "value": -0.4894733130931854,
+      "actions": [
+        62
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        5.237828721901604
+      ],
+      "kl_prior": [
+        0.10695991582948602
+      ],
+      "prior_action_prob": [
+        0.0005494518590873486
+      ],
+      "residual_min": -2.3326187133789062,
+      "residual_max": 1.0955779552459717
+    },
+    {
+      "step": 92,
+      "value": -0.41647469997406006,
+      "actions": [
+        62
+      ],
+      "rules": [
+        39
+      ],
+      "entropy": [
+        5.180727124016861
+      ],
+      "kl_prior": [
+        0.10146769717975332
+      ],
+      "prior_action_prob": [
+        0.006477890413295356
+      ],
+      "residual_min": -2.3025856018066406,
+      "residual_max": 1.2159595489501953
+    },
+    {
+      "step": 100,
+      "value": -0.20684823393821716,
+      "actions": [
+        62
+      ],
+      "rules": [
+        31
+      ],
+      "entropy": [
+        5.164686690970688
+      ],
+      "kl_prior": [
+        0.10477235653189289
+      ],
+      "prior_action_prob": [
+        0.00929547384392217
+      ],
+      "residual_min": -2.2898025512695312,
+      "residual_max": 1.2772865295410156
+    },
+    {
+      "step": 123,
+      "value": -0.2212689220905304,
+      "actions": [
+        62
+      ],
+      "rules": [
+        44
+      ],
+      "entropy": [
+        5.102596636569434
+      ],
+      "kl_prior": [
+        0.08978880221912833
+      ],
+      "prior_action_prob": [
+        0.004533250128813196
+      ],
+      "residual_min": -1.9917678833007812,
+      "residual_max": 1.0311698913574219
+    },
+    {
+      "step": 134,
+      "value": -0.27157407999038696,
+      "actions": [
+        65
+      ],
+      "rules": [
+        33
+      ],
+      "entropy": [
+        5.040602333296395
+      ],
+      "kl_prior": [
+        0.0992224975366729
+      ],
+      "prior_action_prob": [
+        0.007758466026836538
+      ],
+      "residual_min": -1.6431465148925781,
+      "residual_max": 1.3097591400146484
+    },
+    {
+      "step": 150,
+      "value": -0.17422568798065186,
+      "actions": [
+        27
+      ],
+      "rules": [
+        17
+      ],
+      "entropy": [
+        5.034950950763133
+      ],
+      "kl_prior": [
+        0.05118464682701193
+      ],
+      "prior_action_prob": [
+        0.010218069429277181
+      ],
+      "residual_min": -1.0261085033416748,
+      "residual_max": 0.7084040641784668
+    },
+    {
+      "step": 159,
+      "value": 0.04778841882944107,
+      "actions": [
+        138
+      ],
+      "rules": [
+        8
+      ],
+      "entropy": [
+        4.992290245826027
+      ],
+      "kl_prior": [
+        0.08738784669157372
+      ],
+      "prior_action_prob": [
+        0.008717893163472113
+      ],
+      "residual_min": -0.8697941303253174,
+      "residual_max": 1.4182524681091309
+    },
+    {
+      "step": 174,
+      "value": -0.5043063163757324,
+      "actions": [
+        21
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        4.707259390298337
+      ],
+      "kl_prior": [
+        0.054378596413008906
+      ],
+      "prior_action_prob": [
+        0.0033281487182566754
+      ],
+      "residual_min": -1.3702125549316406,
+      "residual_max": 0.5802333354949951
+    },
+    {
+      "step": 201,
+      "value": -0.5255996584892273,
+      "actions": [
+        4
+      ],
+      "rules": [
+        143
+      ],
+      "entropy": [
+        4.729412158499063
+      ],
+      "kl_prior": [
+        0.10207554445949726
+      ],
+      "prior_action_prob": [
+        0.019473182080601368
+      ],
+      "residual_min": -2.259070634841919,
+      "residual_max": 1.1097080707550049
+    },
+    {
+      "step": 221,
+      "value": -0.7799524664878845,
+      "actions": [
+        65
+      ],
+      "rules": [
+        57
+      ],
+      "entropy": [
+        4.575147321094301
+      ],
+      "kl_prior": [
+        0.06718283011672374
+      ],
+      "prior_action_prob": [
+        0.010923578319867634
+      ],
+      "residual_min": -1.552715539932251,
+      "residual_max": 1.0689449310302734
+    },
+    {
+      "step": 227,
+      "value": -1.1765403747558594,
+      "actions": [
+        138
+      ],
+      "rules": [
+        118
+      ],
+      "entropy": [
+        4.512781875468194
+      ],
+      "kl_prior": [
+        0.04431899999528518
+      ],
+      "prior_action_prob": [
+        0.0219663080971936
+      ],
+      "residual_min": -1.4265010356903076,
+      "residual_max": 0.6513431072235107
+    },
+    {
+      "step": 241,
+      "value": -2.2730321884155273,
+      "actions": [
+        104
+      ],
+      "rules": [
+        104
+      ],
+      "entropy": [
+        4.540845502829955
+      ],
+      "kl_prior": [
+        0.06893264242074625
+      ],
+      "prior_action_prob": [
+        0.04186894602811177
+      ],
+      "residual_min": -1.4650557041168213,
+      "residual_max": 0.878101110458374
+    },
+    {
+      "step": 256,
+      "value": -2.9952874183654785,
+      "actions": [
+        45
+      ],
+      "rules": [
+        216
+      ],
+      "entropy": [
+        4.409692688863149
+      ],
+      "kl_prior": [
+        0.04361779471844038
+      ],
+      "prior_action_prob": [
+        0.020281832035710722
+      ],
+      "residual_min": -1.4713613986968994,
+      "residual_max": 0.73476243019104
+    },
+    {
+      "step": 273,
+      "value": -2.757370710372925,
+      "actions": [
+        211
+      ],
+      "rules": [
+        200
+      ],
+      "entropy": [
+        3.5466055082667474
+      ],
+      "kl_prior": [
+        0.14087234061740364
+      ],
+      "prior_action_prob": [
+        0.028418213902693012
+      ],
+      "residual_min": -0.9021452069282532,
+      "residual_max": 1.4244887828826904
+    },
+    {
+      "step": 295,
+      "value": -2.6099534034729004,
+      "actions": [
+        135
+      ],
+      "rules": [
+        140
+      ],
+      "entropy": [
+        3.956481043228666
+      ],
+      "kl_prior": [
+        0.05966382272694728
+      ],
+      "prior_action_prob": [
+        0.03397098342652007
+      ],
+      "residual_min": -2.2712979316711426,
+      "residual_max": 1.1611015796661377
+    },
+    {
+      "step": 307,
+      "value": -2.1344921588897705,
+      "actions": [
+        135
+      ],
+      "rules": [
+        131
+      ],
+      "entropy": [
+        4.01212679732302
+      ],
+      "kl_prior": [
+        0.06520440125832426
+      ],
+      "prior_action_prob": [
+        0.0426702340093182
+      ],
+      "residual_min": -2.222242593765259,
+      "residual_max": 1.1478767395019531
+    },
+    {
+      "step": 323,
+      "value": -2.1371960639953613,
+      "actions": [
+        62
+      ],
+      "rules": [
+        57
+      ],
+      "entropy": [
+        4.408164846555417
+      ],
+      "kl_prior": [
+        0.04574642890906347
+      ],
+      "prior_action_prob": [
+        0.020321513436716798
+      ],
+      "residual_min": -1.9215861558914185,
+      "residual_max": 0.9446051120758057
+    },
+    {
+      "step": 335,
+      "value": -2.68873929977417,
+      "actions": [
+        138
+      ],
+      "rules": [
+        142
+      ],
+      "entropy": [
+        4.554550155362524
+      ],
+      "kl_prior": [
+        0.10572339954256765
+      ],
+      "prior_action_prob": [
+        0.018258564564868025
+      ],
+      "residual_min": -0.8871880769729614,
+      "residual_max": 1.4419896602630615
+    },
+    {
+      "step": 356,
+      "value": -2.2818875312805176,
+      "actions": [
+        67
+      ],
+      "rules": [
+        68
+      ],
+      "entropy": [
+        4.595194805044669
+      ],
+      "kl_prior": [
+        0.04172323898815133
+      ],
+      "prior_action_prob": [
+        0.021650703447360333
+      ],
+      "residual_min": -1.433651328086853,
+      "residual_max": 0.7043662071228027
+    },
+    {
+      "step": 373,
+      "value": -1.9763357639312744,
+      "actions": [
+        28
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        4.3758197117784885
+      ],
+      "kl_prior": [
+        0.14392544456402626
+      ],
+      "prior_action_prob": [
+        0.0031609730758027296
+      ],
+      "residual_min": -2.252272129058838,
+      "residual_max": 1.179612159729004
+    },
+    {
+      "step": 397,
+      "value": -1.4429808855056763,
+      "actions": [
+        211
+      ],
+      "rules": [
+        210
+      ],
+      "entropy": [
+        3.837163763585253
+      ],
+      "kl_prior": [
+        0.08412148464465093
+      ],
+      "prior_action_prob": [
+        0.038820080934970226
+      ],
+      "residual_min": -1.7951239347457886,
+      "residual_max": 1.2171807289123535
+    },
+    {
+      "step": 402,
+      "value": -1.5399281978607178,
+      "actions": [
+        211
+      ],
+      "rules": [
+        210
+      ],
+      "entropy": [
+        3.9568933891748506
+      ],
+      "kl_prior": [
+        0.07647518639549465
+      ],
+      "prior_action_prob": [
+        0.034545015655112477
+      ],
+      "residual_min": -1.6234697103500366,
+      "residual_max": 1.2302882671356201
+    },
+    {
+      "step": 421,
+      "value": -1.9977216720581055,
+      "actions": [
+        140
+      ],
+      "rules": [
+        143
+      ],
+      "entropy": [
+        4.456037397720088
+      ],
+      "kl_prior": [
+        0.029303996118069227
+      ],
+      "prior_action_prob": [
+        0.03225281489967415
+      ],
+      "residual_min": -1.2376576662063599,
+      "residual_max": 0.5900468826293945
+    },
+    {
+      "step": 445,
+      "value": -2.595290422439575,
+      "actions": [
+        138
+      ],
+      "rules": [
+        125
+      ],
+      "entropy": [
+        4.528748924548875
+      ],
+      "kl_prior": [
+        0.035494217790186834
+      ],
+      "prior_action_prob": [
+        0.01541962554966973
+      ],
+      "residual_min": -1.4651433229446411,
+      "residual_max": 0.7989437580108643
+    },
+    {
+      "step": 457,
+      "value": -2.5580039024353027,
+      "actions": [
+        138
+      ],
+      "rules": [
+        59
+      ],
+      "entropy": [
+        4.667225368647454
+      ],
+      "kl_prior": [
+        0.03721981217269778
+      ],
+      "prior_action_prob": [
+        0.012321738884068857
+      ],
+      "residual_min": -1.4595297574996948,
+      "residual_max": 0.8212714195251465
+    },
+    {
+      "step": 473,
+      "value": -1.5733040571212769,
+      "actions": [
+        135
+      ],
+      "rules": [
+        43
+      ],
+      "entropy": [
+        4.793095472360129
+      ],
+      "kl_prior": [
+        0.03269623867411509
+      ],
+      "prior_action_prob": [
+        0.010182296693206323
+      ],
+      "residual_min": -1.3850001096725464,
+      "residual_max": 0.6343517303466797
+    },
+    {
+      "step": 486,
+      "value": -1.6264995336532593,
+      "actions": [
+        138
+      ],
+      "rules": [
+        30
+      ],
+      "entropy": [
+        4.865089224771728
+      ],
+      "kl_prior": [
+        0.0727004034358844
+      ],
+      "prior_action_prob": [
+        0.010411471078793203
+      ],
+      "residual_min": -1.563339114189148,
+      "residual_max": 1.2238197326660156
+    },
+    {
+      "step": 504,
+      "value": -1.1150715351104736,
+      "actions": [
+        62
+      ],
+      "rules": [
+        12
+      ],
+      "entropy": [
+        4.814846082545202
+      ],
+      "kl_prior": [
+        0.07644237570571841
+      ],
+      "prior_action_prob": [
+        0.014746175622559404
+      ],
+      "residual_min": -1.550464153289795,
+      "residual_max": 0.9345517158508301
+    },
+    {
+      "step": 520,
+      "value": -1.4369415044784546,
+      "actions": [
+        80
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        4.644676525885195
+      ],
+      "kl_prior": [
+        0.10436231820882699
+      ],
+      "prior_action_prob": [
+        0.0018935655385584518
+      ],
+      "residual_min": -1.770370364189148,
+      "residual_max": 1.2058336734771729
+    },
+    {
+      "step": 527,
+      "value": -0.2862708270549774,
+      "actions": [
+        7
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        4.606995536323119
+      ],
+      "kl_prior": [
+        0.09163168522490335
+      ],
+      "prior_action_prob": [
+        0.0030045313682795804
+      ],
+      "residual_min": -1.4954793453216553,
+      "residual_max": 1.193572998046875
+    },
+    {
+      "step": 549,
+      "value": -0.7429718971252441,
+      "actions": [
+        7
+      ],
+      "rules": [
+        0
+      ],
+      "entropy": [
+        4.6926781317382416
+      ],
+      "kl_prior": [
+        0.05357981752039226
+      ],
+      "prior_action_prob": [
+        0.0038719718976817597
+      ],
+      "residual_min": -1.4658273458480835,
+      "residual_max": 0.6790528297424316
+    }
+  ]
+}

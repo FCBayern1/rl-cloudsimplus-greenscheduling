@@ -1,0 +1,42 @@
+{
+  "production": {
+    "real_decisions": 8,
+    "ratio_min": 0.642934086257023,
+    "ratio_max": 1.1565026951252293,
+    "ratio_mean": 0.9478838608613349,
+    "outside_clip_fraction": 0.25,
+    "old_new_kl_mean": 0.024086506724684376,
+    "old_new_kl_max": 0.08085692096355669,
+    "argmax_agreement": 0.875
+  },
+  "dropout_off_only": {
+    "real_decisions": 8,
+    "ratio_min": 0.847638007957897,
+    "ratio_max": 1.269999446622025,
+    "ratio_mean": 1.0716875379920356,
+    "outside_clip_fraction": 0.125,
+    "old_new_kl_mean": 0.016872353051623715,
+    "old_new_kl_max": 0.0516768332171415,
+    "argmax_agreement": 0.875
+  },
+  "position_constant_only": {
+    "real_decisions": 8,
+    "ratio_min": 0.6505219311717445,
+    "ratio_max": 1.1913165297043113,
+    "ratio_mean": 0.9963079378373054,
+    "outside_clip_fraction": 0.125,
+    "old_new_kl_mean": 0.019045372153619265,
+    "old_new_kl_max": 0.06538926501546256,
+    "argmax_agreement": 1.0
+  },
+  "both_controls": {
+    "real_decisions": 8,
+    "ratio_min": 0.9999982157096243,
+    "ratio_max": 1.0000001598031019,
+    "ratio_mean": 0.9999997772224989,
+    "outside_clip_fraction": 0.0,
+    "old_new_kl_mean": 8.231179285971042e-14,
+    "old_new_kl_max": 2.1098163646906488e-13,
+    "argmax_agreement": 1.0
+  }
+}

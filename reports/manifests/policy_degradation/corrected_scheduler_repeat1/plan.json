@@ -1,0 +1,21 @@
+{
+  "args": {
+    "root": "logs/matched_pair_isambard/V_s20260911/multidc_gtrxl_training/PPO_multidc_env_67235_00000_0_2026-09-09_12-31-38",
+    "out": "../reports/manifests/policy_degradation/corrected_scheduler_repeat1",
+    "indices": "14",
+    "windows": "0",
+    "modes": "recurrent",
+    "tiers": "shrink75",
+    "prior": false,
+    "verify_scheduler": true
+  },
+  "jobs": [
+    [
+      14,
+      0,
+      "recurrent",
+      "shrink75"
+    ]
+  ],
+  "workers": 2
+}

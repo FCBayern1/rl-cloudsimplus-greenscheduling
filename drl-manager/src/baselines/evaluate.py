@@ -1298,6 +1298,7 @@ def run_rllib_evaluation(
         print(f"[P0-C] advanced reset counter by {reset_skip} before measuring")
 
     for ep in range(num_episodes):
+        global_scheduler.reset()
         obs, info = env.reset(seed=seed + ep)
         done = False
         steps = 0

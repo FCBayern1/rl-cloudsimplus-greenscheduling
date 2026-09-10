@@ -1,0 +1,51 @@
+{
+  "args": {
+    "root": "logs/matched_pair_isambard/V_s20260912/multidc_gtrxl_training/PPO_multidc_env_6beaf_00000_0_2026-09-09_12-31-46",
+    "out": "../reports/manifests/policy_degradation/primary_v12_final_six",
+    "indices": "14",
+    "windows": "0,1,2,3,4,5",
+    "modes": "recurrent",
+    "tiers": "shrink75",
+    "prior": false,
+    "verify_scheduler": true
+  },
+  "jobs": [
+    [
+      14,
+      0,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      1,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      2,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      3,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      4,
+      "recurrent",
+      "shrink75"
+    ],
+    [
+      14,
+      5,
+      "recurrent",
+      "shrink75"
+    ]
+  ],
+  "workers": 2
+}

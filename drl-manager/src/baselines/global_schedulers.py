@@ -961,6 +961,16 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
 
         # Get the RLModule from the algorithm
         self._rl_module = self._get_rl_module()
+        self._recurrent_state = None
+        # Argmax only controls action selection; it does not disable network
+        # dropout. A deployment module must use inference behavior even when
+        # categorical actions are deliberately sampled (stochastic=True).
+        if self._rl_module is not None:
+            inference_module = self._rl_module
+            if hasattr(inference_module, '__getitem__'):
+                inference_module = inference_module[self.policy_id]
+            if hasattr(inference_module, 'eval'):
+                inference_module.eval()
 
         # EU-CRD deployment-time trust sentinel (env-gated via TRUST_GATE_MODE;
         # see src/baselines/trust_sentinel.py). Loads the trained Q-ensemble
@@ -991,6 +1001,12 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
                 f"[TrustSentinel] active: {self._sentinel.summary()} "
                 f"thresh={self._sentinel.threshold}"
             )
+
+    def reset(self):
+        """Episode boundary: never carry the preceding episode's memory."""
+        self._recurrent_state = None
+        if self._sentinel is not None and hasattr(self._sentinel, 'reset'):
+            self._sentinel.reset()
 
     def _get_rl_module(self):
         """Get the RLModule for inference."""
@@ -1032,10 +1048,25 @@ class RLlibNewAPIGlobalScheduler(GlobalScheduler):
 
         # Prepare batch input
         batch = self._obs_to_batch(wrapped_obs)
+        if self._recurrent_state is not None:
+            batch['state_in'] = self._recurrent_state
 
         # Forward pass
         with torch.no_grad():
             output = module.forward_inference(batch)
+        # The training env runner feeds STATE_OUT into the next STATE_IN.
+        # Dropping it here evaluates a different (memoryless) policy.
+        def detached_copy(value):
+            if isinstance(value, torch.Tensor):
+                return value.detach().clone()
+            if isinstance(value, dict):
+                return {k: detached_copy(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [detached_copy(v) for v in value]
+            if isinstance(value, tuple):
+                return tuple(detached_copy(v) for v in value)
+            return value
+        self._recurrent_state = detached_copy(output.get('state_out'))
 
         # Trust sentinel (qvar source): epistemic disagreement on the trunk
         # features the policy just used (ensemble forward hook). Gating for

@@ -1,0 +1,277 @@
+{
+  "root": "/home/joshua/rl-cloudsimplus-greenscheduling/drl-manager/logs/rl_v2/V_s20260907/multidc_gtrxl_training/PPO_multidc_env_9c072_00000_0_2026-09-07_04-45-46",
+  "corpus": "/home/joshua/rl-cloudsimplus-greenscheduling/g1/compressed_timecap_s2/stage_a_out/eucrd_signal/sig_shrink75_k0_decisions_obs.npz",
+  "records": [
+    {
+      "checkpoint": "checkpoint_000000",
+      "step": 8000,
+      "decisions": 35,
+      "agreement": 0.0,
+      "mean_offset": 56.4,
+      "mean_absolute_offset_difference": 31.8,
+      "site_histogram": [
+        7,
+        21,
+        7,
+        0,
+        0
+      ],
+      "entropy": 4.850062306098591,
+      "kl_prior": 0.03707843171228569,
+      "prior_action_prob": 0.011438414887939499,
+      "residual_min": -0.704944372177124,
+      "residual_max": 1.0951499938964844,
+      "value_mean": 0.14309723068560873,
+      "expected_site_probability": [
+        0.33548106848943043,
+        0.44746374934840566,
+        0.21705517741743816,
+        2.365394097046336e-09,
+        2.3793316959248683e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.48544916951563,
+      "parameter_norm": 101.33597829561559
+    },
+    {
+      "checkpoint": "checkpoint_000001",
+      "step": 16000,
+      "decisions": 35,
+      "agreement": 0.02857142857142857,
+      "mean_offset": 51.08571428571429,
+      "mean_absolute_offset_difference": 25.914285714285715,
+      "site_histogram": [
+        13,
+        18,
+        4,
+        0,
+        0
+      ],
+      "entropy": 4.81170747842702,
+      "kl_prior": 0.07625044897696653,
+      "prior_action_prob": 0.011398833877067503,
+      "residual_min": -1.6280879974365234,
+      "residual_max": 1.261049509048462,
+      "value_mean": 0.2620333054236003,
+      "expected_site_probability": [
+        0.3430344120433121,
+        0.4418843102088834,
+        0.2150812731287548,
+        2.3084024567156817e-09,
+        2.3106472445663916e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.59830331688248,
+      "parameter_norm": 101.50712667167988,
+      "kl_previous_mean": 0.04089955224694691,
+      "kl_previous_max": 0.05554081682584831
+    },
+    {
+      "checkpoint": "checkpoint_000002",
+      "step": 24000,
+      "decisions": 35,
+      "agreement": 0.02857142857142857,
+      "mean_offset": 38.94285714285714,
+      "mean_absolute_offset_difference": 20.914285714285715,
+      "site_histogram": [
+        14,
+        13,
+        8,
+        0,
+        0
+      ],
+      "entropy": 4.769030202199498,
+      "kl_prior": 0.11842123961569918,
+      "prior_action_prob": 0.01176266378040424,
+      "residual_min": -2.0326645374298096,
+      "residual_max": 1.8178787231445312,
+      "value_mean": 0.5681520034159933,
+      "expected_site_probability": [
+        0.34667322211204554,
+        0.44276859489530374,
+        0.2105581785047316,
+        2.264431092201384e-09,
+        2.223488178014205e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.66800632737433,
+      "parameter_norm": 101.69130364023026,
+      "kl_previous_mean": 0.044145128697051506,
+      "kl_previous_max": 0.06786504630456845
+    },
+    {
+      "checkpoint": "checkpoint_000003",
+      "step": 32000,
+      "decisions": 35,
+      "agreement": 0.0,
+      "mean_offset": 38.457142857142856,
+      "mean_absolute_offset_difference": 21.457142857142856,
+      "site_histogram": [
+        16,
+        13,
+        6,
+        0,
+        0
+      ],
+      "entropy": 4.6939568560856,
+      "kl_prior": 0.19657721208691395,
+      "prior_action_prob": 0.009565665392966986,
+      "residual_min": -2.6501190662384033,
+      "residual_max": 2.309051513671875,
+      "value_mean": -0.3179417551628181,
+      "expected_site_probability": [
+        0.3525489722098247,
+        0.4474019140968038,
+        0.2000491092783825,
+        2.225545069098812e-09,
+        2.189444033943458e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.76047667138067,
+      "parameter_norm": 101.85341778986796,
+      "kl_previous_mean": 0.048167308724384,
+      "kl_previous_max": 0.10945204207969174
+    },
+    {
+      "checkpoint": "checkpoint_000004",
+      "step": 40000,
+      "decisions": 35,
+      "agreement": 0.0,
+      "mean_offset": 45.42857142857143,
+      "mean_absolute_offset_difference": 20.714285714285715,
+      "site_histogram": [
+        13,
+        18,
+        4,
+        0,
+        0
+      ],
+      "entropy": 4.622558988289545,
+      "kl_prior": 0.26711322914027613,
+      "prior_action_prob": 0.009019449710357733,
+      "residual_min": -2.8205997943878174,
+      "residual_max": 2.548736572265625,
+      "value_mean": -0.08507889168603079,
+      "expected_site_probability": [
+        0.34941439486136994,
+        0.4509413705553459,
+        0.19964423022199868,
+        2.1879521277164482e-09,
+        2.1733331686178596e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.83413692588208,
+      "parameter_norm": 101.9852882389607,
+      "kl_previous_mean": 0.0586117212694229,
+      "kl_previous_max": 0.14600514923443292
+    },
+    {
+      "checkpoint": "checkpoint_000005",
+      "step": 48000,
+      "decisions": 35,
+      "agreement": 0.02857142857142857,
+      "mean_offset": 40.31428571428572,
+      "mean_absolute_offset_difference": 24.857142857142858,
+      "site_histogram": [
+        13,
+        16,
+        6,
+        0,
+        0
+      ],
+      "entropy": 4.530700001011425,
+      "kl_prior": 0.3686137637789044,
+      "prior_action_prob": 0.007626984012993916,
+      "residual_min": -3.5280165672302246,
+      "residual_max": 3.248292922973633,
+      "value_mean": -0.2058577243770872,
+      "expected_site_probability": [
+        0.34866922714271337,
+        0.4501304032675914,
+        0.20120036525804372,
+        2.2091138126559643e-09,
+        2.12253754708791e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.90924907745313,
+      "parameter_norm": 102.11737017715882,
+      "kl_previous_mean": 0.08030322042938595,
+      "kl_previous_max": 0.21065062372449017
+    },
+    {
+      "checkpoint": "checkpoint_000006",
+      "step": 56000,
+      "decisions": 35,
+      "agreement": 0.0,
+      "mean_offset": 35.02857142857143,
+      "mean_absolute_offset_difference": 25.114285714285714,
+      "site_histogram": [
+        7,
+        21,
+        7,
+        0,
+        0
+      ],
+      "entropy": 4.442261375347474,
+      "kl_prior": 0.46406314066007215,
+      "prior_action_prob": 0.007389045459017975,
+      "residual_min": -3.1936256885528564,
+      "residual_max": 3.8944923877716064,
+      "value_mean": -0.05911089905670711,
+      "expected_site_probability": [
+        0.3297128106557774,
+        0.45111455498620584,
+        0.21917262959081021,
+        2.464079825031819e-09,
+        2.3031267373368528e-09
+      ],
+      "legal_candidates_per_site": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "actor_parameter_norm": 70.99236459597743,
+      "parameter_norm": 102.26357092003977,
+      "kl_previous_mean": 0.07606347538449007,
+      "kl_previous_max": 0.30630916240458617
+    }
+  ]
+}

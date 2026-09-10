@@ -1,0 +1,27 @@
+{
+  "decisions": 35,
+  "argmax_site_histogram": [
+    25,
+    8,
+    2,
+    0,
+    0
+  ],
+  "expected_site_probability": [
+    0.3407871659226563,
+    0.4435136079319835,
+    0.2156992216172581,
+    2.2640510315364087e-09,
+    2.2640510315364087e-09
+  ],
+  "legal_candidates_per_site": [
+    71.0,
+    71.0,
+    71.0,
+    71.0,
+    71.0
+  ],
+  "ties_median": 43.0,
+  "ties_max": 197,
+  "decisions_with_ties": 31
+}
